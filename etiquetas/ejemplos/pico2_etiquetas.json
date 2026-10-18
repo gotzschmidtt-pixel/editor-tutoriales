@@ -1,0 +1,23 @@
+[
+ {"bloque": "L03", "frase": "Lo que vas a necesitar", "tipo": "dato", "titulo": "Necesitas", "texto": "Pico 2 · cable Lightning · cautín · estaño · flux", "dur": 6},
+ {"bloque": "L04", "frase": "AliExpress", "tipo": "precio", "titulo": "Cómprala en", "texto": "AliExpress · unos 10 USD", "dur": 4},
+ {"bloque": "L04", "frase": "Mercado Libre", "tipo": "precio", "titulo": "o en", "texto": "Mercado Libre", "dur": 3.5},
+ {"bloque": "L04", "frase": "Colombia", "tipo": "dato", "titulo": "Envíos", "texto": "A toda Colombia", "dur": 3.5},
+ {"bloque": "L05", "frase": "Waveshare", "tipo": "dato", "titulo": "Sin soldar", "texto": "Waveshare RP2350 USB-A · RP2350 Zero", "dur": 5},
+ {"bloque": "L06", "frase": "Rojo y negro", "tipo": "pin", "color": "#e5484d", "titulo": "Alimentación", "texto": "Rojo VBUS · Negro GND", "dur": 4.5},
+ {"bloque": "L06", "frase": "verde y blanco son", "tipo": "pin", "color": "#30a46c", "titulo": "Datos", "texto": "Verde D+ · Blanco D−", "dur": 4.5},
+ {"bloque": "L08", "frase": "450", "tipo": "dato", "titulo": "Temperatura", "texto": "450 °C (a tu gusto)", "dur": 4},
+ {"bloque": "L11", "frase": "verde al pin 16", "tipo": "pin", "color": "#30a46c", "titulo": "Verde · D+", "texto": "Pin 16 (GP12)", "dur": 4},
+ {"bloque": "L11", "frase": "blanco al pin 17", "tipo": "pin", "color": "#c9cdd4", "titulo": "Blanco · D−", "texto": "Pin 17 (GP13)", "dur": 4},
+ {"bloque": "L12", "frase": "rojo al pin 40", "tipo": "pin", "color": "#e5484d", "titulo": "Rojo · VBUS", "texto": "Pin 40", "dur": 4},
+ {"bloque": "L12", "frase": "negro al pin 38", "tipo": "pin", "color": "#3a3f47", "titulo": "Negro · GND", "texto": "Pin 38", "dur": 4},
+ {"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5},
+ {"bloque": "L15", "frase": "xiaomiunlock", "tipo": "web", "titulo": "o también en", "texto": "xiaomiunlock.com", "dur": 4},
+ {"bloque": "L15", "frase": "Descargar Files Board", "tipo": "dato", "titulo": "Botón", "texto": "Descargar Files Board", "dur": 3.5},
+ {"bloque": "L17", "frase": "unidad llamada", "tipo": "dato", "titulo": "Unidad", "texto": "RP2350", "dur": 3.5},
+ {"bloque": "L17", "frase": "No analizar", "tipo": "dato", "titulo": "Antivirus", "texto": "No analizar", "dur": 3.5},
+ {"bloque": "L18", "frase": "usbliter", "tipo": "archivo", "titulo": "Archivo para Pico 2", "texto": "usbliter8.pico2.uf2", "dur": 5},
+ {"bloque": "L20", "frase": "invirtiendo", "tipo": "consejo", "titulo": "¿No comunica?", "texto": "Invierte verde y blanco", "dur": 4.5},
+ {"bloque": "L21", "frase": "gsmprime", "tipo": "web", "titulo": "Todo en", "texto": "gsmprime.co", "dur": 4.5},
+ {"bloque": "L21", "frase": "xiaomiunlock", "tipo": "web", "titulo": "y en", "texto": "xiaomiunlock.com", "dur": 4}
+]
