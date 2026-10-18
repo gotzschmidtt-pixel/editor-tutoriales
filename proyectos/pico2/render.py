@@ -2,6 +2,12 @@ import json, subprocess, os
 SRC = "/mnt/project-files/COMO SOLDAR RASPBERRY OSCAR .mp4"
 MAPA = "/mnt/project-files/guion-pico/mapa_pines_pico2.png"
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'nitidez'))
+from nitidez import analizar, mejor
+# nitidez y movimiento del original: los congelados solo usan cuadros quietos y enfocados
+NT = analizar(SRC, './trabajo/original.nitidez.npz')
+# ajustes manuales opcionales {"L05": 33.2}; ganan sobre la elección automática
+MEJORES = json.load(open('./trabajo/mejores.json')) if os.path.exists('./trabajo/mejores.json') else {}
 FINAL = len(sys.argv) > 1
 W = "./trabajo/" + ("final" if FINAL else "render")
 os.makedirs(W, exist_ok=True)
@@ -25,11 +31,17 @@ for b in d['bloques']:
              "-vf", f"setpts=PTS/{m['velocidad']},{OUT}{lab}", "-c:v", "libx264", "-preset", "veryfast", "-crf", ("20" if FINAL else "26"), f])
         segs.append(f)
     if m['modo'] == 'congelar' or m['modo'].endswith('congelar'):
-        t = m['src_inicio'] if m['modo'] == 'congelar' else m['src_fin'] - 0.5
+        # ventana donde buscar: alrededor del inicio si es congelado puro, al final del tramo si viene tras cámara lenta
+        v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
+        t = MEJORES.get(i, mejor(*NT, *v))
         f = f"{W}/{i}_b.mp4"
         run(["-ss", str(t), "-i", SRC, "-frames:v", "1", f"{W}/{i}.png"])
-        run(["-loop", "1", "-t", str(m['congelar_s']), "-i", f"{W}/{i}.png",
-             "-vf", f"{OUT}{lab}", "-c:v", "libx264", "-preset", "veryfast", "-crf", ("20" if FINAL else "26"), f])
+        # zoom lento (Ken Burns), alternando acercar y alejar, para que la pausa no se vea muerta
+        nfr = int(round(m['congelar_s'] * 25)); zin = len(parts) % 2 == 0
+        z = f"1+0.10*on/{nfr}" if zin else f"1.10-0.10*on/{nfr}"
+        run(["-i", f"{W}/{i}.png", "-vf",
+             f"scale=3840:2160,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={RES[0]}x{RES[1]}:fps=25,format=yuv420p{lab}",
+             "-frames:v", str(nfr), "-c:v", "libx264", "-preset", "veryfast", "-crf", ("20" if FINAL else "26"), f])
         segs.append(f)
     if m['modo'] == 'imagen':
         f = f"{W}/{i}_b.mp4"

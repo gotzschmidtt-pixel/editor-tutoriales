@@ -1,0 +1,17 @@
+{
+  "name": "editor-tutoriales-remotion",
+  "private": true,
+  "description": "Efectos de video con Remotion: tráiler ANTES · DURANTE · DESPUÉS y etiquetas animadas",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.530",
+    "@types/react": "^18.3.12",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.530",
+    "typescript": "^5.6.3"
+  }
+}

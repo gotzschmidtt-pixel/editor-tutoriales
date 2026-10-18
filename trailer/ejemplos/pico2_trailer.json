@@ -1,0 +1,14 @@
+{
+ "titulo": "Pico 2 lista para bypass",
+ "subtitulo": "Paso a paso, sin humo",
+ "voz": "Antes... durante... ¡y después! Mira cómo esta Pico pasa de pieza suelta a herramienta de bypass.",
+ "musica": {"pista": "/mnt/project-files/guion-pico/musica/parte1.mp3", "desde": 40},
+ "clips": [
+  {"fase": "ANTES",   "ventana": [0, 11],    "dur": 2.2},
+  {"fase": "DURANTE", "ventana": [39, 44],   "dur": 1.3},
+  {"fase": "DURANTE", "ventana": [69, 90],   "dur": 1.4},
+  {"fase": "DURANTE", "ventana": [90, 126],  "dur": 1.4},
+  {"fase": "DESPUÉS", "ventana": [183, 189], "dur": 1.6},
+  {"fase": "DESPUÉS", "ventana": [12, 18],   "dur": 2.0}
+ ]
+}

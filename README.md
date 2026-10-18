@@ -10,19 +10,26 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 |---|---|
 | `etiquetas/` | Encuentra el segundo exacto en que la voz dice una frase (tiempos por carácter de ElevenLabs) y superpone una etiqueta animada: páginas web, pines, archivos, precios, consejos. |
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
+| `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
+| `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
+| `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer` y `Etiqueta`. Colores y fuente de marca en `src/estilo.ts`. |
+| `transcripcion/` | Voz a texto con tiempos por palabra: Scribe (en línea) o Whisper (en tu PC, sin internet). Saca .txt, .srt y .json. |
 | `proyectos/pico2/` | Los scripts del video «Cómo soldar la Pico 2»: guion por bloques, voz v4, video estirado a 7 min. Tienen rutas de ese proyecto; sirven de ejemplo. |
 
 ## Flujo
 
 1. **Guion por bloques** (`proyectos/pico2/largo.py`): cada bloque dice qué tramo del video original usa, cómo se estira (lento, congelar, imagen) y qué se narra.
 2. **Voz** (`voz.py`): genera cada bloque con la voz Mauricio en `eleven_v4` y guarda `<bloque>.mp3` y `<bloque>.align.json`.
-3. **Video** (`render.py final`): arma el video a 1080p según el plan de montaje.
+3. **Video** (`render.py final`): arma el video a 1080p según el plan de montaje. Cada congelado usa el cuadro que elige `nitidez/` y lleva un zoom lento.
+   Luego `mezclar_voz.py` coloca cada bloque de voz en su segundo y saca el .srt.
 4. **Música** (`musica/musica.py`): mezcla la música con bajada automática bajo la voz.
 5. **Etiquetas** (`etiquetas/etiquetas.py`): superpone las etiquetas en el momento en que se dicen.
+6. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
 
 ## Requisitos
 
-- Python 3, ffmpeg y Node con Playwright (Chromium), para renderizar las etiquetas.
+- Python 3 con numpy, ffmpeg y Node con Playwright (Chromium), para renderizar las etiquetas.
+- Remotion: `cd remotion && npm install`. `npm run studio` abre el editor visual en el navegador.
 - Acceso a la API de ElevenLabs. En el entorno de Claude la clave la pone el proxy; en tu PC tendrías que agregar la cabecera `xi-api-key`.
 
 ## Ejemplo: etiquetas
@@ -38,3 +45,12 @@ Cada etiqueta del JSON indica el bloque, la frase que la dispara y lo que muestr
 ```json
 {"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co"}
 ```
+
+## Ejemplo: tráiler ANTES · DURANTE · DESPUÉS
+
+```bash
+python3 trailer/trailer.py --video original.mp4 --plan trailer/ejemplos/pico2_trailer.json \
+  --salida trailer.mp4 --unir final.mp4 --final final_con_trailer.mp4 --srt final.srt
+```
+
+En el plan, cada clip dice su fase y la ventana del video original donde buscar; el tramo exacto lo elige `nitidez/`.
