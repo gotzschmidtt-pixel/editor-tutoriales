@@ -133,10 +133,21 @@ def registro(d):
 
 
 def correr(proyecto, pasos, opciones):
-    d = carpeta(proyecto)
-    log = open(registro(d), 'a', encoding='utf-8')
-    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
     try:
+        d = carpeta(proyecto)
+        log = open(registro(d), 'a', encoding='utf-8')
+    except Exception as e:
+        FALLOS[proyecto] = {'paso': pasos[0], 'msg': f'No pude abrir el registro del proyecto: {e}'}
+        with CANDADO:
+            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+        return
+    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    paso = pasos[0]
+    try:
+        FALLOS.pop(proyecto, None)
+        if not shutil.which('ffmpeg'):
+            raise RuntimeError('ffmpeg no está instalado o Windows no lo encuentra. Corre instalar.bat, '
+                               'reinicia la PC y vuelve a abrir iniciar.bat.')
         for paso in pasos:
             info = next(x for x in PASOS if x['id'] == paso)
             falta = [n for n in info['necesita'] if not existe(d, n)]
@@ -145,6 +156,7 @@ def correr(proyecto, pasos, opciones):
                     log.write(f'\n— {info["nombre"]}: lo salto (falta {", ".join(falta)})\n'); log.flush()
                     continue
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
+                FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
                 return
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
@@ -159,6 +171,14 @@ def correr(proyecto, pasos, opciones):
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
                     return
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+    except Exception as e:
+        # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
+        import traceback
+        msg = str(e) if isinstance(e, RuntimeError) else f'{type(e).__name__}: {e}'
+        if isinstance(e, FileNotFoundError):
+            msg = f'Windows no encontró un programa que hace falta ({e}). Corre instalar.bat y reinicia la PC.'
+        log.write(f'\nERROR: {msg}\n{traceback.format_exc()}\n✗ falló\n'); log.flush()
+        FALLOS[proyecto] = {'paso': paso, 'msg': msg}
     finally:
         log.close()
         with CANDADO:

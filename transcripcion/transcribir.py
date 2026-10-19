@@ -83,10 +83,12 @@ def main():
     a = ap.parse_args()
     f = audio(a.video)
     pal = scribe(f, a.idioma) if a.motor == 'scribe' else whisper(f, a.idioma, a.modelo)
-    json.dump(pal, open(a.salida + '.json', 'w'), ensure_ascii=False, indent=0)
+    json.dump(pal, open(a.salida + '.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
     fr = frases(pal)
-    open(a.salida + '.txt', 'w').write('\n'.join(t for _, _, t in fr) + '\n')
-    open(a.salida + '.srt', 'w').write('\n'.join(f'{k}\n{ts(i)} --> {ts(e)}\n{t}\n' for k, (i, e, t) in enumerate(fr, 1)))
+    open(a.salida + '.txt', 'w', encoding='utf-8').write('\n'.join(t for _, _, t in fr) + '\n')
+    open(a.salida + '.srt', 'w', encoding='utf-8').write('\n'.join(f'{k}\n{ts(i)} --> {ts(e)}\n{t}\n' for k, (i, e, t) in enumerate(fr, 1)))
+    if not pal:
+        print('OJO: no se escuchó ninguna voz en el video (solo ruido o música). La transcripción quedó vacía.')
     print(f'{len(pal)} palabras, {len(fr)} líneas -> {a.salida}.txt / .srt / .json')
 
 
