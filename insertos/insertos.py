@@ -38,16 +38,13 @@ def suave(x):
 
 
 def encuadre(claves, t):
-    if t <= claves[0]['t']:
-        c = claves[0]
+    """Encuadre en el segundo t: se queda en cada clave y, al llegar la siguiente, se mueve hacia ella en 1.2 s."""
+    k = max(i for i, c in enumerate(claves) if c['t'] <= t) if t >= claves[0]['t'] else 0
+    c = claves[k]
+    if k == 0 or t - c['t'] >= 1.2:
         return c['cx'], c['cy'], c['w']
-    for a, b in zip(claves, claves[1:]):
-        if t <= b['t']:
-            # se mueve en el primer segundo y medio tras cada clave; el resto queda quieto para leer
-            k = suave(min(1.0, (t - a['t']) / min(1.5, b['t'] - a['t'])))
-            return tuple(a[q] + (b[q] - a[q]) * k for q in ('cx', 'cy', 'w'))
-    c = claves[-1]
-    return c['cx'], c['cy'], c['w']
+    a, x = claves[k - 1], suave((t - c['t']) / 1.2)
+    return tuple(a[q] + (c[q] - a[q]) * x for q in ('cx', 'cy', 'w'))
 
 
 def render_inserto(cuadro, claves, n, salida):
