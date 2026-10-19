@@ -337,21 +337,22 @@ async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked})});
   dlgAjustes.close(); quienIA();
+}
+async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
+quienIA();
 async function verEleven() {
   const k = (await api('/api/ajustes')).ajustes.eleven;
   $('#btnEleven').textContent = k ? '🔑 ElevenLabs ✓' : '🔑 Clave ElevenLabs';
   $('#btnEleven').style.borderColor = k ? '' : 'var(--rojo)';
   $('#clEstado').textContent = k ? `Guardada: ${k}. Pega otra solo si quieres cambiarla.` : 'Todavía no hay clave guardada.';
+  return k;
 }
 async function guardarEleven() {
   const k = $('#clEleven').value.trim();
   if (k) await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: k})});
   $('#clEleven').value = ''; dlgEleven.close(); verEleven();
 }
-verEleven();
-}
-async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
-quienIA();
+verEleven().then(k => { if (!k) dlgEleven.showModal(); });  // sin clave, la pide apenas abre
 
 async function refrescar() {
   if (!P) return;
