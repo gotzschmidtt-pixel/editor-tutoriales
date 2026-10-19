@@ -59,6 +59,14 @@
   .salidas button { font-size: 12px; padding: 6px 10px; }
   .estado { font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--borde); margin-left: auto; }
   .estado.activo { border-color: var(--amarillo); color: var(--amarillo); }
+  .ia { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(90deg, #ff2bd612, #2bd9ff12); border: 1px solid var(--borde); }
+  dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(860px, 94vw); padding: 18px 20px; }
+  dialog::backdrop { background: #000a; }
+  dialog h3 { margin: 0 0 8px; }
+  dialog label { display: block; margin: 10px 0; }
+  dialog label input[type=text], dialog select { width: 100%; margin-top: 4px; }
+  .caps { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .caps img { height: 64px; border-radius: 6px; border: 1px solid var(--borde); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -112,6 +120,19 @@
         <span class="msg" id="msgEditor"></span>
       </div>
       <p class="aviso" id="ayudaEditor"></p>
+      <div class="ia" id="cajaIA">
+        <div class="fila" style="margin-top:0">
+          <b>✨ Con tu IA</b><span class="aviso" id="iaQuien"></span>
+          <button onclick="ajustesIA()" style="margin-left:auto">⚙ Ajustes IA</button>
+        </div>
+        <div class="fila">
+          <button onclick="ia('api')">✨ Escribir con IA</button>
+          <button onclick="ia('prompt')">📋 Prompt para copiar</button>
+          <button onclick="pegar()">✅ Revisar respuesta pegada</button>
+        </div>
+        <p class="aviso">Escribe primero en «idea» de qué trata el video y los datos seguros (webs, precios, pines). La IA no inventa lo que no le das.
+        «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.</p>
+      </div>
     </section>
 
     <section class="panel">
@@ -122,6 +143,25 @@
   </div>
 </main>
 
+<dialog id="dlgPrompt">
+  <h3>Prompt para tu IA</h3>
+  <p class="aviso">Cópialo y pégalo en ChatGPT, DeepSeek o Gemini. Si tu IA ve imágenes, adjunta también las capturas (clic para descargar).</p>
+  <textarea id="txtPrompt" readonly></textarea>
+  <div class="caps" id="caps"></div>
+  <div class="fila"><button class="principal" onclick="copiar()">Copiar prompt</button><button onclick="dlgPrompt.close()">Cerrar</button><span class="msg" id="msgCopia"></span></div>
+</dialog>
+
+<dialog id="dlgAjustes">
+  <h3>Ajustes de IA</h3>
+  <label>Proveedor <select id="ajProv"></select></label>
+  <label>Dirección (URL) <input type="text" id="ajUrl"></label>
+  <label>Modelo <input type="text" id="ajModelo"></label>
+  <label>Clave API <input type="text" id="ajClave" placeholder="sk-..."></label>
+  <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
+  <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
+  <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
+</dialog>
+
 <script>
 const SUBIDAS = [
   {tipo: 'original', f: 'original.mp4', t: '🎥 Video grabado', acepta: 'video/*'},
@@ -130,6 +170,7 @@ const SUBIDAS = [
   {tipo: 'musica', f: 'musica.mp3', t: '🎵 Música (opcional)', acepta: 'audio/mpeg'},
 ];
 const AYUDA = {
+  'idea.txt': 'Cuéntale a la IA de qué trata el video y los datos que son seguros: webs, precios, pines, archivos, duración que quieres. Texto libre.',
   'guion.json': 'Los bloques del video: texto que dice la voz y de qué parte del video sale cada uno (lento, congelar, imagen). Pídeselo a Claude con tu video.',
   'etiquetas.json': 'Etiquetas que aparecen cuando la voz dice una frase: webs, pines, archivos, precios, consejos.',
   'senales.json': 'Flechas, círculos y recuadros: frase, tipo y punto (x, y) en el video de 1920×1080. Siguen a la pieza si se mueve.',
@@ -223,7 +264,7 @@ function pintarSalidas(arch) {
 }
 function ver(f) { $('#video').src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; }
 
-$('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace('.json', '')}</button>`).join('');
+$('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace(/\.(json|txt)$/, '')}</button>`).join('');
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => abrir(b.dataset.f));
 $('#editor').oninput = () => editado = true;
 async function abrir(f, ejemplo) {
@@ -231,7 +272,8 @@ async function abrir(f, ejemplo) {
   archivo = f; editado = !!ejemplo;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('activo', b.dataset.f === f));
   $('#editor').value = await api(`/api/json?p=${q(P)}&f=${f}${ejemplo ? '&ejemplo=1' : ''}`);
-  $('#ayudaEditor').textContent = AYUDA[f]; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
+  $('#ayudaEditor').textContent = AYUDA[f];
+  $('#cajaIA').hidden = !TAREA[f]; $('#ejemplo').hidden = f === 'idea.txt'; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
   $('#msgEditor').className = 'msg';
 }
 $('#ejemplo').onclick = () => abrir(archivo, true);
@@ -240,6 +282,53 @@ $('#guardar').onclick = async () => {
     editado = false; $('#msgEditor').textContent = '✓ Guardado'; $('#msgEditor').className = 'msg ok'; refrescar();
   } catch (e) { $('#msgEditor').textContent = e.message; $('#msgEditor').className = 'msg err'; }
 };
+
+const TAREA = {'guion.json': 'guion', 'etiquetas.json': 'etiquetas', 'trailer.json': 'trailer'};
+let esperaIA = null;
+async function ia(modo) {
+  const tarea = TAREA[archivo];
+  if (modo === 'api') {
+    const a = (await api('/api/ajustes')).ajustes;
+    if (!a.url) return ajustesIA();
+    if (!confirm(`Pedir ${tarea} a ${a.modelo}? Reemplaza ${archivo} (la versión actual queda como .anterior).`)) return;
+  }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo})}); }
+  catch (e) { return alert(e.message); }
+  esperaIA = {tarea, modo, archivo};
+}
+async function finIA() {
+  const {tarea, modo, archivo: f} = esperaIA; esperaIA = null;
+  if (modo === 'prompt') {
+    try { $('#txtPrompt').value = await api(`/archivo?p=${q(P)}&f=ia_prompt_${tarea}.txt`); } catch (e) { return; }
+    const caps = await api(`/api/capturas?p=${q(P)}`);
+    $('#caps').innerHTML = caps.map(c => `<a href="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" download><img src="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" title="${c}"></a>`).join('');
+    $('#msgCopia').textContent = ''; dlgPrompt.showModal();
+  } else { editado = false; await abrir(f); }
+}
+async function pegar() {
+  const tarea = TAREA[archivo];
+  await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
+  await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  esperaIA = {tarea, modo: 'revisar', archivo};
+}
+function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
+let PROV = {};
+async function ajustesIA() {
+  const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
+  $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
+  $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
+  const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || '';
+  $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
+  dlgAjustes.showModal();
+}
+async function guardarAjustes() {
+  await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
+    modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked})});
+  dlgAjustes.close(); quienIA();
+}
+async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
+quienIA();
 
 async function refrescar() {
   if (!P) return;
@@ -251,6 +340,7 @@ async function refrescar() {
   $('#estado').textContent = t.proyecto ? `⏳ ${t.paso} · ${t.proyecto} · ${t.segundos} s` : 'Sin trabajos';
   $('#estado').classList.toggle('activo', !!t.proyecto);
   $('#todo').disabled = !!t.proyecto;
+  if (esperaIA && !t.proyecto) finIA();
 }
 setInterval(refrescar, 2000);
 cargarProyectos();

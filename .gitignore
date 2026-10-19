@@ -7,3 +7,4 @@ remotion/public/trailer/
 *.npz
 *.wav
 mis_proyectos/
+app/ajustes.json

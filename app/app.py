@@ -22,7 +22,14 @@ PY = sys.executable
 os.makedirs(PROYECTOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
+EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
+AJUSTES = os.path.join(AQUI, 'ajustes.json')
+PROVEEDORES = {
+    'OpenAI (GPT)': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4o', 'imagenes': True},
+    'DeepSeek': {'url': 'https://api.deepseek.com', 'modelo': 'deepseek-chat', 'imagenes': False},
+    'Gemini': {'url': 'https://generativelanguage.googleapis.com/v1beta/openai', 'modelo': 'gemini-2.0-flash', 'imagenes': True},
+    'Ollama (en tu PC, gratis)': {'url': 'http://localhost:11434/v1', 'modelo': 'llama3.2-vision', 'imagenes': True},
+}
 EJEMPLOS = {
     'guion.json': 'proyectos/pico2/guion_pico_largo.json',
     'etiquetas.json': 'etiquetas/ejemplos/pico2_etiquetas.json',
@@ -83,6 +90,11 @@ def comandos(paso, d, op):
     if paso == 'trailer':
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+    if paso == 'ia':
+        c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
+        if op['modo'] == 'revisar':
+            c += ['--entrada', 'ia_respuesta_pegada.txt']
+        return [c]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
     raise ValueError(paso)
@@ -100,6 +112,7 @@ PASOS = [
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
+    {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']
 
@@ -158,6 +171,8 @@ def estado(proyecto):
                        'fecha': os.path.getmtime(q)}
     pasos = []
     for p in PASOS:
+        if p.get('oculto'):
+            continue
         pasos.append({**p, 'listo': existe(d, p['produce']), 'puede': all(existe(d, n) for n in p['necesita'])})
     log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
     with CANDADO:
@@ -201,6 +216,8 @@ class Manejador(BaseHTTPRequestHandler):
                     return self.error('archivo no editable')
                 ruta_f = os.path.join(carpeta(q['p']), f)
                 if q.get('ejemplo') == '1':
+                    if f not in EJEMPLOS:
+                        return self.responder(b'', 'text/plain; charset=utf-8')
                     ruta_f = m(EJEMPLOS[f])
                 txt = open(ruta_f, encoding='utf-8').read() if os.path.exists(ruta_f) else ''
                 if q.get('ejemplo') == '1':  # los ejemplos usan rutas del proyecto de la Pico; aquí, los nombres fijos
@@ -208,7 +225,16 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/archivo':
-                return self.servir(os.path.join(carpeta(q['p']), os.path.basename(q['f'])))
+                sub = 'ia_capturas' if q.get('sub') == 'ia_capturas' else ''
+                return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
+            if ruta == '/api/capturas':
+                c = os.path.join(carpeta(q['p']), 'ia_capturas')
+                return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
+            if ruta == '/api/ajustes':
+                aj = json.load(open(AJUSTES, encoding='utf-8')) if os.path.exists(AJUSTES) else {}
+                if aj.get('clave'):
+                    aj['clave'] = '••••' + aj['clave'][-4:]
+                return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
         self.error('no encontrado', 404)
@@ -269,10 +295,12 @@ class Manejador(BaseHTTPRequestHandler):
                 if f not in EDITABLES:
                     return self.error('archivo no editable')
                 txt = self.rfile.read(largo).decode('utf-8')
-                try:
-                    json.loads(txt)
-                except json.JSONDecodeError as e:
-                    return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}')
+                if f.endswith('.json'):
+                    try:
+                        json.loads(txt)
+                    except json.JSONDecodeError as e:
+                        return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}. '
+                                          'Si pegaste la respuesta de una IA, usa «Revisar respuesta pegada».')
                 open(os.path.join(carpeta(q['p']), f), 'w', encoding='utf-8').write(txt)
                 return self.responder({'ok': True})
             if ruta == '/api/ejecutar':
@@ -285,6 +313,16 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/ajustes':
+                nuevo = json.loads(self.rfile.read(largo))
+                viejo = json.load(open(AJUSTES, encoding='utf-8')) if os.path.exists(AJUSTES) else {}
+                if not nuevo.get('clave') or nuevo['clave'].startswith('••••'):
+                    nuevo['clave'] = viejo.get('clave', '')
+                json.dump(nuevo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/pegar':
+                open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
             if ruta == '/api/detener':
                 with CANDADO:

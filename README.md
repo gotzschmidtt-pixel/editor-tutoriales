@@ -11,6 +11,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `app/` | La app con botones: una página local que corre cada paso y muestra el resultado. |
 | `montaje/` | Arma el video según el plan de montaje del guion (cámara lenta, congelados nítidos con zoom, imágenes). |
 | `voz/` | Genera la voz por bloques con ElevenLabs (`voz.py`) y la coloca en el video con subtítulos (`mezclar_voz.py`). |
+| `ia/` | La parte creativa (guion, etiquetas, tráiler) con la IA que elijas: GPT, DeepSeek, Gemini u Ollama local. Arma el prompt con capturas y transcripción, y corrige lo que la IA devuelve (tiempos, frases que no existen). |
 | `etiquetas/` | Encuentra el segundo exacto en que la voz dice una frase (tiempos por carácter de ElevenLabs) y superpone una etiqueta animada: páginas web, pines, archivos, precios, consejos. |
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
@@ -39,6 +40,10 @@ Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutori
 Creas un proyecto, subes el video grabado (y si quieres el material extra, la imagen y la música), pegas el guion y aprietas
 **Hacer todo**, o cada paso por separado. Cada proyecto queda en `mis_proyectos/<nombre>/` y el video terminado es `FINAL.mp4`.
 El guion, las etiquetas, las señales, los insertos y el tráiler se editan en la misma página; el botón *Cargar ejemplo* trae los de la Pico 2.
+
+**Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (OpenAI, DeepSeek, Gemini, Ollama u otro compatible) y pegas tu clave.
+*✨ Escribir con IA* llena el guion, las etiquetas o el tráiler solo. *📋 Prompt para copiar* te da el texto y las capturas para pegar en
+cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te contestó. Escribe antes en «idea» los datos seguros del video.
 
 ## Instalar en tu PC (Windows)
 
