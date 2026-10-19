@@ -121,6 +121,26 @@ TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola':
 CANDADO = threading.Lock()
 
 
+def leer_ajustes():
+    return json.load(open(AJUSTES, encoding='utf-8')) if os.path.exists(AJUSTES) else {}
+
+
+def clave_eleven():
+    """La clave de ElevenLabs: la guardada en la app, la variable de entorno, o la que dejó setx en Windows."""
+    k = leer_ajustes().get('elevenlabs') or os.environ.get('ELEVENLABS_API_KEY')
+    if not k and sys.platform == 'win32':
+        try:  # setx la guarda en el registro y la ventana ya abierta no la ve
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Environment') as r:
+                k = winreg.QueryValueEx(r, 'ELEVENLABS_API_KEY')[0]
+        except OSError:
+            pass
+    return (k or '').strip()
+
+
+USAN_ELEVEN = {'voz', 'musica', 'trailer'}
+
+
 def carpeta(p):
     p = re.sub(r'[^\w\- ]', '', p or '').strip()
     if not p:
@@ -142,6 +162,8 @@ def correr(proyecto, pasos, opciones):
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
         return
     env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    if clave_eleven():
+        env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
     try:
         FALLOS.pop(proyecto, None)
@@ -158,6 +180,10 @@ def correr(proyecto, pasos, opciones):
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
                 return
+            eleven = paso in USAN_ELEVEN or (paso == 'transcribir' and opciones.get('motor', 'scribe') == 'scribe')
+            if eleven and sys.platform == 'win32' and not env.get('ELEVENLABS_API_KEY'):
+                raise RuntimeError('Falta tu clave de ElevenLabs. Pulsa el botón «🔑 Clave ElevenLabs» arriba a la derecha, '
+                                   'pégala y guarda. (Para transcribir sin clave usa Whisper: «Cancelar» al preguntar.)')
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
             FALLOS.pop(proyecto, None)
@@ -265,9 +291,12 @@ class Manejador(BaseHTTPRequestHandler):
                 c = os.path.join(carpeta(q['p']), 'ia_capturas')
                 return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
             if ruta == '/api/ajustes':
-                aj = json.load(open(AJUSTES, encoding='utf-8')) if os.path.exists(AJUSTES) else {}
-                if aj.get('clave'):
-                    aj['clave'] = '••••' + aj['clave'][-4:]
+                aj = leer_ajustes()
+                for k in ('clave', 'elevenlabs'):
+                    if aj.get(k):
+                        aj[k] = '••••' + aj[k][-4:]
+                k = clave_eleven()
+                aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
@@ -350,10 +379,12 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
-                viejo = json.load(open(AJUSTES, encoding='utf-8')) if os.path.exists(AJUSTES) else {}
-                if not nuevo.get('clave') or nuevo['clave'].startswith('••••'):
-                    nuevo['clave'] = viejo.get('clave', '')
-                json.dump(nuevo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                viejo = leer_ajustes()
+                for k in ('clave', 'elevenlabs'):  # una clave enmascarada o vacía no reemplaza la guardada
+                    if k in nuevo and (not nuevo[k] or nuevo[k].startswith('••••')):
+                        del nuevo[k]
+                viejo.update(nuevo)
+                json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))

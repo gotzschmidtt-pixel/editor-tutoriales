@@ -76,6 +76,7 @@
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
   <span class="estado" id="estado">Sin trabajos</span>
+  <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
 </header>
 
 <div id="sinProyecto" class="vacio" hidden>
@@ -149,6 +150,15 @@
   <textarea id="txtPrompt" readonly></textarea>
   <div class="caps" id="caps"></div>
   <div class="fila"><button class="principal" onclick="copiar()">Copiar prompt</button><button onclick="dlgPrompt.close()">Cerrar</button><span class="msg" id="msgCopia"></span></div>
+</dialog>
+
+<dialog id="dlgEleven">
+  <h3>🔑 Clave de ElevenLabs</h3>
+  <p class="aviso">Sirve para transcribir con Scribe, la voz, la música y el tráiler. Sácala en elevenlabs.io → Developers → API Keys.</p>
+  <label>Clave API <input type="password" id="clEleven" placeholder="sk_..." autocomplete="off"></label>
+  <p class="aviso" id="clEstado"></p>
+  <p class="aviso">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
+  <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
 </dialog>
 
 <dialog id="dlgAjustes">
@@ -327,6 +337,18 @@ async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked})});
   dlgAjustes.close(); quienIA();
+async function verEleven() {
+  const k = (await api('/api/ajustes')).ajustes.eleven;
+  $('#btnEleven').textContent = k ? '🔑 ElevenLabs ✓' : '🔑 Clave ElevenLabs';
+  $('#btnEleven').style.borderColor = k ? '' : 'var(--rojo)';
+  $('#clEstado').textContent = k ? `Guardada: ${k}. Pega otra solo si quieres cambiarla.` : 'Todavía no hay clave guardada.';
+}
+async function guardarEleven() {
+  const k = $('#clEleven').value.trim();
+  if (k) await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: k})});
+  $('#clEleven').value = ''; dlgEleven.close(); verEleven();
+}
+verEleven();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
 quienIA();

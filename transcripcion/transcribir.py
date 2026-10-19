@@ -38,7 +38,7 @@ def scribe(f, idioma):
     except urllib.error.HTTPError as e:
         cuerpo = e.read()[:300].decode(errors='replace')
         if e.code in (401, 403):
-            raise SystemExit('ERROR: ElevenLabs rechazó la clave o falta. Revisa tu API key (vuelve a correr instalar.bat o define '
+            raise SystemExit('ERROR: ElevenLabs rechazó la clave o falta. Pulsa «🔑 Clave ElevenLabs» arriba en la app y pega tu clave (o define '
                              'ELEVENLABS_API_KEY) y que tenga permiso de Speech to Text. Detalle: ' + cuerpo)
         raise SystemExit(f'ERROR: ElevenLabs respondió {e.code}: {cuerpo}')
     except urllib.error.URLError as e:
