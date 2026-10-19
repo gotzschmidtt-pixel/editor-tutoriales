@@ -8,7 +8,7 @@ Uso:
 Sin --pista genera una nueva (cuesta créditos de ElevenLabs; unos 2.950 por 3:35).
 La clave la pone el proxy del entorno para api.elevenlabs.io.
 """
-import argparse, json, os, subprocess, tempfile, urllib.request
+import argparse, json, os, shutil, subprocess, tempfile, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
@@ -37,6 +37,7 @@ def main():
     ap.add_argument('--salida', required=True)
     ap.add_argument('--pista', help='mp3 de música ya generado; si falta, se genera')
     ap.add_argument('--prompt', default=PROMPT)
+    ap.add_argument('--guardar_pista', help='si se genera música nueva, copia la pista aquí para reutilizarla')
     ap.add_argument('--volumen', type=float, default=0.22, help='volumen base de la música (0.22 ≈ 10 dB bajo la voz)')
     a = ap.parse_args()
 
@@ -46,6 +47,8 @@ def main():
     if not pista:
         pista = os.path.join(tmp, 'pista.mp3')
         generar(a.prompt, int(min(total, 300) * 1000), pista)  # la API genera hasta 5 min
+        if a.guardar_pista:
+            shutil.copy(pista, a.guardar_pista)
     larga = os.path.join(tmp, 'larga.wav')
     vueltas = int(total // duracion(pista)) + 1
     # repite la pista con fundido cruzado de 4 s hasta cubrir el video, con entrada y salida suaves

@@ -1,0 +1,319 @@
+"""Estudio de tutoriales: la app con botones.
+
+Abre una página en tu navegador (http://localhost:8765) con un botón por paso. Cada proyecto es una
+carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sabe qué usar:
+
+  original.mp4        video grabado            guion.json      bloques con texto y montaje
+  imagen.png          imagen para bloques "imagen" (opcional)
+  material.mp4        material extra para insertos (opcional)
+  musica.mp3          pista de música (si falta, se genera y se guarda aquí)
+  etiquetas.json  senales.json  insertos.json  trailer.json   (opcionales)
+
+Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
+"""
+import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(AQUI)
+PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+PUERTO = int(os.environ.get('PUERTO', 8765))
+PY = sys.executable
+os.makedirs(PROYECTOS, exist_ok=True)
+
+SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
+EDITABLES = ['guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
+EJEMPLOS = {
+    'guion.json': 'proyectos/pico2/guion_pico_largo.json',
+    'etiquetas.json': 'etiquetas/ejemplos/pico2_etiquetas.json',
+    'senales.json': 'senales/ejemplos/pico2_senales.json',
+    'insertos.json': 'insertos/ejemplos/pico2_insertos.json',
+    'trailer.json': 'trailer/ejemplos/pico2_trailer.json',
+}
+
+
+def m(*p):
+    return os.path.join(RAIZ, *p)
+
+
+def existe(d, f):
+    return os.path.exists(os.path.join(d, f))
+
+
+def ultimo_video(d, hasta):
+    """El video más avanzado de la cadena antes del paso `hasta`."""
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4']
+    previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
+    for f in reversed(previos):
+        if existe(d, f):
+            return f
+    return None
+
+
+def comandos(paso, d, op):
+    """Lista de comandos (cada uno una lista de argumentos) para un paso. cwd = carpeta del proyecto."""
+    g = ['--guion', 'guion.json']
+    if paso == 'transcribir':
+        motor = op.get('motor', 'scribe')
+        return [[PY, m('transcripcion', 'transcribir.py'), '--video', 'original.mp4', '--salida', 'transcripcion', '--motor', motor]]
+    if paso == 'voz':
+        return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz']]
+    if paso == 'montaje':
+        c = [PY, m('montaje', 'montaje.py'), '--original', 'original.mp4'] + g + ['--salida', '1_montaje.mp4']
+        if existe(d, 'imagen.png'):
+            c += ['--imagen', 'imagen.png']
+        if op.get('borrador'):
+            c.append('--borrador')
+        return [c]
+    if paso == 'insertos':
+        return [[PY, m('insertos', 'insertos.py')] + g + ['--voz', 'voz', '--insertos', 'insertos.json', '--video', '1_montaje.mp4', '--salida', '2_insertos.mp4']]
+    if paso == 'mezclar':
+        base = '2_insertos.mp4' if existe(d, '2_insertos.mp4') else '1_montaje.mp4'
+        return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
+    if paso == 'musica':
+        c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
+        c += ['--pista', 'musica.mp3'] if existe(d, 'musica.mp3') else ['--guardar_pista', 'musica.mp3']
+        if op.get('prompt'):
+            c += ['--prompt', op['prompt']]
+        return [c]
+    if paso == 'etiquetas':
+        return [[PY, m('etiquetas', 'etiquetas.py')] + g + ['--voz', 'voz', '--etiquetas', 'etiquetas.json', '--video', ultimo_video(d, '5_etiquetas.mp4'), '--salida', '5_etiquetas.mp4']]
+    if paso == 'senales':
+        return [[PY, m('senales', 'senales.py')] + g + ['--voz', 'voz', '--senales', 'senales.json', '--video', ultimo_video(d, '6_senales.mp4'), '--salida', '6_senales.mp4']]
+    if paso == 'trailer':
+        return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
+                 '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+    if paso == 'final_sin_trailer':
+        return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
+    raise ValueError(paso)
+
+
+# Qué necesita cada paso para poder correr, y qué produce
+PASOS = [
+    {'id': 'transcribir', 'nombre': 'Transcribir tu voz', 'necesita': ['original.mp4'], 'produce': 'transcripcion.txt', 'opcional': True},
+    {'id': 'voz', 'nombre': 'Generar voz (ElevenLabs)', 'necesita': ['guion.json'], 'produce': 'voz'},
+    {'id': 'montaje', 'nombre': 'Montar video', 'necesita': ['original.mp4', 'guion.json'], 'produce': '1_montaje.mp4'},
+    {'id': 'insertos', 'nombre': 'Cortes y zooms con material extra', 'necesita': ['1_montaje.mp4', 'insertos.json', 'voz'], 'produce': '2_insertos.mp4', 'opcional': True},
+    {'id': 'mezclar', 'nombre': 'Poner la voz y subtítulos', 'necesita': ['1_montaje.mp4', 'voz'], 'produce': '3_voz.mp4'},
+    {'id': 'musica', 'nombre': 'Música de fondo', 'necesita': ['3_voz.mp4'], 'produce': '4_musica.mp4'},
+    {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True},
+    {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True},
+    {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
+    {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
+]
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']
+
+TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': []}
+CANDADO = threading.Lock()
+
+
+def carpeta(p):
+    p = re.sub(r'[^\w\- ]', '', p or '').strip()
+    if not p:
+        raise ValueError('nombre de proyecto vacío')
+    return os.path.join(PROYECTOS, p)
+
+
+def registro(d):
+    return os.path.join(d, 'registro.txt')
+
+
+def correr(proyecto, pasos, opciones):
+    d = carpeta(proyecto)
+    log = open(registro(d), 'a', encoding='utf-8')
+    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    try:
+        for paso in pasos:
+            info = next(x for x in PASOS if x['id'] == paso)
+            falta = [n for n in info['necesita'] if not existe(d, n)]
+            if falta:
+                if paso in TODO and info.get('opcional'):
+                    log.write(f'\n— {info["nombre"]}: lo salto (falta {", ".join(falta)})\n'); log.flush()
+                    continue
+                log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
+                return
+            with CANDADO:
+                TRABAJO.update(paso=paso, inicio=time.time())
+            log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
+            for c in comandos(paso, d, opciones):
+                proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env)
+                with CANDADO:
+                    TRABAJO['proc'] = proc
+                if proc.wait() != 0:
+                    log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
+                    return
+            log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+    finally:
+        log.close()
+        with CANDADO:
+            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+
+
+def estado(proyecto):
+    d = carpeta(proyecto)
+    archivos = {}
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        q = os.path.join(d, f)
+        archivos[f] = {'tam': os.path.getsize(q) if os.path.isfile(q) else len(os.listdir(q)), 'carpeta': os.path.isdir(q),
+                       'fecha': os.path.getmtime(q)}
+    pasos = []
+    for p in PASOS:
+        pasos.append({**p, 'listo': existe(d, p['produce']), 'puede': all(existe(d, n) for n in p['necesita'])})
+    log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
+    with CANDADO:
+        t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
+                 segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0)
+    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t}
+
+
+class Manejador(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def responder(self, cuerpo, tipo='application/json', codigo=200):
+        if not isinstance(cuerpo, (bytes, bytearray)):
+            cuerpo = json.dumps(cuerpo, ensure_ascii=False).encode()
+        self.send_response(codigo)
+        self.send_header('Content-Type', tipo)
+        self.send_header('Content-Length', str(len(cuerpo)))
+        self.end_headers()
+        self.wfile.write(cuerpo)
+
+    def error(self, msg, codigo=400):
+        self.responder({'error': msg}, codigo=codigo)
+
+    def q(self):
+        u = urllib.parse.urlparse(self.path)
+        return u.path, {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+
+    def do_GET(self):
+        ruta, q = self.q()
+        try:
+            if ruta == '/':
+                return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/proyectos':
+                return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
+            if ruta == '/api/estado':
+                return self.responder(estado(q['p']))
+            if ruta == '/api/json':
+                f = q['f']
+                if f not in EDITABLES:
+                    return self.error('archivo no editable')
+                ruta_f = os.path.join(carpeta(q['p']), f)
+                if q.get('ejemplo') == '1':
+                    ruta_f = m(EJEMPLOS[f])
+                txt = open(ruta_f, encoding='utf-8').read() if os.path.exists(ruta_f) else ''
+                if q.get('ejemplo') == '1':  # los ejemplos usan rutas del proyecto de la Pico; aquí, los nombres fijos
+                    txt = re.sub(r'"material": "[^"]*"', '"material": "material.mp4"', txt)
+                    txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
+                return self.responder(txt.encode(), 'text/plain; charset=utf-8')
+            if ruta == '/archivo':
+                return self.servir(os.path.join(carpeta(q['p']), os.path.basename(q['f'])))
+        except (KeyError, ValueError) as e:
+            return self.error(str(e))
+        self.error('no encontrado', 404)
+
+    def servir(self, f):
+        if not os.path.isfile(f):
+            return self.error('no existe', 404)
+        tam = os.path.getsize(f)
+        tipo = mimetypes.guess_type(f)[0] or 'application/octet-stream'
+        rango = self.headers.get('Range')
+        ini, fin = 0, tam - 1
+        if rango:
+            a, _, b = rango.replace('bytes=', '').partition('-')
+            ini = int(a) if a else 0
+            fin = int(b) if b else tam - 1
+        largo = fin - ini + 1
+        self.send_response(206 if rango else 200)
+        self.send_header('Content-Type', tipo)
+        self.send_header('Accept-Ranges', 'bytes')
+        self.send_header('Content-Length', str(largo))
+        if rango:
+            self.send_header('Content-Range', f'bytes {ini}-{fin}/{tam}')
+        self.end_headers()
+        with open(f, 'rb') as fh:
+            fh.seek(ini)
+            while largo > 0:
+                trozo = fh.read(min(1 << 20, largo))
+                if not trozo:
+                    break
+                try:
+                    self.wfile.write(trozo)
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                largo -= len(trozo)
+
+    def do_POST(self):
+        ruta, q = self.q()
+        largo = int(self.headers.get('Content-Length', 0))
+        try:
+            if ruta == '/api/proyecto':
+                d = carpeta(json.loads(self.rfile.read(largo))['nombre'])
+                os.makedirs(d, exist_ok=True)
+                return self.responder({'ok': True, 'nombre': os.path.basename(d)})
+            if ruta == '/api/subir':
+                destino = os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']])
+                with open(destino + '.parcial', 'wb') as fh:
+                    resto = largo
+                    while resto > 0:
+                        trozo = self.rfile.read(min(1 << 20, resto))
+                        if not trozo:
+                            break
+                        fh.write(trozo)
+                        resto -= len(trozo)
+                os.replace(destino + '.parcial', destino)
+                return self.responder({'ok': True})
+            if ruta == '/api/json':
+                f = q['f']
+                if f not in EDITABLES:
+                    return self.error('archivo no editable')
+                txt = self.rfile.read(largo).decode('utf-8')
+                try:
+                    json.loads(txt)
+                except json.JSONDecodeError as e:
+                    return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}')
+                open(os.path.join(carpeta(q['p']), f), 'w', encoding='utf-8').write(txt)
+                return self.responder({'ok': True})
+            if ruta == '/api/ejecutar':
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                pasos = [q['paso']]
+                if q['paso'] == 'todo':
+                    pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
+                    TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
+                threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/detener':
+                with CANDADO:
+                    if TRABAJO['proc']:
+                        TRABAJO['proc'].terminate()
+                return self.responder({'ok': True})
+            if ruta == '/api/borrar':
+                f = os.path.join(carpeta(q['p']), os.path.basename(q['f']))
+                if os.path.isdir(f):
+                    shutil.rmtree(f)
+                elif os.path.exists(f):
+                    os.remove(f)
+                return self.responder({'ok': True})
+            if ruta == '/api/studio':
+                subprocess.Popen([shutil.which('npx') or 'npx', 'remotion', 'studio', 'src/index.ts'], cwd=m('remotion'))
+                return self.responder({'ok': True, 'url': 'http://localhost:3000'})
+        except (KeyError, ValueError) as e:
+            return self.error(str(e))
+        self.error('no encontrado', 404)
+
+
+def main():
+    srv = ThreadingHTTPServer(('127.0.0.1', PUERTO), Manejador)
+    url = f'http://localhost:{PUERTO}'
+    print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
+    if not os.environ.get('SIN_NAVEGADOR'):
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    srv.serve_forever()
+
+
+if __name__ == '__main__':
+    main()

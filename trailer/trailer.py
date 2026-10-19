@@ -78,6 +78,8 @@ def main():
 
     # audio: música con entrada fuerte y salida suave; la voz encima, con la música agachada
     mus = plan.get('musica')
+    if mus and not os.path.exists(mus['pista']):
+        print('AVISO: no encontré la música del tráiler, va sin música'); mus = None
     filtros, ins = [], []
     if mus:
         ins += ['-ss', str(mus.get('desde', 0)), '-i', mus['pista']]
@@ -107,7 +109,7 @@ def main():
     chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
     if os.path.exists(chrome):
         env.setdefault('REMOTION_CHROME', chrome)
-    subprocess.run(['npx', 'remotion', 'render', 'src/index.ts', 'Trailer', os.path.abspath(a.salida),
+    subprocess.run([shutil.which('npx') or 'npx', 'remotion', 'render', 'src/index.ts', 'Trailer', os.path.abspath(a.salida),
                     '--props', json.dumps(props), '--crf', '18'], cwd=REMOTION, env=env, check=True)
 
     if a.unir and a.final:

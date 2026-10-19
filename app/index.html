@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de tutoriales</title>
+<style>
+  :root {
+    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
+    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.45 "Segoe UI", Inter, system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--borde);
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
+  header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
+  header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
+  select, input, textarea, button { font: inherit; color: var(--texto); }
+  select, input[type=text] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
+  button { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover { border-color: var(--azul); }
+  button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
+  button.principal:hover { filter: brightness(1.1); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .grande { padding: 12px 22px; font-size: 16px; }
+  main { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(380px, 1.1fr); gap: 20px; padding: 20px 22px; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 16px; padding: 16px 18px; margin-bottom: 18px; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; color: var(--suave); text-transform: uppercase; letter-spacing: 1.5px; }
+  .subidas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .subida { border: 1px dashed var(--borde); border-radius: 12px; padding: 12px; text-align: center; cursor: pointer; position: relative; }
+  .subida:hover { border-color: var(--azul); }
+  .subida .t { font-weight: 600; }
+  .subida .e { font-size: 12px; color: var(--suave); margin-top: 4px; }
+  .subida.ok { border-style: solid; border-color: #38f28a66; background: #38f28a0d; }
+  .subida input { display: none; }
+  .paso { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; border: 1px solid transparent; }
+  .paso.corriendo { border-color: var(--amarillo); box-shadow: 0 0 0 1px #ffd23f55, 0 0 18px #ffd23f22; }
+  .num { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #ffffff10; flex: none; }
+  .paso.listo .num { background: var(--verde); color: #04120a; }
+  .paso .info { flex: 1; min-width: 0; }
+  .paso .nom { font-weight: 600; }
+  .paso .det { font-size: 12px; color: var(--suave); }
+  .paso .acc { display: flex; gap: 6px; }
+  .paso .acc button { padding: 7px 12px; font-size: 13px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tabs button { padding: 6px 12px; font-size: 13px; }
+  .tabs button.activo { border-color: var(--rosa); background: #ff2bd61f; }
+  textarea { width: 100%; height: 300px; background: #0a0c12; border: 1px solid var(--borde); border-radius: 12px; padding: 12px;
+    font: 13px/1.5 Consolas, "Cascadia Code", monospace; resize: vertical; }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .aviso { font-size: 13px; color: var(--suave); }
+  .msg { font-size: 13px; }
+  .msg.err { color: var(--rojo); } .msg.ok { color: var(--verde); }
+  pre#log { background: #07080d; border: 1px solid var(--borde); border-radius: 12px; padding: 12px; height: 230px; overflow: auto;
+    font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; margin: 0; color: #c9d1ee; }
+  video { width: 100%; border-radius: 12px; background: #000; max-height: 420px; }
+  .salidas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .salidas button { font-size: 12px; padding: 6px 10px; }
+  .estado { font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--borde); margin-left: auto; }
+  .estado.activo { border-color: var(--amarillo); color: var(--amarillo); }
+  .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 <b>Estudio</b> de tutoriales</h1>
+  <select id="proyecto"></select>
+  <button id="nuevo">+ Nuevo proyecto</button>
+  <span class="estado" id="estado">Sin trabajos</span>
+</header>
+
+<div id="sinProyecto" class="vacio" hidden>
+  <h2>Crea tu primer proyecto</h2>
+  <p>Un proyecto es un video: subes la grabación, el guion y los extras, y la app lo arma paso a paso.</p>
+  <button class="principal grande" onclick="nuevo()">+ Nuevo proyecto</button>
+</div>
+
+<main id="principal" hidden>
+  <div>
+    <section class="panel">
+      <h2>1 · Archivos</h2>
+      <div class="subidas" id="subidas"></div>
+      <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto.</p>
+    </section>
+
+    <section class="panel">
+      <h2>2 · Pasos</h2>
+      <div id="pasos"></div>
+      <div class="fila">
+        <button class="principal grande" id="todo">▶ Hacer todo</button>
+        <button id="detener">■ Detener</button>
+        <label class="aviso"><input type="checkbox" id="borrador"> Montaje rápido de prueba (720p)</label>
+      </div>
+    </section>
+  </div>
+
+  <div>
+    <section class="panel">
+      <h2>3 · Ver resultado</h2>
+      <video id="video" controls preload="metadata"></video>
+      <div class="salidas" id="salidas"></div>
+    </section>
+
+    <section class="panel">
+      <h2>4 · Guion y extras</h2>
+      <div class="tabs" id="tabs"></div>
+      <textarea id="editor" spellcheck="false"></textarea>
+      <div class="fila">
+        <button class="principal" id="guardar">Guardar</button>
+        <button id="ejemplo">Cargar ejemplo de la Pico 2</button>
+        <span class="msg" id="msgEditor"></span>
+      </div>
+      <p class="aviso" id="ayudaEditor"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Registro</h2>
+      <pre id="log"></pre>
+      <div class="fila"><button id="studio">Abrir Remotion Studio</button><span class="aviso">Para ajustar a mano el tráiler y las señales.</span></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const SUBIDAS = [
+  {tipo: 'original', f: 'original.mp4', t: '🎥 Video grabado', acepta: 'video/*'},
+  {tipo: 'material', f: 'material.mp4', t: '🖥️ Material extra', acepta: 'video/*'},
+  {tipo: 'imagen', f: 'imagen.png', t: '🗺️ Imagen / mapa', acepta: 'image/png'},
+  {tipo: 'musica', f: 'musica.mp3', t: '🎵 Música (opcional)', acepta: 'audio/mpeg'},
+];
+const AYUDA = {
+  'guion.json': 'Los bloques del video: texto que dice la voz y de qué parte del video sale cada uno (lento, congelar, imagen). Pídeselo a Claude con tu video.',
+  'etiquetas.json': 'Etiquetas que aparecen cuando la voz dice una frase: webs, pines, archivos, precios, consejos.',
+  'senales.json': 'Flechas, círculos y recuadros: frase, tipo y punto (x, y) en el video de 1920×1080. Siguen a la pieza si se mueve.',
+  'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
+  'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
+};
+const VIDEOS = ['FINAL.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+let P = null, archivo = 'guion.json', ultimo = null, editado = false;
+const $ = s => document.querySelector(s);
+const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
+const tam = b => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : (b / 1e3).toFixed(0) + ' KB';
+const q = s => encodeURIComponent(s);
+
+async function cargarProyectos(sel) {
+  const lista = await api('/api/proyectos');
+  $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
+  $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
+  if (!lista.length) return;
+  P = sel || localStorage.getItem('proyecto') || lista[0];
+  if (!lista.includes(P)) P = lista[0];
+  $('#proyecto').value = P; localStorage.setItem('proyecto', P);
+  ultimo = null; editado = false; await abrir(archivo); await refrescar();
+}
+async function nuevo() {
+  const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
+  const r = await api('/api/proyecto', {method: 'POST', body: JSON.stringify({nombre: n})});
+  await cargarProyectos(r.nombre);
+}
+$('#nuevo').onclick = nuevo;
+$('#proyecto').onchange = e => cargarProyectos(e.target.value);
+
+function pintarSubidas(arch) {
+  $('#subidas').innerHTML = SUBIDAS.map(s => {
+    const a = arch[s.f];
+    return `<label class="subida ${a ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
+      <div class="e">${a ? '✓ ' + tam(a.tam) : 'Subir'}</div><input type="file" accept="${s.acepta}"></label>`;
+  }).join('');
+  document.querySelectorAll('.subida').forEach(el => {
+    const tipo = el.dataset.tipo, inp = el.querySelector('input');
+    inp.onchange = () => inp.files[0] && subir(tipo, inp.files[0], el);
+    el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+    el.ondragleave = () => el.style.borderColor = '';
+    el.ondrop = e => { e.preventDefault(); e.dataTransfer.files[0] && subir(tipo, e.dataTransfer.files[0], el); };
+  });
+}
+function subir(tipo, file, el) {
+  const x = new XMLHttpRequest();
+  x.open('POST', `/api/subir?p=${q(P)}&tipo=${tipo}`);
+  x.upload.onprogress = e => el.querySelector('.e').textContent = `Subiendo ${Math.round(100 * e.loaded / e.total)} %`;
+  x.onload = () => refrescar();
+  x.onerror = () => el.querySelector('.e').textContent = 'Error al subir';
+  x.send(file);
+}
+
+function pintarPasos(pasos, t) {
+  $('#pasos').innerHTML = pasos.map((p, i) => {
+    const corre = t.proyecto === P && t.paso === p.id;
+    return `<div class="paso ${p.listo ? 'listo' : ''} ${corre ? 'corriendo' : ''}">
+      <div class="num">${p.listo ? '✓' : i + 1}</div>
+      <div class="info"><div class="nom">${p.nombre}${p.opcional ? ' <span class="aviso">(opcional)</span>' : ''}</div>
+        <div class="det">${corre ? '⏳ Trabajando… ' + t.segundos + ' s' : p.puede ? (p.listo ? 'Hecho · ' + p.produce : 'Listo para hacer') : 'Necesita: ' + p.necesita.join(', ')}</div></div>
+      <div class="acc"><button ${!p.puede || t.proyecto ? 'disabled' : ''} onclick="ejecutar('${p.id}')">${p.listo ? 'Rehacer' : 'Hacer'}</button></div>
+    </div>`;
+  }).join('');
+}
+async function ejecutar(paso) {
+  if (paso === 'voz') alert('Los bloques que ya tienen voz no se vuelven a generar. Para regenerar uno, borra su .mp3 de la carpeta voz.');
+  const op = {borrador: $('#borrador').checked};
+  if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
+    const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
+    if (pr === null) return; if (pr) op.prompt = pr;
+  }
+  if (paso === 'transcribir') op.motor = confirm('¿Transcribir en línea con ElevenLabs? (Cancelar = Whisper en tu PC, sin internet)') ? 'scribe' : 'whisper';
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { alert(e.message); }
+  refrescar();
+}
+$('#todo').onclick = () => ejecutar('todo');
+$('#detener').onclick = () => api('/api/detener', {method: 'POST'});
+$('#studio').onclick = async () => { const r = await api('/api/studio', {method: 'POST'}); setTimeout(() => window.open(r.url), 4000); };
+
+function pintarSalidas(arch) {
+  const hay = VIDEOS.filter(v => arch[v]);
+  const nuevo = hay[0] || null;
+  if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
+    ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
+  }
+  const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt'].filter(f => arch[f]);
+  $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
+    extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
+    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '');
+}
+function ver(f) { $('#video').src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; }
+
+$('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace('.json', '')}</button>`).join('');
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => abrir(b.dataset.f));
+$('#editor').oninput = () => editado = true;
+async function abrir(f, ejemplo) {
+  if (editado && !ejemplo && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
+  archivo = f; editado = !!ejemplo;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('activo', b.dataset.f === f));
+  $('#editor').value = await api(`/api/json?p=${q(P)}&f=${f}${ejemplo ? '&ejemplo=1' : ''}`);
+  $('#ayudaEditor').textContent = AYUDA[f]; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
+  $('#msgEditor').className = 'msg';
+}
+$('#ejemplo').onclick = () => abrir(archivo, true);
+$('#guardar').onclick = async () => {
+  try { await api(`/api/json?p=${q(P)}&f=${archivo}`, {method: 'POST', body: $('#editor').value});
+    editado = false; $('#msgEditor').textContent = '✓ Guardado'; $('#msgEditor').className = 'msg ok'; refrescar();
+  } catch (e) { $('#msgEditor').textContent = e.message; $('#msgEditor').className = 'msg err'; }
+};
+
+async function refrescar() {
+  if (!P) return;
+  const e = await api(`/api/estado?p=${q(P)}`);
+  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo); pintarSalidas(e.archivos);
+  const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;
+  const t = e.trabajo;
+  $('#estado').textContent = t.proyecto ? `⏳ ${t.paso} · ${t.proyecto} · ${t.segundos} s` : 'Sin trabajos';
+  $('#estado').classList.toggle('activo', !!t.proyecto);
+  $('#todo').disabled = !!t.proyecto;
+}
+setInterval(refrescar, 2000);
+cargarProyectos();
+</script>
+</body>
+</html>

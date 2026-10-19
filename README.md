@@ -8,6 +8,9 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 
 | Carpeta | Qué hace |
 |---|---|
+| `app/` | La app con botones: una página local que corre cada paso y muestra el resultado. |
+| `montaje/` | Arma el video según el plan de montaje del guion (cámara lenta, congelados nítidos con zoom, imágenes). |
+| `voz/` | Genera la voz por bloques con ElevenLabs (`voz.py`) y la coloca en el video con subtítulos (`mezclar_voz.py`). |
 | `etiquetas/` | Encuentra el segundo exacto en que la voz dice una frase (tiempos por carácter de ElevenLabs) y superpone una etiqueta animada: páginas web, pines, archivos, precios, consejos. |
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
@@ -30,13 +33,20 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
 7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
 
+## La app con botones
+
+Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutoriales** en tu navegador, en http://localhost:8765.
+Creas un proyecto, subes el video grabado (y si quieres el material extra, la imagen y la música), pegas el guion y aprietas
+**Hacer todo**, o cada paso por separado. Cada proyecto queda en `mis_proyectos/<nombre>/` y el video terminado es `FINAL.mp4`.
+El guion, las etiquetas, las señales, los insertos y el tráiler se editan en la misma página; el botón *Cargar ejemplo* trae los de la Pico 2.
+
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.
 2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, Chromium y Remotion, y te pide tu API key de ElevenLabs.
    Si te dice que falta algo en el PATH, cierra la ventana y ábrelo otra vez.
 3. Para ver y editar el tráiler o las señales en el navegador: abre una terminal en la carpeta `remotion` y escribe `npm run studio`.
-4. Los módulos se usan desde la terminal (`python etiquetas/etiquetas.py ...`); todavía no hay una ventana con botones.
+4. Para abrir la app: doble clic en `iniciar.bat`.
 
 La API key está en ElevenLabs → Developers → API Keys. Sin clave funciona todo menos voz, música y transcripción en línea.
 
