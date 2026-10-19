@@ -12,7 +12,8 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
-| `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer` y `Etiqueta`. Colores y fuente de marca en `src/estilo.ts`. |
+| `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
+| `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
 | `transcripcion/` | Voz a texto con tiempos por palabra: Scribe (en línea) o Whisper (en tu PC, sin internet). Saca .txt, .srt y .json. |
 | `proyectos/pico2/` | Los scripts del video «Cómo soldar la Pico 2»: guion por bloques, voz v4, video estirado a 7 min. Tienen rutas de ese proyecto; sirven de ejemplo. |
 
@@ -24,11 +25,12 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
    Luego `mezclar_voz.py` coloca cada bloque de voz en su segundo y saca el .srt.
 4. **Música** (`musica/musica.py`): mezcla la música con bajada automática bajo la voz.
 5. **Etiquetas** (`etiquetas/etiquetas.py`): superpone las etiquetas en el momento en que se dicen.
-6. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
+6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
+7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
 
 ## Requisitos
 
-- Python 3 con numpy, ffmpeg y Node con Playwright (Chromium), para renderizar las etiquetas.
+- Python 3 con numpy y opencv-python-headless, ffmpeg y Node con Playwright (Chromium), para renderizar las etiquetas.
 - Remotion: `cd remotion && npm install`. `npm run studio` abre el editor visual en el navegador.
 - Acceso a la API de ElevenLabs. En el entorno de Claude la clave la pone el proxy; en tu PC tendrías que agregar la cabecera `xi-api-key`.
 

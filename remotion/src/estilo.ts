@@ -3,6 +3,7 @@ export const estilo = {
   rosa: '#ff2bd6',
   azul: '#2bd9ff',
   verde: '#38f28a',
+  amarillo: '#ffd23f',
   fondo: 'rgba(12,14,22,0.82)',
   fuente: '"Inter", "DejaVu Sans", Arial, sans-serif',
   colorFase: {ANTES: '#ff4d6d', DURANTE: '#ffb020', 'DESPUÉS': '#38f28a'} as Record<string, string>,

@@ -1,0 +1,11 @@
+[
+ {"bloque": "L08", "frase": "450", "tipo": "circulo", "x": 1440, "y": 712, "r": 85, "dur": 3},
+ {"bloque": "L10", "frase": "va al GP12", "tipo": "circulo", "x": 1127, "y": 427, "r": 60, "dur": 7, "seguir": false, "foco": true, "texto": "Datos: 16 y 17"},
+ {"bloque": "L10", "frase": "pin 40", "tipo": "circulo", "x": 763, "y": 637, "r": 60, "dur": 5, "seguir": false, "foco": true, "color": "#ff4d6d", "texto": "Alimentación: 40 y 38"},
+ {"bloque": "L11", "frase": "verde al pin 16", "tipo": "flecha", "x": 1170, "y": 470, "r": 70, "dur": 2.5, "angulo": -30},
+ {"bloque": "L12", "frase": "rojo al pin 40", "tipo": "flecha", "x": 1210, "y": 600, "r": 70, "dur": 2, "angulo": 20, "color": "#ff4d6d"},
+ {"bloque": "L17", "frase": "RP2350", "tipo": "caja", "x": 1345, "y": 720, "w": 330, "h": 130, "dur": 3, "retraso": 1.5},
+ {"bloque": "L17", "frase": "No analizar", "tipo": "flecha", "x": 1625, "y": 975, "r": 70, "dur": 3, "angulo": -150},
+ {"bloque": "L18", "frase": "usbliter", "tipo": "flecha", "x": 1035, "y": 334, "r": 80, "dur": 3, "retraso": 4.2, "angulo": 10, "texto": "¡Ya está adentro!"},
+ {"bloque": "L19", "frase": "queda programada", "tipo": "circulo", "x": 1106, "y": 800, "r": 55, "dur": 3, "color": "#38f28a", "texto": "LED verde = lista"}
+]

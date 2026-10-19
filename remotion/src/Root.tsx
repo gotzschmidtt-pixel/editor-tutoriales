@@ -1,6 +1,7 @@
 import {Composition} from 'remotion';
 import {Trailer, duracionTrailer, TrailerProps} from './Trailer';
 import {Etiqueta, EtiquetaProps} from './Etiqueta';
+import {Senal, SenalProps} from './Senal';
 
 const FPS = 25; // igual que los videos de salida, para unirlos sin recodificar raro
 
@@ -37,6 +38,16 @@ export const Root: React.FC = () => (
       height={1080}
       durationInFrames={4 * FPS}
       defaultProps={{tipo: 'web', titulo: 'Descarga aquí', texto: 'gsmprime.co'} as EtiquetaProps}
+    />
+    <Composition
+      id="Senal"
+      component={Senal}
+      fps={FPS}
+      width={1920}
+      height={1080}
+      durationInFrames={3 * FPS}
+      defaultProps={{tipo: 'circulo', puntos: [[960, 540]], r: 90, texto: 'Aquí'} as SenalProps}
+      calculateMetadata={({props}) => ({durationInFrames: Math.max(props.puntos.length, 1)})}
     />
   </>
 );
