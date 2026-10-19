@@ -116,6 +116,7 @@ PASOS = [
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']
 
+FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': []}
 CANDADO = threading.Lock()
 
@@ -147,6 +148,7 @@ def correr(proyecto, pasos, opciones):
                 return
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
+            FALLOS.pop(proyecto, None)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env)
@@ -154,12 +156,24 @@ def correr(proyecto, pasos, opciones):
                     TRABAJO['proc'] = proc
                 if proc.wait() != 0:
                     log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
+                    FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
                     return
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
     finally:
         log.close()
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+
+
+def causa(d):
+    """La línea que explica el error, dentro de lo último que escribió el paso."""
+    lineas = open(registro(d), encoding='utf-8', errors='replace').read().split('\n▶')[-1].strip().splitlines()
+    for k, l in enumerate(lineas):
+        if l.startswith('ERROR:'):
+            resto = [x.strip() for x in lineas[k + 1:] if x.strip() and not x.startswith('✗')]
+            return ' '.join([l[6:].strip()] + resto)
+    utiles = [l.strip() for l in lineas[1:] if l.strip() and not l.startswith('✗')]
+    return utiles[-1] if utiles else 'sin detalle'
 
 
 def estado(proyecto):
@@ -178,7 +192,7 @@ def estado(proyecto):
     with CANDADO:
         t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
                  segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0)
-    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t}
+    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto)}
 
 
 class Manejador(BaseHTTPRequestHandler):

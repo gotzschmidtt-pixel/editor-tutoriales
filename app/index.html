@@ -225,13 +225,14 @@ function subir(tipo, file, el) {
   x.send(file);
 }
 
-function pintarPasos(pasos, t) {
+let avisado = null;
+function pintarPasos(pasos, t, fallo) {
   $('#pasos').innerHTML = pasos.map((p, i) => {
     const corre = t.proyecto === P && t.paso === p.id;
     return `<div class="paso ${p.listo ? 'listo' : ''} ${corre ? 'corriendo' : ''}">
       <div class="num">${p.listo ? '✓' : i + 1}</div>
       <div class="info"><div class="nom">${p.nombre}${p.opcional ? ' <span class="aviso">(opcional)</span>' : ''}</div>
-        <div class="det">${corre ? '⏳ Trabajando… ' + t.segundos + ' s' : p.puede ? (p.listo ? 'Hecho · ' + p.produce : 'Listo para hacer') : 'Necesita: ' + p.necesita.join(', ')}</div></div>
+        <div class="det">${corre ? '⏳ Trabajando… ' + t.segundos + ' s · mira el registro abajo' : fallo && fallo.paso === p.id ? `<span style="color:var(--rojo)">✗ Falló: ${fallo.msg}</span>` : p.puede ? (p.listo ? 'Hecho · ' + p.produce : 'Listo para hacer') : 'Necesita: ' + p.necesita.join(', ')}</div></div>
       <div class="acc"><button ${!p.puede || t.proyecto ? 'disabled' : ''} onclick="ejecutar('${p.id}')">${p.listo ? 'Rehacer' : 'Hacer'}</button></div>
     </div>`;
   }).join('');
@@ -333,7 +334,8 @@ quienIA();
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo); pintarSalidas(e.archivos);
+  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo);
+  if (e.fallo && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;
   const t = e.trabajo;

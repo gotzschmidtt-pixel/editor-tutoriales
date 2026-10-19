@@ -1,4 +1,4 @@
 numpy
 opencv-python-headless
-# opcional, transcripción sin internet:
-# faster-whisper
+# transcripción sin internet (Whisper en tu PC)
+faster-whisper

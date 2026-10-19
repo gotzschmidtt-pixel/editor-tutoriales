@@ -8,15 +8,19 @@ Uso:
   python3 transcribir.py --video "Mi video.mp4" --salida mi_video [--motor scribe|whisper] [--modelo small]
 Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabras con inicio y fin).
 """
-import argparse, json, os, subprocess, tempfile, urllib.request, uuid
+import argparse, json, os, subprocess, tempfile, urllib.error, urllib.request, uuid
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
 
 
 def audio(video):
+    print('Sacando el audio del video (en videos grandes tarda un poco)…', flush=True)
     f = os.path.join(tempfile.mkdtemp(prefix='stt_'), 'audio.mp3')
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '64k', f], check=True)
+    r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '64k', f])
+    if r.returncode != 0 or not os.path.exists(f):
+        raise SystemExit('ERROR: no pude sacar el audio. ¿El video tiene sonido? ¿Está instalado ffmpeg?')
+    print(f'Audio listo ({os.path.getsize(f) / 1e6:.1f} MB).', flush=True)
     return f
 
 
@@ -28,12 +32,27 @@ def scribe(f, idioma):
               open(f, 'rb').read(), f'\r\n--{lim}--\r\n'.encode()]
     req = urllib.request.Request('https://api.elevenlabs.io/v1/speech-to-text', data=b''.join(partes),
                                  headers={'Content-Type': f'multipart/form-data; boundary={lim}', **CLAVE})
-    r = json.loads(urllib.request.urlopen(req, timeout=600).read())
+    print('Enviando el audio a ElevenLabs Scribe…', flush=True)
+    try:
+        r = json.loads(urllib.request.urlopen(req, timeout=1800).read())
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read()[:300].decode(errors='replace')
+        if e.code in (401, 403):
+            raise SystemExit('ERROR: ElevenLabs rechazó la clave o falta. Revisa tu API key (vuelve a correr instalar.bat o define '
+                             'ELEVENLABS_API_KEY) y que tenga permiso de Speech to Text. Detalle: ' + cuerpo)
+        raise SystemExit(f'ERROR: ElevenLabs respondió {e.code}: {cuerpo}')
+    except urllib.error.URLError as e:
+        raise SystemExit(f'ERROR: no hay conexión con ElevenLabs ({e.reason}). Revisa tu internet o usa Whisper.')
     return [{'texto': w['text'], 'inicio': w['start'], 'fin': w['end']} for w in r['words'] if w.get('type') == 'word']
 
 
 def whisper(f, idioma, modelo):
-    from faster_whisper import WhisperModel
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        raise SystemExit('ERROR: Whisper no está instalado. Abre una terminal en la carpeta de la app y escribe:\n'
+                         '    python -m pip install faster-whisper\nLuego vuelve a darle a Transcribir.')
+    print(f'Cargando Whisper «{modelo}» (la primera vez descarga el modelo, unos cientos de MB)…', flush=True)
     segs, _ = WhisperModel(modelo, compute_type='int8').transcribe(f, language=idioma, word_timestamps=True)
     return [{'texto': w.word.strip(), 'inicio': w.start, 'fin': w.end} for s in segs for w in s.words]
 
