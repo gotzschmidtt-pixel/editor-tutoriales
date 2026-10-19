@@ -51,9 +51,16 @@ cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te cont
 2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, Chromium y Remotion, y te pide tu API key de ElevenLabs.
    Si te dice que falta algo en el PATH, cierra la ventana y ábrelo otra vez.
 3. Para ver y editar el tráiler o las señales en el navegador: abre una terminal en la carpeta `remotion` y escribe `npm run studio`.
-4. Para abrir la app: doble clic en `iniciar.bat`.
+4. Al final crea **Estudio.exe** y el acceso directo «Estudio de tutoriales» en el escritorio. Ábrelo desde ahí: la app sale en su
+   propia ventana, sin ventana negra, y se apaga sola unos minutos después de cerrarla (si no hay un paso trabajando).
+   Para rehacer solo el .exe (por ejemplo tras una actualización del código): doble clic en `crear_exe.bat`.
+   `iniciar.bat` sigue sirviendo: abre la app con la ventana negra, útil para ver errores.
 
-La API key está en ElevenLabs → Developers → API Keys. Sin clave funciona todo menos voz, música y transcripción en línea.
+La API key está en ElevenLabs → Developers → API Keys; pégala en el botón **🔑 Clave ElevenLabs** de la app.
+Sin clave funciona todo menos voz, música y transcripción en línea.
+
+Estudio.exe es un lanzador (`lanzador/estudio.py` con PyInstaller): usa el Python, ffmpeg, Node y Remotion que instaló `instalar.bat`
+y abre la app con Edge o Chrome en modo aplicación. No los lleva dentro, por eso pesa poco y se actualiza con solo cambiar el código.
 
 ## Requisitos
 

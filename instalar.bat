@@ -28,8 +28,6 @@ echo 5/5 Clave de ElevenLabs (voz, música, transcripción en línea)
 set /p KEY=Pega tu API key de ElevenLabs (o Enter para saltar): 
 if not "%KEY%"=="" setx ELEVENLABS_API_KEY "%KEY%" >nul && echo Clave guardada. Abre una ventana nueva para usarla.
 echo.
-echo Creando acceso directo "Estudio de tutoriales" en el escritorio...
-powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Estudio de tutoriales.lnk'); $s.TargetPath='%~dp0iniciar.bat'; $s.WorkingDirectory='%~dp0'; $s.IconLocation='shell32.dll,115'; $s.Save()"
-echo.
-echo Listo. Abre "Estudio de tutoriales" desde tu escritorio.
-pause
+echo Creando Estudio.exe (la app con su propia ventana)...
+call "%~dp0crear_exe.bat"
+exit /b

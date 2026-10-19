@@ -367,6 +367,7 @@ async function refrescar() {
   if (esperaIA && !t.proyecto) finIA();
 }
 setInterval(refrescar, 2000);
+setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta
 cargarProyectos();
 </script>
 </body>

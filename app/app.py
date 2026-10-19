@@ -19,6 +19,9 @@ RAIZ = os.path.dirname(AQUI)
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 PUERTO = int(os.environ.get('PUERTO', 8765))
 PY = sys.executable
+# en Windows, sin esto cada paso abre su propia ventana negra cuando la app corre sin consola (Estudio.exe)
+SIN_VENTANA = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
+LATIDO = [time.time()]  # última vez que la página dio señales de vida
 os.makedirs(PROYECTOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
@@ -189,7 +192,7 @@ def correr(proyecto, pasos, opciones):
             FALLOS.pop(proyecto, None)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             for c in comandos(paso, d, opciones):
-                proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env)
+                proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
                     TRABAJO['proc'] = proc
                 if proc.wait() != 0:
@@ -251,6 +254,7 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_response(codigo)
         self.send_header('Content-Type', tipo)
         self.send_header('Content-Length', str(len(cuerpo)))
+        self.send_header('Cache-Control', 'no-store')  # que el navegador no muestre una versión vieja de la app
         self.end_headers()
         self.wfile.write(cuerpo)
 
@@ -263,9 +267,12 @@ class Manejador(BaseHTTPRequestHandler):
 
     def do_GET(self):
         ruta, q = self.q()
+        LATIDO[0] = time.time()
         try:
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/latido':
+                return self.responder({'ok': True})
             if ruta == '/api/proyectos':
                 return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
             if ruta == '/api/estado':
@@ -335,8 +342,15 @@ class Manejador(BaseHTTPRequestHandler):
 
     def do_POST(self):
         ruta, q = self.q()
+        LATIDO[0] = time.time()
         largo = int(self.headers.get('Content-Length', 0))
         try:
+            if ruta == '/api/salir':
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error('Hay un paso trabajando. Detenlo o espera a que termine antes de salir.')
+                threading.Timer(0.3, lambda: os._exit(0)).start()
+                return self.responder({'ok': True})
             if ruta == '/api/proyecto':
                 d = carpeta(json.loads(self.rfile.read(largo))['nombre'])
                 os.makedirs(d, exist_ok=True)
@@ -402,7 +416,7 @@ class Manejador(BaseHTTPRequestHandler):
                     os.remove(f)
                 return self.responder({'ok': True})
             if ruta == '/api/studio':
-                subprocess.Popen([shutil.which('npx') or 'npx', 'remotion', 'studio', 'src/index.ts'], cwd=m('remotion'))
+                subprocess.Popen([shutil.which('npx') or 'npx', 'remotion', 'studio', 'src/index.ts'], cwd=m('remotion'), **SIN_VENTANA)
                 return self.responder({'ok': True, 'url': 'http://localhost:3000'})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
@@ -415,7 +429,19 @@ def main():
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    if os.environ.get('AUTO_SALIR'):
+        threading.Thread(target=vigilar, daemon=True).start()
     srv.serve_forever()
+
+
+def vigilar():
+    """Con Estudio.exe no hay ventana negra que cerrar: la app se apaga sola cuando cierras su ventana."""
+    while True:
+        time.sleep(15)
+        with CANDADO:
+            ocupado = bool(TRABAJO['proyecto'])
+        if not ocupado and time.time() - LATIDO[0] > 180:
+            os._exit(0)
 
 
 if __name__ == '__main__':
