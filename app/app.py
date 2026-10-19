@@ -304,6 +304,7 @@ class Manejador(BaseHTTPRequestHandler):
                         aj[k] = '••••' + aj[k][-4:]
                 k = clave_eleven()
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
+                aj['ruta'] = AJUSTES
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))

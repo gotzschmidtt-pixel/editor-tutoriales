@@ -11,7 +11,21 @@ Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabr
 import argparse, json, os, subprocess, tempfile, urllib.error, urllib.request, uuid
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
-CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
+def _clave():
+    """La clave de ElevenLabs: la variable ELEVENLABS_API_KEY o la guardada con el botón 🔑 de la app."""
+    k = os.environ.get('ELEVENLABS_API_KEY', '').strip()
+    if k:
+        return k, 'variable ELEVENLABS_API_KEY'
+    aj = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'ajustes.json')
+    try:
+        k = json.load(open(aj, encoding='utf-8')).get('elevenlabs', '').strip()
+    except (OSError, ValueError):
+        k = ''
+    return k, aj
+
+
+_K, FUENTE_CLAVE = _clave()
+CLAVE = {'xi-api-key': _K} if _K else {}
 
 
 def audio(video):
@@ -32,6 +46,7 @@ def scribe(f, idioma):
               open(f, 'rb').read(), f'\r\n--{lim}--\r\n'.encode()]
     req = urllib.request.Request('https://api.elevenlabs.io/v1/speech-to-text', data=b''.join(partes),
                                  headers={'Content-Type': f'multipart/form-data; boundary={lim}', **CLAVE})
+    print(f'Clave de ElevenLabs: ••••{_K[-4:]} (de {FUENTE_CLAVE})' if _K else 'Clave de ElevenLabs: ninguna', flush=True)
     print('Enviando el audio a ElevenLabs Scribe…', flush=True)
     try:
         r = json.loads(urllib.request.urlopen(req, timeout=1800).read())

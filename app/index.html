@@ -157,7 +157,7 @@
   <p class="aviso">Sirve para transcribir con Scribe, la voz, la música y el tráiler. Sácala en elevenlabs.io → Developers → API Keys.</p>
   <label>Clave API <input type="password" id="clEleven" placeholder="sk_..." autocomplete="off"></label>
   <p class="aviso" id="clEstado"></p>
-  <p class="aviso">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
+  <p class="aviso" id="clRuta">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
   <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
 </dialog>
 
@@ -341,7 +341,8 @@ async function guardarAjustes() {
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
 quienIA();
 async function verEleven() {
-  const k = (await api('/api/ajustes')).ajustes.eleven;
+  const aj = (await api('/api/ajustes')).ajustes, k = aj.eleven;
+  $('#clRuta').textContent = 'Se guarda solo en tu PC, en ' + aj.ruta + '. Nadie más la ve.';
   $('#btnEleven').textContent = k ? '🔑 ElevenLabs ✓' : '🔑 Clave ElevenLabs';
   $('#btnEleven').style.borderColor = k ? '' : 'var(--rojo)';
   $('#clEstado').textContent = k ? `Guardada: ${k}. Pega otra solo si quieres cambiarla.` : 'Todavía no hay clave guardada.';

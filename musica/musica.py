@@ -11,7 +11,21 @@ La clave la pone el proxy del entorno para api.elevenlabs.io.
 import argparse, json, os, shutil, subprocess, tempfile, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
-CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
+def _clave():
+    """La clave de ElevenLabs: la variable ELEVENLABS_API_KEY o la guardada con el botón 🔑 de la app."""
+    k = os.environ.get('ELEVENLABS_API_KEY', '').strip()
+    if k:
+        return k, 'variable ELEVENLABS_API_KEY'
+    aj = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'ajustes.json')
+    try:
+        k = json.load(open(aj, encoding='utf-8')).get('elevenlabs', '').strip()
+    except (OSError, ValueError):
+        k = ''
+    return k, aj
+
+
+_K, FUENTE_CLAVE = _clave()
+CLAVE = {'xi-api-key': _K} if _K else {}
 
 PROMPT = ("Instrumental background music for a fun, upbeat tech repair tutorial on YouTube. Playful lo-fi "
           "electronic with funky bass, light hip-hop drums, warm electric piano and subtle synth plucks, around "
