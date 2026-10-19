@@ -72,7 +72,9 @@ def comandos(paso, d, op):
         c = [PY, m('montaje', 'montaje.py'), '--original', 'original.mp4'] + g + ['--salida', '1_montaje.mp4']
         if existe(d, 'imagen.png'):
             c += ['--imagen', 'imagen.png']
-        if op.get('borrador'):
+        if str(op.get('calidad', '1080')) in ('720', '480', '360'):
+            c += ['--calidad', str(op['calidad'])]
+        elif op.get('borrador'):
             c.append('--borrador')
         return [c]
     if paso == 'insertos':
@@ -98,6 +100,12 @@ def comandos(paso, d, op):
         if op['modo'] == 'revisar':
             c += ['--entrada', 'ia_respuesta_pegada.txt']
         return [c]
+    if paso == 'exportar':
+        h = int(op.get('altura', 480))
+        if h not in (720, 480, 360):
+            raise ValueError('calidad no válida')
+        return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', 'FINAL.mp4', '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
+                 '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', f'FINAL_{h}p.mp4']]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
     raise ValueError(paso)
@@ -115,6 +123,7 @@ PASOS = [
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
+    {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']

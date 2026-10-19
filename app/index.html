@@ -99,7 +99,9 @@
       <div class="fila">
         <button class="principal grande" id="todo">▶ Hacer todo</button>
         <button id="detener">■ Detener</button>
-        <label class="aviso"><input type="checkbox" id="borrador"> Montaje rápido de prueba (720p)</label>
+        <label class="aviso">Montaje <select id="calidad">
+          <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
+          <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
       </div>
     </section>
   </div>
@@ -109,6 +111,12 @@
       <h2>3 · Ver resultado</h2>
       <video id="video" controls preload="metadata"></video>
       <div class="salidas" id="salidas"></div>
+      <div class="fila" id="exportar" hidden>
+        <span class="aviso">Bajar el video final a</span>
+        <select id="altura"><option value="720">720p</option><option value="480" selected>480p</option><option value="360">360p</option></select>
+        <button onclick="exportar()">Exportar</button>
+        <span class="aviso">(pesa menos, para WhatsApp o subirlo rápido)</span>
+      </div>
     </section>
 
     <section class="panel">
@@ -249,7 +257,7 @@ function pintarPasos(pasos, t, fallo) {
 }
 async function ejecutar(paso) {
   if (paso === 'voz') alert('Los bloques que ya tienen voz no se vuelven a generar. Para regenerar uno, borra su .mp3 de la carpeta voz.');
-  const op = {borrador: $('#borrador').checked};
+  const op = {calidad: $('#calidad').value};
   if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
     if (pr === null) return; if (pr) op.prompt = pr;
@@ -271,7 +279,14 @@ function pintarSalidas(arch) {
   const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
     extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
-    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '');
+    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '') +
+    ['720', '480', '360'].filter(h => arch[`FINAL_${h}p.mp4`]).map(h =>
+      `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button>⬇ FINAL ${h}p</button></a>`).join('');
+  $('#exportar').hidden = !arch['FINAL.mp4'];
+}
+async function exportar() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 function ver(f) { $('#video').src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; }
 

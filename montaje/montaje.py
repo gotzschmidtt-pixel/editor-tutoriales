@@ -1,11 +1,11 @@
 """Arma el video según el plan de montaje del guion: cámara lenta, congelados e imágenes.
 
-Uso: python3 montaje.py --original original.mp4 --guion guion.json --salida montaje.mp4 [--imagen mapa.png] [--borrador]
+Uso: python3 montaje.py --original original.mp4 --guion guion.json --salida montaje.mp4 [--imagen mapa.png] [--calidad 1080|720|480|360]
 
 Cada bloque del guion trae "montaje": {"modo": "lento" | "congelar" | "lento+congelar" | "imagen",
   "src_inicio": s, "src_fin": s, "velocidad": 0.8, "congelar_s": s, "imagen": "archivo.png" (opcional)}.
 Los congelados usan el cuadro más quieto y nítido cerca del momento pedido (módulo nitidez) y llevan zoom lento.
---borrador: 720p con el nombre del bloque escrito, para revisar rápido.
+--calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
 """
 import argparse, json, os, shutil, subprocess, sys, tempfile
 
@@ -24,11 +24,13 @@ def main():
     ap.add_argument('--guion', required=True)
     ap.add_argument('--salida', required=True)
     ap.add_argument('--imagen', help='imagen por defecto para los bloques en modo "imagen"')
-    ap.add_argument('--borrador', action='store_true')
+    ap.add_argument('--borrador', action='store_true', help='igual que --calidad 720')
+    ap.add_argument('--calidad', type=int, choices=[1080, 720, 480, 360], default=1080)
     a = ap.parse_args()
     d = json.load(open(a.guion, encoding='utf-8'))
-    final = not a.borrador
-    res = (1920, 1080) if final else (1280, 720)
+    alto = 720 if a.borrador and a.calidad == 1080 else a.calidad
+    final = alto == 1080
+    res = (alto * 16 // 9 // 2 * 2, alto)
     crf = '20' if final else '26'
     out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,fps=25,format=yuv420p"
     fuente = next((f for f in ('C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if os.path.exists(f)), None)
