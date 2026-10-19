@@ -46,7 +46,7 @@ export const Root: React.FC = () => (
       width={1920}
       height={1080}
       durationInFrames={3 * FPS}
-      defaultProps={{tipo: 'circulo', puntos: [[960, 540]], r: 90, texto: 'Aquí'} as SenalProps}
+      defaultProps={{tipo: 'circulo', puntos: [[960, 540]], r: 90} as SenalProps}
       calculateMetadata={({props}) => ({durationInFrames: Math.max(props.puntos.length, 1)})}
     />
   </>
