@@ -10,6 +10,9 @@ La clave la pone el proxy del entorno para api.elevenlabs.io.
 """
 import argparse, json, os, subprocess, tempfile, urllib.request
 
+# En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
+CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
+
 PROMPT = ("Instrumental background music for a fun, upbeat tech repair tutorial on YouTube. Playful lo-fi "
           "electronic with funky bass, light hip-hop drums, warm electric piano and subtle synth plucks, around "
           "100 BPM, positive and slightly cheeky mood, steady energy with no big drops, no vocals, loopable, "
@@ -24,7 +27,7 @@ def duracion(f):
 def generar(prompt, ms, destino):
     body = json.dumps({'prompt': prompt, 'music_length_ms': ms, 'model_id': 'music_v1', 'force_instrumental': True}).encode()
     req = urllib.request.Request('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', data=body,
-                                 headers={'Content-Type': 'application/json'})
+                                 headers={'Content-Type': 'application/json', **CLAVE})
     open(destino, 'wb').write(urllib.request.urlopen(req, timeout=600).read())
 
 

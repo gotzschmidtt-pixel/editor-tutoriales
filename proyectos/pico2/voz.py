@@ -1,4 +1,7 @@
 import json, os, base64, urllib.request
+
+# En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
+CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
 VOICE = "94zOad0g7T7K4oa7zhDq"  # Mauricio - Narrator and Conversational Voice (mismo del video anterior)
 OUT = "/mnt/project-files/guion-pico/voz_v4"
 os.makedirs(OUT, exist_ok=True)
@@ -9,7 +12,7 @@ for b in d['bloques']:
     body = json.dumps({"text": b['texto'], "model_id": "eleven_v4", "language_code": "es",
                        "voice_settings": {"stability": 0.5}}).encode()
     req = urllib.request.Request(f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE}/with-timestamps?output_format=mp3_44100_128",
-                                 data=body, headers={"Content-Type": "application/json"})
+                                 data=body, headers={'Content-Type': "application/json", **CLAVE})
     try:
         r = json.load(urllib.request.urlopen(req, timeout=180))
     except urllib.error.HTTPError as e:

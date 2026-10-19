@@ -10,6 +10,9 @@ Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabr
 """
 import argparse, json, os, subprocess, tempfile, urllib.request, uuid
 
+# En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
+CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
+
 
 def audio(video):
     f = os.path.join(tempfile.mkdtemp(prefix='stt_'), 'audio.mp3')
@@ -24,7 +27,7 @@ def scribe(f, idioma):
               f'--{lim}\r\nContent-Disposition: form-data; name="file"; filename="audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n'.encode(),
               open(f, 'rb').read(), f'\r\n--{lim}--\r\n'.encode()]
     req = urllib.request.Request('https://api.elevenlabs.io/v1/speech-to-text', data=b''.join(partes),
-                                 headers={'Content-Type': f'multipart/form-data; boundary={lim}'})
+                                 headers={'Content-Type': f'multipart/form-data; boundary={lim}', **CLAVE})
     r = json.loads(urllib.request.urlopen(req, timeout=600).read())
     return [{'texto': w['text'], 'inicio': w['start'], 'fin': w['end']} for w in r['words'] if w.get('type') == 'word']
 

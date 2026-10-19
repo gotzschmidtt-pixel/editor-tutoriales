@@ -1,0 +1,8 @@
+{
+  "name": "editor-tutoriales",
+  "private": true,
+  "description": "Dependencias de Node para las etiquetas (Playwright)",
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

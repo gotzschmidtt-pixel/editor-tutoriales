@@ -13,6 +13,9 @@ Con --unir pega el tráiler delante del video y, con --srt, corre los subtítulo
 """
 import argparse, json, os, re, shutil, subprocess, sys, urllib.request
 
+# En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
+CLAVE = {'xi-api-key': os.environ['ELEVENLABS_API_KEY']} if os.environ.get('ELEVENLABS_API_KEY') else {}
+
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 REMOTION = os.path.join(RAIZ, 'remotion')
@@ -36,7 +39,7 @@ def duracion(f):
 def voz(texto, destino):
     body = json.dumps({'text': texto, 'model_id': 'eleven_v4', 'voice_settings': {'stability': 0.5}}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{VOZ_ID}?output_format=mp3_44100_128',
-                                 data=body, headers={'Content-Type': 'application/json'})
+                                 data=body, headers={'Content-Type': 'application/json', **CLAVE})
     open(destino, 'wb').write(urllib.request.urlopen(req, timeout=120).read())
 
 
