@@ -13,6 +13,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
 | `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
+| `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
 | `transcripcion/` | Voz a texto con tiempos por palabra: Scribe (en línea) o Whisper (en tu PC, sin internet). Saca .txt, .srt y .json. |
 | `proyectos/pico2/` | Los scripts del video «Cómo soldar la Pico 2»: guion por bloques, voz v4, video estirado a 7 min. Tienen rutas de ese proyecto; sirven de ejemplo. |
@@ -23,6 +24,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 2. **Voz** (`voz.py`): genera cada bloque con la voz Mauricio en `eleven_v4` y guarda `<bloque>.mp3` y `<bloque>.align.json`.
 3. **Video** (`render.py final`): arma el video a 1080p según el plan de montaje. Cada congelado usa el cuadro que elige `nitidez/` y lleva un zoom lento.
    Luego `mezclar_voz.py` coloca cada bloque de voz en su segundo y saca el .srt.
+   `insertos/insertos.py` pone encima el material extra (cortes y zooms) antes de la voz.
 4. **Música** (`musica/musica.py`): mezcla la música con bajada automática bajo la voz.
 5. **Etiquetas** (`etiquetas/etiquetas.py`): superpone las etiquetas en el momento en que se dicen.
 6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
