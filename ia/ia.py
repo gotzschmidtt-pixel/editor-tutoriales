@@ -47,6 +47,10 @@ def capturas(d, n=14):
     tiempos = destacados(t, ni, mo, top=n, separacion=max(3.0, total / (n * 1.5)))
     out = os.path.join(d, 'ia_capturas')
     os.makedirs(out, exist_ok=True)
+    quedan = {f'captura_{s:06.1f}s.jpg' for s in tiempos}
+    for viejo in os.listdir(out):  # las de una tanda anterior con otra cantidad
+        if viejo.startswith('captura_') and viejo not in quedan:
+            os.remove(os.path.join(out, viejo))
     lista = []
     for s in tiempos:
         f = os.path.join(out, f'captura_{s:06.1f}s.jpg')
@@ -267,7 +271,11 @@ def main():
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
     else:
-        caps = capturas(d)
+        try:
+            n = int(json.load(open(a.ajustes, encoding='utf-8')).get('capturas', 14))
+        except (OSError, ValueError, TypeError):
+            n = 14
+        caps = capturas(d, max(4, min(n, 60)))
         texto = encargo(d, a.tarea, idea, caps)
         if a.modo == 'prompt':
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
