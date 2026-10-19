@@ -180,7 +180,54 @@ def revisar(d, tarea, datos):
     return datos, avisos
 
 
+def llamar_claude(ajustes, texto, caps):
+    """Claude con la librería oficial de Anthropic (no habla el formato de OpenAI)."""
+    try:
+        import anthropic
+    except ImportError:
+        raise SystemExit('ERROR: falta la librería de Claude. Corre instalar.bat, o abre una terminal en la carpeta '
+                         'de la app y escribe:\n  python -m pip install anthropic')
+    contenido = []
+    if ajustes.get('imagenes', True):
+        for _, f in caps:
+            contenido.append({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg',
+                                                          'data': base64.b64encode(open(f, 'rb').read()).decode()}})
+        contenido.append({'type': 'text', 'text': texto})
+    else:
+        contenido.append({'type': 'text', 'text': texto + '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'})
+    cliente = anthropic.Anthropic(api_key=ajustes.get('clave') or None, timeout=900)
+    try:
+        # en streaming para que una respuesta larga no corte la conexión
+        with cliente.beta.messages.stream(
+            model=ajustes.get('modelo') or 'claude-opus-5-5',
+            max_tokens=64000,
+            system='Respondes únicamente con JSON válido.',
+            output_config={'effort': 'medium'},
+            betas=['server-side-fallback-2026-07-01'],
+            fallbacks='default',  # si un filtro de seguridad rechaza por error, otro modelo responde
+            messages=[{'role': 'user', 'content': contenido}],
+        ) as flujo:
+            r = flujo.get_final_message()
+    except anthropic.AuthenticationError:
+        raise SystemExit('ERROR: Claude rechazó la clave. Revisa la clave en «⚙ Ajustes IA» (empieza con sk-ant-).')
+    except anthropic.PermissionDeniedError as e:
+        raise SystemExit(f'ERROR: tu clave de Claude no tiene permiso para este modelo: {e.message}')
+    except anthropic.NotFoundError:
+        raise SystemExit(f'ERROR: Claude no conoce el modelo «{ajustes.get("modelo")}». Prueba con claude-opus-5-5.')
+    except anthropic.RateLimitError:
+        raise SystemExit('ERROR: Claude dice que hiciste muchas peticiones o no tienes saldo. Espera un poco o revisa tu cuenta en console.anthropic.com.')
+    except anthropic.APIStatusError as e:
+        raise SystemExit(f'ERROR: Claude respondió con error {e.status_code}: {e.message}')
+    except anthropic.APIConnectionError:
+        raise SystemExit('ERROR: no hay conexión con Claude. Revisa tu internet.')
+    if r.stop_reason == 'refusal':
+        raise SystemExit('ERROR: Claude no quiso responder esta petición. Prueba cambiando la idea o usa otra IA.')
+    return ''.join(b.text for b in r.content if b.type == 'text')
+
+
 def llamar(ajustes, texto, caps):
+    if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
+        return llamar_claude(ajustes, texto, caps)
     contenido = [{'type': 'text', 'text': texto}]
     if ajustes.get('imagenes', True):
         for _, f in caps:

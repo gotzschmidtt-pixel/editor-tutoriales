@@ -2,3 +2,5 @@ numpy
 opencv-python-headless
 # transcripción sin internet (Whisper en tu PC)
 faster-whisper
+# Claude como IA creativa (opcional)
+anthropic
