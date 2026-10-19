@@ -59,6 +59,9 @@ cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te cont
 La API key está en ElevenLabs → Developers → API Keys; pégala en el botón **🔑 Clave ElevenLabs** de la app.
 Sin clave funciona todo menos voz, música y transcripción en línea.
 
+**IA open source en tu PC (sin internet, gratis):** doble clic en `instalar_ia_local.bat`. Instala Ollama y baja Gemma 3
+(12B, o 4B para PC sencilla) o Qwen 2.5 VL. Después, en *⚙ Ajustes IA*, elige el Ollama que bajaste; no necesita clave.
+
 Estudio.exe es un lanzador (`lanzador/estudio.py` con PyInstaller): usa el Python, ffmpeg, Node y Remotion que instaló `instalar.bat`
 y abre la app con Edge o Chrome en modo aplicación. No los lleva dentro, por eso pesa poco y se actualiza con solo cambiar el código.
 

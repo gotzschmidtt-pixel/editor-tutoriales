@@ -229,9 +229,36 @@ def llamar_claude(ajustes, texto, caps):
     return ''.join(b.text for b in r.content if b.type == 'text')
 
 
+def llamar_ollama(ajustes, texto, caps):
+    """Ollama por su API propia: la compatible con OpenAI no deja subir el contexto y cortaría el pedido."""
+    msg = {'role': 'user', 'content': texto}
+    if ajustes.get('imagenes', True):
+        msg['images'] = [base64.b64encode(open(f, 'rb').read()).decode() for _, f in caps]
+    else:
+        msg['content'] += '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'
+    cuerpo = {'model': ajustes['modelo'], 'stream': False, 'format': 'json',
+              'messages': [{'role': 'system', 'content': 'Respondes únicamente con JSON válido.'}, msg],
+              'options': {'num_ctx': 32768, 'temperature': 0.8}}
+    base = re.sub(r'/v1/?$', '', ajustes['url'].rstrip('/'))
+    req = urllib.request.Request(base + '/api/chat', data=json.dumps(cuerpo).encode(), headers={'Content-Type': 'application/json'})
+    print(f'Pensando con {ajustes["modelo"]} en tu PC (puede tardar varios minutos)…', flush=True)
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=3600))
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read()[:400].decode(errors='replace')
+        if e.code == 404:
+            raise SystemExit(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}')
+        raise SystemExit(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}')
+    except urllib.error.URLError:
+        raise SystemExit('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.')
+    return r['message']['content']
+
+
 def llamar(ajustes, texto, caps):
     if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
         return llamar_claude(ajustes, texto, caps)
+    if ':11434' in ajustes.get('url', ''):
+        return llamar_ollama(ajustes, texto, caps)
     contenido = [{'type': 'text', 'text': texto}]
     if ajustes.get('imagenes', True):
         for _, f in caps:
