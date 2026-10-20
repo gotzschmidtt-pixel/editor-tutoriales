@@ -488,6 +488,8 @@ def main():
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     for x in avisos:
         print('·', x)
+    if a.tarea == 'guion':  # lo que la app corrigió, para mostrártelo antes de seguir
+        open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
     print(f'Guardado {ARCHIVO[a.tarea]} (la versión anterior quedó como {ARCHIVO[a.tarea]}.anterior)')
 
 

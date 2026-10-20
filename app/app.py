@@ -296,7 +296,8 @@ def correr(proyecto, pasos, opciones):
         f = FALLOS.get(proyecto)
         RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
-                               'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time()}
+                               'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
+                               'pausa': None if f else opciones.get('_pausa')}
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
 
@@ -379,6 +380,11 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
+            if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
+                d = carpeta(q['p'])
+                leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
+                return self.responder({'mejoras': [x for x in leer('mejoras_guion.txt').splitlines() if x.strip()],
+                                       'orden': leer('revision_guion.txt').strip()})
             if ruta == '/api/json':
                 f = q['f']
                 if f not in EDITABLES:
@@ -512,7 +518,8 @@ class Manejador(BaseHTTPRequestHandler):
                     if not existe(carpeta(q['p']), 'transcripcion.srt'):
                         previos.insert(0, 'transcribir')
                         datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
-                    pasos = previos + pasos
+                    pasos = previos  # se para con el guion listo, para que lo revises antes de seguir
+                    datos['_pausa'] = 'guion'
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:

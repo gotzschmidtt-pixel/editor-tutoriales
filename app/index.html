@@ -78,6 +78,11 @@
   #soltarPista, #soltarTarjeta, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
+  #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
+  .bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
+  .bloque .cab { font-size: 13px; color: var(--suave, #9aa3c0); margin-bottom: 4px; }
+  .bloque textarea { width: 100%; height: 4.6em; min-height: 0; box-sizing: border-box; font-family: inherit; }
+  #mejorasGuion ul { margin: 4px 0 0 18px; padding: 0; font-size: 13px; }
   #barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 10px 22px 12px; background: #0e1120f2;
     border-top: 2px solid var(--borde); backdrop-filter: blur(8px); box-shadow: 0 -8px 30px #0008; }
   #barra.trabaja { border-top-color: var(--amarillo); } #barra.ok { border-top-color: var(--verde); } #barra.mal { border-top-color: var(--rojo); }
@@ -133,6 +138,7 @@
       <div class="fila">
         <button class="principal grande" id="todo">▶ Hacer todo</button>
         <button id="detener">■ Detener</button>
+        <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
@@ -257,6 +263,15 @@
   <textarea id="txtPrompt" readonly></textarea>
   <div class="caps" id="caps"></div>
   <div class="fila"><button class="principal" onclick="copiar()">Copiar prompt</button><button onclick="dlgPrompt.close()">Cerrar</button><span class="msg" id="msgCopia"></span></div>
+</dialog>
+
+<dialog id="dlgGuion">
+  <h3>📝 Tu guion</h3>
+  <p class="aviso">Lee lo que va a decir la voz en cada bloque y cambia lo que quieras. Al seguir, la voz se genera con este texto.</p>
+  <div id="mejorasGuion"></div>
+  <div id="bloquesGuion"></div>
+  <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
+    <button onclick="guardarGuion(false)">Guardar</button><button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
 </dialog>
 
 <dialog id="dlgEleven">
@@ -681,6 +696,16 @@ function pintarBarra(t, r, arch) {
     return;
   }
   const cerrar = `<button onclick="barraCerrada = ${r.cuando}; refrescar()">✕</button>`;
+  if (r.ok && r.pausa === 'guion') {
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">✓ Guion listo: revísalo antes de seguir</span>
+      <span class="cuanto">la IA lo escribió desde tu video en ${reloj(r.segundos)}</span>
+      <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
+      <button onclick="seguirTodo()">▶ Seguir con todo</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
+    return;
+  }
   if (r.ok) {
     b.className = 'ok';
     const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
@@ -695,6 +720,36 @@ function pintarBarra(t, r, arch) {
       <div class="riel"><div class="lleno" style="width:${Math.round(100 * (r.hechos.length + r.saltados.length) / r.total)}%"></div></div>
       <div class="detalle">${esc(r.msg)}</div>`;
   }
+}
+
+let avisoGuion = null, GUION = null;
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+async function verGuion() {
+  let txt;
+  try { txt = await api(`/api/json?p=${q(P)}&f=guion.json`); GUION = JSON.parse(txt); } catch (e) { GUION = null; }
+  if (!GUION || !(GUION.bloques || []).length) { alert('Todavía no hay guion. Pulsa «▶ Hacer todo» y la IA lo escribe desde tu video.'); return; }
+  const rv = await api(`/api/revision_guion?p=${q(P)}`);
+  const lista = rv.mejoras;
+  $('#mejorasGuion').innerHTML = (lista.length ? `<b>Lo que la app corrigió o te avisa:</b><ul>${lista.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
+    : '<b>✓ La app lo revisó:</b> tiempos y orden bien, no tuvo que corregir nada.');
+  $('#bloquesGuion').innerHTML = GUION.bloques.map((b, k) => {
+    const mo = b.montaje || {}, tramo = mo.src_inicio != null ? `video ${mmss(mo.src_inicio)}${mo.src_fin != null ? '–' + mmss(mo.src_fin) : ''}` : 'imagen';
+    return `<div class="bloque"><div class="cab"><b>${esc(b.id)}</b> · ${tramo}${b.ancla ? ' · ' + esc(b.ancla) : ''}</div>
+      <textarea data-k="${k}">${esc(b.texto)}</textarea></div>`;
+  }).join('');
+  $('#msgGuion').textContent = ''; dlgGuion.showModal();
+}
+async function guardarGuion(seguir) {
+  document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
+  try { await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)}); }
+  catch (e) { $('#msgGuion').textContent = e.message; $('#msgGuion').className = 'msg err'; return; }
+  if (archivo === 'guion.json' && !editado) abrir('guion.json');
+  if (!seguir) { $('#msgGuion').textContent = '✓ Guardado'; $('#msgGuion').className = 'msg ok'; return; }
+  dlgGuion.close(); seguirTodo();
+}
+async function seguirTodo() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 
 async function refrescar() {
