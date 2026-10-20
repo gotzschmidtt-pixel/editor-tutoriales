@@ -383,7 +383,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
                 margen.append(0); continue
             tramo = mo['src_fin'] - mo['src_inicio']
             margen.append(max(0, min(tramo, voz + RELLENO + 6) - tramo / mo['velocidad']))
-        falta = minimo - t
+        falta = minimo * 1.04 - t  # un poco por encima del mínimo: el redondeo no lo deja justo debajo
         total = sum(margen)
         if total > 0:
             k = min(1, falta / total)
