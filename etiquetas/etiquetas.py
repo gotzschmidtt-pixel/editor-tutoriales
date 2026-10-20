@@ -62,7 +62,11 @@ def main():
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
     items = []
     for e in json.load(open(a.etiquetas)):
-        al = json.load(open(os.path.join(a.voz, e['bloque'] + '.align.json')))
+        f_al = os.path.join(a.voz, str(e.get('bloque')) + '.align.json')
+        if e.get('bloque') not in inicio or not os.path.exists(f_al):
+            print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
+            continue
+        al = json.load(open(f_al))
         t = buscar(al, e['frase'])
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
@@ -70,6 +74,12 @@ def main():
         items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + t, 2), 'dur': e.get('dur', 3.5)})
 
     grupos = agrupar(items)
+    if not grupos:  # ninguna etiqueta cabe en este guion: el video sigue igual, sin fallar
+        print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '
+              'Pulsa «Escribir con IA» en etiquetas para hacerlas de nuevo con este guion.')
+        shutil.copyfile(a.video, a.salida)
+        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'))
+        return
     tmp = tempfile.mkdtemp(prefix='etiquetas_')
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, g in enumerate(grupos, 1):

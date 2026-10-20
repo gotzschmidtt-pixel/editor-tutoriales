@@ -124,6 +124,18 @@ def duracion_original(d):
     return _DURACIONES[clave]
 
 
+def etiquetas_viejas(d):
+    """Si etiquetas.json es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
+    import unicodedata
+    n = lambda c: ' '.join(''.join(x for x in unicodedata.normalize('NFD', str(c).lower()) if unicodedata.category(x) != 'Mn').split())
+    try:
+        textos = {b['id']: n(b.get('texto', '')) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}
+        lista = json.load(open(os.path.join(d, 'etiquetas.json'), encoding='utf-8'))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista)
+
+
 def marcas_nuevas(d):
     """Si tus capturas o notas de «Flechas y círculos» son más nuevas que senales.json."""
     f = os.path.join(d, 'marcas_senales', 'marcas.json')
@@ -685,7 +697,8 @@ class Manejador(BaseHTTPRequestHandler):
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
                     for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
-                        if not existe(carpeta(q['p']), archivo) and antes in pasos:
+                        viejo = paso_ia == 'etiquetas_ia' and etiquetas_viejas(carpeta(q['p']))  # guion nuevo: etiquetas nuevas
+                        if (not existe(carpeta(q['p']), archivo) or viejo) and antes in pasos:
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
