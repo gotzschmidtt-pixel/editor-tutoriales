@@ -517,6 +517,7 @@ async function agregarTarjetas(files) {
 }
 
 let PROV = {};
+const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
@@ -524,12 +525,14 @@ async function ajustesIA() {
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14;
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
+  // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
+  $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
   dlgAjustes.showModal();
 }
 async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14))})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14))})});
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }

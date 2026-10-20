@@ -310,11 +310,26 @@ def llamar(ajustes, texto, caps):
     cab = {'Content-Type': 'application/json'}
     if ajustes.get('clave'):
         cab['Authorization'] = 'Bearer ' + ajustes['clave']
-    req = urllib.request.Request(url, data=json.dumps(cuerpo).encode(), headers=cab)
-    try:
-        r = json.load(urllib.request.urlopen(req, timeout=600))
-    except urllib.error.HTTPError as e:
-        raise SystemExit(f'La IA respondió con error {e.code}: {e.read()[:500].decode(errors="replace")}')
+    print('Mandando ' + (f'{len(caps)} capturas y ' if ajustes.get('imagenes', True) else 'solo texto (sin capturas) y ') + 'el encargo…', flush=True)
+    for intento in range(3):
+        req = urllib.request.Request(url, data=json.dumps(cuerpo).encode(), headers=cab)
+        try:
+            r = json.load(urllib.request.urlopen(req, timeout=600))
+            break
+        except urllib.error.HTTPError as e:
+            detalle = e.read()[:500].decode(errors='replace')
+            # algunos modelos (GPT-5, varios Qwen-VL) no aceptan temperatura o el modo JSON: se reintenta sin eso
+            if e.code == 400 and 'temperature' in detalle and 'temperature' in cuerpo:
+                del cuerpo['temperature']; continue
+            if e.code == 400 and 'response_format' in detalle and 'response_format' in cuerpo:
+                del cuerpo['response_format']; continue
+            if e.code in (401, 403):
+                raise SystemExit(f'ERROR: la IA rechazó la clave ({e.code}). Revísala en «⚙ Ajustes IA». Detalle: {detalle}')
+            if e.code == 404:
+                raise SystemExit(f'ERROR: la IA no conoce el modelo «{ajustes["modelo"]}» o la dirección está mal. Detalle: {detalle}')
+            raise SystemExit(f'ERROR: la IA respondió con error {e.code}: {detalle}')
+        except urllib.error.URLError as e:
+            raise SystemExit(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.')
     return r['choices'][0]['message']['content']
 
 

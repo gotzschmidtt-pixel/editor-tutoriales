@@ -10,8 +10,9 @@ echo Elige el modelo:
 echo   1 = Gemma 3 12B  (mejor guion, unos 8 GB, para PC con 16 GB de RAM o tarjeta de video)
 echo   2 = Gemma 3 4B   (más liviano, unos 3 GB, para PC sencilla)
 echo   3 = Qwen 2.5 VL 7B (alternativa, unos 6 GB)
-set /p M=Escribe 1, 2 o 3 y Enter: 
-if "%M%"=="2" (set MOD=gemma3:4b) else if "%M%"=="3" (set MOD=qwen2.5vl:7b) else (set MOD=gemma3:12b)
+echo   4 = Qwen 3 VL 8B  (multimodal, ve bien las capturas, unos 6 GB)
+set /p M=Escribe 1, 2, 3 o 4 y Enter: 
+if "%M%"=="2" (set MOD=gemma3:4b) else if "%M%"=="3" (set MOD=qwen2.5vl:7b) else if "%M%"=="4" (set MOD=qwen3-vl:8b) else (set MOD=gemma3:12b)
 echo.
 echo Descargando %MOD% (tarda según tu internet)...
 ollama pull %MOD%

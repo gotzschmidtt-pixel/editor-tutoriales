@@ -43,7 +43,9 @@ Creas un proyecto, subes el video grabado (y si quieres el material extra, la im
 **Hacer todo**, o cada paso por separado. Cada proyecto queda en `mis_proyectos/<nombre>/` y el video terminado es `FINAL.mp4`.
 El guion, las etiquetas, las señales, los insertos y el tráiler se editan en la misma página; el botón *Cargar ejemplo* trae los de la Pico 2.
 
-**Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (OpenAI, DeepSeek, Gemini, Ollama u otro compatible) y pegas tu clave.
+**Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (Claude, OpenAI, DeepSeek, Gemini, Qwen, Ollama u otro compatible) y pegas tu clave.
+Los modelos con visión (GPT-5 y GPT-4.1, Qwen-VL por Alibaba Cloud u OpenRouter, Qwen 3 VL en tu PC con Ollama, Gemma 3,
+Claude) reciben las capturas del video; si escribes a mano un modelo con visión conocido, la casilla «ve imágenes» se marca sola.
 *✨ Escribir con IA* llena el guion, las etiquetas o el tráiler solo. *📋 Prompt para copiar* te da el texto y las capturas para pegar en
 cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te contestó. Escribe antes en «idea» los datos seguros del video.
 
