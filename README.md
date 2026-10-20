@@ -18,6 +18,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
 | `trailer/pistas.py` | Pistas del autor para el tráiler: en cada fase (ANTES, DURANTE, DESPUÉS) le das capturas, audios o texto y la app los convierte en segundos candidatos (busca la captura en el video, transcribe el audio y busca lo que dice) para que la IA elija los tramos cerca de ahí. |
 | `tarjetas/` | Tarjetas de **COMENTARIOS** y **WHATSAPP** encima del video: entran cuando la voz invita a comentar o a escribir (lo busca en los subtítulos), o en el segundo que digas. No cambian la duración. |
+| `alimentacion/` | **ALIMENTACIÓN**: aprende tu estilo de tus videos (links de YouTube o MP4) y de perfiles escritos: ritmo, aperturas, cierres, frases típicas, cortes por minuto y cómo armas el tráiler del inicio. Guarda un perfil por canal en `mis_estilos/` que la IA usa al escribir el guion y el tráiler. |
 | `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
 | `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
@@ -54,6 +55,10 @@ tramos) y capturas repartidas por todo el video más las de los momentos de mayo
 si un tramo vuelve atrás en el video o si lo que narra un bloque se dice en otro momento de tu grabación (`revision_guion.txt`).
 *Generar voz* solo regenera los bloques cuyo texto cambió y, con la duración real de cada voz, alarga en el guion los bloques
 donde no cabía; después vuelve a *Montar video*.
+
+**Alimentación:** en el panel *📚* creas un estilo (por ejemplo, tu canal), pegas links de YouTube o subes MP4 y perfiles
+escritos (.md), y *🧠 Aprender mi estilo* lo analiza (los videos ya analizados no se repiten). Marca «Usar este estilo» para que
+la IA lo siga al escribir el guion y el tráiler. Si YouTube bloquea una descarga, baja el video y súbelo como MP4.
 
 **Tráiler con pistas:** en el panel *🎞️ Tráiler* eliges ANTES, DURANTE o DESPUÉS y agregas pistas: capturas (arrastradas o
 con *📸 Capturar del reproductor* sobre `original.mp4`, que guarda el segundo), audios o notas de voz (*🎙 Grabar*) y texto

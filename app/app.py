@@ -19,12 +19,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
 PY = sys.executable
 # en Windows, sin esto cada paso abre su propia ventana negra cuando la app corre sin consola (Estudio.exe)
 SIN_VENTANA = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
 LATIDO = [time.time()]  # última vez que la página dio señales de vida
 os.makedirs(PROYECTOS, exist_ok=True)
+os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
 EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
@@ -122,6 +124,8 @@ def comandos(paso, d, op):
         if op['modo'] == 'revisar':
             c += ['--entrada', 'ia_respuesta_pegada.txt']
         return [c]
+    if paso == 'alimentar':
+        return [[PY, m('alimentacion', 'alimentacion.py'), '--estilo', carpeta_estilo(op.get('estilo')), '--ajustes', AJUSTES]]
     if paso == 'exportar':
         h = int(op.get('altura', 480))
         if h not in (720, 480, 360):
@@ -148,6 +152,7 @@ PASOS = [
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'trailer']
 
@@ -181,6 +186,39 @@ def carpeta(p):
     if not p:
         raise ValueError('nombre de proyecto vacío')
     return os.path.join(PROYECTOS, p)
+
+
+def carpeta_estilo(nombre):
+    n = re.sub(r'[^\w\- ]', '', nombre or '').strip()
+    if not n:
+        raise ValueError('nombre de estilo vacío')
+    return os.path.join(ESTILOS, n)
+
+
+def fuentes_estilo(e):
+    try:
+        return json.load(open(os.path.join(e, 'fuentes.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+
+
+def guardar_fuentes(e, lista):
+    os.makedirs(e, exist_ok=True)
+    json.dump(lista, open(os.path.join(e, 'fuentes.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+
+
+def estilos():
+    out = []
+    for n in sorted(os.listdir(ESTILOS)):
+        e = os.path.join(ESTILOS, n)
+        if os.path.isdir(e):
+            hechos = {os.path.splitext(x)[0] for x in os.listdir(os.path.join(e, 'analisis'))} if os.path.isdir(os.path.join(e, 'analisis')) else set()
+            fu = fuentes_estilo(e)
+            for f in fu:
+                clave = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', f.get('url', ''))
+                f['analizado'] = f['tipo'] == 'texto' or (clave.group(1) if clave else os.path.splitext(f.get('archivo', ''))[0]) in hechos
+            out.append({'nombre': n, 'fuentes': fu, 'perfil': os.path.exists(os.path.join(e, 'perfil.md'))})
+    return out
 
 
 def registro(d):
@@ -333,6 +371,11 @@ class Manejador(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     datos = {}
                 return self.responder({x: datos.get(x, []) for x in apartados})
+            if ruta == '/api/estilos':
+                return self.responder({'estilos': estilos(), 'activo': leer_ajustes().get('estilo', '')})
+            if ruta == '/api/estilo_perfil':
+                f = os.path.join(carpeta_estilo(q['e']), 'perfil.md')
+                return self.responder(open(f, 'rb').read() if os.path.exists(f) else b'', 'text/plain; charset=utf-8')
             if ruta == '/api/capturas':
                 c = os.path.join(carpeta(q['p']), 'ia_capturas')
                 return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
@@ -473,6 +516,55 @@ class Manejador(BaseHTTPRequestHandler):
                     base = f[:-4] if f.endswith('.txt') else f
                     if f != nombre and base not in usados:
                         os.remove(os.path.join(d, f))
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo':
+                e = carpeta_estilo(json.loads(self.rfile.read(largo))['nombre'])
+                os.makedirs(e, exist_ok=True)
+                return self.responder({'ok': True, 'nombre': os.path.basename(e)})
+            if ruta == '/api/estilo_link':
+                e = carpeta_estilo(q['e'])
+                url = self.rfile.read(largo).decode('utf-8').strip()
+                lista = fuentes_estilo(e)
+                for u in re.findall(r'https?://\S+', url):
+                    if 'youtu' not in u:
+                        return self.error(f'{u} no es un link de YouTube. Los demás videos súbelos como MP4.')
+                    if not any(f.get('url') == u for f in lista):
+                        lista.append({'tipo': 'youtube', 'url': u})
+                guardar_fuentes(e, lista)
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo_subir':
+                e = carpeta_estilo(q['e'])
+                nombre = os.path.basename(q['nombre'])
+                ext = os.path.splitext(nombre)[1].lower()
+                if ext not in ('.mp4', '.mov', '.mkv', '.webm', '.m4v', '.md', '.txt'):
+                    return self.error('Sube videos (mp4, mov, mkv, webm) o un perfil escrito (.md, .txt)')
+                nombre = re.sub(r'[^\w\-. ]', '_', nombre)
+                os.makedirs(os.path.join(e, 'videos'), exist_ok=True)
+                with open(os.path.join(e, 'videos', nombre), 'wb') as fh:
+                    resto = largo
+                    while resto > 0:
+                        trozo = self.rfile.read(min(1 << 20, resto))
+                        if not trozo:
+                            break
+                        fh.write(trozo)
+                        resto -= len(trozo)
+                lista = [f for f in fuentes_estilo(e) if f.get('archivo') != nombre]
+                lista.append({'tipo': 'texto' if ext in ('.md', '.txt') else 'mp4', 'archivo': nombre, 'titulo': nombre})
+                guardar_fuentes(e, lista)
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo_quitar':
+                e = carpeta_estilo(q['e'])
+                lista = fuentes_estilo(e)
+                f = lista.pop(int(q['i']))
+                guardar_fuentes(e, lista)
+                clave = f.get('archivo') or ''
+                m_ = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', f.get('url', ''))
+                base = m_.group(1) if m_ else os.path.splitext(clave)[0]
+                for sub in ('videos', 'analisis'):
+                    c = os.path.join(e, sub)
+                    for x in os.listdir(c) if os.path.isdir(c) else []:
+                        if x == clave or (base and x.startswith(base + '.')):
+                            os.remove(os.path.join(c, x))
                 return self.responder({'ok': True})
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))

@@ -135,7 +135,20 @@ def ejemplo_guion():
                       ensure_ascii=False, indent=1)
 
 
-def encargo(d, tarea, idea, caps, an=None):
+def estilo_activo(ajustes):
+    """(nombre, perfil.md, perfil.json) del estilo elegido en el panel Alimentación, o None."""
+    nombre = (ajustes or {}).get('estilo')
+    e = os.path.join(RAIZ, 'mis_estilos', nombre or '')
+    if not nombre or not os.path.exists(os.path.join(e, 'perfil.md')):
+        return None
+    try:
+        medidas = json.load(open(os.path.join(e, 'perfil.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        medidas = {}
+    return nombre, open(os.path.join(e, 'perfil.md'), encoding='utf-8').read(), medidas
+
+
+def encargo(d, tarea, idea, caps, an=None, estilo=None):
     dur = duracion(os.path.join(d, 'original.mp4'))
     trans = transcripcion(d)
     lista_caps = '\n'.join(f'- Captura {k}: ' + (s if isinstance(s, str) else f'segundo {s:.1f} del video original')
@@ -147,6 +160,9 @@ def encargo(d, tarea, idea, caps, an=None):
     if trans:
         partes.append(f"Transcripción COMPLETA de lo que dice el autor en su grabación, de principio a fin ([minuto:segundo] texto):\n{trans}")
 
+    if estilo and tarea in ('guion', 'trailer'):
+        partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
+                      f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
     if tarea == 'guion':
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
@@ -182,6 +198,10 @@ Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho"
 "clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
 Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el objeto JSON."""]
+        tr = estilo and (estilo[2].get('trailer') or None)
+        if tr:
+            partes.append(f"En los videos de referencia el tráiler inicial dura unos {tr['dura_s']} s, con unas {tr['tomas']:.0f} tomas "
+                          f"de {tr['toma_media_s']} s cada una. Ajusta la cantidad de clips y su «dur» a ese ritmo.")
         if an and pistas.hay(an):
             partes.append(pistas.texto_prompt(an))
     return '\n\n'.join(partes)
@@ -435,7 +455,14 @@ def main():
                 extra = capturas_pistas(d, an)
                 print(f'Usando tus pistas del tráiler ({len(extra)} imágenes más):\n' + pistas.texto_prompt(an), flush=True)
                 caps += extra
-        texto = encargo(d, a.tarea, idea, caps, an)
+        try:
+            aj = json.load(open(a.ajustes, encoding='utf-8'))
+        except (OSError, ValueError):
+            aj = {}
+        estilo = estilo_activo(aj)
+        if estilo and a.tarea in ('guion', 'trailer'):
+            print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
+        texto = encargo(d, a.tarea, idea, caps, an, estilo)
         if a.modo == 'prompt':
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
             open(f, 'w', encoding='utf-8').write(texto)

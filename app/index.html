@@ -75,7 +75,7 @@
   .pista .datos input, .pista .datos select { padding: 6px 9px; font-size: 13px; min-width: 0; }
   .pista button { padding: 6px 10px; }
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
-  #soltarPista, #soltarTarjeta { display: block; margin-top: 4px; }
+  #soltarPista, #soltarTarjeta, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
@@ -88,6 +88,7 @@
   <button id="nuevo">+ Nuevo proyecto</button>
   <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
+  <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
 </header>
@@ -156,6 +157,29 @@
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
       si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
       (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+    </section>
+
+    <section class="panel" id="panelEstilo">
+      <h2>📚 Alimentación · tu estilo</h2>
+      <div class="fila" style="margin-top:0">
+        <select id="estiloSel" style="flex:1"></select>
+        <button onclick="nuevoEstilo()">+ Nuevo estilo</button>
+      </div>
+      <label class="aviso" style="display:block;margin-top:8px"><input type="checkbox" id="estiloUsar"> Usar este estilo cuando la IA escribe el guion y arma el tráiler</label>
+      <div id="listaFuentes" style="margin-top:10px"></div>
+      <div class="fila">
+        <input type="text" id="ytLink" placeholder="Pega uno o varios links de YouTube" style="flex:1; min-width:12em">
+        <button onclick="agregarLink()">+ Link</button>
+      </div>
+      <label class="subida" id="soltarEstilo"><div class="t">➕ Video MP4 o perfil escrito</div>
+        <div class="e">Arrastra aquí tus videos (mp4) o un perfil de estilo (.md, .txt), o haz clic</div><input type="file" multiple accept="video/*,.md,.txt"></label>
+      <div class="fila">
+        <button class="principal" id="btnAlimentar" onclick="alimentar()">🧠 Aprender mi estilo</button>
+        <button onclick="verPerfil()">📄 Ver perfil</button>
+      </div>
+      <p class="aviso">La app baja y transcribe cada video y mide tu ritmo (palabras por minuto, preguntas, cortes), cómo abres y cierras,
+      tus frases típicas y cómo armas el tráiler del inicio. Con tu IA configurada, ella redacta el perfil; si no, queda con las medidas.
+      Los videos ya analizados no se repiten. Sirve para todos tus proyectos.</p>
     </section>
   </div>
 
@@ -265,7 +289,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -384,7 +408,7 @@ async function finIA() {
     try { $('#txtPrompt').value = await api(`/archivo?p=${q(P)}&f=ia_prompt_${tarea}.txt`); } catch (e) { return; }
     const caps = await api(`/api/capturas?p=${q(P)}`);
     $('#caps').innerHTML = caps.map(c => `<a href="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" download><img src="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" title="${c}"></a>`).join('');
-    $('#msgCopia').textContent = ''; dlgPrompt.showModal();
+    $('#msgCopia').textContent = ''; dlgPrompt.querySelector('h3').textContent = 'Prompt para tu IA'; dlgPrompt.showModal();
   } else { editado = false; await abrir(f); }
 }
 async function pegar() {
@@ -519,6 +543,65 @@ async function agregarTarjetas(files) {
   el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTarjetas([...e.dataTransfer.files]); };
 }
 
+let ESTILOS = [], estilo = null;
+async function cargarEstilos(sel) {
+  const r = await api('/api/estilos'); ESTILOS = r.estilos;
+  estilo = sel || estilo || r.activo || (ESTILOS[0] || {}).nombre || null;
+  if (estilo && !ESTILOS.find(e => e.nombre === estilo)) estilo = (ESTILOS[0] || {}).nombre || null;
+  $('#estiloSel').innerHTML = ESTILOS.map(e => `<option ${e.nombre === estilo ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('') || '<option value="">(crea un estilo)</option>';
+  $('#estiloUsar').checked = !!estilo && r.activo === estilo;
+  const e = ESTILOS.find(x => x.nombre === estilo);
+  $('#listaFuentes').innerHTML = !e ? '<p class="aviso">Crea un estilo (por ejemplo, el nombre de tu canal) y agrégale videos.</p>' :
+    e.fuentes.map((f, i) => `<div class="pista"><div class="vista">${f.tipo === 'youtube' ? '▶️' : f.tipo === 'texto' ? '📝' : '🎞️'}</div>
+      <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.titulo || f.url || f.archivo)}
+        <div class="aviso">${f.analizado ? '✓ analizado' : 'sin analizar'}</div></div>
+      <button title="Quitar" onclick="quitarFuente(${i})">✕</button></div>`).join('') || '<p class="aviso">Sin videos todavía.</p>';
+  $('#btnAlimentar').disabled = !e || !e.fuentes.length;
+}
+$('#estiloSel').onchange = () => cargarEstilos($('#estiloSel').value);
+$('#estiloUsar').onchange = async () => {
+  await api('/api/ajustes', {method: 'POST', body: JSON.stringify({estilo: $('#estiloUsar').checked ? estilo : ''})}); cargarEstilos();
+};
+async function nuevoEstilo() {
+  const n = prompt('Nombre del estilo (por ejemplo, el nombre de tu canal):'); if (!n) return;
+  const r = await api('/api/estilo', {method: 'POST', body: JSON.stringify({nombre: n})});
+  if (!(await api('/api/estilos')).activo) await api('/api/ajustes', {method: 'POST', body: JSON.stringify({estilo: r.nombre})});
+  cargarEstilos(r.nombre);
+}
+async function agregarLink() {
+  if (!estilo) return alert('Primero crea un estilo.');
+  const t = $('#ytLink').value.trim(); if (!t) return;
+  try { await api(`/api/estilo_link?e=${q(estilo)}`, {method: 'POST', body: t}); $('#ytLink').value = ''; } catch (e) { alert(e.message); }
+  cargarEstilos();
+}
+async function subirEstilo(files) {
+  if (!estilo) return alert('Primero crea un estilo.');
+  for (const f of files) {
+    $('#soltarEstilo .e').textContent = `Subiendo ${f.name}…`;
+    try { await api(`/api/estilo_subir?e=${q(estilo)}&nombre=${q(f.name)}`, {method: 'POST', body: f}); } catch (e) { alert(e.message); }
+  }
+  $('#soltarEstilo .e').textContent = 'Arrastra aquí tus videos (mp4) o un perfil de estilo (.md, .txt), o haz clic';
+  cargarEstilos();
+}
+async function quitarFuente(i) { await api(`/api/estilo_quitar?e=${q(estilo)}&i=${i}`, {method: 'POST'}); cargarEstilos(); }
+async function alimentar() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=alimentar`, {method: 'POST', body: JSON.stringify({estilo})}); } catch (e) { return alert(e.message); }
+  esperaEstilo = true; refrescar();
+}
+let esperaEstilo = false;
+async function verPerfil() {
+  const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
+  if (!t) return alert('Todavía no hay perfil: agrega videos y pulsa «Aprender mi estilo».');
+  dlgPrompt.querySelector('h3').textContent = `Perfil de estilo: ${estilo}`; $('#txtPrompt').value = t; $('#caps').innerHTML = ''; $('#msgCopia').textContent = ''; dlgPrompt.showModal();
+}
+{
+  const el = $('#soltarEstilo'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && subirEstilo([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && subirEstilo([...e.dataTransfer.files]); };
+}
+
 let PROV = {};
 function irA(s) { $(s).scrollIntoView({behavior: 'smooth', block: 'start'}); }
 const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
@@ -569,6 +652,7 @@ async function refrescar() {
   $('#todo').disabled = !!t.proyecto;
   $('#btnTarjetas').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !(TARJ.COMENTARIOS.length + TARJ.WHATSAPP.length);
   if (esperaIA && !t.proyecto) finIA();
+  if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
 }
 setInterval(refrescar, 2000);
 setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta

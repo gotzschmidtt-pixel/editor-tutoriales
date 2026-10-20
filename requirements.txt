@@ -4,3 +4,5 @@ opencv-python-headless
 faster-whisper
 # Claude como IA creativa (opcional)
 anthropic
+# bajar videos de YouTube para el panel Alimentación
+yt-dlp
