@@ -10,6 +10,7 @@ Uso:
 
 senales.json: [{"bloque": "L08", "frase": "450", "tipo": "circulo", "x": 1440, "y": 712, "r": 80,
                 "dur": 3, "retraso": 0, "seguir": true, "texto": "450 °C", "foco": false}]
+  hueco: en flechas, a cuántos píxeles del centro queda la punta (para no tapar lo señalado).
   x, y: centro en píxeles del video (1920x1080) en el instante en que arranca la señal.
   tipo: circulo | flecha | caja (caja usa "w" y "h"; flecha usa "angulo", de dónde viene).
   retraso: segundos después de la frase (cuando el objeto aparece un poco más tarde).
@@ -100,7 +101,7 @@ def main():
                 n = max(fiables, FPS); pts = pts[:n]
         else:
             pts = [(s['x'], s['y'])] * n
-        props = {k2: s[k2] for k2 in ('tipo', 'r', 'w', 'h', 'color', 'texto', 'foco', 'angulo') if k2 in s}
+        props = {k2: s[k2] for k2 in ('tipo', 'r', 'w', 'h', 'color', 'texto', 'foco', 'angulo', 'hueco') if k2 in s}
         props['puntos'] = pts
         salida = os.path.join(tmp, f's{k:02d}.mov')
         trabajos.append({'id': 'Senal', 'props': props, 'salida': salida, 'alfa': True})

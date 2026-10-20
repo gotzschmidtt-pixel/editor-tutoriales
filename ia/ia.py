@@ -167,6 +167,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
     if tarea == 'guion':
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+        meta = int(objetivo.group(1)) if objetivo else max(1, round(dur * 0.6 / 60))
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
@@ -180,7 +181,9 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
   Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
-{'- Duración total buscada: unos ' + objetivo.group(1) + ' minutos.' if objetivo else f'- Duración total buscada: unos {max(1, round(dur * 0.6 / 60))} minutos, MÁS CORTO que el original ({dur / 60:.0f} min).'}
+- Duración total buscada: unos {meta} minutos{'' if objetivo else f', MÁS CORTO que el original ({dur / 60:.0f} min)'}. Como el video dura
+  lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
+  el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
 Responde SOLO con un objeto JSON {{"bloques": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
@@ -306,6 +309,9 @@ def revisar(d, tarea, datos):
         avisos += verificar_orden(d, bloques)
         if t > dur:
             avisos.append(f"el video queda en {mmss(t)}, más largo que tu grabación ({mmss(dur)}): revisa si sobran bloques")
+        elif t < dur * 0.3:
+            avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(dur)}. Si lo quieres más largo, escribe en tu idea "
+                          f"«que dure unos N minutos» y vuelve a pedir el guion")
         else:
             avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
         return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'bloques': bloques}, avisos
@@ -460,6 +466,118 @@ def tamano(f):
     w, h = r.strip().split(',')[:2]
     return int(w), int(h)
 
+GENERICAS = set('boton botones opcion opciones icono menu el la los las de del en un una al y o a pestana casilla campo texto dato valor tecla '
+                'pantalla seccion ventana interruptor enlace link barra que se con para'.split())
+
+
+def lector_ocr():
+    """Lector de texto de la pantalla (RapidOCR). Se instala solo la primera vez; si no se puede, devuelve None."""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except Exception:
+        print('Instalando el lector de texto de pantalla (solo la primera vez)…', flush=True)
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '-q', 'rapidocr_onnxruntime'],
+                       capture_output=True, timeout=900)
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+        except Exception:
+            print('· no pude instalar el lector de texto; ubico las señales solo con la IA', flush=True)
+            return None
+    try:
+        return RapidOCR()
+    except Exception as e:
+        print(f'· el lector de texto no arrancó ({e}); ubico las señales solo con la IA', flush=True)
+        return None
+
+
+def leer_textos(ocr, imagen):
+    """[(texto normalizado, x0, y0, x1, y1)] en píxeles de la imagen."""
+    try:
+        res, _ = ocr(imagen)
+    except Exception:
+        return []
+    out = []
+    for caja, txt, conf in res or []:
+        if float(conf) < 0.5 or not txt.strip():
+            continue
+        xs, ys = [p[0] for p in caja], [p[1] for p in caja]
+        out.append((txt, min(xs), min(ys), max(xs), max(ys)))
+    return out
+
+
+def compacto(c):
+    return re.sub(r'[^0-9a-zñ]', '', normal(c))
+
+
+def claves(m):
+    """Lo que debería leerse en pantalla: el rótulo y lo nombrado en «que», sin «botón», «opción»… delante.
+    Devuelve [(palabras sin genéricas)], en minúsculas y sin acentos."""
+    vistos, out = set(), []
+    for c in [m.get('texto') or '', m.get('que') or '']:
+        pal = [w for w in re.findall(r'[0-9a-zñ]+', normal(c)) if w not in GENERICAS]
+        if pal and ''.join(pal) not in vistos and len(''.join(pal)) >= 2:
+            vistos.add(''.join(pal)); out.append(pal)
+    return out
+
+
+def buscar_en_pantalla(textos, m, guia=None):
+    """La caja de texto en pantalla que mejor coincide con lo que hay que señalar. Devuelve (x0, y0, x1, y1, puntaje) o None.
+    El lector a veces pega las palabras («Numerodeserie»), por eso se compara sin espacios.
+    guia: (x, y) que dio la IA, para desempatar cuando el mismo texto aparece varias veces."""
+    from difflib import SequenceMatcher
+    mejor_ = None
+    for pal in claves(m):
+        k = ''.join(pal)
+        for txt, x0, y0, x1, y1 in textos:
+            t = compacto(txt)
+            if not t:
+                continue
+            n = len(t)
+            if k == t:
+                p, i, j = 1.0, 0, n
+            elif len(k) >= 3 and k in t:  # es parte de una línea más larga: recorto a la parte que coincide
+                i = t.index(k); p, j = 0.92, i + len(k)
+            else:
+                # todas las palabras en orden dentro de la línea («número serie» en «Número de serie: HN…»)
+                i = j = pos = 0; ok = len(pal) > 1
+                for nw, w in enumerate(pal):
+                    q = t.find(w, pos) if len(w) >= 2 else -1
+                    if q < 0:
+                        ok = False; break
+                    if nw == 0:
+                        i = q
+                    pos = j = q + len(w)
+                if ok:
+                    p = 0.86
+                else:
+                    p, i, j = SequenceMatcher(None, k, t).ratio(), 0, n
+            if p < 0.78:
+                continue
+            a, b = x0 + (x1 - x0) * i / n, x0 + (x1 - x0) * j / n
+            if guia:
+                cx, cy = (a + b) / 2, (y0 + y1) / 2
+                p -= min(0.15, ((cx - guia[0]) ** 2 + (cy - guia[1]) ** 2) ** 0.5 / 4000)
+            if not mejor_ or p > mejor_[4]:
+                mejor_ = (a, y0, b, y1, p)
+    return mejor_
+
+
+def dibujar_marca(f, s, W, salida):
+    """Copia del cuadro con la marca en rojo, para que la IA revise si quedó bien puesta."""
+    import cv2
+    im = cv2.imread(f)
+    if im is None:
+        return False
+    k = im.shape[1] / W
+    x, y = int(s['x'] * k), int(s['y'] * k)
+    if s['tipo'] == 'caja':
+        w, h = int(s['w'] * k / 2), int(s['h'] * k / 2)
+        cv2.rectangle(im, (x - w, y - h), (x + w, y + h), (0, 0, 255), 4)
+    else:
+        cv2.circle(im, (x, y), max(int(s.get('r', 60) * k), 12), (0, 0, 255), 4)
+        cv2.drawMarker(im, (x, y), (0, 0, 255), cv2.MARKER_CROSS, 18, 3)
+    return cv2.imwrite(salida, im)
+
 
 def senales_auto(d, ajustes, video):
     """Flechas y círculos sin escribir nada: 1) la IA elige en el guion qué señalar y con qué frase,
@@ -488,7 +606,7 @@ Responde SOLO con un objeto JSON {{"marcas": [...]}}."""
     out = os.path.join(d, 'ia_capturas')
     os.makedirs(out, exist_ok=True)
     for viejo in os.listdir(out):
-        if viejo.startswith('senal_'):
+        if viejo.startswith('senal_'):  # también las copias _revision
             os.remove(os.path.join(out, viejo))
     validas, caps = [], []
     for m in marcas:
@@ -519,32 +637,131 @@ Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 4
     open(os.path.join(d, 'ia_respuesta_senales_2.txt'), 'w', encoding='utf-8').write(r2)
     pos = extraer_json(r2)
     pos = {int(p.get('imagen', 0)): p for p in (pos.get('posiciones', []) if isinstance(pos, dict) else pos)}
-    senales = []
+    ocr = lector_ocr()
+    senales, dudosas = [], []
     for k, m in enumerate(validas, 1):
         p = pos.get(k) or {}
         try:
             x, y = float(p['x']), float(p['y'])
         except (KeyError, TypeError, ValueError):
+            x = y = None
+        tam_w, tam_h = (float(p.get('w') or 8) * W / 100, float(p.get('h') or 8) * H / 100)
+        exacta = False
+        if ocr:  # si lo que hay que señalar es un texto en pantalla, va justo encima de ese texto
+            f = caps[k - 1][1]
+            textos = leer_textos(ocr, f)
+            esc = W / 1024
+            guia = (x * 1024 / 100, y * 1024 * H / W / 100) if x is not None else None
+            hit = buscar_en_pantalla(textos, m, guia)
+            if hit:
+                a, b, c, e, _ = hit
+                x, y = (a + c) / 2 * esc * 100 / W, (b + e) / 2 * esc * 100 / H
+                tam_w, tam_h = (c - a) * esc + 24, (e - b) * esc + 16
+                exacta = True
+        if x is None:
             print(f"· salto «{m.get('que')}»: la IA no lo vio en el cuadro", flush=True)
             continue
         if not (2 <= x <= 98 and 2 <= y <= 98):
             continue
         tipo = m.get('tipo') if m.get('tipo') in ('circulo', 'flecha', 'caja') else 'circulo'
+        if exacta and tipo == 'circulo' and tam_w > 4.5 * tam_h:  # texto largo: queda mejor una caja que un círculo enorme
+            tipo = 'caja'
         s = {'bloque': m['bloque'], 'frase': m['frase'], 'tipo': tipo, 'x': round(x * W / 100), 'y': round(y * H / 100), 'dur': 3}
-        tam_w, tam_h = (float(p.get('w') or 8) * W / 100, float(p.get('h') or 8) * H / 100)
         if tipo == 'caja':
-            s['w'], s['h'] = round(min(max(tam_w * 1.2, 120), W * 0.6)), round(min(max(tam_h * 1.3, 60), H * 0.4))
+            s['w'], s['h'] = round(min(max(tam_w * 1.15, 120), W * 0.6)), round(min(max(tam_h * 1.3, 60), H * 0.4))
+            s['foco'] = True
         else:
-            s['r'] = round(min(max(max(tam_w, tam_h) * 0.7, H * 0.045), H * 0.16))
+            s['r'] = round(min(max(max(tam_w, tam_h) * (0.62 if exacta else 0.7), H * 0.045), H * 0.16))
+            s['foco'] = tipo == 'circulo'
         if tipo == 'flecha':
-            s['angulo'] = -145 if x > 50 else -35  # viene desde el lado con más espacio (0 = desde la derecha)
+            apuntar(s, tam_w, tam_h, W, H)
         if (m.get('texto') or '').strip():
             s['texto'] = m['texto'].strip()[:28]
         senales.append(s)
-        print(f"{m['bloque']}  {tipo:8s} «{m['frase']}» → {m.get('que')} ({x:.0f}%, {y:.0f}%)", flush=True)
+        if not exacta:
+            dudosas.append((len(senales) - 1, k, m))
+        print(f"{m['bloque']}  {tipo:8s} «{m['frase']}» → {m.get('que')} ({x:.0f}%, {y:.0f}%)"
+              + ('  ✓ leído en pantalla' if exacta else ''), flush=True)
+    if dudosas and ajustes.get('revisar_senales', True):
+        senales = revisar_senales(d, ajustes, senales, dudosas, caps, W, H)
     if not senales:
         raise SystemExit('ERROR: la IA no ubicó ninguna señal en los cuadros.')
     return senales
+
+
+def angulo_libre(x, y):
+    """La flecha llega desde el lado con más espacio libre (en grados, 0 = desde la derecha)."""
+    dx = -1 if x > 50 else 1
+    dy = 1 if y < 35 else (-1 if y > 65 else -0.6)
+    import math
+    return round(math.degrees(math.atan2(dy, dx)))
+
+
+def apuntar(s, tw, th, W, H):
+    """Flecha de largo fijo que llega desde el lado libre y se detiene en el borde de lo señalado, sin taparlo."""
+    import math
+    s['angulo'] = angulo_libre(s["x"] * 100 / W, s['y'] * 100 / H)
+    a = math.radians(s['angulo'])
+    c, n = abs(math.cos(a)) or 1e-6, abs(math.sin(a)) or 1e-6
+    s['hueco'] = round(min(tw / 2 / c, th / 2 / n) + 10)
+    s['r'] = round(H * 0.085)
+    s.pop('foco', None)
+
+
+def revisar_senales(d, ajustes, senales, dudosas, caps, W, H):
+    """Segunda mirada: dibujo cada marca dudosa en su cuadro y la IA dice si quedó bien, la corrige o la quita."""
+    imgs, lista = [], []
+    for n, (i, k, m) in enumerate(dudosas, 1):
+        f = caps[k - 1][1].replace('.jpg', '_revision.jpg')
+        if dibujar_marca(caps[k - 1][1], senales[i], W, f):
+            imgs.append((f"imagen {n}: {m.get('que')}", f)); lista.append((n, i, m))
+    if not imgs:
+        return senales
+    texto = '\n'.join(f'- Imagen {n}: debería marcar {m.get("que")}' for n, i, m in lista)
+    pedido = f"""En cada imagen dibujé una marca ROJA (círculo con una cruz en el centro, o un rectángulo):
+{texto}
+
+Mira si la marca está encima de eso. Para cada imagen responde una de tres:
+- {{"imagen": 1, "ok": true}} si está bien puesta,
+- {{"imagen": 2, "x": 61, "y": 33, "w": 10, "h": 5}} con el centro y tamaño correctos en porcentaje de la imagen, si está corrida,
+- {{"imagen": 3, "quitar": true}} si eso no se ve en la imagen.
+Responde SOLO con un objeto JSON {{"revision": [...]}}."""
+    print(f'Revisando {len(imgs)} señales dibujadas en sus cuadros…', flush=True)
+    try:
+        r = llamar(ajustes, pedido, imgs)
+    except SystemExit as e:
+        print(f'· no pude revisar las señales ({e}); las dejo como están', flush=True)
+        return senales
+    open(os.path.join(d, 'ia_respuesta_senales_3.txt'), 'w', encoding='utf-8').write(r)
+    try:
+        rv = extraer_json(r)
+    except Exception:
+        return senales
+    rv = {int(x.get('imagen', 0)): x for x in (rv.get('revision', []) if isinstance(rv, dict) else rv) if isinstance(x, dict)}
+    quitar = set()
+    for n, i, m in lista:
+        x = rv.get(n) or {}
+        s = senales[i]
+        if x.get('quitar'):
+            quitar.add(i); print(f"· quito «{m.get('que')}»: en la revisión no se ve", flush=True)
+            continue
+        try:
+            nx, ny = float(x['x']), float(x['y'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (2 <= nx <= 98 and 2 <= ny <= 98):
+            continue
+        s['x'], s['y'] = round(nx * W / 100), round(ny * H / 100)
+        tw, th = float(x.get('w') or 0) * W / 100, float(x.get('h') or 0) * H / 100
+        if tw and th:
+            if s['tipo'] == 'caja':
+                s['w'], s['h'] = round(min(max(tw * 1.15, 120), W * 0.6)), round(min(max(th * 1.3, 60), H * 0.4))
+            else:
+                s['r'] = round(min(max(max(tw, th) * 0.7, H * 0.045), H * 0.16))
+        if s['tipo'] == 'flecha':
+            apuntar(s, tw or 60, th or 40, W, H)
+        print(f"· corregí «{m.get('que')}» → ({nx:.0f}%, {ny:.0f}%)", flush=True)
+    return [s for i, s in enumerate(senales) if i not in quitar]
 
 
 def main():
