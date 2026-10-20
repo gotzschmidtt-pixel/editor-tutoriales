@@ -269,7 +269,7 @@
         corrige o mejora lo que dice la voz y vuelve a importarlo. Solo cambia el texto bajo cada <code>### L01…</code>; para quitar un bloque,
         borra su encabezado y su texto. Al importar, la app lo revisa (duración, orden) y guarda el anterior como .anterior.</p>
         <div class="fila" style="margin-top:0">
-          <button class="principal" onclick="window.open('/guion?p=' + q(P), '_blank')">✏️ Abrir editor de guion</button>
+          <button class="principal" onclick="abrirEditorGuion()">✏️ Abrir editor de guion</button>
           <button onclick="bajarGuion('txt')">⬇ Descargar como texto</button>
           <button onclick="bajarGuion('json')">⬇ Descargar JSON</button>
           <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="importarGuion(this)">⬆ Importar guion editado</label>
@@ -322,6 +322,11 @@
 <dialog id="dlgGuion">
   <h3>📝 Tu guion</h3>
   <p class="aviso">Lee lo que va a decir la voz en cada bloque y cambia lo que quieras. Al seguir, la voz se genera con este texto.</p>
+  <div class="fila" style="margin-top:0">
+    <button onclick="abrirEditorGuion()" title="Bloque por bloque con su imagen, y con un botón para mejorarlo con ChatGPT u otra IA">✏️ Abrir editor completo (con imágenes y ChatGPT)</button>
+    <button onclick="bajarGuion('txt')">⬇ Descargar</button>
+    <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="dlgGuion.close(); importarGuion(this)">⬆ Importar editado</label>
+  </div>
   <div id="mejorasGuion"></div>
   <div id="bloquesGuion"></div>
   <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
@@ -557,6 +562,16 @@ async function importarGuion(inp) {
     esperaIA = {tarea: 'guion', modo: 'revisar', archivo: 'guion.json'}; editado = false;
   } catch (e) { alert(e.message); }
 }
+
+let editorAbierto = false;
+function abrirEditorGuion() { editorAbierto = true; window.open('/guion?p=' + q(P), '_blank'); }
+// al volver del editor, la ventana de revisión y la pestaña guion muestran lo que guardaste allá
+window.addEventListener('focus', async () => {
+  if (!editorAbierto) return;
+  editorAbierto = false;
+  if (dlgGuion.open) verGuion();
+  if (archivo === 'guion.json' && !editado) abrir('guion.json');
+});
 
 let REFS = [];
 async function cargarRefs() {
