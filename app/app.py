@@ -236,6 +236,8 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
+                    '7_tarjetas.mp4', 'trailer.mp4', 'FINAL.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 
@@ -312,8 +314,7 @@ def correr(proyecto, pasos, opciones):
         asegurar_librerias(log, env)
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
-            for viejo in ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                          '7_tarjetas.mp4', 'trailer.mp4', 'FINAL.mp4']:
+            for viejo in VIDEOS_GENERADOS:
                 if existe(d, viejo):
                     os.remove(os.path.join(d, viejo))
         for k, paso in enumerate(pasos):
@@ -722,6 +723,19 @@ class Manejador(BaseHTTPRequestHandler):
                         TRABAJO['detenido'] = True
                         TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
+            if ruta == '/api/actualizar':  # «Actualizar»: quita videos y fallas viejas; voces, guion y transcripción quedan
+                d = carpeta(q['p'])
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                quitados = []
+                for f in os.listdir(d):
+                    if f in VIDEOS_GENERADOS or f.endswith(('.parcial', '.etiquetas_tiempos.json')):
+                        os.remove(os.path.join(d, f)); quitados.append(f)
+                if existe(d, 'registro.txt'):  # el registro viejo queda aparte, para no confundir con fallas pasadas
+                    os.replace(os.path.join(d, 'registro.txt'), os.path.join(d, 'registro_anterior.txt'))
+                FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
+                return self.responder({'ok': True, 'quitados': quitados})
             if ruta == '/api/empezar_de_nuevo':  # «Borrar todo»: quita lo generado y deja lo que subiste
                 d = carpeta(q['p'])
                 with CANDADO:
