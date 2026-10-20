@@ -68,6 +68,10 @@ def largo_bloque(mo):
     return lento + (mo.get('congelar_s') or 0)
 
 
+RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
+VEL_MAX = 6.0  # lo más que se acelera un tramo para acortarlo
+
+
 def ajustar_guion(guion, carpeta):
     """Pone en cada bloque la duración real de su voz y lo alarga si no cabe. Devuelve los avisos."""
     g = json.load(open(guion, encoding='utf-8'))
@@ -83,6 +87,21 @@ def ajustar_guion(guion, carpeta):
                 mo['modo'] = 'lento+congelar'
             mo['congelar_s'] = round((mo.get('congelar_s') or 0) + falta, 2)
             avisos.append(f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s con una pausa")
+        sobra = round(largo_bloque(mo) - (real + DESFASE + MARGEN + RELLENO), 2)
+        if sobra > 0.5:  # imagen sin voz de más: primero se quita pausa y luego se acelera el tramo
+            antes_b = largo_bloque(mo)
+            if mo.get('congelar_s'):
+                minimo = 0 if mo['modo'].startswith('lento') else real + DESFASE + MARGEN
+                mo['congelar_s'] = round(max(minimo, mo['congelar_s'] - sobra), 2)
+                if mo['modo'] == 'lento+congelar' and mo['congelar_s'] < 0.3:
+                    mo['modo'], mo['congelar_s'] = 'lento', None
+            resto = largo_bloque(mo) - (real + DESFASE + MARGEN + RELLENO)
+            if resto > 0.5 and mo['modo'].startswith('lento'):
+                tramo = mo['src_fin'] - mo['src_inicio']
+                quiere = max(0.5, tramo / (mo.get('velocidad') or 1) - resto)
+                mo['velocidad'] = round(min(VEL_MAX, tramo / quiere), 2)
+            if largo_bloque(mo) < antes_b - 0.3:
+                avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
         largo = largo_bloque(mo)
         b['inicio_min'], b['fin_max'] = round(t, 2), round(t + largo, 2)
         t += largo

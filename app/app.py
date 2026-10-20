@@ -119,6 +119,11 @@ def comandos(paso, d, op):
     if paso == 'trailer':
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+    if paso == 'etiquetas_ia':
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'etiquetas', '--modo', 'api', '--ajustes', AJUSTES]]
+    if paso == 'senales_ia':
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'senales', '--modo', 'api', '--ajustes', AJUSTES,
+                 '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'ia':
@@ -154,6 +159,8 @@ PASOS = [
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
+    {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
+    {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
@@ -268,7 +275,7 @@ def correr(proyecto, pasos, opciones):
     nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
     saltados, hechos = [], []
     with CANDADO:
-        TRABAJO.update(plan=nombres, i=0, inicio_total=time.time())
+        TRABAJO.update(plan=nombres, i=0, inicio_total=time.time(), detenido=False)
     RESULTADO.pop(proyecto, None)
     try:
         FALLOS.pop(proyecto, None)
@@ -297,14 +304,23 @@ def correr(proyecto, pasos, opciones):
                 TRABAJO.update(paso=paso, inicio=time.time())
             FALLOS.pop(proyecto, None)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
+            blando = False
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
                     TRABAJO['proc'] = proc
-                if proc.wait() != 0:
+                if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
+                    # un extra de la IA que no salió no frena el video: se sigue sin eso
+                    log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
+                    blando = True
+                    break
+                if proc.returncode != 0:
                     log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
                     return
+            if blando:
+                saltados.append(info['nombre'])
+                continue
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
             hechos.append(info['nombre'])
     except Exception as e:
@@ -539,6 +555,12 @@ class Manejador(BaseHTTPRequestHandler):
                 pasos = [q['paso']]
                 if q['paso'] == 'todo':
                     pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                aj = leer_ajustes()
+                if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
+                    # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
+                    for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
+                        if not existe(carpeta(q['p']), archivo) and antes in pasos:
+                            pasos.insert(pasos.index(antes), paso_ia)
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):
@@ -659,6 +681,7 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/detener':
                 with CANDADO:
                     if TRABAJO['proc']:
+                        TRABAJO['detenido'] = True
                         TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
             if ruta == '/api/borrar':

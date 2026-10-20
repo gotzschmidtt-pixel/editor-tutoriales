@@ -21,7 +21,9 @@ from nitidez import analizar, mejor, repartidos  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
 
-ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json'}
+ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
+VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
+RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 PALABRAS_POR_S = 2.6
 
 ESTILO = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
@@ -169,13 +171,16 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
 - "texto": lo que dice la voz en off. Unas {PALABRAS_POR_S} palabras por segundo de bloque.
-- "montaje": de qué tramo del video ORIGINAL sale la imagen y cómo se estira:
-    {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.4 a 1.0}}  (velocidad < 1 = cámara lenta)
+- "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
+    {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.6 a {VEL_MAX:.0f}}}  (1 = normal; MÁS de 1 = acelerado, para esperas, cargas,
+      instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien)
     {{"modo": "congelar", "src_inicio": s, "congelar_s": s}}  (pausa en un cuadro; úsalo cuando se explica algo que se ve quieto)
     {{"modo": "lento+congelar", "src_inicio": s, "src_fin": s, "velocidad": v, "congelar_s": s}}
     {{"modo": "imagen", "congelar_s": s}}  (muestra la imagen del proyecto, por ejemplo un mapa)
-  Los tramos van en orden, dentro de 0 a {dur:.0f} s, y cubren las partes importantes del video.
-{'- Duración total buscada: unos ' + objetivo.group(1) + ' minutos.' if objetivo else '- Duración total: la que necesite el video para entenderse bien, sin relleno.'}
+  Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
+- REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
+  acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
+{'- Duración total buscada: unos ' + objetivo.group(1) + ' minutos.' if objetivo else f'- Duración total buscada: unos {max(1, round(dur * 0.6 / 60))} minutos, MÁS CORTO que el original ({dur / 60:.0f} min).'}
 Responde SOLO con un objeto JSON {{"bloques": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
@@ -264,12 +269,30 @@ def revisar(d, tarea, datos):
                 if mo.get(c) is not None:
                     mo[c] = round(min(max(float(mo[c]), 0), dur - 0.1), 2)
             if mo['modo'].startswith('lento'):
-                mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.25), 1.0)
+                mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.5), VEL_MAX)
                 if mo['src_fin'] <= mo['src_inicio']:
                     mo['src_fin'] = min(dur - 0.1, mo['src_inicio'] + 3); avisos.append(f"{b['id']}: tramo vacío, lo alargué a 3 s")
             mo.setdefault('congelar_s', None)
-            largo = ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
             voz = round(len(b['texto'].split()) / PALABRAS_POR_S + 1.0, 1)
+            # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
+            if mo['modo'].startswith('lento'):
+                tramo = mo['src_fin'] - mo['src_inicio']
+                if tramo / mo['velocidad'] > voz + RELLENO:
+                    v = round(min(VEL_MAX, tramo / (voz + 0.5)), 2)
+                    if v > mo['velocidad']:
+                        avisos.append(f"{b['id']}: aceleré el tramo a ×{v:g} para que no quede imagen sin voz "
+                                      f"({tramo / mo['velocidad']:.0f} s → {tramo / v:.0f} s)")
+                        mo['velocidad'] = v
+                sobra = tramo / mo['velocidad'] + (mo['congelar_s'] or 0) - (voz + RELLENO)
+                if mo['congelar_s'] and sobra > 0:
+                    mo['congelar_s'] = round(max(0, mo['congelar_s'] - sobra), 1)
+                    if mo['congelar_s'] < 0.5:
+                        mo['modo'], mo['congelar_s'] = 'lento', None
+                    avisos.append(f"{b['id']}: quité {sobra:.1f} s de pausa que quedaba sin voz")
+            elif mo.get('congelar_s') and mo['congelar_s'] > voz + RELLENO:
+                avisos.append(f"{b['id']}: acorté la pausa de {mo['congelar_s']:g} s a {voz + 0.5:g} s (lo que dura la voz)")
+                mo['congelar_s'] = round(voz + 0.5, 1)
+            largo = ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
             if voz > largo:  # la voz no cabe: se agrega una pausa congelada al final (no tapa nada)
                 extra = round(voz - largo + 0.5, 1)
                 if mo['modo'] == 'lento':
@@ -281,6 +304,10 @@ def revisar(d, tarea, datos):
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
         avisos += verificar_orden(d, bloques)
+        if t > dur:
+            avisos.append(f"el video queda en {mmss(t)}, más largo que tu grabación ({mmss(dur)}): revisa si sobran bloques")
+        else:
+            avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
         return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'bloques': bloques}, avisos
     if tarea == 'etiquetas':
         lista = datos['etiquetas'] if isinstance(datos, dict) else datos
@@ -427,6 +454,99 @@ def llamar(ajustes, texto, caps):
     return r['choices'][0]['message']['content']
 
 
+def tamano(f):
+    r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+                        '-of', 'csv=p=0', f], capture_output=True, text=True, check=True).stdout
+    w, h = r.strip().split(',')[:2]
+    return int(w), int(h)
+
+
+def senales_auto(d, ajustes, video):
+    """Flechas y círculos sin escribir nada: 1) la IA elige en el guion qué señalar y con qué frase,
+    2) se saca el cuadro del video justo cuando la voz dice esa frase, 3) la IA ubica la cosa en cada cuadro."""
+    sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
+    from etiquetas import buscar
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    textos = '\n'.join(f"{b['id']} (en pantalla: {b.get('ancla', '')}): {b['texto']}" for b in g['bloques'])
+    pedido = f"""Este es el guion de un video tutorial (voz en off sobre lo que se ve en pantalla):
+{textos}
+
+Elige los momentos donde una flecha o un círculo ayuda a seguir el paso: el botón u opción que hay que tocar,
+el dato importante en la pantalla del celular o la PC, la pieza o conector. Máximo uno por bloque y entre 4 y 12 en total.
+Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la marca aparece cuando la
+voz las dice), "que" (qué hay que señalar, tal como se vería en pantalla, ej. «botón Aceptar», «opción Restablecer»),
+"tipo" (circulo para botones y opciones, flecha para algo pequeño, caja para un texto o dato largo) y "texto"
+(rótulo opcional de 1 a 3 palabras, o vacío).
+Responde SOLO con un objeto JSON {{"marcas": [...]}}."""
+    print(f'Eligiendo qué señalar con {ajustes["modelo"]}…', flush=True)
+    r1 = llamar(ajustes, pedido, [])
+    open(os.path.join(d, 'ia_respuesta_senales_1.txt'), 'w', encoding='utf-8').write(r1)
+    marcas = extraer_json(r1)
+    marcas = marcas.get('marcas', []) if isinstance(marcas, dict) else marcas
+    inicio = {b['id']: b['inicio_min'] for b in g['bloques']}
+    W, H = tamano(video)
+    out = os.path.join(d, 'ia_capturas')
+    os.makedirs(out, exist_ok=True)
+    for viejo in os.listdir(out):
+        if viejo.startswith('senal_'):
+            os.remove(os.path.join(out, viejo))
+    validas, caps = [], []
+    for m in marcas:
+        al_f = os.path.join(d, 'voz', f"{m.get('bloque')}.align.json")
+        if m.get('bloque') not in inicio or not os.path.exists(al_f):
+            continue
+        t = buscar(json.load(open(al_f, encoding='utf-8')), m.get('frase', ''))
+        if t is None:
+            print(f"· salto «{m.get('frase')}»: no está tal cual en {m.get('bloque')}", flush=True)
+            continue
+        t = inicio[m['bloque']] + 0.3 + t
+        f = os.path.join(out, f'senal_{len(validas) + 1:02d}.jpg')
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{t:.2f}', '-i', video, '-frames:v', '1',
+                        '-vf', 'scale=1024:-2', '-q:v', '3', f], check=True)
+        validas.append(m)
+        caps.append((f"imagen {len(validas)}: {m.get('que')}", f))
+    if not validas:
+        raise SystemExit('ERROR: la IA no eligió ninguna frase que esté tal cual en el guion; no hay flechas que poner.')
+    lista = '\n'.join(f'- Imagen {k}: {m.get("que")}' for k, m in enumerate(validas, 1))
+    pedido2 = f"""Te mando {len(validas)} imágenes de un video, en orden. En cada una busca lo que se indica:
+{lista}
+
+Para cada imagen da dónde está su CENTRO, en porcentaje del ancho (x, 0 = borde izquierdo, 100 = derecho) y del alto
+(y, 0 = arriba, 100 = abajo), y su tamaño aproximado en porcentaje (w, h). Si no se ve claramente, pon "x": null.
+Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 40, "w": 12, "h": 6}}, ...]}}."""
+    print(f'Ubicando {len(validas)} señales en sus cuadros…', flush=True)
+    r2 = llamar(ajustes, pedido2, caps)
+    open(os.path.join(d, 'ia_respuesta_senales_2.txt'), 'w', encoding='utf-8').write(r2)
+    pos = extraer_json(r2)
+    pos = {int(p.get('imagen', 0)): p for p in (pos.get('posiciones', []) if isinstance(pos, dict) else pos)}
+    senales = []
+    for k, m in enumerate(validas, 1):
+        p = pos.get(k) or {}
+        try:
+            x, y = float(p['x']), float(p['y'])
+        except (KeyError, TypeError, ValueError):
+            print(f"· salto «{m.get('que')}»: la IA no lo vio en el cuadro", flush=True)
+            continue
+        if not (2 <= x <= 98 and 2 <= y <= 98):
+            continue
+        tipo = m.get('tipo') if m.get('tipo') in ('circulo', 'flecha', 'caja') else 'circulo'
+        s = {'bloque': m['bloque'], 'frase': m['frase'], 'tipo': tipo, 'x': round(x * W / 100), 'y': round(y * H / 100), 'dur': 3}
+        tam_w, tam_h = (float(p.get('w') or 8) * W / 100, float(p.get('h') or 8) * H / 100)
+        if tipo == 'caja':
+            s['w'], s['h'] = round(min(max(tam_w * 1.2, 120), W * 0.6)), round(min(max(tam_h * 1.3, 60), H * 0.4))
+        else:
+            s['r'] = round(min(max(max(tam_w, tam_h) * 0.7, H * 0.045), H * 0.16))
+        if tipo == 'flecha':
+            s['angulo'] = -145 if x > 50 else -35  # viene desde el lado con más espacio (0 = desde la derecha)
+        if (m.get('texto') or '').strip():
+            s['texto'] = m['texto'].strip()[:28]
+        senales.append(s)
+        print(f"{m['bloque']}  {tipo:8s} «{m['frase']}» → {m.get('que')} ({x:.0f}%, {y:.0f}%)", flush=True)
+    if not senales:
+        raise SystemExit('ERROR: la IA no ubicó ninguna señal en los cuadros.')
+    return senales
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', required=True)
@@ -434,12 +554,22 @@ def main():
     ap.add_argument('--modo', default='prompt', choices=['prompt', 'api', 'revisar'])
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--idea', default='')
+    ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
     d = a.proyecto
     idea = a.idea or (open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else '')
     destino = os.path.join(d, ARCHIVO[a.tarea])
 
+    if a.tarea == 'senales':  # va por su cuenta: dos pedidos y cuadros del video ya montado
+        if a.modo != 'api':
+            raise SystemExit('ERROR: las flechas automáticas necesitan una IA con visión configurada (⚙ Ajustes IA).')
+        datos = senales_auto(d, json.load(open(a.ajustes, encoding='utf-8')), a.video or os.path.join(d, '3_voz.mp4'))
+        if os.path.exists(destino):
+            os.replace(destino, destino + '.anterior')
+        json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        print(f'Guardado senales.json con {len(datos)} señales')
+        return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
     else:
