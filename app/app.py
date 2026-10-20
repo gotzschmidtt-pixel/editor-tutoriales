@@ -10,6 +10,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
   etiquetas.json  senales.json  insertos.json  trailer.json   (opcionales)
   pistas_trailer/     pistas del tráiler por fase (capturas, audios, texto) + pistas.json
   tarjetas/           imágenes de COMENTARIOS y WHATSAPP para poner encima del video + tarjetas.json
+  testimonios/        videos de clientes reales que se intercalan en el tutorial + testimonios.json
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
@@ -32,10 +33,12 @@ SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'mat
 EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+VIDEOS = {'.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'}
 # grupos de archivos que se arman desde la app: carpeta, json, apartados y qué se puede subir
 GRUPOS = {
     'pistas': ('pistas_trailer', 'pistas.json', ['ANTES', 'DURANTE', 'DESPUES'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
     'tarjetas': ('tarjetas', 'tarjetas.json', ['COMENTARIOS', 'WHATSAPP'], IMAGENES),
+    'testimonios': ('testimonios', 'testimonios.json', ['TESTIMONIOS'], VIDEOS),
     'marcas': ('marcas_senales', 'marcas.json', ['MARCAS'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
 }
 PROVEEDORES = {
@@ -145,7 +148,7 @@ def marcas_nuevas(d):
 
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
-    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4']
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4']
     previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
     for f in reversed(previos):
         if existe(d, f):
@@ -188,9 +191,14 @@ def comandos(paso, d, op):
     if paso == 'tarjetas':
         return [[PY, m('tarjetas', 'tarjetas.py'), '--video', ultimo_video(d, '7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
                  '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4']]
+    if paso == 'testimonios':
+        return [[PY, m('testimonios', 'testimonios.py'), '--video', ultimo_video(d, '8_testimonios.mp4'),
+                 '--testimonios', os.path.join('testimonios', 'testimonios.json'), '--srt', '3_voz.srt', '--salida', '8_testimonios.mp4']]
     if paso == 'trailer':
+        unir = ultimo_video(d, None)  # los testimonios corren los subtítulos: se usan los suyos
+        srt = '8_testimonios.srt' if unir == '8_testimonios.mp4' and existe(d, '8_testimonios.srt') else '3_voz.srt'
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
-                 '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
     if paso == 'etiquetas_ia':
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'etiquetas', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'senales_ia':
@@ -228,6 +236,7 @@ PASOS = [
     {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True, 'blando': True},
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True, 'blando': True},
     {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True, 'blando': True},
+    {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
@@ -237,7 +246,7 @@ PASOS = [
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'trailer']
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'trailer']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
@@ -310,7 +319,7 @@ def registro(d):
 
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                    '7_tarjetas.mp4', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 
@@ -748,6 +757,8 @@ class Manejador(BaseHTTPRequestHandler):
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
                 ext = os.path.splitext(q.get('nombre', ''))[1].lower()
                 if ext not in extensiones:
+                    if extensiones == VIDEOS:
+                        return self.error('Solo videos (mp4, mov, mkv, webm, avi)')
                     return self.error('Solo imágenes (jpg, png, webp)' + (' o audios (mp3, wav, m4a, ogg, webm)' if ext not in IMAGENES and len(extensiones) > len(IMAGENES) else ''))
                 d = os.path.join(carpeta(q['p']), sub)
                 os.makedirs(d, exist_ok=True)

@@ -70,13 +70,14 @@
   .caps img { height: 64px; border-radius: 6px; border: 1px solid var(--borde); }
   .pista { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; }
   .pista .vista { width: 112px; flex: none; text-align: center; font-size: 26px; }
-  .pista .vista img { width: 112px; border-radius: 8px; display: block; }
+  .pista .vista img, .pista .vista video { width: 112px; border-radius: 8px; display: block; }
+  .pista .vista video { height: 63px; object-fit: cover; background: #000; cursor: pointer; }
   .pista .vista audio { width: 112px; }
   .pista .datos { flex: 1; min-width: 0; display: grid; grid-template-columns: 7em 1fr; gap: 6px; }
   .pista .datos input, .pista .datos select { padding: 6px 9px; font-size: 13px; min-width: 0; }
   .pista button { padding: 6px 10px; }
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
-  #soltarPista, #soltarTarjeta, #soltarEstilo { display: block; margin-top: 4px; }
+  #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
   #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
@@ -116,6 +117,7 @@
   <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
+  <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
@@ -214,6 +216,22 @@
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
       si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
       (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+    </section>
+
+    <section class="panel" id="panelTestimonios">
+      <h2>🎥 Testimonios de clientes</h2>
+      <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte con su propio sonido:
+      el tutorial se pausa, se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase.</p>
+      <div id="listaTestimonios"></div>
+      <label class="subida" id="soltarTestimonio"><div class="t">➕ Video de testimonio</div>
+        <div class="e">Arrastra aquí tus videos (mp4, mov, webm…), o haz clic</div><input type="file" multiple accept="video/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnTestimonios" onclick="ejecutar('testimonios')">▶ Poner testimonios en el video</button>
+      </div>
+      <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
+      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. También puedes escribir un segundo (4:30)
+      o «inicio», «mitad», «final». «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
+      testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
     </section>
 
     <section class="panel" id="panelEstilo">
@@ -378,7 +396,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -393,7 +411,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -479,10 +497,10 @@ function ver(f, seguir) {
 }
 // mientras «Hacer todo» trabaja, el reproductor va mostrando la etapa más avanzada que ya existe
 const AVANCE = ['montaje_en_curso.mp4', '1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4',
-                '6_senales.mp4', '7_tarjetas.mp4', 'FINAL.mp4'];
+                '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', 'FINAL.mp4'];
 const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1_montaje.mp4': 'el montaje (sin voz)', '2_insertos.mp4': 'con cortes y zooms',
   '3_voz.mp4': 'con voz y subtítulos', '4_musica.mp4': 'con música', '5_etiquetas.mp4': 'con etiquetas', '6_senales.mp4': 'con flechas',
-  '7_tarjetas.mp4': 'con tarjetas', 'FINAL.mp4': 'el video final'};
+  '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', 'FINAL.mp4': 'el video final'};
 let viendo = null, avanceVisto = '';
 function masAvanzado(arch) {
   let mejor = null;
@@ -854,6 +872,40 @@ async function agregarTarjetas(files) {
   el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTarjetas([...e.dataTransfer.files]); };
 }
 
+let TESTI = {TESTIMONIOS: []};
+async function cargarTestimonios() { TESTI = await api(`/api/pistas?g=testimonios&p=${q(P)}`); pintarTestimonios(); }
+async function guardarTestimonios() {
+  try { await api(`/api/pistas?g=testimonios&p=${q(P)}`, {method: 'POST', body: JSON.stringify(TESTI)}); } catch (e) { alert(e.message); }
+  pintarTestimonios(); refrescar();
+}
+function pintarTestimonios() {
+  $('#listaTestimonios').innerHTML = TESTI.TESTIMONIOS.map((c, i) => `<div class="pista">
+      <div class="vista"><video src="/archivo?p=${q(P)}&sub=testimonios&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
+      <div class="datos" style="grid-template-columns: 1fr 5em 5em">
+        <input type="text" placeholder="Momento: auto" title="auto, 4:30, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTestimonio(${i}, 'momento', this.value)">
+        <input type="text" placeholder="Desde" title="Desde qué segundo del testimonio (vacío = el comienzo), por ejemplo 0:05" value="${esc(c.desde)}" onchange="cambiarTestimonio(${i}, 'desde', this.value)">
+        <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)"></div>
+      <button title="Quitar" onclick="TESTI.TESTIMONIOS.splice(${i}, 1); guardarTestimonios()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste testimonios.</p>';
+}
+function cambiarTestimonio(i, k, v) { TESTI.TESTIMONIOS[i][k] = v.trim(); guardarTestimonios(); }
+async function agregarTestimonios(files) {
+  try {
+    for (const f of files) {
+      if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) { alert(`${f.name}: solo videos`); continue; }
+      const r = await api(`/api/pista_archivo?g=testimonios&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: ''});
+    }
+  } catch (e) { alert(e.message); }
+  guardarTestimonios();
+}
+{
+  const el = $('#soltarTestimonio'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarTestimonios([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTestimonios([...e.dataTransfer.files]); };
+}
+
 let ESTILOS = [], estilo = null;
 async function cargarEstilos(sel) {
   const r = await api('/api/estilos'); ESTILOS = r.estilos;
@@ -1072,7 +1124,7 @@ async function actualizarProyecto() {
   await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler y tus tarjetas.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas y tus testimonios.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
@@ -1100,6 +1152,7 @@ async function refrescar() {
   $('#estado').classList.toggle('activo', !!t.proyecto);
   $('#todo').disabled = !!t.proyecto;
   $('#btnTarjetas').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !(TARJ.COMENTARIOS.length + TARJ.WHATSAPP.length);
+  $('#btnTestimonios').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !TESTI.TESTIMONIOS.length;
   if (esperaIA && !t.proyecto) finIA();
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
 }
