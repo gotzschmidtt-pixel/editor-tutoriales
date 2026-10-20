@@ -752,10 +752,21 @@ async function seguirTodo() {
   refrescar();
 }
 
+async function reiniciarApp() {
+  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  $('#barra').innerHTML = '<div class="arriba"><span class="que">🔄 Reiniciando…</span></div>';
+  setTimeout(() => location.reload(), 5000);
+}
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  if (e.actualizada && !e.trabajo.proyecto) {
+    const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
+    b.innerHTML = `<div class="arriba"><span class="que">🔄 Hay una versión nueva de la app</span>
+      <span class="cuanto">reiníciala para usar los cambios</span>
+      <span class="chips"><button class="principal" onclick="reiniciarApp()">🔄 Reiniciar ahora</button></span></div>`;
+  }
   if (e.fallo && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;

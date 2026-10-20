@@ -230,19 +230,23 @@ def registro(d):
 
 
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
+INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
+
+
+def falta_libreria(mod, env):
+    # se prueba en un proceso aparte, igual que los pasos: una instalación rota también cuenta como faltante
+    return subprocess.run([PY, '-c', f'import {mod}'], capture_output=True, env=env, **SIN_VENTANA).returncode != 0
 
 
 def asegurar_librerias(log, env):
     """Si esta copia de la app se abrió sin correr instalar.bat, instala lo básico la primera vez."""
-    import importlib, importlib.util
-    faltan = [pip for mod, pip in LIBRERIAS.items() if importlib.util.find_spec(mod) is None]
+    faltan = [pip for mod, pip in LIBRERIAS.items() if falta_libreria(mod, env)]
     if not faltan:
         return
     log.write(f'\nInstalando {", ".join(faltan)} (solo la primera vez, tarda un minuto)…\n'); log.flush()
     r = subprocess.run([PY, '-m', 'pip', 'install', '--disable-pip-version-check'] + faltan, stdout=log, stderr=subprocess.STDOUT,
                        env=env, **SIN_VENTANA)
-    importlib.invalidate_caches()
-    if r.returncode != 0 or any(importlib.util.find_spec(m) is None for m, p in LIBRERIAS.items() if p in faltan):
+    if r.returncode != 0 or any(falta_libreria(m, env) for m, p in LIBRERIAS.items() if p in faltan):
         raise RuntimeError(f'No pude instalar {", ".join(faltan)}. Cierra la app, corre instalar.bat en esta carpeta '
                            f'({RAIZ}) y vuelve a abrir iniciar.bat.')
     log.write('✓ Librerías instaladas\n'); log.flush()
@@ -364,7 +368,8 @@ def estado(proyecto):
     if t['proyecto'] == proyecto:
         t['linea'] = ultima_linea(log)
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
-            'resultado': RESULTADO.get(proyecto)}
+            'resultado': RESULTADO.get(proyecto),
+            'actualizada': os.path.getmtime(__file__) != INICIO_APP}
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -486,6 +491,14 @@ class Manejador(BaseHTTPRequestHandler):
         LATIDO[0] = time.time()
         largo = int(self.headers.get('Content-Length', 0))
         try:
+            if ruta == '/api/reiniciar':  # después de actualizar la app: abre la copia nueva y cierra esta
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error('Hay un paso trabajando. Espera a que termine o detenlo.')
+                env = dict(os.environ, SIN_NAVEGADOR='1')
+                subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
+                                 **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
+                return self.responder({'ok': True})
             if ruta == '/api/salir':
                 with CANDADO:
                     if TRABAJO['proyecto']:
@@ -663,8 +676,37 @@ class Manejador(BaseHTTPRequestHandler):
         self.error('no encontrado', 404)
 
 
+class Servidor(ThreadingHTTPServer):
+    # en Windows, SO_REUSEADDR deja que dos copias de la app escuchen en el mismo puerto y la vieja sigue
+    # contestando: aquí el puerto es exclusivo, y si está ocupado se le pide a la otra copia que se cierre
+    allow_reuse_address = sys.platform != 'win32'
+
+    def server_bind(self):
+        import socket
+        if sys.platform == 'win32':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def abrir_servidor():
+    import urllib.request
+    for intento in range(20):
+        try:
+            return Servidor(('127.0.0.1', PUERTO), Manejador)
+        except OSError:
+            if intento == 0:
+                print('Ya hay otra copia de la app abierta: le pido que se cierre…', flush=True)
+                try:
+                    urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{PUERTO}/api/salir', data=b'', method='POST'), timeout=3)
+                except Exception as e:  # la otra copia está trabajando o no contesta
+                    print(f'  (contestó: {e})', flush=True)
+            time.sleep(0.5)
+    raise SystemExit(f'El puerto {PUERTO} sigue ocupado por otra copia de la app. Ciérrala (su ventana negra, o '
+                     'Estudio.exe desde el Administrador de tareas) y vuelve a abrir iniciar.bat.')
+
+
 def main():
-    srv = ThreadingHTTPServer(('127.0.0.1', PUERTO), Manejador)
+    srv = abrir_servidor()
     url = f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):
