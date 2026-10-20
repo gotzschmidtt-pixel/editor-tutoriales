@@ -314,6 +314,11 @@
 
 <dialog id="dlgAjustes">
   <h3>Ajustes de IA</h3>
+  <p class="aviso">✨ <b>Que Claude haga todo:</b> pulsa «Usar Claude», pega tu clave y guarda. Desde ahí «Hacer todo» le pide a Claude
+  el guion, las etiquetas y las flechas solo. La clave se saca en
+  <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com → API Keys</a>
+  (se paga aparte de la suscripción de Claude: carga unos dólares de saldo en Billing).</p>
+  <div class="fila" style="margin-top:0"><button onclick="$('#ajProv').value = 'Claude (Anthropic)'; $('#ajProv').onchange(); $('#ajClave').focus()">✨ Usar Claude</button></div>
   <label>Proveedor <select id="ajProv"></select></label>
   <label>Dirección (URL) <input type="text" id="ajUrl"></label>
   <label>Modelo <input type="text" id="ajModelo"></label>
