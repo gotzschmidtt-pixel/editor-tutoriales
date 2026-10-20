@@ -72,10 +72,10 @@
   .pista .vista img { width: 112px; border-radius: 8px; display: block; }
   .pista .vista audio { width: 112px; }
   .pista .datos { flex: 1; min-width: 0; display: grid; grid-template-columns: 7em 1fr; gap: 6px; }
-  .pista .datos input { padding: 6px 9px; font-size: 13px; min-width: 0; }
+  .pista .datos input, .pista .datos select { padding: 6px 9px; font-size: 13px; min-width: 0; }
   .pista button { padding: 6px 10px; }
-  #fases button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
-  #soltarPista { display: block; margin-top: 4px; }
+  #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
+  #soltarPista, #soltarTarjeta { display: block; margin-top: 4px; }
   #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
@@ -138,6 +138,21 @@
       <p class="aviso">Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
       Una captura sin segundo se compara con todo el video; un audio se transcribe y se busca lo que dice en tu grabación
       (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
+    </section>
+
+    <section class="panel">
+      <h2>💬 Comentarios y WhatsApp</h2>
+      <div class="tabs" id="grupos"></div>
+      <p class="aviso" id="ayudaGrupo"></p>
+      <div id="listaTarjetas"></div>
+      <label class="subida" id="soltarTarjeta"><div class="t">➕ Imagen</div>
+        <div class="e">Arrastra aquí tus imágenes (PNG con fondo transparente se ve mejor), o haz clic</div><input type="file" multiple accept="image/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnTarjetas" onclick="ejecutar('tarjetas')">▶ Poner tarjetas en el video</button>
+      </div>
+      <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
+      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
+      (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
     </section>
   </div>
 
@@ -232,7 +247,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -247,7 +262,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -461,6 +476,46 @@ async function grabar() {
   el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarArchivos([...e.dataTransfer.files]); };
 }
 
+const GRUPOS = {COMENTARIOS: 'Tu invitación a comentar: «¡déjame tu duda abajo!», una flecha hacia los comentarios, tu sticker.',
+  WHATSAPP: 'Tus tarjetas de WhatsApp para que te escriban: número, código QR, «escríbeme para el servicio».'};
+const POS = {'abajo-derecha': 'Abajo derecha', 'abajo-izquierda': 'Abajo izquierda', 'arriba-derecha': 'Arriba derecha', 'arriba-izquierda': 'Arriba izquierda', 'centro': 'Centro (grande)'};
+let TARJ = {COMENTARIOS: [], WHATSAPP: []}, grupo = 'COMENTARIOS';
+async function cargarTarjetas() { TARJ = await api(`/api/pistas?g=tarjetas&p=${q(P)}`); pintarTarjetas(); }
+async function guardarTarjetas() {
+  try { await api(`/api/pistas?g=tarjetas&p=${q(P)}`, {method: 'POST', body: JSON.stringify(TARJ)}); } catch (e) { alert(e.message); }
+  pintarTarjetas(); refrescar();
+}
+function pintarTarjetas() {
+  $('#grupos').innerHTML = Object.keys(GRUPOS).map(g => `<button data-g="${g}" class="${g === grupo ? 'activo' : ''}">${g === 'WHATSAPP' ? 'WhatsApp' : 'Comentarios'}<span class="cuenta">${TARJ[g].length || ''}</span></button>`).join('');
+  document.querySelectorAll('#grupos button').forEach(b => b.onclick = () => { grupo = b.dataset.g; pintarTarjetas(); });
+  $('#ayudaGrupo').textContent = GRUPOS[grupo];
+  $('#listaTarjetas').innerHTML = TARJ[grupo].map((c, i) => `<div class="pista">
+      <div class="vista"><img src="/archivo?p=${q(P)}&sub=tarjetas&f=${q(c.archivo)}"></div>
+      <div class="datos" style="grid-template-columns: 1fr 4.5em 1fr">
+        <input type="text" placeholder="Momento: auto" title="auto, 1:25, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTarjeta(${i}, 'momento', this.value)">
+        <input type="text" placeholder="6 s" title="Segundos en pantalla" value="${esc(c.dur)}" onchange="cambiarTarjeta(${i}, 'dur', this.value)">
+        <select onchange="cambiarTarjeta(${i}, 'posicion', this.value)">${Object.entries(POS).map(([k, v]) => `<option value="${k}" ${(c.posicion || 'abajo-derecha') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <button title="Quitar" onclick="TARJ[grupo].splice(${i}, 1); guardarTarjetas()">✕</button></div>`).join('') || '<p class="aviso">Sin tarjetas en este grupo.</p>';
+}
+function cambiarTarjeta(i, k, v) { TARJ[grupo][i][k] = v.trim(); guardarTarjetas(); }
+async function agregarTarjetas(files) {
+  try {
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) { alert(`${f.name}: solo imágenes`); continue; }
+      const r = await api(`/api/pista_archivo?g=tarjetas&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+      TARJ[grupo].push({archivo: r.archivo, momento: 'auto', dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
+    }
+  } catch (e) { alert(e.message); }
+  guardarTarjetas();
+}
+{
+  const el = $('#soltarTarjeta'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarTarjetas([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTarjetas([...e.dataTransfer.files]); };
+}
+
 let PROV = {};
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
@@ -505,6 +560,7 @@ async function refrescar() {
   $('#estado').textContent = t.proyecto ? `⏳ ${t.paso} · ${t.proyecto} · ${t.segundos} s` : 'Sin trabajos';
   $('#estado').classList.toggle('activo', !!t.proyecto);
   $('#todo').disabled = !!t.proyecto;
+  $('#btnTarjetas').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !(TARJ.COMENTARIOS.length + TARJ.WHATSAPP.length);
   if (esperaIA && !t.proyecto) finIA();
 }
 setInterval(refrescar, 2000);

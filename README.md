@@ -16,6 +16,8 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
+| `trailer/pistas.py` | Pistas del autor para el tráiler: en cada fase (ANTES, DURANTE, DESPUÉS) le das capturas, audios o texto y la app los convierte en segundos candidatos (busca la captura en el video, transcribe el audio y busca lo que dice) para que la IA elija los tramos cerca de ahí. |
+| `tarjetas/` | Tarjetas de **COMENTARIOS** y **WHATSAPP** encima del video: entran cuando la voz invita a comentar o a escribir (lo busca en los subtítulos), o en el segundo que digas. No cambian la duración. |
 | `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
 | `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
@@ -44,6 +46,14 @@ El guion, las etiquetas, las señales, los insertos y el tráiler se editan en l
 **Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (OpenAI, DeepSeek, Gemini, Ollama u otro compatible) y pegas tu clave.
 *✨ Escribir con IA* llena el guion, las etiquetas o el tráiler solo. *📋 Prompt para copiar* te da el texto y las capturas para pegar en
 cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te contestó. Escribe antes en «idea» los datos seguros del video.
+
+**Tráiler con pistas:** en el panel *🎞️ Tráiler* eliges ANTES, DURANTE o DESPUÉS y agregas pistas: capturas (arrastradas o
+con *📸 Capturar del reproductor* sobre `original.mp4`, que guarda el segundo), audios o notas de voz (*🎙 Grabar*) y texto
+(«cuando muestro la placa sin soldar», «en el 2:10»). *✨ Armar tráiler con estas pistas* le pide el tráiler a tu IA usando esos
+momentos como referencia; son orientativos, no cortes exactos.
+
+**Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
+segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
 ## Instalar en tu PC (Windows)
 

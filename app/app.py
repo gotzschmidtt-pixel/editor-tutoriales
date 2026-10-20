@@ -9,6 +9,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
   musica.mp3          pista de música (si falta, se genera y se guarda aquí)
   etiquetas.json  senales.json  insertos.json  trailer.json   (opcionales)
   pistas_trailer/     pistas del tráiler por fase (capturas, audios, texto) + pistas.json
+  tarjetas/           imágenes de COMENTARIOS y WHATSAPP para poner encima del video + tarjetas.json
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
@@ -28,9 +29,12 @@ os.makedirs(PROYECTOS, exist_ok=True)
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
 EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
-PISTAS = 'pistas_trailer'
-FASES = ['ANTES', 'DURANTE', 'DESPUES']
-EXT_PISTA = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}
+IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+# grupos de archivos que se arman desde la app: carpeta, json, apartados y qué se puede subir
+GRUPOS = {
+    'pistas': ('pistas_trailer', 'pistas.json', ['ANTES', 'DURANTE', 'DESPUES'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
+    'tarjetas': ('tarjetas', 'tarjetas.json', ['COMENTARIOS', 'WHATSAPP'], IMAGENES),
+}
 PROVEEDORES = {
     'Claude (Anthropic)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
     'OpenAI (GPT)': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4o', 'imagenes': True},
@@ -60,7 +64,7 @@ def existe(d, f):
 
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
-    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4']
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4']
     previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
     for f in reversed(previos):
         if existe(d, f):
@@ -100,6 +104,9 @@ def comandos(paso, d, op):
         return [[PY, m('etiquetas', 'etiquetas.py')] + g + ['--voz', 'voz', '--etiquetas', 'etiquetas.json', '--video', ultimo_video(d, '5_etiquetas.mp4'), '--salida', '5_etiquetas.mp4']]
     if paso == 'senales':
         return [[PY, m('senales', 'senales.py')] + g + ['--voz', 'voz', '--senales', 'senales.json', '--video', ultimo_video(d, '6_senales.mp4'), '--salida', '6_senales.mp4']]
+    if paso == 'tarjetas':
+        return [[PY, m('tarjetas', 'tarjetas.py'), '--video', ultimo_video(d, '7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
+                 '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4']]
     if paso == 'trailer':
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
@@ -129,12 +136,13 @@ PASOS = [
     {'id': 'musica', 'nombre': 'Música de fondo', 'necesita': ['3_voz.mp4'], 'produce': '4_musica.mp4'},
     {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True},
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True},
+    {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
 ]
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'trailer']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': []}
@@ -309,15 +317,15 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ('ia_capturas', PISTAS) else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
             if ruta == '/api/pistas':
-                f = os.path.join(carpeta(q['p']), PISTAS, 'pistas.json')
+                sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
                 try:
-                    datos = json.load(open(f, encoding='utf-8'))
+                    datos = json.load(open(os.path.join(carpeta(q['p']), sub, nombre), encoding='utf-8'))
                 except (OSError, ValueError):
                     datos = {}
-                return self.responder({fase: datos.get(fase, []) for fase in FASES})
+                return self.responder({x: datos.get(x, []) for x in apartados})
             if ruta == '/api/capturas':
                 c = os.path.join(carpeta(q['p']), 'ia_capturas')
                 return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
@@ -426,10 +434,11 @@ class Manejador(BaseHTTPRequestHandler):
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/pista_archivo':
+                sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
                 ext = os.path.splitext(q.get('nombre', ''))[1].lower()
-                if ext not in EXT_PISTA:
-                    return self.error('Solo imágenes (jpg, png, webp) o audios (mp3, wav, m4a, ogg, webm)')
-                d = os.path.join(carpeta(q['p']), PISTAS)
+                if ext not in extensiones:
+                    return self.error('Solo imágenes (jpg, png, webp)' + (' o audios (mp3, wav, m4a, ogg, webm)' if ext not in IMAGENES and len(extensiones) > len(IMAGENES) else ''))
+                d = os.path.join(carpeta(q['p']), sub)
                 os.makedirs(d, exist_ok=True)
                 nombre = uuid.uuid4().hex[:10] + ext
                 with open(os.path.join(d, nombre), 'wb') as fh:
@@ -442,15 +451,20 @@ class Manejador(BaseHTTPRequestHandler):
                         resto -= len(trozo)
                 return self.responder({'archivo': nombre})
             if ruta == '/api/pistas':
+                sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
                 datos = json.loads(self.rfile.read(largo))
-                limpio = {fase: [p for p in datos.get(fase, []) if isinstance(p, dict)] for fase in FASES}
-                d = os.path.join(carpeta(q['p']), PISTAS)
+                limpio = {x: [p for p in datos.get(x, []) if isinstance(p, dict)] for x in apartados}
+                d = os.path.join(carpeta(q['p']), sub)
                 os.makedirs(d, exist_ok=True)
-                json.dump(limpio, open(os.path.join(d, 'pistas.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-                usados = {os.path.basename(p.get('archivo') or '') for fase in FASES for p in limpio[fase]}
+                hay = any(limpio.values())
+                if hay:
+                    json.dump(limpio, open(os.path.join(d, nombre), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                elif os.path.exists(os.path.join(d, nombre)):  # sin nada, el paso que lo usa queda «necesita»
+                    os.remove(os.path.join(d, nombre))
+                usados = {os.path.basename(p.get('archivo') or '') for x in apartados for p in limpio[x]}
                 for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
                     base = f[:-4] if f.endswith('.txt') else f
-                    if f != 'pistas.json' and base not in usados:
+                    if f != nombre and base not in usados:
                         os.remove(os.path.join(d, f))
                 return self.responder({'ok': True})
             if ruta == '/api/pegar':
