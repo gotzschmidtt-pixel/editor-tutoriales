@@ -262,6 +262,17 @@
         <span class="msg" id="msgEditor"></span>
       </div>
       <p class="aviso" id="ayudaEditor"></p>
+      <div class="ia" id="cajaRefs" hidden>
+        <b>🔗 Videos de referencia</b>
+        <p class="aviso" style="margin:4px 0 8px">Pega links de YouTube de videos parecidos: la IA los mira (lo que dicen, título y descripción)
+        para entender el tema y explicarlo mejor, sin copiarlos. Se usan la próxima vez que pidas el guion.</p>
+        <div id="listaRefs"></div>
+        <div class="fila">
+          <input type="text" id="refUrl" placeholder="https://youtube.com/watch?v=…" style="flex:2; min-width:14em">
+          <input type="text" id="refNota" placeholder="Qué tomar de este (opcional)" style="flex:1; min-width:10em">
+          <button onclick="agregarRef()">+ Agregar</button>
+        </div>
+      </div>
       <div class="ia" id="cajaIA">
         <div class="fila" style="margin-top:0">
           <b>✨ Con tu IA</b><span class="aviso" id="iaQuien"></span>
@@ -478,7 +489,7 @@ async function abrir(f, ejemplo) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('activo', b.dataset.f === f));
   $('#editor').value = await api(`/api/json?p=${q(P)}&f=${f}${ejemplo ? '&ejemplo=1' : ''}`);
   $('#ayudaEditor').textContent = AYUDA[f];
-  $('#cajaIA').hidden = !TAREA[f]; $('#ejemplo').hidden = f === 'idea.txt'; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
+  $('#cajaIA').hidden = !TAREA[f]; $('#cajaRefs').hidden = f !== 'guion.json'; if (f === 'guion.json') cargarRefs(); $('#ejemplo').hidden = f === 'idea.txt'; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
   $('#msgEditor').className = 'msg';
 }
 $('#ejemplo').onclick = () => abrir(archivo, true);
@@ -487,6 +498,26 @@ $('#guardar').onclick = async () => {
     editado = false; $('#msgEditor').textContent = '✓ Guardado'; $('#msgEditor').className = 'msg ok'; refrescar();
   } catch (e) { $('#msgEditor').textContent = e.message; $('#msgEditor').className = 'msg err'; }
 };
+
+let REFS = [];
+async function cargarRefs() {
+  try { REFS = JSON.parse(await api(`/api/json?p=${q(P)}&f=referencias.json`) || '[]'); } catch (e) { REFS = []; }
+  if (!Array.isArray(REFS)) REFS = [];
+  $('#listaRefs').innerHTML = REFS.map((r, i) => `<div class="pista"><div class="vista">▶️</div>
+      <div class="datos" style="grid-template-columns: 1fr"><a href="${esc(r.url)}" target="_blank">${esc(r.url)}</a>
+        <input type="text" placeholder="Qué tomar de este (opcional)" value="${esc(r.nota)}" onchange="REFS[${i}].nota = this.value.trim(); guardarRefs()"></div>
+      <button title="Quitar" onclick="REFS.splice(${i}, 1); guardarRefs()">✕</button></div>`).join('') || '<p class="aviso">Sin videos de referencia.</p>';
+}
+async function guardarRefs() {
+  try { await api(`/api/json?p=${q(P)}&f=referencias.json`, {method: 'POST', body: JSON.stringify(REFS, null, 1)}); } catch (e) { alert(e.message); }
+  cargarRefs();
+}
+function agregarRef() {
+  const links = $('#refUrl').value.match(/https?:\/\/\S+/g) || [];
+  if (!links.length || links.some(u => !/youtu/.test(u))) return alert('Pega un link de YouTube (youtube.com o youtu.be).');
+  for (const url of links) if (!REFS.some(r => r.url === url)) REFS.push({url, nota: $('#refNota').value.trim()});
+  $('#refUrl').value = ''; $('#refNota').value = ''; guardarRefs();
+}
 
 const TAREA = {'guion.json': 'guion', 'etiquetas.json': 'etiquetas', 'trailer.json': 'trailer'};
 let esperaIA = null;

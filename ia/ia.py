@@ -151,6 +151,55 @@ def estilo_activo(ajustes):
     return nombre, open(os.path.join(e, 'perfil.md'), encoding='utf-8').read(), medidas
 
 
+def referencias_youtube(d, largo_max=9000):
+    """Los videos de YouTube que el autor puso de referencia para el guion (referencias.json): título, descripción y
+    lo que dicen (subtítulos de YouTube; si no tiene, se baja solo el audio y se transcribe). Todo queda en caché."""
+    try:
+        lista = json.load(open(os.path.join(d, 'referencias.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    sys.path.insert(0, os.path.join(RAIZ, 'alimentacion'))
+    sys.path.insert(0, os.path.join(RAIZ, 'transcripcion'))
+    import alimentacion as al
+    cache = os.path.join(d, 'referencias')
+    os.makedirs(cache, exist_ok=True)
+    out = []
+    for r in lista if isinstance(lista, list) else []:
+        url = (r.get('url') if isinstance(r, dict) else str(r)).strip()
+        if 'youtu' not in url:
+            continue
+        vid = al.id_youtube(url)
+        f = os.path.join(cache, vid + '.txt')
+        if not os.path.exists(f):
+            print(f'Leyendo el video de referencia {url}…', flush=True)
+            base = al.yt_dlp() + ['--no-playlist', '-o', os.path.join(cache, vid + '.%(ext)s')]
+            info = subprocess.run(base + ['--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', 'es.*,es,en.*',
+                                          '--sub-format', 'vtt', '--print', 'title', '--print', 'description', url],
+                                  capture_output=True, text=True, encoding='utf-8', errors='replace')
+            if info.returncode != 0 and not info.stdout.strip():
+                print(f'· no pude leer {url}: {info.stderr.strip()[-200:]}', flush=True)
+                continue
+            lineas = info.stdout.strip().splitlines()
+            titulo, descripcion = (lineas[0] if lineas else vid), '\n'.join(lineas[1:])[:1500]
+            vtts = sorted([x for x in os.listdir(cache) if x.startswith(vid + '.') and x.endswith('.vtt')],
+                          key=lambda x: (not x.split('.')[-2].startswith('es'), 'orig' not in x, len(x)))
+            if vtts:
+                texto = ' '.join(t for _, t in al.leer_vtt(os.path.join(cache, vtts[0])))
+            else:  # sin subtítulos: solo el audio, y se transcribe
+                print('  sin subtítulos: bajo el audio y lo transcribo…', flush=True)
+                subprocess.run(base + ['-f', 'ba/b', '-x', '--audio-format', 'mp3', url], capture_output=True)
+                mp3 = os.path.join(cache, vid + '.mp3')
+                try:
+                    texto = ' '.join(t for _, t in al.transcribir(mp3)) if os.path.exists(mp3) else ''
+                except Exception as e:
+                    print(f'  · no pude transcribirlo ({e}); uso solo el título y la descripción', flush=True)
+                    texto = ''
+            open(f, 'w', encoding='utf-8').write(f'TÍTULO: {titulo}\nDESCRIPCIÓN: {descripcion}\nLO QUE DICE: {texto}')
+        nota = (r.get('nota') or '').strip() if isinstance(r, dict) else ''
+        out.append((url, nota, open(f, encoding='utf-8').read()[:largo_max]))
+    return out
+
+
 def encargo(d, tarea, idea, caps, an=None, estilo=None):
     dur = duracion(os.path.join(d, 'original.mp4'))
     trans = transcripcion(d)
@@ -167,6 +216,12 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
     if tarea == 'guion':
+        refs = referencias_youtube(d)
+        if refs:
+            partes.append("Videos de YouTube que el autor eligió como REFERENCIA. Úsalos para entender el tema, los pasos, los "
+                          "nombres correctos y cómo se explica bien; NO copies sus frases ni metas datos que no se vean o "
+                          "digan en ESTA grabación:\n" + '\n\n'.join(f"[{k}] {u}" + (f" (el autor dice: {n})" if n else '') + f"\n{t}"
+                                                                   for k, (u, n, t) in enumerate(refs, 1)))
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:

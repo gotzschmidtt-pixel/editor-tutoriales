@@ -29,7 +29,7 @@ os.makedirs(PROYECTOS, exist_ok=True)
 os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
+EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 # grupos de archivos que se arman desde la app: carpeta, json, apartados y qué se puede subir
@@ -788,7 +788,7 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto'] == q['p']:
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
-                quedan = set(SUBIBLES.values()) | {'idea.txt', 'original.nitidez.npz', 'original.miniaturas.npz'} | \
+                quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz'} | \
                     {sub for sub, *_ in GRUPOS.values()}
                 borrados = 0
                 for f in os.listdir(d):
