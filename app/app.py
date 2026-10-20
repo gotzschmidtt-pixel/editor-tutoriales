@@ -237,7 +237,7 @@ def registro(d):
 
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                    '7_tarjetas.mp4', 'trailer.mp4', 'FINAL.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+                    '7_tarjetas.mp4', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 

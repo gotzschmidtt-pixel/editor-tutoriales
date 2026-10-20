@@ -19,6 +19,22 @@ VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de
 LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note menos
 
 
+EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app mientras se arma
+
+
+def avance(partes, tmp, destino):
+    """Une lo que va hecho en un video que la app puede reproducir. Si alguien lo está mirando y Windows
+    no deja reemplazarlo, se intenta en el bloque siguiente."""
+    lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
+    with open(lista, 'w') as fh:
+        fh.writelines(f"file '{p}'\n" for p in partes)
+    try:
+        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', '-movflags', '+faststart', nuevo])
+        os.replace(nuevo, destino)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+
+
 def run(args):
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
@@ -93,12 +109,17 @@ def main():
                 + enc + [f])
             partes.append(f)
         print(i, 'ok', flush=True)
+        avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))
     lista = os.path.join(tmp, 'lista.txt')
     with open(lista, 'w') as fh:
         for p in partes:
             fh.write(f"file '{p}'\n")
     run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
     shutil.rmtree(tmp)
+    try:
+        os.remove(os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))
+    except OSError:
+        pass
 
 
 if __name__ == '__main__':

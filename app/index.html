@@ -111,6 +111,7 @@
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
+  <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
   <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
@@ -406,7 +407,33 @@ async function exportar() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }
   refrescar();
 }
-function ver(f) { $('#video').src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; }
+function ver(f, seguir) {
+  const v = $('#video'), t = v.currentTime, sonando = !v.paused && !v.ended;
+  v.src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; viendo = f;
+  if (seguir) v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); if (sonando) v.play(); }, {once: true});
+}
+// mientras «Hacer todo» trabaja, el reproductor va mostrando la etapa más avanzada que ya existe
+const AVANCE = ['montaje_en_curso.mp4', '1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4',
+                '6_senales.mp4', '7_tarjetas.mp4', 'FINAL.mp4'];
+const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1_montaje.mp4': 'el montaje (sin voz)', '2_insertos.mp4': 'con cortes y zooms',
+  '3_voz.mp4': 'con voz y subtítulos', '4_musica.mp4': 'con música', '5_etiquetas.mp4': 'con etiquetas', '6_senales.mp4': 'con flechas',
+  '7_tarjetas.mp4': 'con tarjetas', 'FINAL.mp4': 'el video final'};
+let viendo = null, avanceVisto = '';
+function masAvanzado(arch) {
+  let mejor = null;
+  for (const f of AVANCE) if (arch[f] && arch[f].tam > 0 && (!mejor || arch[f].fecha >= arch[mejor].fecha)) mejor = f;
+  return mejor;
+}
+function seguirAvance(t, arch) {
+  if (t.proyecto !== P) return '';
+  const f = masAvanzado(arch);
+  if (!f) return '';
+  const firma = f + arch[f].fecha, v = $('#video');
+  if (firma !== avanceVisto && (v.paused || v.ended || !v.src)) { avanceVisto = firma; ver(f, true); }
+  const nuevo = firma !== avanceVisto;
+  return `<button onclick="avanceVisto='${firma}'; ver('${f}', true); irA('#video')">${nuevo ? '🔄 Ver lo nuevo' : '👁 Viendo'}: ${NOMBRE_AVANCE[f]}</button>`;
+}
+$('#video').addEventListener('ended', () => refrescar());
 
 $('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace(/\.(json|txt)$/, '')}</button>`).join('');
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => abrir(b.dataset.f));
@@ -692,12 +719,13 @@ function pintarBarra(t, r, arch) {
   if (!corre && !reciente(r)) { b.hidden = true; document.body.classList.remove('con-barra'); return; }
   b.hidden = false; document.body.classList.add('con-barra');
   if (corre) {
+    const avance = seguirAvance(t, arch);
     const n = t.plan.length, pct = Math.round(100 * (t.i + 0.5) / n);
     b.className = 'trabaja';
     b.innerHTML = `<div class="arriba"><span class="que">⏳ ${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
       <span class="cuanto">este paso ${reloj(t.segundos)} · total ${reloj(t.total_s)}</span>
       ${n > 1 ? `<span class="chips">${t.plan.map((x, k) => `<span class="chip ${k < t.i ? 'hecho' : k === t.i ? 'ahora' : ''}">${k < t.i ? '✓' : k === t.i ? '⏳' : '○'} ${esc(x)}</span>`).join('')}</span>` : ''}
-      <button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
+      ${avance}<button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
       <div class="riel"><div class="lleno" style="width:${pct}%"></div></div>
       <div class="detalle">${esc(t.linea || 'empezando…')}</div>`;
     return;
