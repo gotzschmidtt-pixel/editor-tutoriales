@@ -6,3 +6,5 @@ faster-whisper
 anthropic
 # bajar videos de YouTube para el panel Alimentación
 yt-dlp
+# lector de texto de pantalla (ubicar flechas y el guion minucioso)
+rapidocr_onnxruntime

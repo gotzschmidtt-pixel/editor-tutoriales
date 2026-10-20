@@ -652,14 +652,33 @@ GENERICAS = set('boton botones opcion opciones icono menu el la los las de del e
                 'pantalla seccion ventana interruptor enlace link barra que se con para'.split())
 
 
+def instalar_mostrando(paquetes, limite=600):
+    """pip install mostrando qué baja (antes quedaba callado y parecía colgado). Se corta a los `limite` segundos."""
+    import threading, time
+    pr = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'off'] + paquetes,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+    corte = threading.Timer(limite, pr.kill)
+    corte.start()
+    inicio = time.time()
+    try:
+        for linea in pr.stdout:
+            linea = linea.strip()
+            if linea.startswith(('Collecting', 'Downloading', 'Installing', 'Successfully', 'ERROR')):
+                print(f'· [{int(time.time() - inicio)} s] ' + linea[:160], flush=True)
+        pr.wait()
+    finally:
+        corte.cancel()
+    if pr.returncode:
+        print(f'· la instalación no terminó (código {pr.returncode}' + (', tardó demasiado' if time.time() - inicio >= limite else '') + ')', flush=True)
+
+
 def lector_ocr():
     """Lector de texto de la pantalla (RapidOCR). Se instala solo la primera vez; si no se puede, devuelve None."""
     try:
         from rapidocr_onnxruntime import RapidOCR
     except Exception:
-        print('Instalando el lector de texto de pantalla (solo la primera vez)…', flush=True)
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '-q', 'rapidocr_onnxruntime'],
-                       capture_output=True, timeout=900)
+        print('Instalando el lector de texto de pantalla (solo la primera vez, baja unos 100 MB)…', flush=True)
+        instalar_mostrando(['rapidocr_onnxruntime'], limite=600)
         try:
             from rapidocr_onnxruntime import RapidOCR
         except Exception:
