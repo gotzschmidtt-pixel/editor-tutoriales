@@ -229,6 +229,25 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
+
+
+def asegurar_librerias(log, env):
+    """Si esta copia de la app se abrió sin correr instalar.bat, instala lo básico la primera vez."""
+    import importlib, importlib.util
+    faltan = [pip for mod, pip in LIBRERIAS.items() if importlib.util.find_spec(mod) is None]
+    if not faltan:
+        return
+    log.write(f'\nInstalando {", ".join(faltan)} (solo la primera vez, tarda un minuto)…\n'); log.flush()
+    r = subprocess.run([PY, '-m', 'pip', 'install', '--disable-pip-version-check'] + faltan, stdout=log, stderr=subprocess.STDOUT,
+                       env=env, **SIN_VENTANA)
+    importlib.invalidate_caches()
+    if r.returncode != 0 or any(importlib.util.find_spec(m) is None for m, p in LIBRERIAS.items() if p in faltan):
+        raise RuntimeError(f'No pude instalar {", ".join(faltan)}. Cierra la app, corre instalar.bat en esta carpeta '
+                           f'({RAIZ}) y vuelve a abrir iniciar.bat.')
+    log.write('✓ Librerías instaladas\n'); log.flush()
+
+
 def correr(proyecto, pasos, opciones):
     try:
         d = carpeta(proyecto)
@@ -252,6 +271,7 @@ def correr(proyecto, pasos, opciones):
         if not shutil.which('ffmpeg'):
             raise RuntimeError('ffmpeg no está instalado o Windows no lo encuentra. Corre instalar.bat, '
                                'reinicia la PC y vuelve a abrir iniciar.bat.')
+        asegurar_librerias(log, env)
         for k, paso in enumerate(pasos):
             info = next(x for x in PASOS if x['id'] == paso)
             with CANDADO:
