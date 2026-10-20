@@ -78,6 +78,26 @@
   #soltarPista, #soltarTarjeta, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
+  #barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 10px 22px 12px; background: #0e1120f2;
+    border-top: 2px solid var(--borde); backdrop-filter: blur(8px); box-shadow: 0 -8px 30px #0008; }
+  #barra.trabaja { border-top-color: var(--amarillo); } #barra.ok { border-top-color: var(--verde); } #barra.mal { border-top-color: var(--rojo); }
+  #barra .arriba { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  #barra .que { font-weight: 700; font-size: 15px; } #barra.ok .que { color: var(--verde); } #barra.mal .que { color: var(--rojo); }
+  #barra .cuanto { color: var(--suave); font-size: 13px; }
+  #barra .riel { height: 10px; border-radius: 999px; background: #ffffff14; margin: 8px 0 6px; overflow: hidden; position: relative; }
+  #barra .lleno { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--rosa), var(--azul)); transition: width .6s; }
+  #barra.ok .lleno { background: var(--verde); } #barra.mal .lleno { background: var(--rojo); }
+  #barra.trabaja .riel::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #ffffff33, transparent);
+    animation: brillo 1.4s linear infinite; }
+  @keyframes brillo { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  #barra .detalle { font: 12px/1.4 Consolas, monospace; color: #c9d1ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #barra.mal .detalle { white-space: normal; color: #ffc2cc; font-family: inherit; font-size: 13px; }
+  #barra .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+  #barra .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #ffffff10; color: var(--suave); }
+  #barra .chip.hecho { background: #38f28a22; color: var(--verde); } #barra .chip.ahora { background: #ffd23f22; color: var(--amarillo); }
+  #barra .chip.mal { background: #ff4d6d22; color: var(--rojo); }
+  #barra button { padding: 5px 10px; font-size: 12px; }
+  body.con-barra { padding-bottom: 120px; }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -228,6 +248,8 @@
     </section>
   </div>
 </main>
+
+<div id="barra" hidden></div>
 
 <dialog id="dlgPrompt">
   <h3>Prompt para tu IA</h3>
@@ -639,10 +661,46 @@ async function guardarEleven() {
 }
 verEleven().then(k => { if (!k) dlgEleven.showModal(); });  // sin clave, la pide apenas abre
 
+const reloj = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+let barraCerrada = null;
+function pintarBarra(t, r, arch) {
+  const b = $('#barra');
+  const corre = t.proyecto === P;
+  if (corre && !(t.plan && t.plan.length)) { t.plan = [t.paso || 'empezando']; t.i = 0; }
+  if (!corre && (!r || barraCerrada === r.cuando)) { b.hidden = true; document.body.classList.remove('con-barra'); return; }
+  b.hidden = false; document.body.classList.add('con-barra');
+  if (corre) {
+    const n = t.plan.length, pct = Math.round(100 * (t.i + 0.5) / n);
+    b.className = 'trabaja';
+    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
+      <span class="cuanto">este paso ${reloj(t.segundos)} · total ${reloj(t.total_s)}</span>
+      ${n > 1 ? `<span class="chips">${t.plan.map((x, k) => `<span class="chip ${k < t.i ? 'hecho' : k === t.i ? 'ahora' : ''}">${k < t.i ? '✓' : k === t.i ? '⏳' : '○'} ${esc(x)}</span>`).join('')}</span>` : ''}
+      <button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
+      <div class="riel"><div class="lleno" style="width:${pct}%"></div></div>
+      <div class="detalle">${esc(t.linea || 'empezando…')}</div>`;
+    return;
+  }
+  const cerrar = `<button onclick="barraCerrada = ${r.cuando}; refrescar()">✕</button>`;
+  if (r.ok) {
+    b.className = 'ok';
+    const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
+    b.innerHTML = `<div class="arriba"><span class="que">✓ Todo salió bien</span>
+      <span class="cuanto">${r.hechos.length} ${r.hechos.length === 1 ? 'paso hecho' : 'pasos hechos'} en ${reloj(r.segundos)}${r.saltados.length ? ` · salté ${r.saltados.length} opcional${r.saltados.length > 1 ? 'es' : ''} (${esc(r.saltados.join(', '))})` : ''}</span>
+      <span class="chips">${final}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+  } else {
+    b.className = 'mal';
+    b.innerHTML = `<div class="arriba"><span class="que">✗ Falló: ${esc(r.paso || 'un paso')}</span>
+      <span class="cuanto">${r.hechos.length ? `antes salieron bien ${r.hechos.length} de ${r.total}` : ''}</span>
+      <span class="chips"><button onclick="irA('#log')">Ver registro</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:${Math.round(100 * (r.hechos.length + r.saltados.length) / r.total)}%"></div></div>
+      <div class="detalle">${esc(r.msg)}</div>`;
+  }
+}
+
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo);
+  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
   if (e.fallo && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;

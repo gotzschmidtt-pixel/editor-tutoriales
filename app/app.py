@@ -157,7 +157,8 @@ PASOS = [
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'trailer']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
-TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': []}
+TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
+RESULTADO = {}  # proyecto -> cómo terminó la última tanda (para la barra de progreso)
 CANDADO = threading.Lock()
 
 
@@ -238,17 +239,25 @@ def correr(proyecto, pasos, opciones):
     if clave_eleven():
         env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
+    nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
+    saltados, hechos = [], []
+    with CANDADO:
+        TRABAJO.update(plan=nombres, i=0, inicio_total=time.time())
+    RESULTADO.pop(proyecto, None)
     try:
         FALLOS.pop(proyecto, None)
         if not shutil.which('ffmpeg'):
             raise RuntimeError('ffmpeg no está instalado o Windows no lo encuentra. Corre instalar.bat, '
                                'reinicia la PC y vuelve a abrir iniciar.bat.')
-        for paso in pasos:
+        for k, paso in enumerate(pasos):
             info = next(x for x in PASOS if x['id'] == paso)
+            with CANDADO:
+                TRABAJO['i'] = k
             falta = [n for n in info['necesita'] if not existe(d, n)]
             if falta:
-                if paso in TODO and info.get('opcional'):
+                if len(pasos) > 1 and paso in TODO and info.get('opcional'):
                     log.write(f'\n— {info["nombre"]}: lo salto (falta {", ".join(falta)})\n'); log.flush()
+                    saltados.append(info['nombre'])
                     continue
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
@@ -270,6 +279,7 @@ def correr(proyecto, pasos, opciones):
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
                     return
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+            hechos.append(info['nombre'])
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
         import traceback
@@ -280,8 +290,22 @@ def correr(proyecto, pasos, opciones):
         FALLOS[proyecto] = {'paso': paso, 'msg': msg}
     finally:
         log.close()
+        f = FALLOS.get(proyecto)
+        RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
+                               'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
+                               'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time()}
         with CANDADO:
-            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
+
+
+def ultima_linea(log):
+    """Lo último que escribió el paso (también el avance de ffmpeg, que reescribe la línea con \\r)."""
+    for l in reversed(re.split(r'[\r\n]+', log[-3000:])):
+        l = l.strip()
+        if l:
+            m = re.search(r'time=(\d+:\d\d:\d\d)', l)
+            return f'procesando el video… va en {m.group(1)}' if m and l.startswith('frame=') else l[:200]
+    return ''
 
 
 def causa(d):
@@ -310,8 +334,13 @@ def estado(proyecto):
     log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
     with CANDADO:
         t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
-                 segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0)
-    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto)}
+                 segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0,
+                 plan=TRABAJO['plan'], i=TRABAJO['i'],
+                 total_s=int(time.time() - TRABAJO['inicio_total']) if TRABAJO['inicio_total'] else 0)
+    if t['proyecto'] == proyecto:
+        t['linea'] = ultima_linea(log)
+    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
+            'resultado': RESULTADO.get(proyecto)}
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -468,6 +497,8 @@ class Manejador(BaseHTTPRequestHandler):
                 pasos = [q['paso']]
                 if q['paso'] == 'todo':
                     pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                if any(p not in {x['id'] for x in PASOS} for p in pasos):
+                    return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
