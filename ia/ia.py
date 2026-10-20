@@ -168,7 +168,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
     if tarea == 'guion':
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
-        meta = int(objetivo.group(1)) if objetivo else max(1, round(dur * 0.95 / 60))
+        meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
@@ -259,6 +259,73 @@ def extraer_json(txt):
     return json.loads(txt[i:])
 
 
+def leer_idea(d):
+    f = os.path.join(d, 'idea.txt')
+    return open(f, encoding='utf-8').read() if os.path.exists(f) else ''
+
+
+def meta_guion(d, dur, idea=None):
+    """Cuánto debe durar el video (s) y el rango aceptable. Por defecto, parecido a la grabación;
+    si la idea dice «que dure unos N minutos», eso manda. Puede pasarse un poco (guion extra del autor)."""
+    idea = leer_idea(d) if idea is None else idea
+    m = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+    meta = int(m.group(1)) * 60 if m else dur * 0.95
+    return meta, meta * 0.8, meta * 1.2
+
+
+def largo_bloque(mo):
+    return ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
+
+
+def ajustar_largo(bloques, voces, minimo, maximo, avisos):
+    """Arreglo sin IA: si el total queda corto, los tramos acelerados van más despacio (hasta velocidad normal y
+    unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz."""
+    t = sum(largo_bloque(b['montaje']) for b in bloques)
+    if t < minimo:
+        margen = []
+        for b, voz in zip(bloques, voces):
+            mo = b['montaje']
+            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1:
+                margen.append(0); continue
+            tramo = mo['src_fin'] - mo['src_inicio']
+            margen.append(max(0, min(tramo, voz + RELLENO + 6) - tramo / mo['velocidad']))
+        falta = minimo - t
+        total = sum(margen)
+        if total > 0:
+            k = min(1, falta / total)
+            for b, g, voz in zip(bloques, margen, voces):
+                if g > 0:
+                    mo = b['montaje']; tramo = mo['src_fin'] - mo['src_inicio']
+                    mo['velocidad'] = round(max(1, tramo / (tramo / mo['velocidad'] + g * k)), 2)
+                    mo['relleno_s'] = round(max(0, largo_bloque(mo) - voz - RELLENO) + 0.5, 1)  # que la voz no lo vuelva a acortar
+            avisos.append(f"el guion quedaba corto ({mmss(t)}): dejé ir más despacio los tramos acelerados para sumar "
+                          f"{mmss(min(falta, total))} de imagen")
+    elif t > maximo:
+        sobra = t - maximo
+        for b, voz in zip(bloques, voces):
+            if sobra <= 0:
+                break
+            mo = b['montaje']
+            antes = largo_bloque(mo)
+            if mo['modo'].startswith('lento'):
+                tramo = mo['src_fin'] - mo['src_inicio']
+                mo['velocidad'] = round(min(VEL_MAX, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
+            if mo.get('congelar_s'):
+                resto = largo_bloque(mo) - (voz + 0.3)
+                if resto > 0:
+                    mo['congelar_s'] = round(max(0, mo['congelar_s'] - min(resto, sobra)), 1)
+                    if mo['congelar_s'] < 0.5 and mo['modo'] == 'lento+congelar':
+                        mo['modo'], mo['congelar_s'] = 'lento', None
+            sobra -= antes - largo_bloque(mo)
+        avisos.append(f"el guion quedaba largo ({mmss(t)}): aceleré tramos y quité pausas sin voz")
+    t = 0.0
+    for b in bloques:
+        largo = largo_bloque(b['montaje'])
+        b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1)
+        t += largo
+    return t
+
+
 def revisar(d, tarea, datos):
     """Corrige lo que la IA suele hacer mal. Devuelve (datos_corregidos, avisos)."""
     avisos = []
@@ -308,11 +375,12 @@ def revisar(d, tarea, datos):
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
         avisos += verificar_orden(d, bloques)
-        if t > dur * 1.25:
-            avisos.append(f"el video queda en {mmss(t)}, bastante más largo que tu grabación ({mmss(dur)}): revisa si sobran bloques")
-        elif t < dur * 0.7:
-            avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(dur)}. Si lo quieres más largo, escribe en tu idea "
-                          f"«que dure unos N minutos» y vuelve a pedir el guion")
+        meta, minimo, maximo = meta_guion(d, dur)
+        t = ajustar_largo(bloques, [b['voz_estimada_s'] for b in bloques], minimo, maximo, avisos)
+        if t > maximo:
+            avisos.append(f"el video queda en {mmss(t)}, más largo de lo buscado ({mmss(meta)}): hay más texto de voz que video")
+        elif t < minimo:
+            avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(meta)} buscados. Falta texto de voz en el guion")
         else:
             avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
         return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'bloques': bloques}, avisos
@@ -899,6 +967,54 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     return [s for i, s in enumerate(senales) if i not in quitar]
 
 
+def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
+    """Si el guion de la IA da un video muy corto o muy largo, se lo devuelvo con los números para que lo arregle.
+    Me quedo con la versión más cercana a la duración buscada."""
+    import copy
+    dur = duracion(os.path.join(d, 'original.mp4'))
+    meta, minimo, maximo = meta_guion(d, dur)
+
+    def medir(x):
+        bl = x['bloques'] if isinstance(x, dict) else x
+        palabras = sum(len(str(b.get('texto', '')).split()) for b in bl)
+        try:
+            t = revisar(d, 'guion', copy.deepcopy(x))[0]['duracion_s']
+        except Exception:
+            t = None
+        return palabras, t
+
+    mejor_, (pal, t) = datos, medir(datos)
+    mejor_t = t
+    for n in range(intentos):
+        if t is None or minimo <= t <= maximo:
+            break
+        quiero = round(meta * PALABRAS_POR_S * 0.9)
+        corto = t < minimo
+        print(f'El guion da {mmss(t)} y busco unos {mmss(meta)}: le pido a la IA que lo '
+              + ('alargue' if corto else 'acorte') + f' (intento {n + 1})…', flush=True)
+        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta[:30000] +
+                  f"\n\nPROBLEMA: con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
+                  f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
+                  f"y necesita unas {quiero}. " +
+                  ("Alárgalo: explica con más detalle cada paso, agrega bloques para las partes de la grabación que saltaste "
+                   "y usa tramos más largos del original. " if corto else
+                   "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ") +
+                  "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
+        try:
+            r = llamar(ajustes, pedido, caps)
+            nuevo = extraer_json(r)
+            if not (nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo):
+                break
+        except (SystemExit, ValueError) as e:
+            print(f'· no pude corregir el largo con la IA ({e}); sigo con lo que hay', flush=True)
+            break
+        respuesta, (pal, t) = r, medir(nuevo)
+        open(os.path.join(d, f'ia_respuesta_guion_largo{n + 1}.txt'), 'w', encoding='utf-8').write(r)
+        if t is not None and (mejor_t is None or abs(t - meta) < abs(mejor_t - meta)):
+            mejor_, mejor_t = nuevo, t
+    return mejor_
+
+
 def paquete(d, tarea, prompt, caps):
     """para_claude.zip: todo lo que Claude necesita en el chat para escribir el guion y dejarlo en tu carpeta."""
     import zipfile
@@ -992,6 +1108,8 @@ def main():
         if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
             raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                              f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
+        if a.tarea == 'guion':
+            datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
     datos, avisos = revisar(d, a.tarea, datos)
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
