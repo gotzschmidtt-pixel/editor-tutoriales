@@ -899,11 +899,36 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     return [s for i, s in enumerate(senales) if i not in quitar]
 
 
+def paquete(d, tarea, prompt, caps):
+    """para_claude.zip: todo lo que Claude necesita en el chat para escribir el guion y dejarlo en tu carpeta."""
+    import zipfile
+    destino = os.path.join(d, 'para_claude.zip')
+    proyecto = os.path.basename(os.path.abspath(d))
+    leeme = f"""Paquete para Claude · proyecto «{proyecto}» · tarea: {tarea}
+
+Claude: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
+transcripción con tiempos en transcripcion.json). Déjalo en la carpeta del proyecto, en mis_proyectos/{proyecto}/{ARCHIVO[tarea]}
+(si ya hay uno, el actual va aparte como {ARCHIVO[tarea]}.anterior). Después el autor pulsa «Hacer todo».
+Ruta de esta carpeta en la PC del autor: {os.path.abspath(d)}
+"""
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('LEEME.txt', leeme)
+        z.write(prompt, os.path.basename(prompt))
+        for nombre in ['transcripcion.json', 'transcripcion.txt', 'idea.txt', ARCHIVO[tarea], 'mejoras_guion.txt']:
+            f = os.path.join(d, nombre)
+            if os.path.exists(f):
+                z.write(f, nombre)
+        for _, f in caps:
+            z.write(f, 'ia_capturas/' + os.path.basename(f))
+    print(f'Listo para_claude.zip ({os.path.getsize(destino) / 1e6:.1f} MB, {len(caps)} capturas). '
+          'Súbelo al chat con Claude y pídele el guion.', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', required=True)
     ap.add_argument('--tarea', required=True, choices=list(ARCHIVO))
-    ap.add_argument('--modo', default='prompt', choices=['prompt', 'api', 'revisar'])
+    ap.add_argument('--modo', default='prompt', choices=['prompt', 'api', 'revisar', 'paquete'])
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--idea', default='')
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
@@ -945,9 +970,12 @@ def main():
         if estilo and a.tarea in ('guion', 'trailer'):
             print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
         texto = encargo(d, a.tarea, idea, caps, an, estilo)
-        if a.modo == 'prompt':
+        if a.modo in ('prompt', 'paquete'):
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
             open(f, 'w', encoding='utf-8').write(texto)
+            if a.modo == 'paquete':
+                paquete(d, a.tarea, f, caps)
+                return
             print(f'Prompt en {f}. Adjunta las {len(caps)} capturas de ia_capturas/ si tu IA ve imágenes.')
             return
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))

@@ -625,6 +625,9 @@ class Manejador(BaseHTTPRequestHandler):
                         datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
                     pasos = previos  # se para con el guion listo, para que lo revises antes de seguir
                     datos['_pausa'] = 'guion'
+                if q['paso'] == 'ia' and datos.get('modo') == 'paquete' and not existe(carpeta(q['p']), 'transcripcion.srt'):
+                    pasos = ['transcribir', 'ia']  # el paquete lleva tu transcripción
+                    datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:
