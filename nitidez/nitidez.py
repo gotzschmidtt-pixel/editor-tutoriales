@@ -62,6 +62,30 @@ def destacados(t, n, m, top=8, separacion=6.0):
     return sorted(round(e, 1) for e in elegidos)
 
 
+def repartidos(t, n, m, top=14, cambios=0.3):
+    """Capturas que cubren TODO el video: el video se parte en tramos iguales y de cada uno sale su cuadro
+    más nítido y quieto; además, una parte (cambios) va justo después de los mayores picos de movimiento,
+    que es donde pasa una acción o hay un corte. Así no se salta un tramo por ser movido o borroso."""
+    total = float(t[-1])
+    n_cambios = int(round(top * cambios)) if top >= 6 else 0
+    n_tramos = top - n_cambios
+    paso = total / n_tramos
+    elegidos = [mejor(t, n, m, k * paso, (k + 1) * paso) for k in range(n_tramos)]
+    if n_cambios:
+        # picos de movimiento suavizados (1 s), separados entre sí y de las capturas ya elegidas
+        suave = np.convolve(m, np.ones(FPS) / FPS, mode='same')
+        sep = max(4.0, total / (top * 2))
+        picos = []
+        for i in np.argsort(-suave):
+            ti = float(t[i])
+            if all(abs(ti - x) >= sep for x in picos + elegidos):
+                picos.append(ti)
+            if len(picos) == n_cambios:
+                break
+        elegidos += [mejor(t, n, m, p + 0.4, min(total, p + 3)) for p in picos]
+    return sorted({round(float(e), 1) for e in elegidos})
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--video', required=True)

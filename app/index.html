@@ -311,7 +311,7 @@ function pintarPasos(pasos, t, fallo) {
   }).join('');
 }
 async function ejecutar(paso) {
-  if (paso === 'voz') alert('Los bloques que ya tienen voz no se vuelven a generar. Para regenerar uno, borra su .mp3 de la carpeta voz.');
+  if (paso === 'voz') alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
@@ -331,7 +331,7 @@ function pintarSalidas(arch) {
   if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
     ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
   }
-  const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt'].filter(f => arch[f]);
+  const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt', 'revision_guion.txt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
     extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
     (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '') +

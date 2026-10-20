@@ -17,7 +17,7 @@ import argparse, base64, json, os, re, subprocess, sys, unicodedata, urllib.erro
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
-from nitidez import analizar, destacados, mejor  # noqa: E402
+from nitidez import analizar, mejor, repartidos  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
 
@@ -42,11 +42,11 @@ def normal(c):
 
 
 def capturas(d, n=14):
-    """Saca n capturas nítidas y separadas del video original a ia_capturas/. Devuelve [(segundo, ruta)]."""
+    """Saca n capturas del video original a ia_capturas/, repartidas por todo el video (de cada tramo, su cuadro
+    más nítido) y en los momentos de más movimiento (acciones, cortes). Devuelve [(segundo, ruta)]."""
     orig = os.path.join(d, 'original.mp4')
     t, ni, mo = analizar(orig, os.path.join(d, 'original.nitidez.npz'))
-    total = float(t[-1])
-    tiempos = destacados(t, ni, mo, top=n, separacion=max(3.0, total / (n * 1.5)))
+    tiempos = repartidos(t, ni, mo, top=n)
     out = os.path.join(d, 'ia_capturas')
     os.makedirs(out, exist_ok=True)
     quedan = {f'captura_{s:06.1f}s.jpg' for s in tiempos}
@@ -91,9 +91,41 @@ def capturas_pistas(d, an):
     return lista
 
 
-def transcripcion(d):
+def mmss(s):
+    return f'{int(s // 60)}:{int(s % 60):02d}'
+
+
+def transcripcion(d, largo_max=45000):
+    """La transcripción COMPLETA en líneas «[m:ss] texto». Nunca se corta: si es muy larga, se agrupa en
+    tramos más largos (menos marcas de tiempo, el mismo texto)."""
     f = os.path.join(d, 'transcripcion.srt')
-    return open(f, encoding='utf-8').read() if os.path.exists(f) else ''
+    if not os.path.exists(f):
+        return ''
+    lineas = []
+    for bloque in re.split(r'\n\s*\n', open(f, encoding='utf-8', errors='replace').read().strip()):
+        m = re.search(r'(\d\d):(\d\d):(\d\d)[,.]\d+\s*-->', bloque)
+        if m:
+            h, mi, s = map(int, m.groups())
+            texto = ' '.join(bloque[m.end():].split('\n')[1:]).strip()
+            if texto:
+                lineas.append((h * 3600 + mi * 60 + s, texto))
+    for tramo in (0, 15, 30, 60, 120):
+        if tramo:
+            juntas = []
+            for s, txt in lineas:
+                if juntas and s - juntas[-1][0] < tramo:
+                    juntas[-1] = (juntas[-1][0], juntas[-1][1] + ' ' + txt)
+                else:
+                    juntas.append((s, txt))
+        else:
+            juntas = lineas
+        out = '\n'.join(f'[{mmss(s)}] {txt}' for s, txt in juntas)
+        if len(out) <= largo_max:
+            break
+    else:
+        print(f'AVISO: la transcripción es muy larga ({len(out)} caracteres); va completa, pero un modelo con poco '
+              'contexto podría no leerla entera. Usa un modelo con más contexto o divide el video.', flush=True)
+    return out
 
 
 def ejemplo_guion():
@@ -113,7 +145,7 @@ def encargo(d, tarea, idea, caps, an=None):
         partes.append(f"Lo que cuenta el autor del video (datos confirmados):\n{idea}")
     partes.append(f"Capturas adjuntas (en orden):\n{lista_caps}")
     if trans:
-        partes.append(f"Transcripción de lo que dice el autor en su grabación (con tiempos):\n{trans[:12000]}")
+        partes.append(f"Transcripción COMPLETA de lo que dice el autor en su grabación, de principio a fin ([minuto:segundo] texto):\n{trans}")
 
     if tarea == 'guion':
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
@@ -155,6 +187,40 @@ Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el obj
     return '\n\n'.join(partes)
 
 
+def verificar_orden(d, bloques):
+    """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
+    se diga cerca de su tramo en tu grabación. Solo avisa (no cambia nada) y deja el detalle en revision_guion.txt."""
+    avisos, previo = [], None
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None:
+            continue
+        ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+        if previo and ini < previo[1] - 3:
+            avisos.append(f"{b['id']}: vuelve atrás en el video (empieza en {mmss(ini)} y el bloque {previo[0]} terminaba en "
+                          f"{mmss(previo[1])}). Si no es a propósito, la acción queda fuera de orden")
+        previo = (b['id'], max(fin, previo[1] if previo else 0))
+    palabras = pistas.palabras_video(d)
+    if palabras:
+        norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
+        for b in bloques:
+            mo = b['montaje']
+            if mo.get('src_inicio') is None or mo['modo'] == 'imagen':
+                continue
+            raices = {w[:5] for w in pistas.palabras_clave(b['texto'])}
+            if len(raices) < 3:
+                continue
+            ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio'] + (mo.get('congelar_s') or 3)
+            cerca = {r for t, r in norm if ini - 8 <= t <= fin + 8 and r in raices}
+            otro = [(x, v) for x, v in pistas.dicho(palabras, b['texto'], top=1) if not ini - 15 <= x <= fin + 15]
+            if len(cerca) <= 1 and otro and otro[0][1] >= 0.5:
+                avisos.append(f"{b['id']}: lo que narra no se dice cerca de su tramo ({mmss(ini)}–{mmss(fin)}); "
+                              f"se parece más a lo que dices en {mmss(otro[0][0])}. Revisa si la imagen va con la voz")
+    open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(
+        '\n'.join(avisos) + '\n' if avisos else 'Sin problemas de orden: los tramos siguen el video y cada bloque va con lo que dices.\n')
+    return avisos
+
+
 def extraer_json(txt):
     txt = txt.strip()
     m = re.search(r'```(?:json)?\s*(.*?)```', txt, re.S)
@@ -194,6 +260,7 @@ def revisar(d, tarea, datos):
                 avisos.append(f"{b['id']}: la voz no cabía, agregué {extra} s de pausa")
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
+        avisos += verificar_orden(d, bloques)
         return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'bloques': bloques}, avisos
     if tarea == 'etiquetas':
         lista = datos['etiquetas'] if isinstance(datos, dict) else datos
@@ -265,6 +332,13 @@ def llamar_claude(ajustes, texto, caps):
     return ''.join(b.text for b in r.content if b.type == 'text')
 
 
+def contexto_ollama(texto, imagenes):
+    """Ventana de contexto que pide el encargo (texto ~3 caracteres por token, ~300 tokens por imagen, y la
+    respuesta), para que Ollama no corte el pedido en silencio. Entre 32k y 128k."""
+    tokens = len(texto) // 3 + imagenes * 300 + 8000
+    return min(131072, max(32768, -(-tokens // 8192) * 8192))
+
+
 def llamar_ollama(ajustes, texto, caps):
     """Ollama por su API propia: la compatible con OpenAI no deja subir el contexto y cortaría el pedido."""
     msg = {'role': 'user', 'content': texto}
@@ -274,7 +348,7 @@ def llamar_ollama(ajustes, texto, caps):
         msg['content'] += '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'
     cuerpo = {'model': ajustes['modelo'], 'stream': False, 'format': 'json',
               'messages': [{'role': 'system', 'content': 'Respondes únicamente con JSON válido.'}, msg],
-              'options': {'num_ctx': 32768, 'temperature': 0.8}}
+              'options': {'num_ctx': contexto_ollama(texto, len(msg.get('images', []))), 'temperature': 0.8}}
     base = re.sub(r'/v1/?$', '', ajustes['url'].rstrip('/'))
     req = urllib.request.Request(base + '/api/chat', data=json.dumps(cuerpo).encode(), headers={'Content-Type': 'application/json'})
     print(f'Pensando con {ajustes["modelo"]} en tu PC (puede tardar varios minutos)…', flush=True)

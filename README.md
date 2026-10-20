@@ -49,6 +49,12 @@ Claude) reciben las capturas del video; si escribes a mano un modelo con visión
 *✨ Escribir con IA* llena el guion, las etiquetas o el tráiler solo. *📋 Prompt para copiar* te da el texto y las capturas para pegar en
 cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te contestó. Escribe antes en «idea» los datos seguros del video.
 
+**Controles que no dependen de la IA:** la IA recibe la transcripción completa (nunca se corta: si es larga se agrupa en
+tramos) y capturas repartidas por todo el video más las de los momentos de mayor movimiento. Al revisar el guion, la app avisa
+si un tramo vuelve atrás en el video o si lo que narra un bloque se dice en otro momento de tu grabación (`revision_guion.txt`).
+*Generar voz* solo regenera los bloques cuyo texto cambió y, con la duración real de cada voz, alarga en el guion los bloques
+donde no cabía; después vuelve a *Montar video*.
+
 **Tráiler con pistas:** en el panel *🎞️ Tráiler* eliges ANTES, DURANTE o DESPUÉS y agregas pistas: capturas (arrastradas o
 con *📸 Capturar del reproductor* sobre `original.mp4`, que guarda el segundo), audios o notas de voz (*🎙 Grabar*) y texto
 («cuando muestro la placa sin soldar», «en el 2:10»). *✨ Armar tráiler con estas pistas* le pide el tráiler a tu IA usando esos
