@@ -203,7 +203,7 @@ def referencias_youtube(d, largo_max=9000):
     return out
 
 
-def encargo(d, tarea, idea, caps, an=None, estilo=None):
+def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     dur = duracion(os.path.join(d, 'original.mp4'))
     trans = transcripcion(d)
     lista_caps = '\n'.join(f'- Captura {k}: ' + (s if isinstance(s, str) else f'segundo {s:.1f} del video original')
@@ -214,6 +214,10 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
     partes.append(f"Capturas adjuntas (en orden):\n{lista_caps}")
     if trans:
         partes.append(f"Transcripción COMPLETA de lo que dice el autor en su grabación, de principio a fin ([minuto:segundo] texto):\n{trans}")
+    if mapa and tarea in ('guion', 'trailer'):
+        partes.append("MAPA DE LA GRABACIÓN, mirada entera cuadro a cuadro ([minuto:segundo] qué pantalla se ve · qué se hace · "
+                      "texto que se lee en pantalla). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
+                      "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
@@ -238,6 +242,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
     {{"modo": "lento+congelar", "src_inicio": s, "src_fin": s, "velocidad": v, "congelar_s": s}}
     {{"modo": "imagen", "congelar_s": s}}  (muestra la imagen del proyecto, por ejemplo un mapa)
   Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
+- Cada tramo tiene que MOSTRAR lo que dice su texto: si la voz dice «pega la key», el tramo es donde el mapa muestra el
+  campo de la key con la key puesta, no donde el autor lo comenta. Antes de responder, revisa bloque por bloque contra el mapa.
 - PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
   tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
   para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
@@ -312,7 +318,7 @@ def verificar_orden(d, bloques):
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
         for b in bloques:
             mo = b['montaje']
-            if mo.get('src_inicio') is None or mo['modo'] == 'imagen':
+            if mo.get('src_inicio') is None or mo['modo'] == 'imagen' or mo.get('visto'):
                 continue
             raices = {w[:5] for w in pistas.palabras_clave(b['texto'])}
             if len(raices) < 3:
@@ -1070,6 +1076,164 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     return [s for i, s in enumerate(senales) if i not in quitar]
 
 
+MAPA_PASO = 8.0  # un cuadro cada tantos segundos para el mapa del video (como mirarlo entero a mano)
+MAPA_MAX = 120
+MAPA_TANDA = 20  # cuadros por pedido a la IA
+
+
+def cuadros_mapa(d):
+    """Un cuadro nítido cada ~8 s de TODO el video (máx. 120) en ia_capturas/mapa/. Devuelve [(segundo, ruta)]."""
+    orig = os.path.join(d, 'original.mp4')
+    t, ni, mo = analizar(orig, os.path.join(d, 'original.nitidez.npz'))
+    total = float(t[-1])
+    paso = max(MAPA_PASO, total / MAPA_MAX)
+    out = os.path.join(d, 'ia_capturas', 'mapa')
+    os.makedirs(out, exist_ok=True)
+    lista, k = [], 0
+    while k * paso < total - 1:
+        s = mejor(t, ni, mo, k * paso, min(total, (k + 1) * paso))
+        f = os.path.join(out, f'mapa_{s:06.1f}s.jpg')
+        if not os.path.exists(f):
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', str(s), '-i', orig, '-frames:v', '1',
+                            '-vf', 'scale=768:-2', '-q:v', '4', f], check=True)
+        lista.append((s, f)); k += 1
+    return lista
+
+
+def texto_cerca(d, ini, fin):
+    """Lo que dice el autor entre ini y fin (de transcripcion.json)."""
+    return ' '.join(w['texto'] for w in pistas.palabras_video(d) if ini <= w['inicio'] < fin).strip()
+
+
+def mapa_video(d, ajustes=None):
+    """Lo que hice a mano con el video de la Raspberry: mirar el video entero, cuadro a cuadro, antes de escribir.
+    Cada ~8 s: el texto que se lee en pantalla (OCR) y, si la IA ve imágenes, qué pantalla es y qué se está haciendo.
+    Queda en mapa_video.json (se reaprovecha si el video no cambió). Devuelve [{'t', 'pantalla', 'accion', 'texto'}]."""
+    orig = os.path.join(d, 'original.mp4')
+    destino = os.path.join(d, 'mapa_video.json')
+    cuadros = cuadros_mapa(d)
+    firma = f'{os.path.getsize(orig)}:{len(cuadros)}'
+    vision = bool(ajustes) and ajustes.get('imagenes', True)
+    try:
+        viejo = json.load(open(destino, encoding='utf-8'))
+        if viejo.get('firma') == firma and (viejo.get('vision') or not vision):
+            return viejo['cuadros']
+    except (OSError, ValueError, AttributeError):
+        pass
+    print(f'Mirando el video entero: {len(cuadros)} cuadros (uno cada {cuadros[1][0] - cuadros[0][0] if len(cuadros) > 1 else 0:.0f} s)…', flush=True)
+    ocr = lector_ocr()
+    mapa = []
+    for s, f in cuadros:
+        textos = [x[0] for x in leer_textos(ocr, f)] if ocr else []
+        mapa.append({'t': s, 'texto': ' | '.join(textos)[:220], 'pantalla': '', 'accion': ''})
+    if vision:
+        dur = duracion(orig)
+        for a in range(0, len(cuadros), MAPA_TANDA):
+            tanda = list(enumerate(cuadros[a:a + MAPA_TANDA], a))
+            lineas = []
+            for i, (s, _) in tanda:
+                fin = cuadros[i + 1][0] if i + 1 < len(cuadros) else dur
+                lineas.append(f"- Cuadro {i - a + 1} (segundo {s:.0f}, {mmss(s)}). Texto leído en pantalla: «{mapa[i]['texto'] or '—'}». "
+                              f"El autor dice ahí: «{texto_cerca(d, s - 2, fin)[:300] or '—'}»")
+            pedido = f"""Son cuadros de una grabación de un video tutorial, en orden, con lo que se lee y lo que dice el autor:
+{chr(10).join(lineas)}
+
+Para cada cuadro di, corto y concreto: "pantalla" (qué app, ventana o pieza se ve: por ejemplo «app Honor, campo Key»,
+«placa del celular de cerca») y "accion" (qué se está haciendo en ese momento: «pega la key», «elige el puerto», «espera la carga»).
+Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "accion": "..."}}]}}."""
+            print(f'· describiendo cuadros {a + 1}–{a + len(tanda)} de {len(cuadros)}…', flush=True)
+            try:
+                r = extraer_json(llamar(ajustes, pedido, [(f'cuadro {i - a + 1}', f) for i, (_, f) in tanda]))
+            except (SystemExit, ValueError) as e:
+                print(f'· no pude describir esos cuadros ({e}); uso solo el texto de pantalla', flush=True)
+                vision = False
+                break
+            for x in (r.get('cuadros', []) if isinstance(r, dict) else r):
+                try:
+                    i = a + int(x.get('n')) - 1
+                except (TypeError, ValueError):
+                    continue
+                if a <= i < a + len(tanda):
+                    mapa[i]['pantalla'] = str(x.get('pantalla') or '')[:120]
+                    mapa[i]['accion'] = str(x.get('accion') or '')[:120]
+    json.dump({'firma': firma, 'vision': vision, 'cuadros': mapa}, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    return mapa
+
+
+def texto_mapa(mapa):
+    return '\n'.join(f"[{mmss(m['t'])}] " + ' · '.join(x for x in (m.get('pantalla'), m.get('accion'),
+                                                                     m.get('texto') and f"se lee: {m['texto']}") if x)
+                     for m in mapa)
+
+
+def cuadro_en(d, s, nombre):
+    f = os.path.join(d, 'ia_capturas', 'revision', nombre)
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0, s):.2f}', '-i', os.path.join(d, 'original.mp4'),
+                    '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '5', f], check=True)
+    return f
+
+
+def revisar_con_imagen(d, ajustes, datos, mapa, tanda=12):
+    """La segunda mirada que hice a mano: cada bloque con el cuadro de SU tramo, y la IA dice si lo que se narra
+    es lo que se ve. Si no, el tramo (con su mismo largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
+    bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen']
+    if not bloques or not ajustes.get('imagenes', True):
+        return []
+    avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
+    mapa_txt = texto_mapa(mapa)
+    for a in range(0, len(bloques), tanda):
+        grupo = bloques[a:a + tanda]
+        caps, lineas = [], []
+        for n, b in enumerate(grupo, 1):
+            mo = b['montaje']
+            ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+            medio = (ini + fin) / 2 if fin > ini else ini + 0.5
+            caps.append((f"bloque {b['id']}", cuadro_en(d, medio, f"{b['id']}.jpg")))
+            lineas.append(f"- Imagen {n} = bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}). La voz dice: «{b['texto'][:400]}»")
+        pedido = f"""Reviso un guion de video tutorial. Cada imagen es el cuadro del medio del tramo que se muestra mientras la voz habla:
+{chr(10).join(lineas)}
+
+Mapa de la grabación completa (lo que se ve cada pocos segundos):
+{mapa_txt[:24000]}
+
+Para cada imagen di si lo que dice la voz es lo que se ve. Si NO coincide (por ejemplo la voz dice «pega la key» y se ve otra
+pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
+{{"revision": [{{"imagen": 1, "ok": true}}, {{"imagen": 2, "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}."""
+        print(f'Revisando bloques {a + 1}–{a + len(grupo)} de {len(bloques)} contra su imagen…', flush=True)
+        try:
+            r = extraer_json(llamar(ajustes, pedido, caps))
+        except (SystemExit, ValueError) as e:
+            print(f'· no pude revisar esos bloques ({e})', flush=True)
+            continue
+        for x in (r.get('revision', []) if isinstance(r, dict) else r):
+            try:
+                b = grupo[int(x.get('imagen')) - 1]
+            except (TypeError, ValueError, IndexError):
+                continue
+            if x.get('ok') is not False or x.get('segundo') is None:
+                continue
+            try:
+                s = min(max(float(x['segundo']), 0), dur - 1)
+            except (TypeError, ValueError):
+                continue
+            mo = b['montaje']
+            ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+            if abs(s - (ini + fin) / 2) < 4:
+                continue
+            largo_t = max(0.0, fin - ini)
+            nuevo = round(min(max(0.0, s - min(2.0, largo_t / 3)), max(0.0, dur - 0.2 - largo_t)), 2)
+            mo['src_inicio'], mo['visto'] = nuevo, True
+            if mo.get('src_fin') is not None:
+                mo['src_fin'] = round(nuevo + largo_t, 2)
+            avisos.append(f"{b['id']}: la imagen no iba con lo que dice ({mmss(ini)}); lo moví a {mmss(nuevo)}"
+                          + (f" ({str(x.get('por_que'))[:80]})" if x.get('por_que') else ''))
+    if avisos:
+        with open(os.path.join(d, 'revision_guion.txt'), 'a', encoding='utf-8') as f:
+            f.write('\nRevisión con imagen:\n' + ''.join(x + '\n' for x in avisos))
+    return avisos
+
+
 def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
     """Si el guion de la IA da un video muy corto o muy largo, se lo devuelvo con los números para que lo arregle.
     Me quedo con la versión más cercana a la duración buscada."""
@@ -1120,7 +1284,7 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
     return mejor_
 
 
-def paquete(d, tarea, prompt, caps):
+def paquete(d, tarea, prompt, caps, mapa=None):
     """para_claude.zip: todo lo que Claude necesita en el chat para escribir el guion y dejarlo en tu carpeta."""
     import zipfile
     destino = os.path.join(d, 'para_claude.zip')
@@ -1128,7 +1292,8 @@ def paquete(d, tarea, prompt, caps):
     leeme = f"""Paquete para Claude · proyecto «{proyecto}» · tarea: {tarea}
 
 Claude: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
-transcripción con tiempos en transcripcion.json). Déjalo en la carpeta del proyecto, en mis_proyectos/{proyecto}/{ARCHIVO[tarea]}
+transcripción con tiempos en transcripcion.json; si está, mapa_video.json y ia_capturas/mapa/ traen el video entero
+cuadro a cuadro). Déjalo en la carpeta del proyecto, en mis_proyectos/{proyecto}/{ARCHIVO[tarea]}
 (si ya hay uno, el actual va aparte como {ARCHIVO[tarea]}.anterior). Después el autor pulsa «Hacer todo».
 Ruta de esta carpeta en la PC del autor: {os.path.abspath(d)}
 """
@@ -1141,6 +1306,10 @@ Ruta de esta carpeta en la PC del autor: {os.path.abspath(d)}
                 z.write(f, nombre)
         for _, f in caps:
             z.write(f, 'ia_capturas/' + os.path.basename(f))
+        if mapa:  # el video entero, un cuadro cada pocos segundos, con el texto de pantalla
+            z.write(os.path.join(d, 'mapa_video.json'), 'mapa_video.json')
+            for f in sorted(os.listdir(os.path.join(d, 'ia_capturas', 'mapa'))):
+                z.write(os.path.join(d, 'ia_capturas', 'mapa', f), 'ia_capturas/mapa/' + f)
     print(f'Listo para_claude.zip ({os.path.getsize(destino) / 1e6:.1f} MB, {len(caps)} capturas). '
           'Súbelo al chat con Claude y pídele el guion.', flush=True)
 
@@ -1169,6 +1338,7 @@ def main():
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'Guardado senales.json con {len(datos)} señales')
         return
+    mapa = None
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
     else:
@@ -1191,12 +1361,19 @@ def main():
         estilo = estilo_activo(aj)
         if estilo and a.tarea in ('guion', 'trailer'):
             print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
-        texto = encargo(d, a.tarea, idea, caps, an, estilo)
+        mapa = None
+        if a.tarea == 'guion' and aj.get('minucioso', True):
+            # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
+            try:
+                mapa = mapa_video(d, aj if a.modo == 'api' and not a.ajustar_largo else None)
+            except Exception as e:
+                print(f'· no pude armar el mapa del video ({e}); sigo sin él', flush=True)
+        texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
         if a.modo in ('prompt', 'paquete'):
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
             open(f, 'w', encoding='utf-8').write(texto)
             if a.modo == 'paquete':
-                paquete(d, a.tarea, f, caps)
+                paquete(d, a.tarea, f, caps, mapa)
                 return
             print(f'Prompt en {f}. Adjunta las {len(caps)} capturas de ia_capturas/ si tu IA ve imágenes.')
             return
@@ -1229,6 +1406,14 @@ def main():
         if a.tarea == 'guion':
             datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
     datos, avisos = revisar(d, a.tarea, datos)
+    if a.tarea == 'guion' and a.modo == 'api' and mapa:
+        vistos = revisar_con_imagen(d, ajustes, datos, mapa)
+        if vistos:  # se movieron tramos: se vuelven a medir los largos
+            datos, despues = revisar(d, a.tarea, datos)
+            avisos = [x for x in avisos if not x.startswith(('duración estimada', 'quedó corto', 'el video queda'))] + vistos
+            avisos += [x for x in despues if x not in avisos]
+        else:
+            avisos.append('revisé cada bloque contra su imagen: todos coinciden')
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
