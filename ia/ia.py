@@ -472,7 +472,16 @@ def main():
         print(f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…", flush=True)
         respuesta = llamar(ajustes, texto, caps)
         open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
-        datos = extraer_json(respuesta)
+        try:
+            datos = extraer_json(respuesta)
+        except ValueError:
+            corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
+            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido; '
+                             f'puede que lo haya rechazado. Contestó: «{corto}». Prueba con otro modelo en «⚙ Ajustes IA» '
+                             f'(GPT o Qwen suelen aceptar estos temas) y vuelve a pulsar.')
+        if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
+            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
+                             f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
     datos, avisos = revisar(d, a.tarea, datos)
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')

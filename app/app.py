@@ -119,6 +119,8 @@ def comandos(paso, d, op):
     if paso == 'trailer':
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+    if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
@@ -151,6 +153,7 @@ PASOS = [
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
@@ -497,6 +500,19 @@ class Manejador(BaseHTTPRequestHandler):
                 pasos = [q['paso']]
                 if q['paso'] == 'todo':
                     pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
+                    # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
+                    if not existe(carpeta(q['p']), 'original.mp4'):
+                        return self.error('Primero sube tu video grabado (original.mp4): de ahí sale el guion.')
+                    aj = leer_ajustes()
+                    if not (aj.get('modelo') and aj.get('url')):
+                        return self.error('Para sacar el guion solo de tu video hace falta una IA. Elige una en «⚙ Ajustes IA» '
+                                          '(Claude, GPT, Qwen u Ollama gratis en tu PC) y vuelve a pulsar.')
+                    previos = ['guion_ia']
+                    if not existe(carpeta(q['p']), 'transcripcion.srt'):
+                        previos.insert(0, 'transcribir')
+                        datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                    pasos = previos + pasos
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:
