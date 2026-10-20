@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 from nitidez import analizar, mejor, repartidos  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
+import numpy as np  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
@@ -167,7 +168,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
     if tarea == 'guion':
         objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
-        meta = int(objetivo.group(1)) if objetivo else max(1, round(dur * 0.6 / 60))
+        meta = int(objetivo.group(1)) if objetivo else max(1, round(dur * 0.95 / 60))
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
@@ -181,7 +182,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None):
   Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
-- Duración total buscada: unos {meta} minutos{'' if objetivo else f', MÁS CORTO que el original ({dur / 60:.0f} min)'}. Como el video dura
+- Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
 Responde SOLO con un objeto JSON {{"bloques": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
@@ -307,9 +308,9 @@ def revisar(d, tarea, datos):
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
         avisos += verificar_orden(d, bloques)
-        if t > dur:
-            avisos.append(f"el video queda en {mmss(t)}, más largo que tu grabación ({mmss(dur)}): revisa si sobran bloques")
-        elif t < dur * 0.3:
+        if t > dur * 1.25:
+            avisos.append(f"el video queda en {mmss(t)}, bastante más largo que tu grabación ({mmss(dur)}): revisa si sobran bloques")
+        elif t < dur * 0.7:
             avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(dur)}. Si lo quieres más largo, escribe en tu idea "
                           f"«que dure unos N minutos» y vuelve a pedir el guion")
         else:
@@ -579,13 +580,98 @@ def dibujar_marca(f, s, W, salida):
     return cv2.imwrite(salida, im)
 
 
+MARCAS_DIR = 'marcas_senales'
+CADENA = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4']
+FORMAS = {'circulo', 'flecha', 'caja'}
+
+
+def marcas_autor(d):
+    """Lo que el autor pidió en «Flechas y círculos»: capturas (con nota) y pedidos de texto o de voz."""
+    try:
+        datos = json.load(open(os.path.join(d, MARCAS_DIR, 'marcas.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return [], []
+    capturas_, pedidos = [], []
+    for p in datos.get('MARCAS', []):
+        if not isinstance(p, dict):
+            continue
+        tipo, nota = p.get('tipo'), (p.get('nota') or '').strip()
+        if tipo == 'captura' and p.get('archivo'):
+            capturas_.append(p)
+        elif tipo == 'audio' and p.get('archivo'):
+            txt = pistas.transcribir_audio(d, os.path.basename(p['archivo']), MARCAS_DIR)
+            if txt or nota:
+                pedidos.append(' '.join(x for x in (txt, nota) if x))
+        elif nota:
+            pedidos.append(nota + (f" (en el {p['segundo']})" if p.get('segundo') else ''))
+    return capturas_, pedidos
+
+
+def momento(d, c, video):
+    """Segundo del video donde va la captura del autor: el que anotó (si es del video ya montado) o el cuadro más parecido."""
+    seg = pistas.segundos(c.get('segundo'))
+    if seg is not None and c.get('video') in CADENA:
+        return seg, 1.0
+    f = os.path.join(d, MARCAS_DIR, os.path.basename(c['archivo']))
+    crudo = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-i', video, '-vf', f'fps=2,scale={pistas.MINI_W}:{pistas.MINI_H},format=gray',
+                            '-f', 'rawvideo', '-'], capture_output=True, check=True).stdout
+    n = len(crudo) // (pistas.MINI_W * pistas.MINI_H)
+    if not n:
+        return None, 0
+    s = pistas._gris(crudo, n) @ pistas._gris(pistas._mini(f, ['-frames:v', '1']), 1)[0]
+    if seg is not None:  # anotó un segundo pero del original: se busca el parecido más cercano a ese punto
+        s = s - 0.0005 * abs(np.arange(n) / 2 - seg)
+    i = int(s.argmax())
+    return round(i / 2 + 0.25, 2), float(s[i])
+
+
+def ubicar(m, p, f, ocr, W, H):
+    """Arma la señal con la posición que dio la IA (en %), y la clava encima del texto si el lector lo encuentra en el cuadro.
+    Devuelve (señal, si quedó leída en pantalla) o (None, False)."""
+    try:
+        x, y = float(p['x']), float(p['y'])
+    except (KeyError, TypeError, ValueError):
+        x = y = None
+    tam_w, tam_h = (float(p.get('w') or 8) * W / 100, float(p.get('h') or 8) * H / 100)
+    exacta = False
+    if ocr:  # si lo que hay que señalar es un texto en pantalla, va justo encima de ese texto
+        esc = W / 1024
+        guia = (x * 1024 / 100, y * 1024 * H / W / 100) if x is not None else None
+        hit = buscar_en_pantalla(leer_textos(ocr, f), m, guia)
+        if hit:
+            a, b, c, e, _ = hit
+            x, y = (a + c) / 2 * esc * 100 / W, (b + e) / 2 * esc * 100 / H
+            tam_w, tam_h = (c - a) * esc + 24, (e - b) * esc + 16
+            exacta = True
+    if x is None or not (2 <= x <= 98 and 2 <= y <= 98):
+        return None, False
+    tipo = m.get('tipo') if m.get('tipo') in FORMAS else 'circulo'
+    if exacta and tipo == 'circulo' and not m.get('forma_fija') and tam_w > 4.5 * tam_h:  # texto largo: mejor una caja
+        tipo = 'caja'
+    s = {'bloque': m.get('bloque'), 'frase': m.get('frase'), 'tipo': tipo, 'x': round(x * W / 100), 'y': round(y * H / 100), 'dur': 3}
+    if tipo == 'caja':
+        s['w'], s['h'] = round(min(max(tam_w * 1.15, 120), W * 0.6)), round(min(max(tam_h * 1.3, 60), H * 0.4))
+        s['foco'] = True
+    else:
+        s['r'] = round(min(max(max(tam_w, tam_h) * (0.62 if exacta else 0.7), H * 0.045), H * 0.16))
+        s['foco'] = tipo == 'circulo'
+    if tipo == 'flecha':
+        apuntar(s, tam_w, tam_h, W, H)
+    if (m.get('texto') or '').strip():
+        s['texto'] = m['texto'].strip()[:28]
+    return s, exacta
+
+
 def senales_auto(d, ajustes, video):
-    """Flechas y círculos sin escribir nada: 1) la IA elige en el guion qué señalar y con qué frase,
-    2) se saca el cuadro del video justo cuando la voz dice esa frase, 3) la IA ubica la cosa en cada cuadro."""
+    """Flechas y círculos sin escribir nada: 1) la IA elige en el guion qué señalar y con qué frase (más lo que pidió el autor),
+    2) se saca el cuadro del video justo cuando la voz dice esa frase, 3) la IA ubica la cosa en cada cuadro,
+    4) las capturas del autor se buscan en el video y la IA ubica ahí lo que marcó."""
     sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
     from etiquetas import buscar
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    propias, pedidos = marcas_autor(d)
     textos = '\n'.join(f"{b['id']} (en pantalla: {b.get('ancla', '')}): {b['texto']}" for b in g['bloques'])
+    extra = ('\n\nEl autor pidió además (esto va primero, aunque pase del máximo):\n' + '\n'.join(f'- {x}' for x in pedidos)) if pedidos else ''
     pedido = f"""Este es el guion de un video tutorial (voz en off sobre lo que se ve en pantalla):
 {textos}
 
@@ -594,22 +680,29 @@ el dato importante en la pantalla del celular o la PC, la pieza o conector. Máx
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la marca aparece cuando la
 voz las dice), "que" (qué hay que señalar, tal como se vería en pantalla, ej. «botón Aceptar», «opción Restablecer»),
 "tipo" (circulo para botones y opciones, flecha para algo pequeño, caja para un texto o dato largo) y "texto"
-(rótulo opcional de 1 a 3 palabras, o vacío).
+(rótulo opcional de 1 a 3 palabras, o vacío).{extra}
 Responde SOLO con un objeto JSON {{"marcas": [...]}}."""
-    print(f'Eligiendo qué señalar con {ajustes["modelo"]}…', flush=True)
+    print(f'Eligiendo qué señalar con {ajustes["modelo"]}…' + (f' (más {len(pedidos)} pedido{"s" if len(pedidos) > 1 else ""} tuyo{"s" if len(pedidos) > 1 else ""})' if pedidos else ''), flush=True)
     r1 = llamar(ajustes, pedido, [])
     open(os.path.join(d, 'ia_respuesta_senales_1.txt'), 'w', encoding='utf-8').write(r1)
-    marcas = extraer_json(r1)
+    try:
+        marcas = extraer_json(r1)
+    except Exception:
+        if not propias:
+            raise
+        marcas = []
     marcas = marcas.get('marcas', []) if isinstance(marcas, dict) else marcas
     inicio = {b['id']: b['inicio_min'] for b in g['bloques']}
     W, H = tamano(video)
     out = os.path.join(d, 'ia_capturas')
     os.makedirs(out, exist_ok=True)
     for viejo in os.listdir(out):
-        if viejo.startswith('senal_'):  # también las copias _revision
+        if viejo.startswith('senal_'):  # también las copias _revision y _autor
             os.remove(os.path.join(out, viejo))
-    validas, caps = [], []
-    for m in marcas:
+    validas, caps, tiempos = [], [], []
+    for m in marcas if isinstance(marcas, list) else []:
+        if not isinstance(m, dict):
+            continue
         al_f = os.path.join(d, 'voz', f"{m.get('bloque')}.align.json")
         if m.get('bloque') not in inicio or not os.path.exists(al_f):
             continue
@@ -621,72 +714,114 @@ Responde SOLO con un objeto JSON {{"marcas": [...]}}."""
         f = os.path.join(out, f'senal_{len(validas) + 1:02d}.jpg')
         subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{t:.2f}', '-i', video, '-frames:v', '1',
                         '-vf', 'scale=1024:-2', '-q:v', '3', f], check=True)
-        validas.append(m)
+        validas.append(m); tiempos.append(t)
         caps.append((f"imagen {len(validas)}: {m.get('que')}", f))
-    if not validas:
+    if not validas and not propias:
         raise SystemExit('ERROR: la IA no eligió ninguna frase que esté tal cual en el guion; no hay flechas que poner.')
-    lista = '\n'.join(f'- Imagen {k}: {m.get("que")}' for k, m in enumerate(validas, 1))
-    pedido2 = f"""Te mando {len(validas)} imágenes de un video, en orden. En cada una busca lo que se indica:
+    pos = {}
+    if validas:
+        lista = '\n'.join(f'- Imagen {k}: {m.get("que")}' for k, m in enumerate(validas, 1))
+        pedido2 = f"""Te mando {len(validas)} imágenes de un video, en orden. En cada una busca lo que se indica:
 {lista}
 
 Para cada imagen da dónde está su CENTRO, en porcentaje del ancho (x, 0 = borde izquierdo, 100 = derecho) y del alto
 (y, 0 = arriba, 100 = abajo), y su tamaño aproximado en porcentaje (w, h). Si no se ve claramente, pon "x": null.
 Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 40, "w": 12, "h": 6}}, ...]}}."""
-    print(f'Ubicando {len(validas)} señales en sus cuadros…', flush=True)
-    r2 = llamar(ajustes, pedido2, caps)
-    open(os.path.join(d, 'ia_respuesta_senales_2.txt'), 'w', encoding='utf-8').write(r2)
-    pos = extraer_json(r2)
-    pos = {int(p.get('imagen', 0)): p for p in (pos.get('posiciones', []) if isinstance(pos, dict) else pos)}
+        print(f'Ubicando {len(validas)} señales en sus cuadros…', flush=True)
+        r2 = llamar(ajustes, pedido2, caps)
+        open(os.path.join(d, 'ia_respuesta_senales_2.txt'), 'w', encoding='utf-8').write(r2)
+        pos = extraer_json(r2)
+        pos = {int(p.get('imagen', 0)): p for p in (pos.get('posiciones', []) if isinstance(pos, dict) else pos)}
     ocr = lector_ocr()
     senales, dudosas = [], []
     for k, m in enumerate(validas, 1):
-        p = pos.get(k) or {}
-        try:
-            x, y = float(p['x']), float(p['y'])
-        except (KeyError, TypeError, ValueError):
-            x = y = None
-        tam_w, tam_h = (float(p.get('w') or 8) * W / 100, float(p.get('h') or 8) * H / 100)
-        exacta = False
-        if ocr:  # si lo que hay que señalar es un texto en pantalla, va justo encima de ese texto
-            f = caps[k - 1][1]
-            textos = leer_textos(ocr, f)
-            esc = W / 1024
-            guia = (x * 1024 / 100, y * 1024 * H / W / 100) if x is not None else None
-            hit = buscar_en_pantalla(textos, m, guia)
-            if hit:
-                a, b, c, e, _ = hit
-                x, y = (a + c) / 2 * esc * 100 / W, (b + e) / 2 * esc * 100 / H
-                tam_w, tam_h = (c - a) * esc + 24, (e - b) * esc + 16
-                exacta = True
-        if x is None:
+        s, exacta = ubicar(m, pos.get(k) or {}, caps[k - 1][1], ocr, W, H)
+        if not s:
             print(f"· salto «{m.get('que')}»: la IA no lo vio en el cuadro", flush=True)
             continue
-        if not (2 <= x <= 98 and 2 <= y <= 98):
-            continue
-        tipo = m.get('tipo') if m.get('tipo') in ('circulo', 'flecha', 'caja') else 'circulo'
-        if exacta and tipo == 'circulo' and tam_w > 4.5 * tam_h:  # texto largo: queda mejor una caja que un círculo enorme
-            tipo = 'caja'
-        s = {'bloque': m['bloque'], 'frase': m['frase'], 'tipo': tipo, 'x': round(x * W / 100), 'y': round(y * H / 100), 'dur': 3}
-        if tipo == 'caja':
-            s['w'], s['h'] = round(min(max(tam_w * 1.15, 120), W * 0.6)), round(min(max(tam_h * 1.3, 60), H * 0.4))
-            s['foco'] = True
-        else:
-            s['r'] = round(min(max(max(tam_w, tam_h) * (0.62 if exacta else 0.7), H * 0.045), H * 0.16))
-            s['foco'] = tipo == 'circulo'
-        if tipo == 'flecha':
-            apuntar(s, tam_w, tam_h, W, H)
-        if (m.get('texto') or '').strip():
-            s['texto'] = m['texto'].strip()[:28]
+        s['_t'] = tiempos[k - 1]
         senales.append(s)
         if not exacta:
             dudosas.append((len(senales) - 1, k, m))
-        print(f"{m['bloque']}  {tipo:8s} «{m['frase']}» → {m.get('que')} ({x:.0f}%, {y:.0f}%)"
+        print(f"{m['bloque']}  {s['tipo']:8s} «{m['frase']}» → {m.get('que')} ({s['x'] * 100 / W:.0f}%, {s['y'] * 100 / H:.0f}%)"
               + ('  ✓ leído en pantalla' if exacta else ''), flush=True)
+    if propias:
+        senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, senales, dudosas)
     if dudosas and ajustes.get('revisar_senales', True):
         senales = revisar_senales(d, ajustes, senales, dudosas, caps, W, H)
-    if not senales:
-        raise SystemExit('ERROR: la IA no ubicó ninguna señal en los cuadros.')
+    # las del autor mandan: se quitan las automáticas que caen encima de una suya
+    suyas = [s['_t'] for s in senales if s.get('autor')]
+    senales = [s for s in senales if s.get('autor') or all(abs(s['_t'] - t) > 3.5 for t in suyas)]
+    for s in senales:
+        s.pop('_t', None)
     return senales
+
+
+def senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, senales, dudosas):
+    """Las capturas que mandó el autor: se busca en qué segundo del video están y la IA ubica en ese cuadro lo que marcó."""
+    pares, imgs = [], []
+    for c in propias:
+        t, parecido = momento(d, c, video)
+        nombre = os.path.basename(c['archivo'])
+        if t is None or parecido < 0.35:
+            print(f"· tu captura {nombre} no se parece a ningún momento del video: anota el segundo o captúrala del reproductor", flush=True)
+            continue
+        n = len(pares) + 1
+        f = os.path.join(out, f'senal_autor_{n:02d}.jpg')
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{t:.2f}', '-i', video, '-frames:v', '1',
+                        '-vf', 'scale=1024:-2', '-q:v', '3', f], check=True)
+        suya = os.path.join(out, f'senal_autor_{n:02d}_captura.jpg')
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.join(d, MARCAS_DIR, nombre), '-frames:v', '1',
+                        '-vf', 'scale=1024:-2', '-q:v', '3', suya], check=True)
+        nota = (c.get('nota') or '').strip()
+        pares.append((c, t, f, nota))
+        imgs += [(f'captura {n} del autor' + (f': {nota}' if nota else ''), suya), (f'cuadro {n} del video', f)]
+        print(f'· tu captura {nombre} va en el {mmss(t)} del video', flush=True)
+    if not pares:
+        return
+    lista = '\n'.join(f'- Par {n}: captura {n} del autor, luego cuadro {n} del video.'
+                      + (f' El autor dice: «{nota}».' if nota else '')
+                      + (f' Quiere un {"recuadro" if c["forma"] == "caja" else c["forma"]}.' if c.get('forma') in FORMAS else '')
+                      for n, (c, t, f, nota) in enumerate(pares, 1))
+    pedido = f"""El autor de un video tutorial me mandó capturas para mostrar dónde quiere una flecha, un círculo o un recuadro
+(a veces lo dibujó encima de la captura, a veces solo muestra la pantalla y lo explica en la nota). Te mando {len(pares)} pares
+de imágenes, en orden: primero su captura y después el mismo momento sacado del video final.
+{lista}
+
+Para cada par, mira qué quiere señalar el autor y búscalo en el CUADRO DEL VIDEO (la segunda imagen del par). Da:
+"par", "que" (qué es, tal como se lee en pantalla, ej. «botón Aceptar»), "tipo" (circulo, flecha o caja), "texto" (rótulo de
+1 a 3 palabras o vacío; si el autor escribió un rótulo, úsalo), y el CENTRO en porcentaje del cuadro del video
+(x, 0 = izquierda, 100 = derecha; y, 0 = arriba, 100 = abajo) con su tamaño (w, h). Si no lo encuentras, "x": null.
+Responde SOLO con un objeto JSON {{"marcas": [{{"par": 1, "que": "...", "tipo": "circulo", "texto": "", "x": 50, "y": 40, "w": 10, "h": 6}}]}}."""
+    print('Ubicando ' + (f'las {len(pares)} capturas que mandaste…' if len(pares) > 1 else 'la captura que mandaste…'), flush=True)
+    try:
+        r = llamar(ajustes, pedido, imgs)
+    except SystemExit as e:
+        print(f'· no pude ubicar tus capturas ({e})', flush=True)
+        return
+    open(os.path.join(d, 'ia_respuesta_senales_autor.txt'), 'w', encoding='utf-8').write(r)
+    try:
+        res = extraer_json(r)
+    except Exception:
+        print('· la IA no respondió bien sobre tus capturas', flush=True)
+        return
+    res = {int(x.get('par', 0)): x for x in (res.get('marcas', []) if isinstance(res, dict) else res) if isinstance(x, dict)}
+    for n, (c, t, f, nota) in enumerate(pares, 1):
+        p = res.get(n) or {}
+        bloque = max((b for b in inicio if inicio[b] <= t), key=lambda b: inicio[b], default=None)
+        m = {'que': p.get('que') or nota, 'texto': p.get('texto') or '', 'bloque': bloque, 'frase': (nota or p.get('que') or 'tu captura')[:40],
+             'tipo': c['forma'] if c.get('forma') in FORMAS else p.get('tipo'), 'forma_fija': c.get('forma') in FORMAS}
+        s, exacta = ubicar(m, p, f, ocr, W, H)
+        if not s:
+            print(f'· en tu captura {n} la IA no encontró qué señalar; prueba con una nota más clara', flush=True)
+            continue
+        s.update(t=t, _t=t, autor=True)
+        caps.append((f'cuadro {n} del video', f))
+        senales.append(s)
+        if not exacta:
+            dudosas.append((len(senales) - 1, len(caps), m))
+        print(f"tuya {mmss(t)}  {s['tipo']:8s} → {m['que']} ({s['x'] * 100 / W:.0f}%, {s['y'] * 100 / H:.0f}%)"
+              + ('  ✓ leído en pantalla' if exacta else ''), flush=True)
 
 
 def angulo_libre(x, y):

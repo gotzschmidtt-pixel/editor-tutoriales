@@ -133,9 +133,9 @@ def parecidos(d, imagen, top=3, separacion=8):
 
 # ---------- audio y texto: buscar lo que se dice en la transcripción ----------
 
-def transcribir_audio(d, archivo):
+def transcribir_audio(d, archivo, carpeta=CARPETA):
     """Texto de un audio de pista (en caché junto al archivo). Scribe si hay clave, si no Whisper."""
-    f = os.path.join(d, CARPETA, archivo)
+    f = os.path.join(d, carpeta, archivo)
     cache = f + '.txt'
     if os.path.exists(cache) and os.path.getmtime(cache) >= os.path.getmtime(f):
         return open(cache, encoding='utf-8').read().strip()

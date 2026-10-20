@@ -76,7 +76,7 @@
   .pista button { padding: 6px 10px; }
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
   #soltarPista, #soltarTarjeta, #soltarEstilo { display: block; margin-top: 4px; }
-  #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
+  #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
   #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
   .bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
@@ -113,6 +113,7 @@
   <button id="nuevo">+ Nuevo proyecto</button>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
   <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
+  <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
@@ -171,6 +172,31 @@
       <p class="aviso">Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
       Una captura sin segundo se compara con todo el video; un audio se transcribe y se busca lo que dice en tu grabación
       (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
+    </section>
+
+    <section class="panel" id="panelMarcas">
+      <h2>🎯 Flechas y círculos · tus capturas</h2>
+      <p class="aviso">Si a la IA se le pasa algo, muéstraselo: arrastra o pega (Ctrl+V) una captura de ese momento (puedes dibujar
+      encima dónde va), o captúrala del reproductor. Agrega una nota por escrito o de voz: «círculo en Aceptar», «flecha al conector».</p>
+      <div id="listaMarcas"></div>
+      <label class="subida" id="soltarMarca" tabindex="0"><div class="t">➕ Captura o audio</div>
+        <div class="e">Arrastra aquí, pega con Ctrl+V o haz clic</div><input type="file" multiple accept="image/*,audio/*"></label>
+      <div class="fila">
+        <input type="text" id="mNota" placeholder="Qué señalar (ej. círculo en «Aceptar»)" style="flex:1; min-width:12em">
+        <select id="mForma"><option value="auto">Forma: la IA elige</option><option value="circulo">Círculo</option>
+          <option value="flecha">Flecha</option><option value="caja">Recuadro</option></select>
+      </div>
+      <div class="fila">
+        <button onclick="marcaTexto()">+ Pedido de texto</button>
+        <button onclick="capturarMarca()">📸 Capturar del reproductor</button>
+        <button id="btnGrabarMarca" onclick="grabarMarca()">🎙 Grabar nota de voz</button>
+      </div>
+      <div class="fila">
+        <button class="principal" onclick="ejecutar('senales')">▶ Poner flechas y círculos</button>
+      </div>
+      <p class="aviso">Tus capturas mandan: la IA busca en qué segundo del video están, ubica lo que marcaste y quita las suyas
+      que caigan encima. Los pedidos de texto o voz («pon una flecha cuando hablo del PIN») se suman a los que elige la IA.
+      «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
     <section class="panel" id="panelTarjetas">
@@ -329,7 +355,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -567,6 +593,97 @@ async function grabar() {
   el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
   el.ondragleave = () => el.style.borderColor = '';
   el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarArchivos([...e.dataTransfer.files]); };
+}
+
+const FORMA = {auto: 'La IA elige', circulo: 'Círculo', flecha: 'Flecha', caja: 'Recuadro'};
+let MARCAS = {MARCAS: []};
+async function cargarMarcas() { MARCAS = await api(`/api/pistas?g=marcas&p=${q(P)}`); pintarMarcas(); }
+async function guardarMarcas() {
+  try { await api(`/api/pistas?g=marcas&p=${q(P)}`, {method: 'POST', body: JSON.stringify(MARCAS)}); } catch (e) { alert(e.message); }
+  pintarMarcas();
+}
+function pintarMarcas() {
+  const url = a => `/archivo?p=${q(P)}&sub=marcas_senales&f=${q(a)}`;
+  $('#listaMarcas').innerHTML = MARCAS.MARCAS.map((p, i) => `<div class="pista">
+      <div class="vista">${p.tipo === 'captura' ? `<img src="${url(p.archivo)}">` : p.tipo === 'audio' ? `<audio controls preload="none" src="${url(p.archivo)}"></audio>` : '📝'}</div>
+      <div class="datos" style="grid-template-columns: 6em 1fr 8em">
+        <input type="text" placeholder="Segundo" title="Opcional: si no lo pones, se busca en el video" value="${esc(p.segundo)}" onchange="cambiarMarca(${i}, 'segundo', this.value)">
+        <input type="text" placeholder="${p.tipo === 'texto' ? 'Tu pedido' : 'Qué señalar (opcional)'}" value="${esc(p.nota)}" onchange="cambiarMarca(${i}, 'nota', this.value)">
+        ${p.tipo === 'captura' ? `<select onchange="cambiarMarca(${i}, 'forma', this.value)">${Object.entries(FORMA).map(([k, v]) => `<option value="${k}" ${(p.forma || 'auto') === k ? 'selected' : ''}>${v}</option>`).join('')}</select>` : '<span></span>'}</div>
+      <button title="Quitar" onclick="MARCAS.MARCAS.splice(${i}, 1); guardarMarcas()">✕</button></div>`).join('') || '<p class="aviso">Sin capturas ni pedidos: la IA elige sola dónde poner flechas y círculos.</p>';
+}
+function cambiarMarca(i, k, v) { MARCAS.MARCAS[i][k] = v.trim(); guardarMarcas(); }
+function camposMarca() {
+  const c = {nota: $('#mNota').value.trim(), forma: $('#mForma').value};
+  $('#mNota').value = ''; $('#mForma').value = 'auto'; return c;
+}
+async function subirMarca(blob, nombre, tipo, campos) {
+  const r = await api(`/api/pista_archivo?g=marcas&p=${q(P)}&nombre=${q(nombre)}`, {method: 'POST', body: blob});
+  MARCAS.MARCAS.push({tipo, archivo: r.archivo, ...campos});
+}
+async function agregarMarcas(files) {
+  const campos = camposMarca();
+  try {
+    for (const f of files) {
+      const tipo = f.type.startsWith('image/') ? 'captura' : f.type.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm|opus|aac)$/i.test(f.name) ? 'audio' : null;
+      if (!tipo) { alert(`${f.name}: solo imágenes o audios`); continue; }
+      await subirMarca(f, f.name || 'captura.png', tipo, campos);
+    }
+  } catch (e) { alert(e.message); }
+  guardarMarcas();
+}
+function marcaTexto() {
+  const c = camposMarca();
+  if (!c.nota) return alert('Escribe tu pedido en el cuadro de texto, por ejemplo: «círculo en el botón Restablecer cuando lo nombro».');
+  MARCAS.MARCAS.push({tipo: 'texto', nota: c.nota}); guardarMarcas();
+}
+async function capturarMarca() {
+  const v = $('#video');
+  if (!v.videoWidth) return alert('Abre un video en «Ver resultado» (mejor el ya montado, con voz), pausa en el momento y vuelve a pulsar.');
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const campos = camposMarca(), t = v.currentTime;
+  campos.segundo = `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  campos.video = new URLSearchParams(v.src.split('?')[1] || '').get('f') || '';
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  try { await subirMarca(blob, 'captura.jpg', 'captura', campos); } catch (e) { alert(e.message); }
+  guardarMarcas();
+}
+let grabadoraMarca = null;
+async function grabarMarca() {
+  if (grabadoraMarca) return grabadoraMarca.stop();
+  let flujo;
+  try { flujo = await navigator.mediaDevices.getUserMedia({audio: true}); } catch (e) { return alert('No pude usar el micrófono: ' + e.message); }
+  const trozos = [], b = $('#btnGrabarMarca');
+  grabadoraMarca = new MediaRecorder(flujo);
+  grabadoraMarca.ondataavailable = e => trozos.push(e.data);
+  grabadoraMarca.onstop = async () => {
+    flujo.getTracks().forEach(t => t.stop()); grabadoraMarca = null;
+    b.textContent = '🎙 Grabar nota de voz'; b.classList.remove('grabando');
+    try { await subirMarca(new Blob(trozos, {type: 'audio/webm'}), 'nota.webm', 'audio', camposMarca()); } catch (e) { alert(e.message); }
+    guardarMarcas();
+  };
+  grabadoraMarca.start();
+  b.textContent = '■ Detener grabación'; b.classList.add('grabando');
+}
+{
+  const el = $('#soltarMarca'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarMarcas([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarMarcas([...e.dataTransfer.files]); };
+  // Ctrl+V con una imagen copiada (recorte de Windows, captura de pantalla): va a tus capturas de flechas,
+  // salvo que estés escribiendo en un cuadro de texto o el último panel que tocaste sea el del tráiler
+  let panelActivo = '';
+  document.addEventListener('pointerdown', e => { panelActivo = e.target.closest('section.panel')?.id || ''; });
+  document.addEventListener('paste', e => {
+    if (/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '') || !P) return;
+    const imgs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    e.preventDefault();
+    if (panelActivo === 'panelTrailer') agregarArchivos(imgs);
+    else { agregarMarcas(imgs); irA('#panelMarcas'); }
+  });
 }
 
 const GRUPOS = {COMENTARIOS: 'Tu invitación a comentar: «¡déjame tu duda abajo!», una flecha hacia los comentarios, tu sticker.',

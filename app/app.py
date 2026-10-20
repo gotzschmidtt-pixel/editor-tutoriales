@@ -36,6 +36,7 @@ IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 GRUPOS = {
     'pistas': ('pistas_trailer', 'pistas.json', ['ANTES', 'DURANTE', 'DESPUES'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
     'tarjetas': ('tarjetas', 'tarjetas.json', ['COMENTARIOS', 'WHATSAPP'], IMAGENES),
+    'marcas': ('marcas_senales', 'marcas.json', ['MARCAS'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
 }
 PROVEEDORES = {
     'Claude (Anthropic)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
@@ -69,6 +70,13 @@ def m(*p):
 
 def existe(d, f):
     return os.path.exists(os.path.join(d, f))
+
+
+def marcas_nuevas(d):
+    """Si tus capturas o notas de «Flechas y círculos» son más nuevas que senales.json."""
+    f = os.path.join(d, 'marcas_senales', 'marcas.json')
+    s = os.path.join(d, 'senales.json')
+    return os.path.exists(f) and (not os.path.exists(s) or os.path.getmtime(f) > os.path.getmtime(s))
 
 
 def ultimo_video(d, hasta):
@@ -601,6 +609,8 @@ class Manejador(BaseHTTPRequestHandler):
                     for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
                         if not existe(carpeta(q['p']), archivo) and antes in pasos:
                             pasos.insert(pasos.index(antes), paso_ia)
+                if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
+                    pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):

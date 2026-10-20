@@ -10,6 +10,7 @@ Uso:
 
 senales.json: [{"bloque": "L08", "frase": "450", "tipo": "circulo", "x": 1440, "y": 712, "r": 80,
                 "dur": 3, "retraso": 0, "seguir": true, "texto": "450 °C", "foco": false}]
+  t: segundo exacto del video (las señales de tus capturas); si está, no se busca la frase.
   hueco: en flechas, a cuántos píxeles del centro queda la punta (para no tapar lo señalado).
   x, y: centro en píxeles del video (1920x1080) en el instante en que arranca la señal.
   tipo: circulo | flecha | caja (caja usa "w" y "h"; flecha usa "angulo", de dónde viene).
@@ -88,11 +89,15 @@ def main():
     tmp = tempfile.mkdtemp(prefix='senales_')
     trabajos, colocadas = [], []
     for k, s in enumerate(json.load(open(a.senales)), 1):
-        al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json')))
-        t = buscar(al, s['frase'])
-        if t is None:
-            print(f"AVISO: no encontré «{s['frase']}» en {s['bloque']}, la salto"); continue
-        t = round(inicio[s['bloque']] + a.desfase + t + s.get('retraso', 0), 2)
+        s.setdefault('frase', s.get('texto') or 'tu captura')
+        if s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
+            t = round(float(s['t']) + s.get('retraso', 0), 2)
+        else:
+            al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json')))
+            t = buscar(al, s['frase'])
+            if t is None:
+                print(f"AVISO: no encontré «{s['frase']}» en {s['bloque']}, la salto"); continue
+            t = round(inicio[s['bloque']] + a.desfase + t + s.get('retraso', 0), 2)
         n = int(round(s.get('dur', 3) * FPS))
         radio = s.get('r', max(s.get('w', 160), s.get('h', 80)) / 2)
         if s.get('seguir', True):
@@ -113,7 +118,7 @@ def main():
             cap = cv2.VideoCapture(a.video); cap.set(cv2.CAP_PROP_POS_MSEC, (t + mitad / FPS) * 1000); _, f = cap.read()
             x, y = map(int, pts[mitad])
             cv2.circle(f, (x, y), int(radio), (63, 210, 255), 6)
-            cv2.imwrite(os.path.join(a.prueba, f"{k:02d}_{s['bloque']}.jpg"), cv2.resize(f, (960, 540)))
+            cv2.imwrite(os.path.join(a.prueba, f"{k:02d}_{s.get('bloque') or 'tuya'}.jpg"), cv2.resize(f, (960, 540)))
 
     if a.prueba and not a.salida:
         return
