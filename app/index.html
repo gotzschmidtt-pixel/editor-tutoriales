@@ -763,7 +763,7 @@ function cerrarBarra(cuando) {
   barraCerrada = cuando; try { localStorage.setItem('barraCerrada', cuando); } catch (e) {}
   refrescar();
 }
-let reiniciando = false;
+let reiniciando = false, PAGINA = null;
 async function actualizarProyecto() {
   try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
   await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
@@ -786,6 +786,9 @@ async function refrescar() {
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
   if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
+  // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
+  if (PAGINA === null) PAGINA = e.pagina;
+  else if (e.pagina !== PAGINA && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) location.reload();
   if (e.fallo && reciente(e.resultado) && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;

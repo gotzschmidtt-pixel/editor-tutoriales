@@ -424,7 +424,8 @@ def estado(proyecto):
         t['linea'] = ultima_linea(log)
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
-            'actualizada': os.path.getmtime(__file__) != INICIO_APP}
+            'actualizada': os.path.getmtime(__file__) != INICIO_APP,
+            'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html'))}
 
 
 class Manejador(BaseHTTPRequestHandler):
