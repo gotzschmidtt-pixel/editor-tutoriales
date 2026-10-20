@@ -77,6 +77,7 @@
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
   #soltarPista, #soltarTarjeta { display: block; margin-top: 4px; }
   #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
+  section.panel { scroll-margin-top: 80px; }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -85,6 +86,8 @@
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
+  <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
+  <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
 </header>
@@ -115,7 +118,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="panelTrailer">
       <h2>🎞️ Tráiler · pistas para la IA</h2>
       <div class="tabs" id="fases"></div>
       <p class="aviso" id="ayudaFase"></p>
@@ -140,7 +143,7 @@
       (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="panelTarjetas">
       <h2>💬 Comentarios y WhatsApp</h2>
       <div class="tabs" id="grupos"></div>
       <p class="aviso" id="ayudaGrupo"></p>
@@ -517,6 +520,7 @@ async function agregarTarjetas(files) {
 }
 
 let PROV = {};
+function irA(s) { $(s).scrollIntoView({behavior: 'smooth', block: 'start'}); }
 const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
