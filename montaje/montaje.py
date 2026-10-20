@@ -22,14 +22,25 @@ LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note meno
 EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app mientras se arma
 
 
-def avance(partes, tmp, destino):
-    """Une lo que va hecho en un video que la app puede reproducir. Si alguien lo está mirando y Windows
-    no deja reemplazarlo, se intenta en el bloque siguiente."""
+def avance(partes, tmp, destino, voces=()):
+    """Une lo que va hecho en un video que la app puede reproducir, con la voz de esos bloques encima
+    (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
+    se intenta en el bloque siguiente."""
     lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
     with open(lista, 'w') as fh:
         fh.writelines(f"file '{p}'\n" for p in partes)
+    voces = [(t, f) for t, f in voces if os.path.exists(f)]
     try:
-        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', '-movflags', '+faststart', nuevo])
+        if voces:
+            ins, flt = ['-f', 'concat', '-safe', '0', '-i', lista], []
+            for k, (t, f) in enumerate(voces, 1):
+                ins += ['-i', f]
+                flt.append(f"[{k}:a]aresample=44100,adelay={int(t * 1000)}:all=1[a{k}]")
+            flt.append(''.join(f'[a{k}]' for k in range(1, len(voces) + 1)) + f"amix=inputs={len(voces)}:normalize=0,apad[aout]")
+            run(ins + ['-filter_complex', ';'.join(flt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',
+                       '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', nuevo])
+        else:
+            run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', '-movflags', '+faststart', nuevo])
         os.replace(nuevo, destino)
     except (OSError, subprocess.CalledProcessError):
         pass
@@ -66,7 +77,8 @@ def main():
                                         capture_output=True, text=True, check=True).stdout)
     tmp = tempfile.mkdtemp(prefix='montaje_')
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
-    partes = []
+    partes, voces = [], []
+    carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
     for b in d['bloques']:
         m, i = b['montaje'], b['id']
         lab = rotulo(f"{i}  {b.get('ancla', '')}")
@@ -109,7 +121,9 @@ def main():
                 + enc + [f])
             partes.append(f)
         print(i, 'ok', flush=True)
-        avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))
+        if b.get('inicio_min') is not None:
+            voces.append((b['inicio_min'] + 0.3, os.path.join(carpeta_voz, f'{i}.mp3')))  # el mismo desfase que «Poner la voz»
+        avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
     lista = os.path.join(tmp, 'lista.txt')
     with open(lista, 'w') as fh:
         for p in partes:
