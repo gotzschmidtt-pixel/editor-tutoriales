@@ -677,12 +677,17 @@ async function guardarEleven() {
 verEleven().then(k => { if (!k) dlgEleven.showModal(); });  // sin clave, la pide apenas abre
 
 const reloj = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+// al abrir la pestaña no se repite un resultado viejo: solo los de esta visita (o de hace un par de minutos)
+const CARGA = Date.now() / 1000;
 let barraCerrada = null;
+try { barraCerrada = +localStorage.getItem('barraCerrada') || null; } catch (e) {}
+const reciente = r => r && r.cuando >= CARGA - 120 && r.cuando !== barraCerrada;
 function pintarBarra(t, r, arch) {
+  if (reiniciando) return;
   const b = $('#barra');
   const corre = t.proyecto === P;
   if (corre && !(t.plan && t.plan.length)) { t.plan = [t.paso || 'empezando']; t.i = 0; }
-  if (!corre && (!r || barraCerrada === r.cuando)) { b.hidden = true; document.body.classList.remove('con-barra'); return; }
+  if (!corre && !reciente(r)) { b.hidden = true; document.body.classList.remove('con-barra'); return; }
   b.hidden = false; document.body.classList.add('con-barra');
   if (corre) {
     const n = t.plan.length, pct = Math.round(100 * (t.i + 0.5) / n);
@@ -695,7 +700,7 @@ function pintarBarra(t, r, arch) {
       <div class="detalle">${esc(t.linea || 'empezando…')}</div>`;
     return;
   }
-  const cerrar = `<button onclick="barraCerrada = ${r.cuando}; refrescar()">✕</button>`;
+  const cerrar = `<button onclick="cerrarBarra(${r.cuando})">✕</button>`;
   if (r.ok && r.pausa === 'guion') {
     b.className = 'ok';
     b.innerHTML = `<div class="arriba"><span class="que">✓ Guion listo: revísalo antes de seguir</span>
@@ -752,22 +757,24 @@ async function seguirTodo() {
   refrescar();
 }
 
+function cerrarBarra(cuando) {
+  barraCerrada = cuando; try { localStorage.setItem('barraCerrada', cuando); } catch (e) {}
+  refrescar();
+}
+let reiniciando = false;
 async function reiniciarApp() {
-  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  $('#barra').innerHTML = '<div class="arriba"><span class="que">🔄 Reiniciando…</span></div>';
+  if (reiniciando) return; reiniciando = true;
+  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
+  const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
+  b.innerHTML = '<div class="arriba"><span class="que">🔄 Actualizando la app a la versión nueva…</span></div>';
   setTimeout(() => location.reload(), 5000);
 }
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
-  if (e.actualizada && !e.trabajo.proyecto) {
-    const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
-    b.innerHTML = `<div class="arriba"><span class="que">🔄 Hay una versión nueva de la app</span>
-      <span class="cuanto">reiníciala para usar los cambios</span>
-      <span class="chips"><button class="principal" onclick="reiniciarApp()">🔄 Reiniciar ahora</button></span></div>`;
-  }
-  if (e.fallo && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
+  if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
+  if (e.fallo && reciente(e.resultado) && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;
   const t = e.trabajo;
