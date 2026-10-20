@@ -29,7 +29,7 @@ os.makedirs(PROYECTOS, exist_ok=True)
 os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json']
+EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 # grupos de archivos que se arman desde la app: carpeta, json, apartados y qué se puede subir
@@ -186,7 +186,7 @@ def comandos(paso, d, op):
                  '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
-                + (['--ajustar-largo'] if op.get('ajustar_largo') else [])]
+                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
@@ -695,6 +695,8 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = ['guion_ia']
                     datos['ajustar_largo'] = True
                     datos['_pausa'] = 'guion'
+                if q['paso'] == 'guion_ia' and datos.get('respuestas'):
+                    datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):

@@ -252,7 +252,11 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
-Responde SOLO con un objeto JSON {{"bloques": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
+- PREGUNTAS AL AUTOR: un buen editor no adivina. Si un dato clave NO se ve claro ni se dice en la grabación (qué cable o
+  pieza es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor), escribe la frase con lo más
+  probable y agrega una pregunta en "preguntas": {{"bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
+  Solo datos que importan para que el tutorial sea correcto (máximo 8); si todo está claro, "preguntas": [].
+Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
         g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
@@ -1234,6 +1238,61 @@ pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un
     return avisos
 
 
+def guardar_preguntas(d, lista):
+    """Los datos clave que la IA no vio claros, para que el autor los conteste en la revisión del guion."""
+    out = []
+    for x in lista or []:
+        if isinstance(x, dict) and str(x.get('pregunta', '')).strip():
+            out.append({'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
+                        'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
+    json.dump(out[:8], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    if out:
+        print(f'La IA tiene {len(out[:8])} pregunta(s) sobre datos que no vio claros: contéstalas en la revisión del guion.', flush=True)
+
+
+def corregir_con_respuestas(d, ajustes, datos):
+    """Tus respuestas a las preguntas de la IA: se corrigen solo los bloques que tocan (el resto conserva su voz)
+    y quedan en idea.txt como datos confirmados, para los próximos guiones de este video."""
+    f = os.path.join(d, 'preguntas_guion.json')
+    preguntas = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else []
+    contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip()]
+    if not contestadas:
+        raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
+    qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'}: {x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
+    pedido = f"""Este es el guion de un video tutorial, en JSON:
+{json.dumps(datos, ensure_ascii=False)[:60000]}
+
+Le pregunté al autor los datos que no se veían claros y respondió:
+{qa}
+
+Corrige el guion con esas respuestas: cambia SOLO las frases que tocan esos datos (en el bloque indicado y en cualquier otro que
+mencione lo mismo). Los demás bloques van TAL CUAL, mismo id, mismo texto y mismo montaje. No agregues datos que no estén aquí.
+{ESTILO}
+Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
+    print(f'Corrigiendo el guion con tus {len(contestadas)} respuesta(s)…', flush=True)
+    nuevo = extraer_json(llamar(ajustes, pedido, []))
+    bloques = nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo
+    if not bloques:
+        raise SystemExit('ERROR: la IA no devolvió el guion corregido. Vuelve a intentarlo o corrige el texto a mano.')
+    viejos = {b['id']: b for b in datos['bloques']}
+    for b in bloques:  # el montaje se conserva aunque la IA lo cambie: solo se corrigen datos del texto
+        if b.get('id') in viejos and viejos[b['id']].get('montaje'):
+            b['montaje'] = viejos[b['id']]['montaje']
+    cambiados = [b['id'] for b in bloques if b.get('id') in viejos and b.get('texto') != viejos[b['id']].get('texto')]
+    print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
+    fi = os.path.join(d, 'idea.txt')
+    previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
+    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas if x['respuesta'].strip() not in previa]
+    if agregar:
+        open(fi, 'w', encoding='utf-8').write(previa.rstrip() + ('\n\n' if previa.strip() else '') +
+                                            'Datos confirmados por el autor:\n' + '\n'.join(agregar) + '\n')
+    for x in preguntas:
+        if str(x.get('respuesta', '')).strip():
+            x['hecha'] = True
+    json.dump(preguntas, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    return {**datos, 'bloques': bloques}
+
+
 def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
     """Si el guion de la IA da un video muy corto o muy largo, se lo devuelvo con los números para que lo arregle.
     Me quedo con la versión más cercana a la duración buscada."""
@@ -1322,6 +1381,7 @@ def main():
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
+    ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
@@ -1365,7 +1425,7 @@ def main():
         if a.tarea == 'guion' and aj.get('minucioso', True):
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
-                mapa = mapa_video(d, aj if a.modo == 'api' and not a.ajustar_largo else None)
+                mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
             except Exception as e:
                 print(f'· no pude armar el mapa del video ({e}); sigo sin él', flush=True)
         texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
@@ -1378,6 +1438,16 @@ def main():
             print(f'Prompt en {f}. Adjunta las {len(caps)} capturas de ia_capturas/ si tu IA ve imágenes.')
             return
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        if a.tarea == 'guion' and a.respuestas and os.path.exists(destino):
+            datos = corregir_con_respuestas(d, ajustes, json.load(open(destino, encoding='utf-8')))
+            datos, avisos = revisar(d, a.tarea, datos)
+            os.replace(destino, destino + '.anterior')
+            json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            for x in avisos:
+                print('·', x)
+            open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
+            print('Guardado guion.json con tus respuestas (el anterior quedó como guion.json.anterior)')
+            return
         if a.tarea == 'guion' and a.ajustar_largo and os.path.exists(destino):
             # el guion que ya tienes queda de base: la IA solo lo alarga o acorta, así se reaprovecha la voz de los bloques iguales
             datos = json.load(open(destino, encoding='utf-8'))
@@ -1404,6 +1474,7 @@ def main():
             raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                              f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
         if a.tarea == 'guion':
+            guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
             datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
     datos, avisos = revisar(d, a.tarea, datos)
     if a.tarea == 'guion' and a.modo == 'api' and mapa:
