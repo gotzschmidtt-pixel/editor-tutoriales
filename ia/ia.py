@@ -215,7 +215,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     if trans:
         partes.append(f"Transcripción COMPLETA de lo que dice el autor en su grabación, de principio a fin ([minuto:segundo] texto):\n{trans}")
     if mapa and tarea in ('guion', 'trailer'):
-        partes.append("MAPA DE LA GRABACIÓN, mirada entera cuadro a cuadro ([minuto:segundo] qué pantalla se ve · qué se hace · "
+        partes.append("MAPA DE LA GRABACIÓN, revisada segundo a segundo: un cuadro en cada cambio de pantalla ([minuto:segundo] qué pantalla se ve · qué se hace · "
                       "texto que se lee en pantalla). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
@@ -1099,27 +1099,68 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     return [s for i, s in enumerate(senales) if i not in quitar]
 
 
-MAPA_PASO = 8.0  # un cuadro cada tantos segundos para el mapa del video (como mirarlo entero a mano)
-MAPA_MAX = 120
+MAPA_MAX = 150  # cuadros como máximo en el mapa del video
 MAPA_TANDA = 20  # cuadros por pedido a la IA
+MAPA_HUECO = 15  # aunque no cambie nada, un cuadro cada tantos segundos
+
+
+def cambios_de_pantalla(orig, maximo=MAPA_MAX):
+    """Revisa el video SEGUNDO A SEGUNDO en tu PC (gratis, sin IA) y devuelve los segundos donde cambia lo que se ve:
+    se abre una ventana, aparece texto, cambia un campo. Lo quieto no se repite; igual hay un cuadro cada 15 s.
+    Se mide por zonas (un texto nuevo cambia poco la imagen entera pero mucho su zona) y la exigencia se ajusta a cada
+    video para quedarse con los cambios más grandes: unos 12 por minuto como mucho."""
+    W, H = 192, 108
+    crudo = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-i', orig, '-vf', f'fps=1,scale={W}:{H},format=gray',
+                            '-f', 'rawvideo', '-'], capture_output=True, check=True).stdout
+    f = np.frombuffer(crudo, np.uint8).reshape(-1, H, W).astype(np.float32)
+    if not len(f):
+        return [0.0]
+    zonas = f.reshape(len(f), 9, H // 9, 16, W // 16).mean(axis=(2, 4))  # 9x16 zonas
+
+    def elegir(umbral):
+        elegidos, ultimo = [0], 0
+        for i in range(1, len(f)):
+            cambio = float(np.abs(zonas[i] - zonas[ultimo]).max())  # contra el último elegido: suma los cambios lentos
+            if (cambio > umbral and i - ultimo >= 2) or i - ultimo >= MAPA_HUECO:
+                elegidos.append(i); ultimo = i
+        return elegidos
+
+    objetivo = int(min(maximo, max(30, len(f) / 5)))
+    bajo, alto = 4.0, 256.0
+    mejor_ = elegir(bajo)
+    if len(mejor_) > objetivo:
+        mejor_ = elegir(alto)
+        for _ in range(12):  # la exigencia justa para quedarse con unos `objetivo` cambios
+            medio = (bajo + alto) / 2
+            e = elegir(medio)
+            if len(e) > objetivo:
+                bajo = medio
+            else:
+                alto, mejor_ = medio, e
+    if len(mejor_) > maximo:  # todo se mueve siempre (cámara en mano): repartidos parejo
+        mejor_ = [mejor_[round(k * (len(mejor_) - 1) / (maximo - 1))] for k in range(maximo)]
+    return [float(x) for x in mejor_]
 
 
 def cuadros_mapa(d):
-    """Un cuadro nítido cada ~8 s de TODO el video (máx. 120) en ia_capturas/mapa/. Devuelve [(segundo, ruta)]."""
+    """Un cuadro nítido en cada cambio de pantalla de TODO el video (máx. 150) en ia_capturas/mapa/. Devuelve [(segundo, ruta)]."""
     orig = os.path.join(d, 'original.mp4')
     t, ni, mo = analizar(orig, os.path.join(d, 'original.nitidez.npz'))
     total = float(t[-1])
-    paso = max(MAPA_PASO, total / MAPA_MAX)
     out = os.path.join(d, 'ia_capturas', 'mapa')
     os.makedirs(out, exist_ok=True)
-    lista, k = [], 0
-    while k * paso < total - 1:
-        s = mejor(t, ni, mo, k * paso, min(total, (k + 1) * paso))
+    tiempos = sorted({mejor(t, ni, mo, s, min(total, s + 1.5)) for s in cambios_de_pantalla(orig)})  # ya asentado el cambio
+    quedan = {f'mapa_{s:06.1f}s.jpg' for s in tiempos}
+    for viejo in os.listdir(out):
+        if viejo not in quedan:
+            os.remove(os.path.join(out, viejo))
+    lista = []
+    for s in tiempos:
         f = os.path.join(out, f'mapa_{s:06.1f}s.jpg')
         if not os.path.exists(f):
             subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', str(s), '-i', orig, '-frames:v', '1',
                             '-vf', 'scale=768:-2', '-q:v', '4', f], check=True)
-        lista.append((s, f)); k += 1
+        lista.append((s, f))
     return lista
 
 
@@ -1135,7 +1176,7 @@ def mapa_video(d, ajustes=None):
     orig = os.path.join(d, 'original.mp4')
     destino = os.path.join(d, 'mapa_video.json')
     cuadros = cuadros_mapa(d)
-    firma = f'{os.path.getsize(orig)}:{len(cuadros)}'
+    firma = f'{os.path.getsize(orig)}:cambios:{len(cuadros)}'
     vision = bool(ajustes) and ajustes.get('imagenes', True)
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
@@ -1143,7 +1184,7 @@ def mapa_video(d, ajustes=None):
             return viejo['cuadros']
     except (OSError, ValueError, AttributeError):
         pass
-    print(f'Mirando el video entero: {len(cuadros)} cuadros (uno cada {cuadros[1][0] - cuadros[0][0] if len(cuadros) > 1 else 0:.0f} s)…', flush=True)
+    print(f'Revisé el video segundo a segundo: {len(cuadros)} cambios de pantalla para mirar con la IA…', flush=True)
     ocr = lector_ocr()
     mapa = []
     for s, f in cuadros:
