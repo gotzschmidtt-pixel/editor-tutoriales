@@ -430,6 +430,14 @@ def estado(proyecto):
                  total_s=int(time.time() - TRABAJO['inicio_total']) if TRABAJO['inicio_total'] else 0)
     if t['proyecto'] == proyecto:
         t['linea'] = ultima_linea(log)
+        # el video que el paso está escribiendo todavía no se puede ver (está a medias): la página no lo abre
+        prod = {x['produce'] for x in PASOS if x['id'] == t['paso'] or x['nombre'] == t['paso']}
+        if t['paso'] in ('trailer', 'final_sin_trailer') or prod & {'trailer.mp4'}:
+            prod.add('FINAL.mp4')
+        ahora = time.time()
+        for f, info in archivos.items():
+            if f.endswith('.mp4') and f != 'montaje_en_curso.mp4' and (f in prod or ahora - info['fecha'] < 8):
+                info['en_proceso'] = True
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,

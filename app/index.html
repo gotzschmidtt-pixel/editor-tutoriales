@@ -422,7 +422,7 @@ $('#detener').onclick = () => api('/api/detener', {method: 'POST'});
 $('#studio').onclick = async () => { const r = await api('/api/studio', {method: 'POST'}); setTimeout(() => window.open(r.url), 4000); };
 
 function pintarSalidas(arch) {
-  const hay = VIDEOS.filter(v => arch[v]);
+  const hay = VIDEOS.filter(v => arch[v] && !arch[v].en_proceso);
   const nuevo = hay[0] || null;
   if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
     ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
@@ -453,7 +453,7 @@ const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1
 let viendo = null, avanceVisto = '';
 function masAvanzado(arch) {
   let mejor = null;
-  for (const f of AVANCE) if (arch[f] && arch[f].tam > 0 && (!mejor || arch[f].fecha >= arch[mejor].fecha)) mejor = f;
+  for (const f of AVANCE) if (arch[f] && arch[f].tam > 0 && !arch[f].en_proceso && (!mejor || arch[f].fecha >= arch[mejor].fecha)) mejor = f;
   return mejor;
 }
 function seguirAvance(t, arch) {
@@ -461,7 +461,9 @@ function seguirAvance(t, arch) {
   const f = masAvanzado(arch);
   if (!f) return '';
   const firma = f + arch[f].fecha, v = $('#video');
-  if (firma !== avanceVisto && (v.paused || v.ended || !v.src)) { avanceVisto = firma; ver(f, true); }
+  const actual = new URLSearchParams(v.src.split('?')[1] || '').get('f');
+  if (arch[actual]?.en_proceso) avanceVisto = '';  // lo que estabas viendo se está rehaciendo: te paso al último listo
+  if (firma !== avanceVisto && (v.paused || v.ended || !v.src || arch[actual]?.en_proceso)) { avanceVisto = firma; ver(f, !arch[actual]?.en_proceso); }
   const nuevo = firma !== avanceVisto;
   return `<button onclick="avanceVisto='${firma}'; ver('${f}', true); irA('#video')">${nuevo ? '🔄 Ver lo nuevo' : '👁 Viendo'}: ${NOMBRE_AVANCE[f]}</button>`;
 }
