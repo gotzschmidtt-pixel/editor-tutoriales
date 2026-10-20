@@ -139,6 +139,7 @@
         <button class="principal grande" id="todo">▶ Hacer todo</button>
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
+        <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
@@ -762,6 +763,12 @@ function cerrarBarra(cuando) {
   refrescar();
 }
 let reiniciando = false;
+async function borrarTodo() {
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro.\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler y tus tarjetas.\n\nNo se puede deshacer.`)) return;
+  try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
+  catch (e) { alert(e.message); return; }
+  editado = false; abrir(archivo); refrescar();
+}
 async function reiniciarApp() {
   if (reiniciando) return; reiniciando = true;
   try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }

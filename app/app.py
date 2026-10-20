@@ -712,6 +712,22 @@ class Manejador(BaseHTTPRequestHandler):
                         TRABAJO['detenido'] = True
                         TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
+            if ruta == '/api/empezar_de_nuevo':  # «Borrar todo»: quita lo generado y deja lo que subiste
+                d = carpeta(q['p'])
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                quedan = set(SUBIBLES.values()) | {'idea.txt', 'original.nitidez.npz', 'original.miniaturas.npz'} | \
+                    {sub for sub, *_ in GRUPOS.values()}
+                borrados = 0
+                for f in os.listdir(d):
+                    if f in quedan:
+                        continue
+                    r = os.path.join(d, f)
+                    shutil.rmtree(r) if os.path.isdir(r) else os.remove(r)
+                    borrados += 1
+                FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
+                return self.responder({'ok': True, 'borrados': borrados})
             if ruta == '/api/borrar':
                 f = os.path.join(carpeta(q['p']), os.path.basename(q['f']))
                 if os.path.isdir(f):
