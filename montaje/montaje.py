@@ -4,7 +4,8 @@ Uso: python3 montaje.py --original original.mp4 --guion guion.json --salida mont
 
 Cada bloque del guion trae "montaje": {"modo": "lento" | "congelar" | "lento+congelar" | "imagen",
   "src_inicio": s, "src_fin": s, "velocidad": 0.8, "congelar_s": s, "imagen": "archivo.png" (opcional)}.
-Los congelados usan el cuadro más quieto y nítido cerca del momento pedido (módulo nitidez) y llevan zoom lento.
+Las pausas («congelar») ya no son una foto: repiten la escena en movimiento (ida y vuelta, algo lenta) con zoom suave,
+alrededor del cuadro más nítido del momento pedido. Con "quieto": true en el montaje del bloque, vuelve a ser un cuadro fijo.
 --calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
 """
 import argparse, json, os, shutil, subprocess, sys, tempfile
@@ -12,6 +13,10 @@ import argparse, json, os, shutil, subprocess, sys, tempfile
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 from nitidez import analizar, mejor  # noqa: E402
+
+
+VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
+LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note menos
 
 
 def run(args):
@@ -41,6 +46,8 @@ def main():
         txt = txt.replace(':', '\\:').replace("'", '')
         return f",drawtext=fontfile='{fuente}':text='{txt}':x=24:y=h-52:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10"
 
+    dur_original = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', a.original],
+                                        capture_output=True, text=True, check=True).stdout)
     tmp = tempfile.mkdtemp(prefix='montaje_')
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
     partes = []
@@ -56,12 +63,27 @@ def main():
         if m['modo'].endswith('congelar'):
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
             t = m.get('cuadro', mejor(*nt, *v))
-            png, f = os.path.join(tmp, f'{i}.png'), os.path.join(tmp, f'{i}_b.mp4')
-            run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
+            f = os.path.join(tmp, f'{i}_b.mp4')
             nfr = int(round(m['congelar_s'] * 25))
-            z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
-            run(['-i', png, '-vf', f"scale=3840:2160,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
-                 '-frames:v', str(nfr)] + enc + [f])
+            if m.get('quieto'):  # cuadro fijo con zoom lento (como antes)
+                png = os.path.join(tmp, f'{i}.png')
+                run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
+                z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
+                run(['-i', png, '-vf', f"scale=3840:2160,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
+                     '-frames:v', str(nfr)] + enc + [f])
+            else:
+                # la escena se repite en movimiento (ida y vuelta, un poco lenta) en vez de una foto quieta:
+                # tras un tramo, arranca hacia atrás desde el último cuadro, así el empalme no salta
+                tras_tramo = m['modo'] == 'lento+congelar'
+                s1 = m['src_fin'] if tras_tramo else min(t + VENTANA / 2, dur_original)
+                s0 = max(0.0, s1 - VENTANA)
+                ida = os.path.join(tmp, f'{i}_ida.mp4')
+                orden = '[rv][f]' if tras_tramo else '[f][rv]'
+                run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex',
+                     f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]", '-map', '[o]'] + enc + [ida])
+                z = f'1+0.06*on/{nfr}' if len(partes) % 2 == 0 else f'1.06-0.06*on/{nfr}'
+                run(['-stream_loop', '-1', '-i', ida, '-vf', f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
+                     '-frames:v', str(nfr)] + enc + [f])
             partes.append(f)
         if m['modo'] == 'imagen':
             img = m.get('imagen') or a.imagen

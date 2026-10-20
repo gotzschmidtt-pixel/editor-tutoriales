@@ -245,6 +245,33 @@ def falta_libreria(mod, env):
     return subprocess.run([PY, '-c', f'import {mod}'], capture_output=True, env=env, **SIN_VENTANA).returncode != 0
 
 
+NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion')}
+
+
+def asegurar_node(paso, log, env):
+    """Las etiquetas (Playwright) y las señales y el tráiler (Remotion) usan Node: si esta copia no corrió
+    instalar.bat, se instala lo que falta la primera vez."""
+    if paso not in NODE:
+        return
+    sub, modulo = NODE[paso]
+    carpeta_n = os.path.join(RAIZ, sub) if sub else RAIZ
+    if os.path.isdir(os.path.join(carpeta_n, 'node_modules', modulo)):
+        return
+    npm, npx = shutil.which('npm'), shutil.which('npx')
+    if not (shutil.which('node') and npm and npx):
+        raise RuntimeError('Falta Node.js, que usan las etiquetas, las flechas y el tráiler. Corre instalar.bat '
+                           '(o instala Node.js LTS desde nodejs.org), reinicia la PC y vuelve a abrir la app.')
+    log.write(f'\nInstalando lo de Node para {paso} (solo la primera vez, tarda unos minutos)…\n'); log.flush()
+    cmds = [[npm, 'install', '--no-audit', '--no-fund']]
+    if modulo == 'playwright':
+        cmds.append([npx, 'playwright', 'install', 'chromium'])
+    for c in cmds:
+        if subprocess.run(c, cwd=carpeta_n, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA).returncode != 0:
+            raise RuntimeError(f'No pude instalar lo de Node ({" ".join(os.path.basename(x) for x in c[:2])}). '
+                               f'Corre instalar.bat en {RAIZ} y vuelve a intentar.')
+    log.write('✓ Listo\n'); log.flush()
+
+
 def asegurar_librerias(log, env):
     """Si esta copia de la app se abrió sin correr instalar.bat, instala lo básico la primera vez."""
     faltan = [pip for mod, pip in LIBRERIAS.items() if falta_libreria(mod, env)]
@@ -303,6 +330,7 @@ def correr(proyecto, pasos, opciones):
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
             FALLOS.pop(proyecto, None)
+            asegurar_node(paso, log, env)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             blando = False
             for c in comandos(paso, d, opciones):

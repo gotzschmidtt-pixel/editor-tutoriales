@@ -16,6 +16,7 @@ tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (col
 import argparse, json, os, shutil, subprocess, tempfile, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(AQUI)
 FPS = 25
 
 
@@ -76,7 +77,13 @@ def main():
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
         carpeta = os.path.join(tmp, f'g{k:02d}')
-        subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)], check=True)
+        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)],
+                           cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if r.returncode != 0:  # se muestra lo que dijo Node, no solo «exit status 1»
+            detalle = ' '.join((r.stderr or r.stdout).split())[-600:]
+            if 'playwright' in detalle.lower() and ('cannot find' in detalle.lower() or 'executable' in detalle.lower()):
+                detalle += ' → Falta Playwright: corre instalar.bat (o «npm install» y «npx playwright install chromium» en la carpeta del editor).'
+            raise SystemExit(f'ERROR: no pude dibujar las etiquetas con Node: {detalle}')
         ins += ['-framerate', str(FPS), '-i', os.path.join(carpeta, 'f_%04d.png')]
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
