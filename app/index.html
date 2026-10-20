@@ -263,11 +263,13 @@
       </div>
       <p class="aviso" id="ayudaEditor"></p>
       <div class="ia" id="cajaArchGuion" hidden>
-        <b>📄 Trabajar el guion fuera de la app</b>
-        <p class="aviso" style="margin:4px 0 8px">Descárgalo como texto (se abre en Word, el Bloc de notas o Google Docs, o se lo pasas a otra IA),
+        <b>📄 Trabajar el guion con calma</b>
+        <p class="aviso" style="margin:4px 0 8px">«Abrir editor» lo abre en otra pestaña, bloque por bloque con su imagen, y con un botón para mejorarlo con ChatGPT u otra IA.
+        También puedes descargarlo (texto, o Word desde el editor),
         corrige o mejora lo que dice la voz y vuelve a importarlo. Solo cambia el texto bajo cada <code>### L01…</code>; para quitar un bloque,
         borra su encabezado y su texto. Al importar, la app lo revisa (duración, orden) y guarda el anterior como .anterior.</p>
         <div class="fila" style="margin-top:0">
+          <button class="principal" onclick="window.open('/guion?p=' + q(P), '_blank')">✏️ Abrir editor de guion</button>
           <button onclick="bajarGuion('txt')">⬇ Descargar como texto</button>
           <button onclick="bajarGuion('json')">⬇ Descargar JSON</button>
           <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="importarGuion(this)">⬆ Importar guion editado</label>
@@ -429,6 +431,7 @@ function pintarPasos(pasos, t, fallo) {
   }).join('');
 }
 async function ejecutar(paso) {
+  if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
@@ -1019,7 +1022,11 @@ function cerrarBarra(cuando) {
   refrescar();
 }
 let reiniciando = false, PAGINA = null;
+function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
+  const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
+}
 async function actualizarProyecto() {
+  soltarVideo();
   try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
   await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
 }

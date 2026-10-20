@@ -72,22 +72,56 @@ def existe(d, f):
     return os.path.exists(os.path.join(d, f))
 
 
+LARGO_VERSION = 2  # sube cuando cambia el margen de duración: los guiones revisados con el margen viejo se vuelven a medir
+
+
 def guion_fuera_de_largo(d):
     """Un guion hecho antes del control de duración que deja el video muy lejos del largo de la grabación
     (o de «que dure unos N minutos» en la idea)."""
     try:
         g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
-        if g.get('largo_revisado') or not existe(d, 'original.mp4'):
+        if g.get('largo_revisado') == LARGO_VERSION or not existe(d, 'original.mp4'):
             return False
         dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0',
                                     os.path.join(d, 'original.mp4')], capture_output=True, text=True, **SIN_VENTANA).stdout)
         idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
         m = re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
-        meta = int(m.group(1)) * 60 if m else dur * 0.95
+        meta = int(m.group(1)) * 60 if m else dur
         t = float(g.get('duracion_s') or sum(b.get('fin_max', 0) - b.get('inicio_min', 0) for b in g.get('bloques', [])))
-        return not (meta * 0.8 <= t <= meta * 1.2)
+        return not (meta * 0.9 <= t <= meta * 1.15)
     except (OSError, ValueError, TypeError, AttributeError):
         return False
+
+
+def borrar_seguro(f, intentos=10):
+    """Borra un archivo; en Windows, si el reproductor lo tiene abierto, reintenta unos segundos. Devuelve si se pudo."""
+    for k in range(intentos):
+        try:
+            os.remove(f)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            time.sleep(0.5)
+    return False
+
+
+_DURACIONES = {}
+
+
+def duracion_original(d):
+    """Lo que dura tu grabación (en caché mientras el archivo no cambie)."""
+    f = os.path.join(d, 'original.mp4')
+    if not os.path.exists(f):
+        return 0
+    clave = (f, os.path.getmtime(f))
+    if clave not in _DURACIONES:
+        try:
+            _DURACIONES[clave] = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
+                                                      capture_output=True, text=True, **SIN_VENTANA).stdout)
+        except ValueError:
+            _DURACIONES[clave] = 0
+    return _DURACIONES[clave]
 
 
 def marcas_nuevas(d):
@@ -151,7 +185,8 @@ def comandos(paso, d, op):
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'senales', '--modo', 'api', '--ajustes', AJUSTES,
                  '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
-        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]]
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
+                + (['--ajustar-largo'] if op.get('ajustar_largo') else [])]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
@@ -345,8 +380,8 @@ def correr(proyecto, pasos, opciones):
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
             for viejo in VIDEOS_GENERADOS:
-                if existe(d, viejo):
-                    os.remove(os.path.join(d, viejo))
+                if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
+                    log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
         for k, paso in enumerate(pasos):
             info = next(x for x in PASOS if x['id'] == paso)
             with CANDADO:
@@ -463,7 +498,8 @@ def estado(proyecto):
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,
-            'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html'))}
+            'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
+            'duracion_original': duracion_original(d)}
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -493,6 +529,18 @@ class Manejador(BaseHTTPRequestHandler):
         try:
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/guion':  # el editor de guion, en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
+                d = carpeta(q['p'])
+                t = round(max(0.0, float(q.get('t') or 0)), 1)
+                c = os.path.join(d, 'ia_capturas', 'cuadros')
+                f = os.path.join(c, f'{t:.1f}.jpg')
+                if not os.path.exists(f) and existe(d, 'original.mp4'):
+                    os.makedirs(c, exist_ok=True)
+                    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', str(t), '-i', os.path.join(d, 'original.mp4'),
+                                    '-frames:v', '1', '-vf', 'scale=400:-2', '-q:v', '4', f], capture_output=True, **SIN_VENTANA)
+                return self.servir(f)
             if ruta == '/api/latido':
                 return self.responder({'ok': True})
             if ruta == '/api/proyectos':
@@ -642,8 +690,11 @@ class Manejador(BaseHTTPRequestHandler):
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
                 if q['paso'] == 'todo' and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
-                    # guion de antes del control de duración, y muy corto o muy largo: se rehace una vez y te lo muestro
-                    os.replace(os.path.join(carpeta(q['p']), 'guion.json'), os.path.join(carpeta(q['p']), 'guion.json.corto_o_largo'))
+                    # guion revisado con un margen viejo y muy corto o muy largo: la IA lo alarga o acorta (los bloques
+                    # que no cambian conservan su voz) y te lo muestro antes de seguir
+                    pasos = ['guion_ia']
+                    datos['ajustar_largo'] = True
+                    datos['_pausa'] = 'guion'
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):
@@ -777,8 +828,8 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
                 quitados = []
                 for f in os.listdir(d):
-                    if f in VIDEOS_GENERADOS or f.endswith(('.parcial', '.etiquetas_tiempos.json')):
-                        os.remove(os.path.join(d, f)); quitados.append(f)
+                    if (f in VIDEOS_GENERADOS or f.endswith(('.parcial', '.etiquetas_tiempos.json'))) and borrar_seguro(os.path.join(d, f)):
+                        quitados.append(f)
                 if existe(d, 'registro.txt'):  # el registro viejo queda aparte, para no confundir con fallas pasadas
                     os.replace(os.path.join(d, 'registro.txt'), os.path.join(d, 'registro_anterior.txt'))
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
