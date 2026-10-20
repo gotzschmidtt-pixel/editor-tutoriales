@@ -302,13 +302,17 @@ def asegurar_node(paso, log, env):
 
 def asegurar_librerias(log, env):
     """Si esta copia de la app se abrió sin correr instalar.bat, instala lo básico la primera vez."""
-    faltan = [pip for mod, pip in LIBRERIAS.items() if falta_libreria(mod, env)]
+    libs = dict(LIBRERIAS)
+    aj = leer_ajustes()
+    if aj.get('tipo') == 'claude' or str(aj.get('proveedor', '')).startswith('Claude'):
+        libs['anthropic'] = 'anthropic'  # Claude no habla el formato de OpenAI: usa su librería
+    faltan = [pip for mod, pip in libs.items() if falta_libreria(mod, env)]
     if not faltan:
         return
     log.write(f'\nInstalando {", ".join(faltan)} (solo la primera vez, tarda un minuto)…\n'); log.flush()
     r = subprocess.run([PY, '-m', 'pip', 'install', '--disable-pip-version-check'] + faltan, stdout=log, stderr=subprocess.STDOUT,
                        env=env, **SIN_VENTANA)
-    if r.returncode != 0 or any(falta_libreria(m, env) for m, p in LIBRERIAS.items() if p in faltan):
+    if r.returncode != 0 or any(falta_libreria(m, env) for m, p in libs.items() if p in faltan):
         raise RuntimeError(f'No pude instalar {", ".join(faltan)}. Cierra la app, corre instalar.bat en esta carpeta '
                            f'({RAIZ}) y vuelve a abrir iniciar.bat.')
     log.write('✓ Librerías instaladas\n'); log.flush()
