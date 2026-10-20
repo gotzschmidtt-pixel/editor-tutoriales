@@ -17,7 +17,9 @@ import argparse, base64, json, os, re, subprocess, sys, unicodedata, urllib.erro
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
-from nitidez import analizar, destacados  # noqa: E402
+from nitidez import analizar, destacados, mejor  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
+import pistas  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json'}
 PALABRAS_POR_S = 2.6
@@ -61,6 +63,34 @@ def capturas(d, n=14):
     return lista
 
 
+def capturas_pistas(d, an):
+    """Las imágenes de las pistas del tráiler y un cuadro nítido en cada segundo candidato, a ia_capturas/.
+    Devuelve [(descripción, ruta)] para sumar a las capturas."""
+    out = os.path.join(d, 'ia_capturas')
+    os.makedirs(out, exist_ok=True)
+    for viejo in os.listdir(out):
+        if viejo.startswith('pista_'):
+            os.remove(os.path.join(out, viejo))
+    orig = os.path.join(d, 'original.mp4')
+    nt = analizar(orig, os.path.join(d, 'original.nitidez.npz'))
+    lista = []
+    for fase in pistas.FASES:
+        for p in an[fase]:
+            nombre = f'{pistas.NOMBRE[fase]} {p["n"]}'
+            if p['imagen']:
+                f = os.path.join(out, f'pista_{fase}_{p["n"]}.jpg')
+                subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', p['imagen'], '-frames:v', '1',
+                                '-vf', 'scale=768:-2', '-q:v', '4', f], check=True)
+                lista.append((f'imagen que mandó el autor como pista {nombre}', f))
+            for x, _ in p['candidatos'][:3]:
+                s = mejor(*nt, max(0, x - 2), x + 2)
+                f = os.path.join(out, f'pista_{fase}_{p["n"]}_{s:06.1f}s.jpg')
+                subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', str(s), '-i', orig, '-frames:v', '1',
+                                '-vf', 'scale=768:-2', '-q:v', '4', f], check=True)
+                lista.append((f'segundo {s:.1f} del video original (cerca de la pista {nombre})', f))
+    return lista
+
+
 def transcripcion(d):
     f = os.path.join(d, 'transcripcion.srt')
     return open(f, encoding='utf-8').read() if os.path.exists(f) else ''
@@ -73,10 +103,11 @@ def ejemplo_guion():
                       ensure_ascii=False, indent=1)
 
 
-def encargo(d, tarea, idea, caps):
+def encargo(d, tarea, idea, caps, an=None):
     dur = duracion(os.path.join(d, 'original.mp4'))
     trans = transcripcion(d)
-    lista_caps = '\n'.join(f'- Captura {k}: segundo {s:.1f} del video original' for k, (s, _) in enumerate(caps, 1))
+    lista_caps = '\n'.join(f'- Captura {k}: ' + (s if isinstance(s, str) else f'segundo {s:.1f} del video original')
+                          for k, (s, _) in enumerate(caps, 1))
     partes = [f"Eres guionista de videos tutoriales de YouTube. Vas a trabajar sobre un video de {dur:.0f} segundos."]
     if idea:
         partes.append(f"Lo que cuenta el autor del video (datos confirmados):\n{idea}")
@@ -119,6 +150,8 @@ Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho"
 "clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
 Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el objeto JSON."""]
+        if an and pistas.hay(an):
+            partes.append(pistas.texto_prompt(an))
     return '\n\n'.join(partes)
 
 
@@ -180,6 +213,9 @@ def revisar(d, tarea, datos):
             c['ventana'] = [round(a, 1), round(b, 1)]
             c['fase'] = {'DESPUES': 'DESPUÉS'}.get(c['fase'].upper(), c['fase'].upper())
         datos.setdefault('musica', {'pista': 'musica.mp3', 'desde': 40})
+        an = pistas.analizar(d, dur)
+        if pistas.hay(an):
+            avisos += pistas.revisar_clips(an, datos['clips'])
         return datos, avisos
     return datos, avisos
 
@@ -303,7 +339,14 @@ def main():
         except (OSError, ValueError, TypeError):
             n = 14
         caps = capturas(d, max(4, min(n, 60)))
-        texto = encargo(d, a.tarea, idea, caps)
+        an = None
+        if a.tarea == 'trailer':
+            an = pistas.analizar(d, duracion(os.path.join(d, 'original.mp4')))
+            if pistas.hay(an):
+                extra = capturas_pistas(d, an)
+                print(f'Usando tus pistas del tráiler ({len(extra)} imágenes más):\n' + pistas.texto_prompt(an), flush=True)
+                caps += extra
+        texto = encargo(d, a.tarea, idea, caps, an)
         if a.modo == 'prompt':
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
             open(f, 'w', encoding='utf-8').write(texto)

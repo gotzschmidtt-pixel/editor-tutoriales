@@ -8,10 +8,11 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
   material.mp4        material extra para insertos (opcional)
   musica.mp3          pista de música (si falta, se genera y se guarda aquí)
   etiquetas.json  senales.json  insertos.json  trailer.json   (opcionales)
+  pistas_trailer/     pistas del tráiler por fase (capturas, audios, texto) + pistas.json
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
-import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, webbrowser
+import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +28,9 @@ os.makedirs(PROYECTOS, exist_ok=True)
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
 EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
+PISTAS = 'pistas_trailer'
+FASES = ['ANTES', 'DURANTE', 'DESPUES']
+EXT_PISTA = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}
 PROVEEDORES = {
     'Claude (Anthropic)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
     'OpenAI (GPT)': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4o', 'imagenes': True},
@@ -305,8 +309,15 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/archivo':
-                sub = 'ia_capturas' if q.get('sub') == 'ia_capturas' else ''
+                sub = q.get('sub') if q.get('sub') in ('ia_capturas', PISTAS) else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
+            if ruta == '/api/pistas':
+                f = os.path.join(carpeta(q['p']), PISTAS, 'pistas.json')
+                try:
+                    datos = json.load(open(f, encoding='utf-8'))
+                except (OSError, ValueError):
+                    datos = {}
+                return self.responder({fase: datos.get(fase, []) for fase in FASES})
             if ruta == '/api/capturas':
                 c = os.path.join(carpeta(q['p']), 'ia_capturas')
                 return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
@@ -413,6 +424,34 @@ class Manejador(BaseHTTPRequestHandler):
                         del nuevo[k]
                 viejo.update(nuevo)
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/pista_archivo':
+                ext = os.path.splitext(q.get('nombre', ''))[1].lower()
+                if ext not in EXT_PISTA:
+                    return self.error('Solo imágenes (jpg, png, webp) o audios (mp3, wav, m4a, ogg, webm)')
+                d = os.path.join(carpeta(q['p']), PISTAS)
+                os.makedirs(d, exist_ok=True)
+                nombre = uuid.uuid4().hex[:10] + ext
+                with open(os.path.join(d, nombre), 'wb') as fh:
+                    resto = largo
+                    while resto > 0:
+                        trozo = self.rfile.read(min(1 << 20, resto))
+                        if not trozo:
+                            break
+                        fh.write(trozo)
+                        resto -= len(trozo)
+                return self.responder({'archivo': nombre})
+            if ruta == '/api/pistas':
+                datos = json.loads(self.rfile.read(largo))
+                limpio = {fase: [p for p in datos.get(fase, []) if isinstance(p, dict)] for fase in FASES}
+                d = os.path.join(carpeta(q['p']), PISTAS)
+                os.makedirs(d, exist_ok=True)
+                json.dump(limpio, open(os.path.join(d, 'pistas.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                usados = {os.path.basename(p.get('archivo') or '') for fase in FASES for p in limpio[fase]}
+                for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
+                    base = f[:-4] if f.endswith('.txt') else f
+                    if f != 'pistas.json' and base not in usados:
+                        os.remove(os.path.join(d, f))
                 return self.responder({'ok': True})
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))

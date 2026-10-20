@@ -67,6 +67,16 @@
   dialog label input[type=text], dialog select { width: 100%; margin-top: 4px; }
   .caps { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
   .caps img { height: 64px; border-radius: 6px; border: 1px solid var(--borde); }
+  .pista { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; }
+  .pista .vista { width: 112px; flex: none; text-align: center; font-size: 26px; }
+  .pista .vista img { width: 112px; border-radius: 8px; display: block; }
+  .pista .vista audio { width: 112px; }
+  .pista .datos { flex: 1; min-width: 0; display: grid; grid-template-columns: 7em 1fr; gap: 6px; }
+  .pista .datos input { padding: 6px 9px; font-size: 13px; min-width: 0; }
+  .pista button { padding: 6px 10px; }
+  #fases button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
+  #soltarPista { display: block; margin-top: 4px; }
+  #btnGrabar.grabando { border-color: var(--rojo); color: var(--rojo); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -103,6 +113,31 @@
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
       </div>
+    </section>
+
+    <section class="panel">
+      <h2>🎞️ Tráiler · pistas para la IA</h2>
+      <div class="tabs" id="fases"></div>
+      <p class="aviso" id="ayudaFase"></p>
+      <div id="listaPistas"></div>
+      <label class="subida" id="soltarPista"><div class="t">➕ Captura o audio</div>
+        <div class="e">Arrastra aquí imágenes o audios, o haz clic</div><input type="file" multiple accept="image/*,audio/*"></label>
+      <div class="fila">
+        <input type="text" id="pSegundo" placeholder="Segundo (ej. 1:25)" style="width:10em">
+        <input type="text" id="pNota" placeholder="Qué quieres de aquí (texto libre)" style="flex:1; min-width:12em">
+      </div>
+      <div class="fila">
+        <button onclick="agregarTexto()">+ Pista de texto</button>
+        <button onclick="capturarVideo()">📸 Capturar del reproductor</button>
+        <button id="btnGrabar" onclick="grabar()">🎙 Grabar nota de voz</button>
+      </div>
+      <div class="fila">
+        <button class="principal" onclick="ia('api', 'trailer')">✨ Armar tráiler con estas pistas</button>
+        <button onclick="ia('prompt', 'trailer')">📋 Prompt para copiar</button>
+      </div>
+      <p class="aviso">Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
+      Una captura sin segundo se compara con todo el video; un audio se transcribe y se busca lo que dice en tu grabación
+      (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
     </section>
   </div>
 
@@ -212,7 +247,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -228,7 +263,7 @@ function pintarSubidas(arch) {
     return `<label class="subida ${a ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
       <div class="e">${a ? '✓ ' + tam(a.tam) : 'Subir'}</div><input type="file" accept="${s.acepta}"></label>`;
   }).join('');
-  document.querySelectorAll('.subida').forEach(el => {
+  document.querySelectorAll('#subidas .subida').forEach(el => {
     const tipo = el.dataset.tipo, inp = el.querySelector('input');
     inp.onchange = () => inp.files[0] && subir(tipo, inp.files[0], el);
     el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
@@ -313,16 +348,17 @@ $('#guardar').onclick = async () => {
 
 const TAREA = {'guion.json': 'guion', 'etiquetas.json': 'etiquetas', 'trailer.json': 'trailer'};
 let esperaIA = null;
-async function ia(modo) {
-  const tarea = TAREA[archivo];
+async function ia(modo, forzar) {
+  const tarea = forzar || TAREA[archivo];
+  const f = Object.keys(TAREA).find(k => TAREA[k] === tarea);
   if (modo === 'api') {
     const a = (await api('/api/ajustes')).ajustes;
     if (!a.url) return ajustesIA();
-    if (!confirm(`Pedir ${tarea} a ${a.modelo}? Reemplaza ${archivo} (la versión actual queda como .anterior).`)) return;
+    if (!confirm(`Pedir ${tarea} a ${a.modelo}? Reemplaza ${f} (la versión actual queda como .anterior).`)) return;
   }
   try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo})}); }
   catch (e) { return alert(e.message); }
-  esperaIA = {tarea, modo, archivo};
+  esperaIA = {tarea, modo, archivo: f};
 }
 async function finIA() {
   const {tarea, modo, archivo: f} = esperaIA; esperaIA = null;
@@ -340,6 +376,91 @@ async function pegar() {
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
 function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
+const FASES = {ANTES: 'Cómo empieza: el equipo o la pieza antes de tocarlo, el problema. Ej.: «cuando muestro la placa sin soldar».',
+  DURANTE: 'El proceso: las tomas más vistosas mientras trabajas. Ej.: una captura del cautín en los pines.',
+  DESPUES: 'El resultado: funcionando, la pantalla final. Ej.: «cuando aparece el bypass listo».'};
+const NOMBRE_FASE = {ANTES: 'ANTES', DURANTE: 'DURANTE', DESPUES: 'DESPUÉS'};
+let PISTAS = {ANTES: [], DURANTE: [], DESPUES: []}, fase = 'ANTES';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+async function cargarPistas() { PISTAS = await api(`/api/pistas?p=${q(P)}`); pintarPistas(); }
+async function guardarPistas() {
+  try { await api(`/api/pistas?p=${q(P)}`, {method: 'POST', body: JSON.stringify(PISTAS)}); } catch (e) { alert(e.message); }
+  pintarPistas();
+}
+function pintarPistas() {
+  $('#fases').innerHTML = Object.keys(FASES).map(f => `<button data-f="${f}" class="${f === fase ? 'activo' : ''}">${NOMBRE_FASE[f]}<span class="cuenta">${PISTAS[f].length || ''}</span></button>`).join('');
+  document.querySelectorAll('#fases button').forEach(b => b.onclick = () => { fase = b.dataset.f; pintarPistas(); });
+  $('#ayudaFase').textContent = FASES[fase];
+  const url = a => `/archivo?p=${q(P)}&sub=pistas_trailer&f=${q(a)}`;
+  $('#listaPistas').innerHTML = PISTAS[fase].map((p, i) => `<div class="pista">
+      <div class="vista">${p.tipo === 'captura' ? `<img src="${url(p.archivo)}">` : p.tipo === 'audio' ? `<audio controls preload="none" src="${url(p.archivo)}"></audio>` : '📝'}</div>
+      <div class="datos"><input type="text" placeholder="Segundo" value="${esc(p.segundo)}" onchange="cambiarPista(${i}, 'segundo', this.value)">
+        <input type="text" placeholder="${p.tipo === 'texto' ? 'Tu pista' : 'Nota (opcional)'}" value="${esc(p.nota)}" onchange="cambiarPista(${i}, 'nota', this.value)"></div>
+      <button title="Quitar" onclick="quitarPista(${i})">✕</button></div>`).join('') || '<p class="aviso">Sin pistas en esta fase: la IA la elige sola.</p>';
+}
+function cambiarPista(i, k, v) { PISTAS[fase][i][k] = v.trim(); guardarPistas(); }
+function quitarPista(i) { PISTAS[fase].splice(i, 1); guardarPistas(); }
+function tomarCampos() {
+  const c = {segundo: $('#pSegundo').value.trim(), nota: $('#pNota').value.trim()};
+  $('#pSegundo').value = ''; $('#pNota').value = ''; return c;
+}
+async function subirPista(blob, nombre, tipo, campos, f = fase) {
+  const r = await api(`/api/pista_archivo?p=${q(P)}&nombre=${q(nombre)}`, {method: 'POST', body: blob});
+  PISTAS[f].push({tipo, archivo: r.archivo, ...campos});
+}
+async function agregarArchivos(files) {
+  const campos = tomarCampos();
+  try {
+    for (const f of files) {
+      const tipo = f.type.startsWith('image/') ? 'captura' : f.type.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm|opus|aac)$/i.test(f.name) ? 'audio' : null;
+      if (!tipo) { alert(`${f.name}: solo imágenes o audios`); continue; }
+      await subirPista(f, f.name, tipo, campos);
+    }
+  } catch (e) { alert(e.message); }
+  guardarPistas();
+}
+function agregarTexto() {
+  const c = tomarCampos();
+  if (!c.nota && !c.segundo) return alert('Escribe la pista en el cuadro de texto (y el segundo, si lo sabes).');
+  PISTAS[fase].push({tipo: 'texto', ...c}); guardarPistas();
+}
+async function capturarVideo() {
+  const v = $('#video');
+  if (!v.src.includes('f=original.mp4')) return alert('Abre «▶ original.mp4» en «Ver resultado», pausa en el momento que quieres y vuelve a pulsar.');
+  if (!v.videoWidth) return alert('El video todavía no carga. Dale play un segundo y vuelve a intentar.');
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const campos = tomarCampos(), t = v.currentTime;
+  campos.segundo = campos.segundo || `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  try { await subirPista(blob, 'captura.jpg', 'captura', campos); } catch (e) { alert(e.message); }
+  guardarPistas();
+}
+let grabadora = null;
+async function grabar() {
+  if (grabadora) return grabadora.stop();
+  let flujo;
+  try { flujo = await navigator.mediaDevices.getUserMedia({audio: true}); } catch (e) { return alert('No pude usar el micrófono: ' + e.message); }
+  const trozos = [], campos = tomarCampos(), f = fase;
+  grabadora = new MediaRecorder(flujo);
+  grabadora.ondataavailable = e => trozos.push(e.data);
+  grabadora.onstop = async () => {
+    flujo.getTracks().forEach(t => t.stop()); grabadora = null;
+    $('#btnGrabar').textContent = '🎙 Grabar nota de voz'; $('#btnGrabar').classList.remove('grabando');
+    try { await subirPista(new Blob(trozos, {type: 'audio/webm'}), 'nota.webm', 'audio', campos, f); } catch (e) { alert(e.message); }
+    guardarPistas();
+  };
+  grabadora.start();
+  $('#btnGrabar').textContent = '■ Detener grabación'; $('#btnGrabar').classList.add('grabando');
+}
+{
+  const el = $('#soltarPista'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarArchivos([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarArchivos([...e.dataTransfer.files]); };
+}
+
 let PROV = {};
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
