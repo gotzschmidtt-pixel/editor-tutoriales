@@ -383,7 +383,7 @@ def revisar(d, tarea, datos):
             avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(meta)} buscados. Falta texto de voz en el guion")
         else:
             avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
-        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'bloques': bloques}, avisos
+        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'largo_revisado': True, 'bloques': bloques}, avisos
     if tarea == 'etiquetas':
         lista = datos['etiquetas'] if isinstance(datos, dict) else datos
         textos = {b['id']: normal(b['texto']) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}

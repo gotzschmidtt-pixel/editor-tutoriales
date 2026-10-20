@@ -72,6 +72,24 @@ def existe(d, f):
     return os.path.exists(os.path.join(d, f))
 
 
+def guion_fuera_de_largo(d):
+    """Un guion hecho antes del control de duración que deja el video muy lejos del largo de la grabación
+    (o de «que dure unos N minutos» en la idea)."""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+        if g.get('largo_revisado') or not existe(d, 'original.mp4'):
+            return False
+        dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0',
+                                    os.path.join(d, 'original.mp4')], capture_output=True, text=True, **SIN_VENTANA).stdout)
+        idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
+        m = re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+        meta = int(m.group(1)) * 60 if m else dur * 0.95
+        t = float(g.get('duracion_s') or sum(b.get('fin_max', 0) - b.get('inicio_min', 0) for b in g.get('bloques', [])))
+        return not (meta * 0.8 <= t <= meta * 1.2)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
 def marcas_nuevas(d):
     """Si tus capturas o notas de «Flechas y círculos» son más nuevas que senales.json."""
     f = os.path.join(d, 'marcas_senales', 'marcas.json')
@@ -619,6 +637,9 @@ class Manejador(BaseHTTPRequestHandler):
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
+                if q['paso'] == 'todo' and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
+                    # guion de antes del control de duración, y muy corto o muy largo: se rehace una vez y te lo muestro
+                    os.replace(os.path.join(carpeta(q['p']), 'guion.json'), os.path.join(carpeta(q['p']), 'guion.json.corto_o_largo'))
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):
