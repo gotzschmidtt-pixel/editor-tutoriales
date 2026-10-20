@@ -424,6 +424,9 @@ def llamar_claude(ajustes, texto, caps):
         contenido.append({'type': 'text', 'text': texto})
     else:
         contenido.append({'type': 'text', 'text': texto + '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'})
+    if re.search(r'\.\.\.|…', ajustes.get('clave') or ''):
+        raise SystemExit('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
+                         'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).')
     cliente = anthropic.Anthropic(api_key=ajustes.get('clave') or None, timeout=900)
     try:
         # en streaming para que una respuesta larga no corte la conexión
