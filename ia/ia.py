@@ -274,12 +274,31 @@ Responde SOLO con un objeto JSON {{"etiquetas": [...]}}. Ejemplo de un elemento:
 {{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5}}"""]
     elif tarea == 'trailer':
         partes += [f"""Arma el tráiler de inicio de unos 10 segundos con la firma del autor: ANTES, DURANTE y DESPUÉS.
-Muestra lo mejor de lo mejor para que el espectador se quede: ANTES = cómo empieza (pieza suelta, problema), DURANTE = las
-tomas más vistosas del proceso, DESPUÉS = el resultado funcionando.
+Muestra lo mejor de lo mejor para que el espectador se quede:
+- ANTES = el problema: el teléfono BLOQUEADO (la pantalla que pide la cuenta Google o «Verificar tu cuenta», el FRP, el
+  candado), o la pieza antes de tocarla. Búscalo en el MAPA y en la transcripción.
+- DURANTE = el paso clave: cuando se PONE LA KEY o el código (en el programa o en el teléfono) y se ve el proceso
+  avanzando. Usa los PASOS CLAVE del guion de abajo si están.
+- DESPUÉS = el resultado: el teléfono YA DESBLOQUEADO (pantalla de inicio, configuración terminada, entra sin pedir cuenta)
+  o el equipo funcionando. Suele estar cerca del final de la grabación.
+Cada toma tiene que verse clara: nada de pantallas en negro, cargas o manos tapando.
 Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho", "voz": "una frase de la voz en off, máximo 15 palabras",
 "clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
 Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el objeto JSON."""]
+        try:  # dónde se pone la key según el guion: el DURANTE más fuerte
+            g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+            clave = [b for b in g.get('bloques', []) if b.get('montaje', {}).get('src_inicio') is not None
+                     and (b['montaje'].get('critico') or es_critico(b))]
+            # primero donde se pone la key o el código; después los demás pasos exactos
+            clave = sorted(sorted(clave, key=lambda b: not re.search(r'\bkeys?\b|clave|c[oó]digo', b['texto'], re.I))[:8],
+                           key=lambda b: b['montaje']['src_inicio'])
+            if clave:
+                partes.append("PASOS CLAVE del guion (tramos del original donde se hace lo importante, como poner la key):\n" + '\n'.join(
+                    f"- {mmss(b['montaje']['src_inicio'])}–{mmss(b['montaje'].get('src_fin') or b['montaje']['src_inicio'])}: {b['texto'][:160]}"
+                    for b in clave))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
         tr = estilo and (estilo[2].get('trailer') or None)
         if tr:
             partes.append(f"En los videos de referencia el tráiler inicial dura unos {tr['dura_s']} s, con unas {tr['tomas']:.0f} tomas "
@@ -1706,6 +1725,13 @@ def main():
             hojas = hojas_contacto(d, cuadros=vistos)
             caps += hojas
             print(f'Le mando a la IA {len(hojas)} hojas con los {len(vistos)} cambios que vio.', flush=True)
+        elif a.tarea == 'trailer' and aj.get('minucioso', True):
+            # el mismo mapa que usó el guion (ya guardado: no gasta pedidos) y el video entero en hojas
+            try:
+                mapa = mapa_video(d, None)
+                caps += hojas_contacto(d)
+            except Exception as e:
+                print(f'· no pude usar el mapa del video para el tráiler ({e}); sigo sin él', flush=True)
         elif a.tarea == 'guion' and aj.get('minucioso', True):
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
