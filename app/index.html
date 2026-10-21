@@ -16,7 +16,9 @@
   header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
   header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
-  select, input[type=text] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
+  select, input[type=text], input[type=number] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
+  input[type=number] { color: var(--texto); -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; filter: invert(0.8); }
   button, label.boton { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
   button:hover, label.boton:hover { border-color: var(--azul); }
   .preguntas { border: 1px solid #f0c36d; border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .pregunta { margin: 10px 0; }
