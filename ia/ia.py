@@ -1176,11 +1176,11 @@ def rejilla(imagenes, etiquetas, columnas, ancho):
     return np.vstack([np.hstack([cv2.copyMakeBorder(c, 2, 2, 2, 2, cv2.BORDER_CONSTANT) for c in f]) for f in filas])
 
 
-def hojas_contacto(d, por_hoja=16):
+def hojas_contacto(d, por_hoja=16, cuadros=None):
     """El video entero de un vistazo: hojas con las miniaturas del mapa (4×4, cada una con su minuto:segundo), como
     las que miré yo antes de escribir. Van a la IA junto al encargo. Devuelve [(descripción, ruta)]."""
     import cv2
-    cuadros = cuadros_mapa(d)
+    cuadros = cuadros if cuadros is not None else cuadros_mapa(d)
     out = os.path.join(d, 'ia_capturas', 'hojas')
     os.makedirs(out, exist_ok=True)
     for viejo in os.listdir(out):
@@ -1319,6 +1319,94 @@ Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {
     return mapa
 
 
+IA_CUADROS = 240  # «Todo con IA»: cuadros como máximo que mira la IA (uno cada 2 s, o más espaciados en videos largos)
+
+
+def mapa_ia(d, ajustes):
+    """«Todo con IA»: la IA mira ella misma el video entero, un cuadro cada 2–3 s, sin que tu PC elija nada ni lea texto:
+    dice qué pantalla es, qué se hace, todo el texto que se lee y si algo cambió. Queda en mapa_video.json.
+    Devuelve (mapa, [(segundo, ruta)] de los cuadros donde la IA vio un cambio)."""
+    if not ajustes.get('imagenes', True):
+        raise SystemExit('ERROR: «Todo con IA» necesita un modelo que vea imágenes. Elige uno con visión en «⚙ Ajustes IA» '
+                         '(GPT, Claude, Gemini, Qwen VL) o desmarca «Todo con IA».')
+    orig = os.path.join(d, 'original.mp4')
+    dur = duracion(orig)
+    paso = max(2.0, dur / IA_CUADROS)
+    tiempos = [round(x, 1) for x in np.arange(0.5, dur - 0.2, paso)]
+    destino = os.path.join(d, 'mapa_video.json')
+    firma = f'{os.path.getsize(orig)}:ia:{len(tiempos)}:{ajustes.get("modelo")}'
+    out = os.path.join(d, 'ia_capturas', 'mapa_ia')
+    os.makedirs(out, exist_ok=True)
+    cuadros = [(t, os.path.join(out, f'ia_{t:06.1f}s.jpg')) for t in tiempos]
+    for t, f in cuadros:
+        if not os.path.exists(f):
+            sacar_cuadro(orig, t, f, 768, 4)
+    try:
+        viejo = json.load(open(destino, encoding='utf-8'))
+        if viejo.get('firma') == firma:
+            vistos = {m['t'] for m in viejo['cuadros']}
+            return viejo['cuadros'], [c for c in cuadros if c[0] in vistos]
+    except (OSError, ValueError, AttributeError, KeyError):
+        pass
+    print(f'Todo con IA: la IA mira el video entero, un cuadro cada {paso:.0f} s ({len(cuadros)} cuadros)…', flush=True)
+    filas = [{'t': t, 'pantalla': '', 'accion': '', 'texto': '', 'cambio': k == 0} for k, (t, _) in enumerate(cuadros)]
+
+    def pedir(lote, a):
+        lineas = [f"- Cuadro {i - a + 1} (segundo {t:.0f}, {mmss(t)}). El autor dice ahí: «{texto_cerca(d, t - 1, t + paso)[:250] or '—'}»"
+                  for i, (t, _) in enumerate(lote, a)]
+        antes = f"El cuadro anterior a esta tanda mostraba: {filas[a - 1]['pantalla']} · {filas[a - 1]['accion']}." if a else ''
+        return (f"""Eres el editor de un video tutorial y miras la grabación cuadro a cuadro, en orden (uno cada {paso:.0f} s). {antes}
+{chr(10).join(lineas)}
+
+Para cada cuadro di: "pantalla" (qué app, ventana o pieza se ve, con los nombres tal cual aparecen), "accion" (qué se está
+haciendo: «pega la key», «elige el puerto», «espera la carga»), "texto" (TODO el texto importante que se lee: títulos, botones,
+campos, modelos, versiones, valores, webs; copiado exacto; si no se lee bien, pon lo que se alcance a leer) y "cambio"
+(true si se ve algo distinto del cuadro anterior: otra pantalla, ventana, campo nuevo, texto nuevo; false si es lo mismo).
+Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "accion": "...", "texto": "...", "cambio": true}}]}}.""",
+                [(f'cuadro {i - a + 1}', f) for i, (_, f) in enumerate(lote, a)])
+
+    hechos = por_tandas(ajustes, cuadros, 8 if es_local(ajustes) else MAPA_TANDA, pedir, 'la IA mira los cuadros')
+    if not hechos:
+        raise SystemExit('ERROR: la IA no pudo mirar los cuadros del video. Prueba con otro modelo con visión o desmarca «Todo con IA».')
+    for a, lote, r in hechos:
+        for x in (r.get('cuadros', []) if isinstance(r, dict) else r):
+            try:
+                i = a + int(x.get('n')) - 1
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if a <= i < a + len(lote):
+                filas[i].update(pantalla=str(x.get('pantalla') or '')[:120], accion=str(x.get('accion') or '')[:120],
+                                texto=str(x.get('texto') or '')[:300], cambio=x.get('cambio') is not False)
+    mapa, elegidos, ultimo = [], [], -99
+    for f, c in zip(filas, cuadros):  # como en el mapa de la app: los cambios, y uno cada 15 s aunque no cambie nada
+        if f['cambio'] or f['t'] - ultimo >= MAPA_HUECO:
+            mapa.append({k: f[k] for k in ('t', 'pantalla', 'accion', 'texto')}); elegidos.append(c); ultimo = f['t']
+    json.dump({'firma': firma, 'vision': True, 'todo_ia': True, 'cuadros': mapa}, open(destino, 'w', encoding='utf-8'),
+              ensure_ascii=False, indent=1)
+    print(f'La IA vio {len(mapa)} cambios de pantalla en {len(cuadros)} cuadros.', flush=True)
+    return mapa, elegidos
+
+
+def autorrevision(d, ajustes, texto, datos):
+    """«Todo con IA»: la IA relee su propio guion contra TODAS nuestras reglas (las del encargo) y el mapa, y lo corrige ella."""
+    print('Todo con IA: la IA revisa su guion regla por regla…', flush=True)
+    pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False)[:40000] +
+              "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
+              "dice su texto, que los pasos clave estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en "
+              "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
+              "estén tal cual se leen en pantalla y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
+              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros. "
+              "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
+    try:
+        nuevo = extraer_json(llamar(ajustes, pedido, []))
+        if nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo:
+            return nuevo
+        print('· la IA devolvió la revisión sin bloques; sigo con el guion anterior', flush=True)
+    except (SystemExit, ValueError) as e:
+        print(f'· no pude hacer la autorrevisión ({str(e)[:160]}); sigo con el guion anterior', flush=True)
+    return datos
+
+
 def texto_mapa(mapa):
     return '\n'.join(f"[{mmss(m['t'])}] " + ' · '.join(x for x in (m.get('pantalla'), m.get('accion'),
                                                                      m.get('texto') and f"se lee: {m['texto']}") if x)
@@ -1361,7 +1449,7 @@ def control_bloque(d, b, ocr):
     return imgs, zoom
 
 
-def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None):
+def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     """La segunda mirada que hice a mano: cada bloque con el comienzo y el final de SU tramo (y en los pasos clave, el
     detalle con el texto leído con zoom), y la IA dice si lo que se narra es lo que se ve. Si no, el tramo (con su mismo
     largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
@@ -1370,7 +1458,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None):
         return []
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
-    ocr = lector_ocr()
+    ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
     print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo y final de cada tramo, detalle en los pasos clave)…', flush=True)
     control = {b['id']: control_bloque(d, b, ocr) for b in bloques}
 
@@ -1591,7 +1679,7 @@ def main():
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'Guardado senales.json con {len(datos)} señales')
         return
-    mapa = None
+    mapa, todo_ia = None, False
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
     else:
@@ -1615,7 +1703,14 @@ def main():
         if estilo and a.tarea in ('guion', 'trailer'):
             print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
         mapa = None
-        if a.tarea == 'guion' and aj.get('minucioso', True):
+        todo_ia = a.tarea == 'guion' and a.modo == 'api' and aj.get('todo_ia') and not (a.ajustar_largo or a.respuestas)
+        if todo_ia:  # la IA analiza el video ella misma; tu PC no elige cuadros ni lee texto
+            mapa, vistos = mapa_ia(d, aj)
+            caps = [(f'segundo {t:.1f} del video original', f) for t, f in vistos[::max(1, len(vistos) // 14)][:14]]
+            hojas = hojas_contacto(d, cuadros=vistos)
+            caps += hojas
+            print(f'Le mando a la IA {len(hojas)} hojas con los {len(vistos)} cambios que vio.', flush=True)
+        elif a.tarea == 'guion' and aj.get('minucioso', True):
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
                 mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
@@ -1684,11 +1779,17 @@ def main():
             raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                              f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
         if a.tarea == 'guion':
+            if todo_ia:
+                datos = autorrevision(d, ajustes, texto, datos)
             guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
             datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
+            if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
+                for b in (datos['bloques'] if isinstance(datos, dict) else datos):
+                    if isinstance(b.get('montaje'), dict):
+                        b['montaje']['visto'] = True
     datos, avisos = revisar(d, a.tarea, datos)
     if a.tarea == 'guion' and a.modo == 'api' and mapa:
-        vistos = revisar_con_imagen(d, ajustes, datos, mapa)
+        vistos = revisar_con_imagen(d, ajustes, datos, mapa, con_ocr=not todo_ia)
         if vistos:  # se movieron tramos: se vuelven a medir los largos
             datos, despues = revisar(d, a.tarea, datos)
             avisos = [x for x in avisos if not x.startswith(('duración estimada', 'quedó corto', 'el video queda'))] + vistos

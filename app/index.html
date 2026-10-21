@@ -376,6 +376,7 @@
   <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
   <label>Capturas del video <input type="number" id="ajCaps" min="4" max="60" step="1" style="width:6em"></label>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
+  <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
@@ -973,7 +974,7 @@ async function ajustesIA() {
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
-  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false;
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia;
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
   $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
@@ -985,7 +986,7 @@ async function guardarAjustes() {
     return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked})});
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
