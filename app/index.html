@@ -144,6 +144,7 @@
         <button class="principal grande" id="todo">▶ Hacer todo</button>
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
+        <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con tu transcripción, tu idea y capturas para subirlo al chat con Claude, que te deja el guion en tu carpeta">📦 Paquete para Claude</button>
         <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
         <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
@@ -628,6 +629,14 @@ async function ia(modo, forzar) {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo})}); }
   catch (e) { return alert(e.message); }
   esperaIA = {tarea, modo, archivo: f};
+}
+async function nubeClaude() {
+  const mb = prompt('Junto todo lo de este proyecto en la carpeta para_claude: tu video y el material extra partidos en trozos, '
+    + 'tu idea, testimonios, tarjetas, pistas del tráiler, tu estilo y los ajustes (sin tus claves). Los trozos quedan en tu PC.\n\n'
+    + 'Cuando termine, escríbele a Claude en el chat: «hazlo desde la nube: ' + P + '».\n\nTamaño máximo de cada trozo, en MB:', '300');
+  if (mb === null) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 async function paqueteClaude() {
   if (!confirm('Armo para_claude.zip con tu transcripción, tu idea y capturas del video (si falta la transcripción, la hago primero).\n\nLuego súbelo al chat con Claude y pídele el guion: lo deja en tu carpeta y tú pulsas «Hacer todo».')) return;
