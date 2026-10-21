@@ -15,7 +15,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
-import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, uuid, webbrowser
+import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -347,6 +347,45 @@ def clave_eleven():
         except OSError:
             pass
     return (k or '').strip()
+
+
+def probar_clave(aj):
+    """Hace una llamada corta al proveedor para ver si la clave sirve. No gasta tokens: solo pide la lista de modelos."""
+    url = (aj.get('url') or '').strip().rstrip('/')
+    clave = (aj.get('clave') or '').strip()
+    if not url:
+        return {'ok': False, 'mensaje': 'Falta la dirección (URL) del proveedor.'}
+    es_claude = aj.get('tipo') == 'claude' or (aj.get('proveedor') or '').startswith('Claude')
+    es_local = 'localhost' in url or '127.0.0.1' in url
+    if es_claude:
+        destino = url + '/v1/models'
+        cab = {'x-api-key': clave, 'anthropic-version': '2023-06-01'}
+    else:
+        destino = url + '/models'
+        cab = {}
+        if clave:
+            cab['Authorization'] = 'Bearer ' + clave
+    if not clave and not es_local:
+        return {'ok': False, 'mensaje': 'Falta la clave API.'}
+    req = urllib.request.Request(destino, headers=cab)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read(1)
+        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.'}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {'ok': False, 'mensaje': 'La clave no es válida o no tiene permisos (el proveedor la rechazó).'}
+        if e.code == 429:
+            return {'ok': False, 'mensaje': 'La clave sirve, pero el proveedor dice que no tienes saldo o hiciste muchas peticiones.'}
+        if e.code == 404:
+            return {'ok': False, 'mensaje': 'La dirección (URL) parece incorrecta para este proveedor.'}
+        return {'ok': False, 'mensaje': f'El proveedor respondió con un error ({e.code}).'}
+    except urllib.error.URLError:
+        if es_local:
+            return {'ok': False, 'mensaje': 'No se pudo conectar. ¿Está encendido Ollama o LM Studio en tu PC?'}
+        return {'ok': False, 'mensaje': 'No se pudo conectar con el proveedor. Revisa el internet o la dirección (URL).'}
+    except Exception:
+        return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
 
 
 USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
@@ -855,6 +894,11 @@ class Manejador(BaseHTTPRequestHandler):
                 viejo.update(nuevo)
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
+            if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
+                    datos['clave'] = leer_ajustes().get('clave', '')  # si no mandan clave nueva, prueba la guardada
+                return self.responder(probar_clave(datos))
             if ruta == '/api/pista_archivo':
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
                 ext = os.path.splitext(q.get('nombre', ''))[1].lower()
