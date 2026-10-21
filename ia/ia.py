@@ -239,13 +239,29 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
             else:
                 partes.append("Títulos de los videos del canal del autor (para que el gancho del tráiler suene como su canal):\n" + titulos)
     if tarea == 'guion':
+        try:
+            testi = json.load(open(os.path.join(d, 'testimonios', 'testimonios.json'), encoding='utf-8')).get('TESTIMONIOS', [])
+        except (OSError, ValueError, AttributeError):
+            testi = []
+        if testi:  # el módulo Testimonios pone el video justo después de la frase que habla de clientes y confianza
+            partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la frase "
+                          "que hable de ellos. Cerca del cierre, en un bloque propio, la voz cuenta con sus palabras que en nuestro "
+                          "canal de WhatsApp y en nuestra página tenemos capturas de conversaciones reales de WhatsApp, y que nuestros "
+                          "clientes también nos mandan su material: el teléfono antes y después. Que sea para que tengan confianza "
+                          "en nuestro proceso, y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar.")
+        ac = [c for c in acortar_plan(d).get('tramos', []) if c.get('usar')]
+        if ac:
+            partes.append("TRAMOS QUE SOBRAN en la grabación (marcados en «Acortar»). Los que dicen «cortar» no los uses; los que dicen "
+                          "«acelerar» (esperas como reiniciar el celular o poner la clave del Wi-Fi, o algo que pasa sin que el autor "
+                          "hable) muéstralos cortos y rápidos, solo para que se vea que pasó:\n" + '\n'.join(
+                              f"- {mmss(c['inicio'])}–{mmss(c['fin'])} ({c['accion']}): {c['motivo']}" for c in ac))
         refs = referencias_youtube(d)
         if refs:
             partes.append("Videos de YouTube que el autor eligió como REFERENCIA. Úsalos para entender el tema, los pasos, los "
                           "nombres correctos y cómo se explica bien; NO copies sus frases ni metas datos que no se vean o "
                           "digan en ESTA grabación:\n" + '\n\n'.join(f"[{k}] {u}" + (f" (el autor dice: {n})" if n else '') + f"\n{t}"
                                                                    for k, (u, n, t) in enumerate(refs, 1)))
-        objetivo = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+        objetivo = (idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)) or acortar_plan(d).get('objetivo_s')
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
         partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
@@ -398,8 +414,17 @@ def meta_guion(d, dur, idea=None):
     si la idea dice «que dure unos N minutos», eso manda. Puede pasarse un poco (guion extra del autor)."""
     idea = leer_idea(d) if idea is None else idea
     m = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
-    meta = int(m.group(1)) * 60 if m else dur
+    meta = int(m.group(1)) * 60 if m else (acortar_plan(d).get('objetivo_s') or dur)  # o lo pedido en «Acortar»
     return meta, meta * 0.9, meta * 1.15
+
+
+def acortar_plan(d):
+    """Lo que marcó el panel Acortar (acortar.json): duración pedida y tramos que sobran."""
+    try:
+        r = json.load(open(os.path.join(d, 'acortar.json'), encoding='utf-8'))
+        return r if isinstance(r, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def largo_bloque(mo):

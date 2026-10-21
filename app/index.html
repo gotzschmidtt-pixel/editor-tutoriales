@@ -121,6 +121,7 @@
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
   <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
   <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
+  <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
@@ -254,6 +255,26 @@
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
       introducción. También «inicio», «mitad», «final» o un segundo (1:10). Si el video es más largo que la frase se acelera;
       si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
+    </section>
+
+    <section class="panel" id="panelAcortar">
+      <h2>✂️ Acortar</h2>
+      <p class="aviso">Miro tu grabación entera y quito lo que sobra: silencios con la pantalla quieta, esperas (el celular
+      reiniciando, poner la clave del Wi-Fi, una carga) que se aceleran a 2 o 3 segundos, y con tu IA las partes que no suman
+      (repeticiones, errores). Tu voz nunca se acelera.</p>
+      <div class="fila" style="margin-top:0">
+        <label>Que dure unos <input type="number" id="acMin" min="0" step="any" style="width:5em"> min</label>
+        <label class="aviso"><input type="checkbox" id="acIA" checked> Que la IA marque lo que no importa</label>
+      </div>
+      <div class="fila">
+        <button class="principal" id="btnAcortar" onclick="acortar()">🔎 Buscar qué acortar</button>
+        <button id="btnAcortarRehacer" onclick="acortarRehacer()" hidden>🎬 Rehacer con lo marcado</button>
+      </div>
+      <div id="acResumen" class="aviso"></div>
+      <div id="listaAcortar" style="max-height:22em;overflow:auto"></div>
+      <p class="aviso">Vacío = quitar todo lo que sobra. Con minutos, uso primero lo más obvio y paro al llegar. Queda
+      «acortado.mp4» (tu grabación con tu voz, ya corta) y, si después escribes el guion con IA, la voz en off apunta a esa
+      duración y salta los mismos tramos. Desmarca un tramo para dejarlo como estaba y pulsa «Rehacer».</p>
     </section>
 
     <section class="panel" id="panelEstilo">
@@ -422,7 +443,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'acortado.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -437,7 +458,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1055,6 +1076,37 @@ async function alimentar() {
   esperaEstilo = true; refrescar();
 }
 let esperaEstilo = false;
+let ACORTAR = null, esperaAcortar = false;
+async function cargarAcortar() {
+  try { const t = await api(`/api/json?p=${q(P)}&f=acortar.json`); ACORTAR = t ? JSON.parse(t) : null; } catch (e) { ACORTAR = null; }
+  pintarAcortar();
+}
+function pintarAcortar() {
+  const a = ACORTAR, tr = (a && a.tramos) || [];
+  $('#btnAcortarRehacer').hidden = !tr.length;
+  if (a && a.objetivo_s && !$('#acMin').value) $('#acMin').value = +(a.objetivo_s / 60).toFixed(1);
+  if (!a) { $('#acResumen').textContent = ''; $('#listaAcortar').innerHTML = ''; return; }
+  const queda = a.original_s - tr.filter(c => c.usar).reduce((s, c) => s + (c.accion === 'cortar' ? c.fin - c.inicio : (c.fin - c.inicio) * (1 - 1 / c.velocidad)), 0);
+  $('#acResumen').innerHTML = tr.length ? `De <b>${mmss(a.original_s)}</b> queda en <b>${mmss(queda)}</b>` +
+    (a.objetivo_s ? ` (pediste ${mmss(a.objetivo_s)})` : '') + ` · ${tr.filter(c => c.usar).length} de ${tr.length} tramos` : 'No encontré nada que quitar.';
+  $('#listaAcortar').innerHTML = tr.map((c, i) => `<label class="pista" style="cursor:pointer"><input type="checkbox" ${c.usar ? 'checked' : ''} onchange="marcarAcortar(${i}, this.checked)">
+    <div style="flex:1;min-width:0"><b>${mmss(c.inicio)}–${mmss(c.fin)}</b> ${esc(c.motivo)}
+    <div class="aviso">${c.accion === 'cortar' ? 'se corta' : 'se acelera ×' + c.velocidad}</div></div></label>`).join('');
+}
+async function marcarAcortar(i, v) {
+  ACORTAR.tramos[i].usar = v;
+  try { await api(`/api/json?p=${q(P)}&f=acortar.json`, {method: 'POST', body: JSON.stringify(ACORTAR, null, 1)}); } catch (e) { alert(e.message); }
+  pintarAcortar();
+}
+async function acortar() {
+  const op = {minutos: parseFloat($('#acMin').value) || 0, ia: $('#acIA').checked};
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { return alert(e.message); }
+  esperaAcortar = true; refrescar();
+}
+async function acortarRehacer() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify({rehacer: true})}); } catch (e) { return alert(e.message); }
+  esperaAcortar = true; refrescar();
+}
 async function verPerfil() {
   const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
   if (!t) return alert('Todavía no hay perfil: agrega videos y pulsa «Aprender mi estilo».');
@@ -1259,6 +1311,8 @@ async function refrescar() {
   $('#btnModelos').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !MODS.MODELOS.length;
   if (esperaIA && !t.proyecto) finIA();
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
+  if (esperaAcortar && !t.proyecto) { esperaAcortar = false; cargarAcortar(); }
+  $('#btnAcortar').disabled = $('#btnAcortarRehacer').disabled = !!t.proyecto || !e.archivos['original.mp4'];
 }
 setInterval(refrescar, 2000);
 setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta
