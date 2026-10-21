@@ -72,6 +72,11 @@ segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *H
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.
 2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, Chromium y Remotion, y te pide tu API key de ElevenLabs.
+
+**Llevar la app a otra PC.** Todo lo que la app descarga queda en `descargas_app/` (librerías de Python, modelos de Whisper,
+y lo que guarde `guardar_para_otra_pc.bat`: ffmpeg, los instaladores de Python y Node, el navegador de las etiquetas y, si
+quieres, los modelos de Ollama). Corre `guardar_para_otra_pc.bat`, copia la carpeta `editor-tutoriales` entera a la PC nueva
+y ahí corre `instalar.bat`: usa lo guardado y solo baja lo que falte.
    Si te dice que falta algo en el PATH, cierra la ventana y ábrelo otra vez.
 3. Para ver y editar el tráiler o las señales en el navegador: abre una terminal en la carpeta `remotion` y escribe `npm run studio`.
 4. Al final crea **Estudio.exe** y el acceso directo «Estudio de tutoriales» en el escritorio. Ábrelo desde ahí: la app sale en su

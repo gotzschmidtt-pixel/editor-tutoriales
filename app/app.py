@@ -19,6 +19,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
+sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
+import guardado  # noqa: E402  todo lo que se descarga queda en descargas_app/
+guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
@@ -370,9 +373,8 @@ def asegurar_librerias(log, env):
     if not faltan:
         return
     log.write(f'\nInstalando {", ".join(faltan)} (solo la primera vez, tarda un minuto)…\n'); log.flush()
-    r = subprocess.run([PY, '-m', 'pip', 'install', '--disable-pip-version-check'] + faltan, stdout=log, stderr=subprocess.STDOUT,
-                       env=env, **SIN_VENTANA)
-    if r.returncode != 0 or any(falta_libreria(m, env) for m, p in libs.items() if p in faltan):
+    ok = guardado.instalar(faltan, mostrar=lambda x: (log.write(x + '\n'), log.flush()), python=PY)
+    if not ok or any(falta_libreria(m, env) for m, p in libs.items() if p in faltan):
         raise RuntimeError(f'No pude instalar {", ".join(faltan)}. Cierra la app, corre instalar.bat en esta carpeta '
                            f'({RAIZ}) y vuelve a abrir iniciar.bat.')
     log.write('✓ Librerías instaladas\n'); log.flush()

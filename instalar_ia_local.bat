@@ -5,6 +5,7 @@ echo Funciona sin internet una vez instalada. Necesita espacio en disco.
 echo.
 where ollama >nul 2>nul || winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements
 where ollama >nul 2>nul || (echo. & echo Ollama se instaló. Cierra esta ventana y vuelve a abrir instalar_ia_local.bat. & pause & exit /b 1)
+if exist "%~dp0descargas_app\ollama_modelos" (echo Copiando los modelos guardados de la otra PC... & robocopy "%~dp0descargas_app\ollama_modelos" "%USERPROFILE%\.ollama\models" /E /NFL /NDL /NJH /NJS >nul)
 echo.
 echo Elige el modelo:
 echo   1 = Gemma 3 12B  (mejor guion, unos 8 GB, para PC con 16 GB de RAM o tarjeta de video)

@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 from nitidez import analizar, mejor, repartidos  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
+import guardado  # noqa: E402
 import numpy as np  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
@@ -652,33 +654,27 @@ GENERICAS = set('boton botones opcion opciones icono menu el la los las de del e
                 'pantalla seccion ventana interruptor enlace link barra que se con para'.split())
 
 
-def instalar_mostrando(paquetes, limite=600):
-    """pip install mostrando qué baja (antes quedaba callado y parecía colgado). Se corta a los `limite` segundos."""
-    import threading, time
-    pr = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'off'] + paquetes,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
-    corte = threading.Timer(limite, pr.kill)
-    corte.start()
-    inicio = time.time()
-    try:
-        for linea in pr.stdout:
-            linea = linea.strip()
-            if linea.startswith(('Collecting', 'Downloading', 'Installing', 'Successfully', 'ERROR')):
-                print(f'· [{int(time.time() - inicio)} s] ' + linea[:160], flush=True)
-        pr.wait()
-    finally:
-        corte.cancel()
-    if pr.returncode:
-        print(f'· la instalación no terminó (código {pr.returncode}' + (', tardó demasiado' if time.time() - inicio >= limite else '') + ')', flush=True)
+def instalar_mostrando(paquetes, limite=3600):
+    """pip install mostrando qué baja; lo bajado queda en descargas_app/paquetes (ver instalador/guardado.py)."""
+    return guardado.instalar(paquetes, mostrar=lambda x: print(x, flush=True), limite=limite)
+
+
+_OCR = []  # el lector ya cargado (o None si no se pudo), para no intentar instalarlo de nuevo en el mismo paso
 
 
 def lector_ocr():
     """Lector de texto de la pantalla (RapidOCR). Se instala solo la primera vez; si no se puede, devuelve None."""
+    if not _OCR:
+        _OCR.append(_cargar_ocr())
+    return _OCR[0]
+
+
+def _cargar_ocr():
     try:
         from rapidocr_onnxruntime import RapidOCR
     except Exception:
         print('Instalando el lector de texto de pantalla (solo la primera vez, baja unos 100 MB)…', flush=True)
-        instalar_mostrando(['rapidocr_onnxruntime'], limite=600)
+        instalar_mostrando(['rapidocr_onnxruntime'])
         try:
             from rapidocr_onnxruntime import RapidOCR
         except Exception:

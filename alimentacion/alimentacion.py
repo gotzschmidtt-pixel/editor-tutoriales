@@ -60,7 +60,9 @@ def yt_dlp():
         import yt_dlp  # noqa: F401
     except ImportError:
         print('Instalando yt-dlp para bajar videos de YouTube (una sola vez)…', flush=True)
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '--quiet', 'yt-dlp'], check=False)
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instalador'))
+        import guardado
+        guardado.instalar(['yt-dlp'], mostrar=lambda x: print(x, flush=True))
     return [sys.executable, '-m', 'yt_dlp']
 
 
