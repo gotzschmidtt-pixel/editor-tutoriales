@@ -375,7 +375,7 @@
   <label>Clave API <input type="text" id="ajClave" placeholder="sk-... (Claude: sk-ant-..., en console.anthropic.com)"></label>
   <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
   <label>Capturas del video <input type="number" id="ajCaps" min="4" max="60" step="1" style="width:6em"></label>
-  <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, manda a la IA cada cambio de pantalla (lee su texto) y revisa cada bloque contra su imagen, como un editor a mano. Más preciso en los pasos de pantalla; hace unos pedidos más a la IA</label>
+  <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>

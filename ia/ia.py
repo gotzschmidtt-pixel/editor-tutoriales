@@ -216,7 +216,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
         partes.append(f"Transcripción COMPLETA de lo que dice el autor en su grabación, de principio a fin ([minuto:segundo] texto):\n{trans}")
     if mapa and tarea in ('guion', 'trailer'):
         partes.append("MAPA DE LA GRABACIÓN, revisada segundo a segundo: un cuadro en cada cambio de pantalla ([minuto:segundo] qué pantalla se ve · qué se hace · "
-                      "texto que se lee en pantalla). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
+                      "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
     if estilo and tarea in ('guion', 'trailer'):
@@ -1104,6 +1104,100 @@ MAPA_TANDA = 20  # cuadros por pedido a la IA
 MAPA_HUECO = 15  # aunque no cambie nada, un cuadro cada tantos segundos
 
 
+def es_local(ajustes):
+    """Ollama o LM Studio en tu PC: aguantan menos imágenes por pedido."""
+    return bool(re.search(r':(11434|1234)\b', (ajustes or {}).get('url', '')))
+
+
+def por_tandas(ajustes, items, tanda, pedir, que):
+    """Manda `items` a la IA de a `tanda`; `pedir(lote, desde)` arma (texto, imágenes) y la respuesta va a `usar`.
+    Si un modelo no aguanta tantas imágenes juntas (o contesta mal), la tanda se parte a la mitad y se reintenta:
+    así funciona igual con cualquier IA, solo que con más pedidos. Devuelve [(desde, lote, respuesta JSON)]."""
+    out, a = [], 0
+    while a < len(items):
+        lote = items[a:a + tanda]
+        texto, imgs = pedir(lote, a)
+        print(f'· {que} {a + 1}–{a + len(lote)} de {len(items)}…', flush=True)
+        try:
+            out.append((a, lote, extraer_json(llamar(ajustes, texto, imgs))))
+            a += len(lote)
+        except (SystemExit, ValueError) as e:
+            if tanda > 1:
+                tanda = max(1, tanda // 2)
+                print(f'· la IA no pudo con {len(lote)} imágenes juntas ({str(e)[:120]}); pruebo de a {tanda}', flush=True)
+                continue
+            print(f'· no pude con {que} {a + 1}–{a + len(lote)} ({str(e)[:160]}); sigo con el resto', flush=True)
+            a += len(lote)
+    return out
+
+
+def sacar_cuadro(orig, s, f, ancho=None, calidad=4):
+    vf = ['-vf', f'scale={ancho}:-2'] if ancho else []
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, s):.2f}', '-i', orig, '-frames:v', '1']
+                   + vf + ['-q:v', str(calidad), f], check=True)
+    return f
+
+
+def leer_con_zoom(ocr, orig, s, tmp):
+    """El texto de pantalla leído en el cuadro a RESOLUCIÓN COMPLETA (lo que yo hacía con zoom): la letra chica de un
+    campo, una key o un menú se lee aunque en la miniatura no se vea. Lo hace tu PC, sin IA."""
+    if not ocr:
+        return []
+    try:
+        sacar_cuadro(orig, s, tmp, calidad=2)
+        return [x[0] for x in leer_textos(ocr, tmp)]
+    except (subprocess.CalledProcessError, OSError):
+        return []
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def rejilla(imagenes, etiquetas, columnas, ancho):
+    """Une imágenes en una hoja (columnas × filas), cada una con su etiqueta arriba a la izquierda."""
+    import cv2
+    celdas = []
+    for f, et in zip(imagenes, etiquetas):
+        im = cv2.imread(f)
+        if im is None:
+            continue
+        im = cv2.resize(im, (ancho, int(im.shape[0] * ancho / im.shape[1])))
+        (tw, th), _ = cv2.getTextSize(et, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        cv2.rectangle(im, (0, 0), (tw + 12, th + 14), (0, 0, 0), -1)
+        cv2.putText(im, et, (6, th + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        celdas.append(im)
+    if not celdas:
+        return None
+    alto = max(c.shape[0] for c in celdas)
+    celdas = [cv2.copyMakeBorder(c, 0, alto - c.shape[0], 0, 0, cv2.BORDER_CONSTANT) for c in celdas]
+    negro = np.zeros_like(celdas[0])
+    filas = [celdas[i:i + columnas] for i in range(0, len(celdas), columnas)]
+    filas[-1] += [negro] * (columnas - len(filas[-1]))
+    return np.vstack([np.hstack([cv2.copyMakeBorder(c, 2, 2, 2, 2, cv2.BORDER_CONSTANT) for c in f]) for f in filas])
+
+
+def hojas_contacto(d, por_hoja=16):
+    """El video entero de un vistazo: hojas con las miniaturas del mapa (4×4, cada una con su minuto:segundo), como
+    las que miré yo antes de escribir. Van a la IA junto al encargo. Devuelve [(descripción, ruta)]."""
+    import cv2
+    cuadros = cuadros_mapa(d)
+    out = os.path.join(d, 'ia_capturas', 'hojas')
+    os.makedirs(out, exist_ok=True)
+    for viejo in os.listdir(out):
+        os.remove(os.path.join(out, viejo))
+    lista = []
+    for k in range(0, len(cuadros), por_hoja):
+        lote = cuadros[k:k + por_hoja]
+        im = rejilla([f for _, f in lote], [mmss(t) for t, _ in lote], 4, 384)
+        if im is None:
+            continue
+        f = os.path.join(out, f'hoja_{k // por_hoja + 1:02d}.jpg')
+        cv2.imwrite(f, im, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        lista.append((f'hoja de contacto {k // por_hoja + 1}: miniaturas de {mmss(lote[0][0])} a {mmss(lote[-1][0])}, '
+                      f'en orden, cada una con su minuto:segundo', f))
+    return lista
+
+
 def cambios_de_pantalla(orig, maximo=MAPA_MAX):
     """Revisa el video SEGUNDO A SEGUNDO en tu PC (gratis, sin IA) y devuelve los segundos donde cambia lo que se ve:
     se abre una ventana, aparece texto, cambia un campo. Lo quieto no se repite; igual hay un cuadro cada 15 s.
@@ -1171,12 +1265,12 @@ def texto_cerca(d, ini, fin):
 
 def mapa_video(d, ajustes=None):
     """Lo que hice a mano con el video de la Raspberry: mirar el video entero, cuadro a cuadro, antes de escribir.
-    Cada ~8 s: el texto que se lee en pantalla (OCR) y, si la IA ve imágenes, qué pantalla es y qué se está haciendo.
+    En cada cambio de pantalla: el texto que se lee (OCR con zoom, en tu PC) y, si la IA ve imágenes, qué pantalla es y qué se hace.
     Queda en mapa_video.json (se reaprovecha si el video no cambió). Devuelve [{'t', 'pantalla', 'accion', 'texto'}]."""
     orig = os.path.join(d, 'original.mp4')
     destino = os.path.join(d, 'mapa_video.json')
     cuadros = cuadros_mapa(d)
-    firma = f'{os.path.getsize(orig)}:cambios:{len(cuadros)}'
+    firma = f'{os.path.getsize(orig)}:zoom:{len(cuadros)}'
     vision = bool(ajustes) and ajustes.get('imagenes', True)
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
@@ -1184,42 +1278,43 @@ def mapa_video(d, ajustes=None):
             return viejo['cuadros']
     except (OSError, ValueError, AttributeError):
         pass
-    print(f'Revisé el video segundo a segundo: {len(cuadros)} cambios de pantalla para mirar con la IA…', flush=True)
+    print(f'Revisé el video segundo a segundo: {len(cuadros)} cambios de pantalla. Leo el texto de cada uno con zoom…', flush=True)
     ocr = lector_ocr()
     mapa = []
-    for s, f in cuadros:
-        textos = [x[0] for x in leer_textos(ocr, f)] if ocr else []
-        mapa.append({'t': s, 'texto': ' | '.join(textos)[:220], 'pantalla': '', 'accion': ''})
+    tmp = os.path.join(d, 'ia_capturas', 'zoom_tmp.jpg')
+    for k, (s, f) in enumerate(cuadros, 1):
+        textos = leer_con_zoom(ocr, orig, s, tmp)
+        mapa.append({'t': s, 'texto': ' | '.join(textos)[:300], 'pantalla': '', 'accion': ''})
+        if k % 25 == 0:
+            print(f'· texto leído en {k} de {len(cuadros)} cuadros', flush=True)
     if vision:
         dur = duracion(orig)
-        for a in range(0, len(cuadros), MAPA_TANDA):
-            tanda = list(enumerate(cuadros[a:a + MAPA_TANDA], a))
+
+        def pedir(lote, a):
             lineas = []
-            for i, (s, _) in tanda:
+            for i, (s, _) in enumerate(lote, a):
                 fin = cuadros[i + 1][0] if i + 1 < len(cuadros) else dur
                 lineas.append(f"- Cuadro {i - a + 1} (segundo {s:.0f}, {mmss(s)}). Texto leído en pantalla: «{mapa[i]['texto'] or '—'}». "
                               f"El autor dice ahí: «{texto_cerca(d, s - 2, fin)[:300] or '—'}»")
-            pedido = f"""Son cuadros de una grabación de un video tutorial, en orden, con lo que se lee y lo que dice el autor:
+            return (f"""Son cuadros de una grabación de un video tutorial, en orden, con lo que se lee y lo que dice el autor:
 {chr(10).join(lineas)}
 
 Para cada cuadro di, corto y concreto: "pantalla" (qué app, ventana o pieza se ve: por ejemplo «app Honor, campo Key»,
 «placa del celular de cerca») y "accion" (qué se está haciendo en ese momento: «pega la key», «elige el puerto», «espera la carga»).
-Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "accion": "..."}}]}}."""
-            print(f'· describiendo cuadros {a + 1}–{a + len(tanda)} de {len(cuadros)}…', flush=True)
-            try:
-                r = extraer_json(llamar(ajustes, pedido, [(f'cuadro {i - a + 1}', f) for i, (_, f) in tanda]))
-            except (SystemExit, ValueError) as e:
-                print(f'· no pude describir esos cuadros ({e}); uso solo el texto de pantalla', flush=True)
-                vision = False
-                break
+Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "accion": "..."}}]}}.""",
+                    [(f'cuadro {i - a + 1}', f) for i, (_, f) in enumerate(lote, a)])
+
+        hechos = por_tandas(ajustes, cuadros, 8 if es_local(ajustes) else MAPA_TANDA, pedir, 'describiendo cuadros')
+        for a, lote, r in hechos:
             for x in (r.get('cuadros', []) if isinstance(r, dict) else r):
                 try:
                     i = a + int(x.get('n')) - 1
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, AttributeError):
                     continue
-                if a <= i < a + len(tanda):
+                if a <= i < a + len(lote):
                     mapa[i]['pantalla'] = str(x.get('pantalla') or '')[:120]
                     mapa[i]['accion'] = str(x.get('accion') or '')[:120]
+        vision = bool(hechos)
     json.dump({'firma': firma, 'vision': vision, 'cuadros': mapa}, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return mapa
 
@@ -1230,52 +1325,90 @@ def texto_mapa(mapa):
                      for m in mapa)
 
 
-def cuadro_en(d, s, nombre):
-    f = os.path.join(d, 'ia_capturas', 'revision', nombre)
-    os.makedirs(os.path.dirname(f), exist_ok=True)
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0, s):.2f}', '-i', os.path.join(d, 'original.mp4'),
-                    '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '5', f], check=True)
-    return f
+def control_bloque(d, b, ocr):
+    """Las imágenes de control de un bloque, como las miré yo: el COMIENZO y el FINAL de su tramo lado a lado y, en los
+    pasos clave, un detalle cada ~3 s con el texto leído con zoom. Devuelve ([(desc, ruta)], texto con zoom)."""
+    import cv2
+    orig = os.path.join(d, 'original.mp4')
+    mo = b['montaje']
+    ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+    if fin - ini < 1:
+        fin = ini + 1
+    out = os.path.join(d, 'ia_capturas', 'revision')
+    os.makedirs(out, exist_ok=True)
+    a = sacar_cuadro(orig, ini + 0.3, os.path.join(out, f"{b['id']}_a.jpg"), 640, 5)
+    z = sacar_cuadro(orig, fin - 0.3, os.path.join(out, f"{b['id']}_z.jpg"), 640, 5)
+    lado = os.path.join(out, f"{b['id']}.jpg")
+    cv2.imwrite(lado, rejilla([a, z], [f'COMIENZO {mmss(ini)}', f'FINAL {mmss(fin)}'], 2, 640), [cv2.IMWRITE_JPEG_QUALITY, 80])
+    for f in (a, z):
+        os.remove(f)
+    imgs, zoom = [(f"bloque {b['id']}: comienzo y final del tramo", lado)], ''
+    if es_critico(b):
+        n = int(min(6, max(2, (fin - ini) // 3 + 1)))
+        tiempos = [ini + (fin - ini) * k / (n - 1) for k in range(n)]
+        partes, leidos = [], []
+        for k, t in enumerate(tiempos):
+            partes.append(sacar_cuadro(orig, t, os.path.join(out, f"{b['id']}_d{k}.jpg"), 640, 4))
+            txt = leer_con_zoom(ocr, orig, t, os.path.join(out, 'zoom_tmp.jpg'))
+            if txt:
+                leidos.append(f"{mmss(t)}: {' | '.join(txt)[:200]}")
+        det = os.path.join(out, f"{b['id']}_detalle.jpg")
+        cv2.imwrite(det, rejilla(partes, [mmss(t) for t in tiempos], 3, 640), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        for f in partes:
+            os.remove(f)
+        imgs.append((f"bloque {b['id']}: detalle del paso clave", det))
+        zoom = '; '.join(leidos)
+    return imgs, zoom
 
 
-def revisar_con_imagen(d, ajustes, datos, mapa, tanda=12):
-    """La segunda mirada que hice a mano: cada bloque con el cuadro de SU tramo, y la IA dice si lo que se narra
-    es lo que se ve. Si no, el tramo (con su mismo largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
+def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None):
+    """La segunda mirada que hice a mano: cada bloque con el comienzo y el final de SU tramo (y en los pasos clave, el
+    detalle con el texto leído con zoom), y la IA dice si lo que se narra es lo que se ve. Si no, el tramo (con su mismo
+    largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
     bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen']
     if not bloques or not ajustes.get('imagenes', True):
         return []
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
-    for a in range(0, len(bloques), tanda):
-        grupo = bloques[a:a + tanda]
+    ocr = lector_ocr()
+    print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo y final de cada tramo, detalle en los pasos clave)…', flush=True)
+    control = {b['id']: control_bloque(d, b, ocr) for b in bloques}
+
+    def pedir(grupo, a):
         caps, lineas = [], []
-        for n, b in enumerate(grupo, 1):
+        for b in grupo:
             mo = b['montaje']
             ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-            medio = (ini + fin) / 2 if fin > ini else ini + 0.5
-            caps.append((f"bloque {b['id']}", cuadro_en(d, medio, f"{b['id']}.jpg")))
-            lineas.append(f"- Imagen {n} = bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}). La voz dice: «{b['texto'][:400]}»")
-        pedido = f"""Reviso un guion de video tutorial. Cada imagen es el cuadro del medio del tramo que se muestra mientras la voz habla:
+            imgs, zoom = control[b['id']]
+            nums = []
+            for desc, f in imgs:
+                caps.append((desc, f)); nums.append(str(len(caps)))
+            lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice: «{b['texto'][:400]}»"
+                          + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else ''))
+        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda) y el FINAL (derecha)
+del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen con el detalle cada pocos segundos:
 {chr(10).join(lineas)}
 
-Mapa de la grabación completa (lo que se ve cada pocos segundos):
+Mapa de la grabación completa (lo que se ve en cada cambio de pantalla):
 {mapa_txt[:24000]}
 
-Para cada imagen di si lo que dice la voz es lo que se ve. Si NO coincide (por ejemplo la voz dice «pega la key» y se ve otra
-pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
-{{"revision": [{{"imagen": 1, "ok": true}}, {{"imagen": 2, "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}."""
-        print(f'Revisando bloques {a + 1}–{a + len(grupo)} de {len(bloques)} contra su imagen…', flush=True)
-        try:
-            r = extraer_json(llamar(ajustes, pedido, caps))
-        except (SystemExit, ValueError) as e:
-            print(f'· no pude revisar esos bloques ({e})', flush=True)
-            continue
+Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y el final). Si NO (por ejemplo la voz dice
+«pega la key» y se ve otra pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
+{{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}.""", caps)
+
+    tanda = tanda or (4 if es_local(ajustes) else 12)
+    por_id = {b['id']: b for b in bloques}
+    for a, grupo, r in por_tandas(ajustes, bloques, tanda, pedir, 'revisando bloques contra su imagen'):
         for x in (r.get('revision', []) if isinstance(r, dict) else r):
-            try:
-                b = grupo[int(x.get('imagen')) - 1]
-            except (TypeError, ValueError, IndexError):
+            if not isinstance(x, dict):
                 continue
-            if x.get('ok') is not False or x.get('segundo') is None:
+            b = por_id.get(str(x.get('bloque') or '').strip())
+            if b is None:  # algunos modelos contestan por número de imagen
+                try:
+                    b = grupo[int(x.get('imagen')) - 1]
+                except (TypeError, ValueError, IndexError):
+                    continue
+            if b not in grupo or x.get('ok') is not False or x.get('segundo') is None:
                 continue
             try:
                 s = min(max(float(x['segundo']), 0), dur - 1)
@@ -1488,6 +1621,13 @@ def main():
                 mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
             except Exception as e:
                 print(f'· no pude armar el mapa del video ({e}); sigo sin él', flush=True)
+            if mapa and not (a.ajustar_largo or a.respuestas):
+                try:  # el video entero de un vistazo, como lo miré yo antes de escribir
+                    hojas = hojas_contacto(d)
+                    caps += hojas
+                    print(f'Sumo {len(hojas)} hojas de contacto con todo el video ({len(mapa)} miniaturas).', flush=True)
+                except Exception as e:
+                    print(f'· no pude armar las hojas de contacto ({e}); sigo sin ellas', flush=True)
         texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
         if a.modo in ('prompt', 'paquete'):
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
@@ -1521,7 +1661,17 @@ def main():
             print(f'Guardado guion.json ajustado de largo (el anterior quedó como guion.json.anterior)')
             return
         print(f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…", flush=True)
-        respuesta = llamar(ajustes, texto, caps)
+        try:
+            respuesta = llamar(ajustes, texto, caps)
+        except SystemExit as e:
+            # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
+            pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
+            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso', str(e)):
+                raise
+            print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
+            texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa)
+            caps = pocas
+            respuesta = llamar(ajustes, texto, caps)
         open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
         try:
             datos = extraer_json(respuesta)
