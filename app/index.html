@@ -34,6 +34,8 @@
   .subida .t { font-weight: 600; }
   .subida .e { font-size: 12px; color: var(--suave); margin-top: 4px; }
   .subida.ok { border-style: solid; border-color: #38f28a66; background: #38f28a0d; }
+  .subida .barra { height: 6px; border-radius: 3px; background: var(--borde); margin-top: 8px; overflow: hidden; }
+  .subida .barra div { height: 100%; background: linear-gradient(90deg, var(--rosa), var(--azul)); transition: width .3s; }
   .subida input { display: none; }
   .paso { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; border: 1px solid transparent; }
   .paso.corriendo { border-color: var(--amarillo); box-shadow: 0 0 0 1px #ffd23f55, 0 0 18px #ffd23f22; }
@@ -134,7 +136,8 @@
     <section class="panel">
       <h2>1 · Archivos</h2>
       <div class="subidas" id="subidas"></div>
-      <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto.</p>
+      <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto. Para mandarme el proyecto
+      partido en trozos de 300 o 400 MB, pulsa «☁ Hacer en la nube con Claude» (en «2 · Pasos»): ahí eliges el tamaño.</p>
     </section>
 
     <section class="panel">
@@ -423,11 +426,13 @@ async function nuevo() {
 $('#nuevo').onclick = nuevo;
 $('#proyecto').onchange = e => cargarProyectos(e.target.value);
 
+const SUBIENDO = {};  // tipo -> {pc, texto}: la página se repinta cada 2 s y no debe borrar el avance de la subida
 function pintarSubidas(arch) {
   $('#subidas').innerHTML = SUBIDAS.map(s => {
-    const a = arch[s.f];
-    return `<label class="subida ${a ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
-      <div class="e">${a ? '✓ ' + tam(a.tam) : s.varios ? 'Subir (uno o varios)' : 'Subir'}</div><input type="file" accept="${s.acepta}" ${s.varios ? 'multiple' : ''}></label>`;
+    const a = arch[s.f], sb = SUBIENDO[s.tipo];
+    return `<label class="subida ${a && !sb ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
+      <div class="e">${sb ? sb.texto : a ? '✓ ' + tam(a.tam) : s.varios ? 'Subir (uno o varios)' : 'Subir'}</div>
+      ${sb ? `<div class="barra"><div style="width:${sb.pc}%"></div></div>` : ''}<input type="file" accept="${s.acepta}" ${s.varios ? 'multiple' : ''}></label>`;
   }).join('');
   document.querySelectorAll('#subidas .subida').forEach(el => {
     const tipo = el.dataset.tipo, inp = el.querySelector('input');
@@ -442,16 +447,26 @@ function subir(tipo, file, el, parte = 1, de = 1) {
     const x = new XMLHttpRequest();
     x.open('POST', `/api/subir?p=${q(P)}&tipo=${tipo}&parte=${parte}&de=${de}`);
     const cual = de > 1 ? `video ${parte} de ${de}: ` : '';
+    const pinta = (pc, texto) => {
+      SUBIENDO[tipo] = {pc, texto};
+      const caja = document.querySelector(`#subidas .subida[data-tipo="${tipo}"]`);
+      if (!caja) return;
+      caja.querySelector('.e').textContent = texto;
+      if (!caja.querySelector('.barra')) caja.querySelector('.e').insertAdjacentHTML('afterend', '<div class="barra"><div></div></div>');
+      caja.querySelector('.barra div').style.width = pc + '%';
+    };
+    pinta(0, `Subiendo ${cual}0 %`);
     x.upload.onprogress = e => {
       const pc = Math.round(100 * e.loaded / e.total);
-      el.querySelector('.e').textContent = pc < 100 ? `Subiendo ${cual}${pc} %` : de > 1 && parte === de ? 'Uniendo los videos…' : `Subiendo ${cual}100 %`;
+      pinta(pc, pc < 100 ? `Subiendo ${cual}${pc} % · ${tam(e.loaded)} de ${tam(e.total)}` : de > 1 && parte === de ? 'Uniendo los videos… (no cierres la página)' : `Subiendo ${cual}100 %`);
     };
     x.onload = () => {
       let r = {}; try { r = JSON.parse(x.responseText); } catch (e) {}
-      if (x.status >= 400) { el.querySelector('.e').textContent = 'Error al subir'; return fallo(new Error(r.error || x.responseText)); }
+      if (x.status >= 400) { delete SUBIENDO[tipo]; return fallo(new Error(r.error || x.responseText)); }
+      if (parte === de) delete SUBIENDO[tipo];
       listo(r);
     };
-    x.onerror = () => { el.querySelector('.e').textContent = 'Error al subir'; fallo(new Error('se cortó la subida')); };
+    x.onerror = () => { delete SUBIENDO[tipo]; fallo(new Error('se cortó la subida')); };
     x.send(file);
   });
 }
