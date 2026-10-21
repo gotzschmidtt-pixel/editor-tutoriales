@@ -149,6 +149,47 @@ def marcas_nuevas(d):
     return os.path.exists(f) and (not os.path.exists(s) or os.path.getmtime(f) > os.path.getmtime(s))
 
 
+def unir_videos(destino, n):
+    """Une en orden los n videos subidos juntos (destino.parte01, .parte02…) en uno solo. Si son de la misma cámara se
+    pegan tal cual (rápido, sin perder calidad); si no, se pasan a un mismo formato. Devuelve un resumen."""
+    partes = [f'{destino}.parte{k:02d}' for k in range(1, n + 1)]
+    faltan = [os.path.basename(x) for x in partes if not os.path.exists(x)]
+    if faltan:
+        raise RuntimeError('faltan partes: ' + ', '.join(faltan))
+    lista = destino + '.lista.txt'
+    with open(lista, 'w', encoding='utf-8') as f:
+        f.writelines(f"file '{os.path.basename(x)}'\n" for x in partes)
+    dur = lambda f: float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
+                                         capture_output=True, text=True, **SIN_VENTANA).stdout.strip() or 0)
+    suma = sum(dur(x) for x in partes)
+    tmp = destino + '.unido.mp4'
+    base = ['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', os.path.basename(lista)]
+    cwd = os.path.dirname(destino)
+    formato = lambda f: subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
+                                        'stream=codec_type,codec_name,width,height,r_frame_rate,pix_fmt,sample_rate,channels',
+                                        '-of', 'csv=p=0', f], capture_output=True, text=True, **SIN_VENTANA).stdout
+    iguales = len({formato(x) for x in partes}) == 1  # misma cámara y mismos ajustes: se pueden pegar sin recodificar
+    r = subprocess.run(base + ['-c', 'copy', '-movflags', '+faststart', os.path.basename(tmp)], cwd=cwd, capture_output=True,
+                       **SIN_VENTANA) if iguales else None
+    modo = 'pegados tal cual'
+    if not iguales or r.returncode != 0 or abs(dur(tmp) - suma) > max(2.0, suma * 0.01):  # formatos distintos: se igualan
+        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
+                           ['-filter_complex', ''.join(f'[{k}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1,'
+                                                       f'fps=30,setsar=1[v{k}];' + (f'[{k}:a]aresample=48000,aformat=channel_layouts=stereo[a{k}];' if 'audio' in formato(x)
+                                                       else f'aevalsrc=0|0:s=48000:d={dur(x):.3f}[a{k}];')  # sin sonido: silencio
+                                                       for k, x in enumerate(partes)) +
+                            ''.join(f'[v{k}][a{k}]' for k in range(n)) + f'concat=n={n}:v=1:a=1[v][a]',
+                            '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-c:a', 'aac',
+                            '-b:a', '192k', '-movflags', '+faststart', os.path.basename(tmp)], cwd=cwd, capture_output=True, **SIN_VENTANA)
+        modo = 'pasados a un mismo formato'
+        if r.returncode != 0:
+            raise RuntimeError('no pude unir los videos: ' + r.stderr.decode(errors='replace')[-300:])
+    os.replace(tmp, destino)
+    for x in partes + [lista]:
+        os.remove(x)
+    return f'{n} videos unidos en orden ({modo}), {int(suma // 60)}:{int(suma % 60):02d} en total'
+
+
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
     cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4']
@@ -680,6 +721,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True, 'nombre': os.path.basename(d)})
             if ruta == '/api/subir':
                 destino = os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']])
+                de, parte = int(q.get('de', 1)), int(q.get('parte', 1))
+                if de > 1:  # varios videos: cada uno llega aparte y con el último se unen en orden
+                    destino = f'{destino}.parte{parte:02d}'
                 with open(destino + '.parcial', 'wb') as fh:
                     resto = largo
                     while resto > 0:
@@ -689,6 +733,11 @@ class Manejador(BaseHTTPRequestHandler):
                         fh.write(trozo)
                         resto -= len(trozo)
                 os.replace(destino + '.parcial', destino)
+                if de > 1 and parte == de:
+                    try:
+                        return self.responder({'ok': True, 'unido': unir_videos(os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']]), de)})
+                    except (RuntimeError, OSError) as e:
+                        return self.error(str(e))
                 return self.responder({'ok': True})
             if ruta == '/api/json':
                 f = q['f']
