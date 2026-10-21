@@ -733,8 +733,18 @@ async function nubeClaude() {
     + 'tu idea, testimonios, tarjetas, pistas del tráiler, tu estilo y los ajustes (sin tus claves). Los trozos quedan en tu PC.\n\n'
     + 'Cuando termine, escríbele a Claude en el chat: «hazlo desde la nube: ' + P + '».\n\nTamaño máximo de cada trozo, en MB:', '300');
   if (mb === null) return;
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { alert(e.message); }
-  refrescar();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { return alert(e.message); }
+  esperaNube = P; refrescar();
+}
+let esperaNube = null;
+async function finNube(e) {
+  const p = esperaNube; esperaNube = null;
+  const lineas = (e.registro || '').split('\n'), listo = lineas.filter(l => l.startsWith('Listo para_claude')).pop();
+  if (!listo) return;  // falló: el aviso rojo y el registro ya lo cuentan
+  const trozos = lineas.filter(l => l.startsWith('· ') && l.includes('trozos'));
+  if (confirm(`✅ Proyecto dividido para Claude.\n\n${listo}\n${trozos.join('\n')}\n\nQuedó en la carpeta «para_claude» de «${p}».\n`
+      + `Ahora escríbele a Claude en el chat: «hazlo desde la nube: ${p}».\n\n¿Abrir la carpeta?`))
+    api(`/api/abrir_carpeta?p=${q(p)}&sub=para_claude`, {method: 'POST'}).catch(err => alert(err.message));
 }
 async function paqueteClaude() {
   if (!confirm('Armo para_claude.zip con tu transcripción, tu idea y capturas del video (si falta la transcripción, la hago primero).\n\nLuego súbelo al chat con Claude y pídele el guion: lo deja en tu carpeta y tú pulsas «Hacer todo».')) return;
@@ -1345,6 +1355,7 @@ async function refrescar() {
   $('#btnTestimonios').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !TESTI.TESTIMONIOS.length;
   $('#btnModelos').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !MODS.MODELOS.length;
   if (esperaIA && !t.proyecto) finIA();
+  if (esperaNube && !t.proyecto) finNube(e);
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
   if (esperaAcortar && !t.proyecto) { esperaAcortar = false; cargarAcortar(); }
   $('#btnAcortar').disabled = $('#btnAcortarRehacer').disabled = !!t.proyecto || !e.archivos['original.mp4'];

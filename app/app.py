@@ -945,6 +945,15 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
+            if ruta == '/api/abrir_carpeta':  # abre en tu PC la carpeta del proyecto (o una de adentro, como para_claude)
+                c = os.path.join(carpeta(q['p']), os.path.basename(q.get('sub', '')))
+                if not os.path.isdir(c):
+                    return self.error('Esa carpeta todavía no existe.')
+                if sys.platform == 'win32':
+                    os.startfile(c)
+                else:
+                    subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', c])
+                return self.responder({'ok': True})
             if ruta == '/api/detener':
                 with CANDADO:
                     if TRABAJO['proc']:
