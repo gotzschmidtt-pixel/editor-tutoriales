@@ -79,7 +79,7 @@
   .pista .datos input, .pista .datos select { padding: 6px 9px; font-size: 13px; min-width: 0; }
   .pista button { padding: 6px 10px; }
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
-  #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarEstilo { display: block; margin-top: 4px; }
+  #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarModelo, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
   section.panel { scroll-margin-top: 80px; }
   #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
@@ -120,6 +120,7 @@
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
   <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
+  <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
@@ -236,6 +237,23 @@
       testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. También puedes escribir un segundo (4:30)
       o «inicio», «mitad», «final». «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
       testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
+    </section>
+
+    <section class="panel" id="panelModelos">
+      <h2>📱 Nuevos modelos</h2>
+      <p class="aviso">Sube un video corto con los modelos más recientes: las cajas, los celulares o la lista de equipos. La voz
+      dice que este método también sirve para ellos mientras se ve tu video, con su subtítulo.</p>
+      <div id="listaModelos"></div>
+      <label class="subida" id="soltarModelo"><div class="t">➕ Video de nuevos modelos</div>
+        <div class="e">Arrastra aquí un video corto (mp4, mov…), o haz clic</div><input type="file" accept="video/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnModelos" onclick="ejecutar('nuevos_modelos')">▶ Poner nuevos modelos en el video</button>
+      </div>
+      <p class="aviso">«Modelos»: si los escribes (por ejemplo «Honor 600, Honor 8 Lite»), se dicen esos. Si lo dejas vacío, la IA
+      los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
+      Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
+      introducción. También «inicio», «mitad», «final» o un segundo (1:10). Si el video es más largo que la frase se acelera;
+      si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
     <section class="panel" id="panelEstilo">
@@ -401,7 +419,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -416,7 +434,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -537,10 +555,10 @@ function ver(f, seguir) {
 }
 // mientras «Hacer todo» trabaja, el reproductor va mostrando la etapa más avanzada que ya existe
 const AVANCE = ['montaje_en_curso.mp4', '1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4',
-                '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', 'FINAL.mp4'];
+                '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4', 'FINAL.mp4'];
 const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1_montaje.mp4': 'el montaje (sin voz)', '2_insertos.mp4': 'con cortes y zooms',
   '3_voz.mp4': 'con voz y subtítulos', '4_musica.mp4': 'con música', '5_etiquetas.mp4': 'con etiquetas', '6_senales.mp4': 'con flechas',
-  '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', 'FINAL.mp4': 'el video final'};
+  '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', '9_modelos.mp4': 'con nuevos modelos', 'FINAL.mp4': 'el video final'};
 let viendo = null, avanceVisto = '';
 function masAvanzado(arch) {
   let mejor = null;
@@ -954,6 +972,40 @@ async function agregarTestimonios(files) {
   el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTestimonios([...e.dataTransfer.files]); };
 }
 
+let MODS = {MODELOS: []};
+async function cargarModelos() { MODS = await api(`/api/pistas?g=modelos&p=${q(P)}`); pintarModelos(); }
+async function guardarModelos() {
+  try { await api(`/api/pistas?g=modelos&p=${q(P)}`, {method: 'POST', body: JSON.stringify(MODS)}); } catch (e) { alert(e.message); }
+  pintarModelos(); refrescar();
+}
+function pintarModelos() {
+  $('#listaModelos').innerHTML = MODS.MODELOS.map((c, i) => `<div class="pista">
+      <div class="vista"><video src="/archivo?p=${q(P)}&sub=nuevos_modelos&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
+      <div class="datos" style="grid-template-columns: 7em 1fr">
+        <input type="text" placeholder="Momento: auto" title="auto, 1:10, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarModelo(${i}, 'momento', this.value)">
+        <input type="text" placeholder="Modelos (vacío = la IA los lee del video)" title="Separados por coma, por ejemplo: Honor 600, Honor 8 Lite" value="${esc(c.modelos)}" onchange="cambiarModelo(${i}, 'modelos', this.value)">
+        <input type="text" style="grid-column: 1 / -1" placeholder="Frase de la voz (vacío = la IA la escribe con tu estilo)" value="${esc(c.frase)}" onchange="cambiarModelo(${i}, 'frase', this.value)"></div>
+      <button title="Quitar" onclick="MODS.MODELOS.splice(${i}, 1); guardarModelos()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste el video de nuevos modelos.</p>';
+  $('#soltarModelo').style.display = MODS.MODELOS.length ? 'none' : '';  // un video por tutorial
+}
+function cambiarModelo(i, k, v) { MODS.MODELOS[i][k] = v.trim(); guardarModelos(); }
+async function agregarModelo(files) {
+  const f = files[0];
+  if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) return alert(`${f.name}: solo videos`);
+  try {
+    const r = await api(`/api/pista_archivo?g=modelos&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+    MODS.MODELOS = [{archivo: r.archivo, momento: 'auto', modelos: '', frase: ''}];
+  } catch (e) { alert(e.message); }
+  guardarModelos();
+}
+{
+  const el = $('#soltarModelo'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarModelo([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarModelo([...e.dataTransfer.files]); };
+}
+
 let ESTILOS = [], estilo = null;
 async function cargarEstilos(sel) {
   const r = await api('/api/estilos'); ESTILOS = r.estilos;
@@ -1172,7 +1224,7 @@ async function actualizarProyecto() {
   await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas y tus testimonios.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
@@ -1201,6 +1253,7 @@ async function refrescar() {
   $('#todo').disabled = !!t.proyecto;
   $('#btnTarjetas').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !(TARJ.COMENTARIOS.length + TARJ.WHATSAPP.length);
   $('#btnTestimonios').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !TESTI.TESTIMONIOS.length;
+  $('#btnModelos').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !MODS.MODELOS.length;
   if (esperaIA && !t.proyecto) finIA();
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
 }

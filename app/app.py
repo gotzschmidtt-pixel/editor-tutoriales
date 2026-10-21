@@ -11,6 +11,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
   pistas_trailer/     pistas del tráiler por fase (capturas, audios, texto) + pistas.json
   tarjetas/           imágenes de COMENTARIOS y WHATSAPP para poner encima del video + tarjetas.json
   testimonios/        videos de clientes reales que se intercalan en el tutorial + testimonios.json
+  nuevos_modelos/     video corto de los modelos más recientes (la voz dice que el método sirve para ellos) + modelos.json
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
@@ -42,6 +43,7 @@ GRUPOS = {
     'pistas': ('pistas_trailer', 'pistas.json', ['ANTES', 'DURANTE', 'DESPUES'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
     'tarjetas': ('tarjetas', 'tarjetas.json', ['COMENTARIOS', 'WHATSAPP'], IMAGENES),
     'testimonios': ('testimonios', 'testimonios.json', ['TESTIMONIOS'], VIDEOS),
+    'modelos': ('nuevos_modelos', 'modelos.json', ['MODELOS'], VIDEOS),
     'marcas': ('marcas_senales', 'marcas.json', ['MARCAS'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
 }
 PROVEEDORES = {
@@ -190,9 +192,17 @@ def unir_videos(destino, n):
     return f'{n} videos unidos en orden ({modo}), {int(suma // 60)}:{int(suma % 60):02d} en total'
 
 
+def srt_de(d, video):
+    """Los subtítulos que van con `video`: los pasos que meten cortes (testimonios, nuevos modelos) dejan los suyos corridos."""
+    for v in ('9_modelos', '8_testimonios'):
+        if video and video >= v and existe(d, v + '.srt'):
+            return v + '.srt'
+    return '3_voz.srt'
+
+
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
-    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4']
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4']
     previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
     for f in reversed(previos):
         if existe(d, f):
@@ -238,9 +248,13 @@ def comandos(paso, d, op):
     if paso == 'testimonios':
         return [[PY, m('testimonios', 'testimonios.py'), '--video', ultimo_video(d, '8_testimonios.mp4'),
                  '--testimonios', os.path.join('testimonios', 'testimonios.json'), '--srt', '3_voz.srt', '--salida', '8_testimonios.mp4']]
+    if paso == 'nuevos_modelos':
+        v = ultimo_video(d, '9_modelos.mp4')
+        return [[PY, m('nuevos_modelos', 'nuevos_modelos.py'), '--video', v, '--modelos', os.path.join('nuevos_modelos', 'modelos.json'),
+                 '--srt', srt_de(d, v), '--salida', '9_modelos.mp4', '--ajustes', AJUSTES]]
     if paso == 'trailer':
-        unir = ultimo_video(d, None)  # los testimonios corren los subtítulos: se usan los suyos
-        srt = '8_testimonios.srt' if unir == '8_testimonios.mp4' and existe(d, '8_testimonios.srt') else '3_voz.srt'
+        unir = ultimo_video(d, None)  # testimonios y nuevos modelos corren los subtítulos: se usan los suyos
+        srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
     if paso == 'etiquetas_ia':
@@ -284,6 +298,7 @@ PASOS = [
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True, 'blando': True},
     {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True, 'blando': True},
     {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
+    {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
@@ -294,7 +309,7 @@ PASOS = [
     {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'trailer']
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
@@ -367,7 +382,7 @@ def registro(d):
 
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 

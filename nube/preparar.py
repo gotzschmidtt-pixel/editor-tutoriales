@@ -13,7 +13,7 @@ import argparse, hashlib, json, os, shutil, time
 ARCHIVOS = ['original.mp4', 'material.mp4', 'imagen.png', 'musica.mp3', 'idea.txt', 'referencias.json', 'guion.json',
             'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'preguntas_guion.json',
             'transcripcion.json', 'transcripcion.srt', 'transcripcion.txt']
-CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios']
+CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios', 'nuevos_modelos']
 SECRETOS = ('clave', 'elevenlabs')
 SALIDA = 'para_claude'
 
