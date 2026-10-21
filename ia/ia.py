@@ -419,12 +419,20 @@ def verificar_orden(d, bloques):
 
 
 def extraer_json(txt):
-    txt = txt.strip()
+    txt = (txt or '').strip()
+    if not txt:
+        raise SystemExit('ERROR: la IA no devolvió nada (respuesta vacía). Casi siempre es falta de saldo o un corte de la IA. '
+                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
     m = re.search(r'```(?:json)?\s*(.*?)```', txt, re.S)
     if m:
         txt = m.group(1)
     i = min([p for p in (txt.find('{'), txt.find('[')) if p >= 0], default=0)
-    return json.loads(txt[i:])
+    try:
+        return json.loads(txt[i:])
+    except json.JSONDecodeError:
+        raise SystemExit('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). '
+                         'Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
+                         'Lo que devolvió la IA:\n' + txt[:600])
 
 
 def leer_idea(d):
@@ -722,7 +730,20 @@ def llamar(ajustes, texto, caps):
             raise SystemExit(f'ERROR: la IA respondió con error {e.code}: {detalle}')
         except urllib.error.URLError as e:
             raise SystemExit(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.')
-    return r['choices'][0]['message']['content']
+    try:
+        contenido = r['choices'][0]['message']['content']
+    except (KeyError, IndexError, TypeError):
+        contenido = ''
+    if not (contenido or '').strip():
+        motivo = ''
+        try:
+            motivo = r['choices'][0].get('finish_reason') or ''
+        except (KeyError, IndexError, TypeError):
+            pass
+        extra = ' (el modelo cortó por longitud; si usas GPT-5 con «capturas» altas, baja las capturas en «⚙ Ajustes IA»)' if motivo == 'length' else ''
+        raise SystemExit('ERROR: la IA no devolvió texto (respuesta vacía).' + extra + ' Casi siempre es falta de saldo o un corte de la IA. '
+                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
+    return contenido
 
 
 def tamano(f):
