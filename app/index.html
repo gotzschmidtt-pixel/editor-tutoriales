@@ -122,6 +122,7 @@
   <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
   <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
   <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
+  <button onclick="irA('#panelPaginas')">🌐 Mis páginas</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
@@ -275,6 +276,23 @@
       <p class="aviso">Vacío = quitar todo lo que sobra. Con minutos, uso primero lo más obvio y paro al llegar. Queda
       «acortado.mp4» (tu grabación con tu voz, ya corta) y, si después escribes el guion con IA, la voz en off apunta a esa
       duración y salta los mismos tramos. Desmarca un tramo para dejarlo como estaba y pulsa «Rehacer».</p>
+    </section>
+
+    <section class="panel" id="panelPaginas">
+      <h2>🌐 Mis páginas</h2>
+      <p class="aviso">Tus webs, tu canal de WhatsApp, tus redes. Sirven para todos tus videos: la voz las nombra donde ayudan
+      (comprar la key, pedir el servicio, ver testimonios, el cierre) y cuando las nombra aparece su etiqueta con la dirección.</p>
+      <div id="listaPaginas"></div>
+      <div class="fila">
+        <input type="text" id="pgNombre" placeholder="Nombre (ej.: Xiaomi Unlock)" style="flex:1;min-width:9em">
+        <input type="text" id="pgUrl" placeholder="Link (ej.: xiaomiunlock.com)" style="flex:1;min-width:10em">
+      </div>
+      <div class="fila">
+        <input type="text" id="pgPara" placeholder="Para qué sirve (ej.: comprar keys, canal de WhatsApp con testimonios)" style="flex:1;min-width:12em">
+        <button onclick="agregarPagina()">+ Agregar</button>
+      </div>
+      <p class="aviso">Se usan cuando la IA escribe el guion y elige las etiquetas. Si ya tienes guion, vuelve a escribirlo con IA
+      para que las nombre.</p>
     </section>
 
     <section class="panel" id="panelEstilo">
@@ -458,7 +476,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1076,6 +1094,23 @@ async function alimentar() {
   esperaEstilo = true; refrescar();
 }
 let esperaEstilo = false;
+let PAGINAS = [];
+async function cargarPaginas() { PAGINAS = (await api('/api/ajustes')).ajustes.paginas || []; pintarPaginas(); }
+function pintarPaginas() {
+  $('#listaPaginas').innerHTML = PAGINAS.map((x, i) => `<div class="pista"><div class="vista">🌐</div>
+    <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"><b>${esc(x.nombre || x.url)}</b> · ${esc(x.url)}
+      <div class="aviso">${esc(x.para || '')}</div></div>
+    <button title="Quitar" onclick="quitarPagina(${i})">✕</button></div>`).join('') || '<p class="aviso">Todavía no agregaste páginas.</p>';
+}
+async function guardarPaginas() { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({paginas: PAGINAS})}); pintarPaginas(); }
+async function agregarPagina() {
+  const url = $('#pgUrl').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (!url) return alert('Pon el link de la página.');
+  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim()});
+  $('#pgNombre').value = $('#pgUrl').value = $('#pgPara').value = '';
+  await guardarPaginas();
+}
+async function quitarPagina(i) { PAGINAS.splice(i, 1); await guardarPaginas(); }
 let ACORTAR = null, esperaAcortar = false;
 async function cargarAcortar() {
   try { const t = await api(`/api/json?p=${q(P)}&f=acortar.json`); ACORTAR = t ? JSON.parse(t) : null; } catch (e) { ACORTAR = null; }

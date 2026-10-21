@@ -209,6 +209,22 @@ def referencias_youtube(d, largo_max=9000):
     return out
 
 
+AJUSTES_F = os.path.join(RAIZ, 'app', 'ajustes.json')
+
+
+def mis_paginas():
+    """Las páginas del autor (panel «Mis páginas»): [{'nombre', 'url', 'para'}]."""
+    try:
+        r = json.load(open(AJUSTES_F, encoding='utf-8')).get('paginas', [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [x for x in r if isinstance(x, dict) and (x.get('url') or '').strip()]
+
+
+def texto_paginas(pag):
+    return '\n'.join(f"- {x.get('nombre') or x['url']}: {x['url']}" + (f" (para: {x['para']})" if x.get('para') else '') for x in pag)
+
+
 def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     dur = duracion(os.path.join(d, 'original.mp4'))
     trans = transcripcion(d)
@@ -243,10 +259,16 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
             testi = json.load(open(os.path.join(d, 'testimonios', 'testimonios.json'), encoding='utf-8')).get('TESTIMONIOS', [])
         except (OSError, ValueError, AttributeError):
             testi = []
+        pag = mis_paginas()
+        if pag:
+            partes.append("MIS PÁGINAS (las webs y canales del autor, datos confirmados):\n" + texto_paginas(pag) + "\n"
+                          "Menciónalas por su nombre donde ayuden al espectador: cuando se habla de lo que sirve cada una (comprar la key, "
+                          "pedir el servicio, escribir por WhatsApp, ver más casos) y en el cierre. Di el nombre de forma natural, sin leer "
+                          "«https» ni barras. No inventes otras páginas ni cambies sus nombres.")
         if testi:  # el módulo Testimonios pone el video justo después de la frase que habla de clientes y confianza
             partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la frase "
                           "que hable de ellos. Cerca del cierre, en un bloque propio, la voz cuenta con sus palabras que en nuestro "
-                          "canal de WhatsApp y en nuestra página tenemos capturas de conversaciones reales de WhatsApp, y que nuestros "
+                          "canal de WhatsApp y en nuestra página (usa sus nombres de MIS PÁGINAS si están) tenemos capturas de conversaciones reales de WhatsApp, y que nuestros "
                           "clientes también nos mandan su material: el teléfono antes y después. Que sea para que tengan confianza "
                           "en nuestro proceso, y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar.")
         ac = [c for c in acortar_plan(d).get('tramos', []) if c.get('usar')]
@@ -296,6 +318,7 @@ Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin t
         partes += [f"""Este es el guion ya escrito:
 {textos}
 
+{("Páginas del autor (si la voz nombra una, ponle su etiqueta «web» con esta dirección exacta, sin «https://»):" + chr(10) + texto_paginas(mis_paginas()) + chr(10)) if mis_paginas() else ""}
 Elige los datos valiosos que merecen una etiqueta en pantalla: webs, nombres de archivo, precios, pines, valores, botones y consejos.
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la etiqueta aparece cuando la voz las dice),
 "tipo" (web | archivo | dato | precio | pin | consejo), "titulo" (1 a 3 palabras), "texto" (el dato, corto), "dur" (3 a 6 segundos)
@@ -1720,6 +1743,8 @@ def main():
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
+    global AJUSTES_F
+    AJUSTES_F = a.ajustes
     d = a.proyecto
     idea = a.idea or (open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else '')
     destino = os.path.join(d, ARCHIVO[a.tarea])
