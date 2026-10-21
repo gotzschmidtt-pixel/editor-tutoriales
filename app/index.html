@@ -265,7 +265,7 @@
       <label class="aviso" style="display:block;margin-top:8px"><input type="checkbox" id="estiloUsar"> Usar este estilo cuando la IA escribe el guion y arma el tráiler</label>
       <div id="listaFuentes" style="margin-top:10px"></div>
       <div class="fila">
-        <input type="text" id="ytLink" placeholder="Pega uno o varios links de YouTube" style="flex:1; min-width:12em">
+        <input type="text" id="ytLink" placeholder="Links de YouTube, o el link de tu canal (youtube.com/@tucanal)" style="flex:1; min-width:12em">
         <button onclick="agregarLink()">+ Link</button>
       </div>
       <label class="subida" id="soltarEstilo"><div class="t">➕ Video MP4 o perfil escrito</div>
@@ -276,7 +276,10 @@
       </div>
       <p class="aviso">La app baja y transcribe cada video y mide tu ritmo (palabras por minuto, preguntas, cortes), cómo abres y cierras,
       tus frases típicas y cómo armas el tráiler del inicio. Con tu IA configurada, ella redacta el perfil; si no, queda con las medidas.
-      Los videos ya analizados no se repiten. Sirve para todos tus proyectos.</p>
+      Los videos ya analizados no se repiten. Sirve para todos tus proyectos.<br>
+      <b>Con el link de tu canal</b> lee todos tus videos (hasta 300, los más nuevos): de cada uno sus subtítulos y solo los primeros
+      3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
+      La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
     </section>
   </div>
 
@@ -1015,9 +1018,9 @@ async function cargarEstilos(sel) {
   $('#estiloUsar').checked = !!estilo && r.activo === estilo;
   const e = ESTILOS.find(x => x.nombre === estilo);
   $('#listaFuentes').innerHTML = !e ? '<p class="aviso">Crea un estilo (por ejemplo, el nombre de tu canal) y agrégale videos.</p>' :
-    e.fuentes.map((f, i) => `<div class="pista"><div class="vista">${f.tipo === 'youtube' ? '▶️' : f.tipo === 'texto' ? '📝' : '🎞️'}</div>
+    e.fuentes.map((f, i) => `<div class="pista"><div class="vista">${f.tipo === 'canal' ? '📺' : f.tipo === 'youtube' ? '▶️' : f.tipo === 'texto' ? '📝' : '🎞️'}</div>
       <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.titulo || f.url || f.archivo)}
-        <div class="aviso">${f.analizado ? '✓ analizado' : 'sin analizar'}</div></div>
+        <div class="aviso">${f.tipo === 'canal' ? (f.leidos ? `✓ ${f.leidos} videos leídos` : 'sin leer: pulsa Alimentar') : f.analizado ? '✓ analizado' : 'sin analizar'}</div></div>
       <button title="Quitar" onclick="quitarFuente(${i})">✕</button></div>`).join('') || '<p class="aviso">Sin videos todavía.</p>';
   $('#btnAlimentar').disabled = !e || !e.fuentes.length;
 }

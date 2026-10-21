@@ -144,7 +144,7 @@ def ejemplo_guion():
 
 
 def estilo_activo(ajustes):
-    """(nombre, perfil.md, perfil.json) del estilo elegido en el panel Alimentación, o None."""
+    """(nombre, perfil.md, perfil.json, catálogo del canal) del estilo elegido en el panel Alimentación, o None."""
     nombre = (ajustes or {}).get('estilo')
     e = os.path.join(RAIZ, 'mis_estilos', nombre or '')
     if not nombre or not os.path.exists(os.path.join(e, 'perfil.md')):
@@ -153,7 +153,11 @@ def estilo_activo(ajustes):
         medidas = json.load(open(os.path.join(e, 'perfil.json'), encoding='utf-8'))
     except (OSError, ValueError):
         medidas = {}
-    return nombre, open(os.path.join(e, 'perfil.md'), encoding='utf-8').read(), medidas
+    try:  # todos los videos del canal (títulos), si se alimentó con el link del canal
+        catalogo = json.load(open(os.path.join(e, 'catalogo.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        catalogo = []
+    return nombre, open(os.path.join(e, 'perfil.md'), encoding='utf-8').read(), medidas, catalogo
 
 
 def referencias_youtube(d, largo_max=9000):
@@ -224,6 +228,16 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
+        catalogo = estilo[3] if len(estilo) > 3 else []
+        if catalogo:
+            titulos = '\n'.join(f"- {v['titulo']}" for v in catalogo[:200 if tarea == 'guion' else 60] if v.get('titulo'))[:7000]
+            if tarea == 'guion':
+                partes.append("VIDEOS DEL CANAL DEL AUTOR (todos sus títulos, del más nuevo al más viejo). Úsalos para hablar como él y "
+                              "no contradecir lo que ya explicó. Si uno trata algo relacionado (otro modelo, otro método, el paso previo), "
+                              "recomiéndalo por su título en el cierre o donde ayude («te dejo el video de …»). Nunca inventes un video "
+                              "que no esté en esta lista:\n" + titulos)
+            else:
+                partes.append("Títulos de los videos del canal del autor (para que el gancho del tráiler suene como su canal):\n" + titulos)
     if tarea == 'guion':
         refs = referencias_youtube(d)
         if refs:

@@ -379,7 +379,17 @@ def estilos():
         if os.path.isdir(e):
             hechos = {os.path.splitext(x)[0] for x in os.listdir(os.path.join(e, 'analisis'))} if os.path.isdir(os.path.join(e, 'analisis')) else set()
             fu = fuentes_estilo(e)
+            try:
+                catalogo = json.load(open(os.path.join(e, 'catalogo.json'), encoding='utf-8'))
+            except (OSError, ValueError):
+                catalogo = []
             for f in fu:
+                if f['tipo'] == 'canal':  # cuántos videos del canal ya se leyeron
+                    ids = [re.search(r'v=([\w-]{11})', v['url']).group(1) for v in catalogo if re.search(r'v=([\w-]{11})', v.get('url', ''))]
+                    f['titulo'] = f"Canal: {f['url']}" + (f' · {len(ids)} videos' if ids else '')
+                    f['leidos'] = sum(i in hechos for i in ids)
+                    f['analizado'] = bool(ids) and f['leidos'] > 0
+                    continue
                 clave = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', f.get('url', ''))
                 f['analizado'] = f['tipo'] == 'texto' or (clave.group(1) if clave else os.path.splitext(f.get('archivo', ''))[0]) in hechos
             out.append({'nombre': n, 'fuentes': fu, 'perfil': os.path.exists(os.path.join(e, 'perfil.md'))})
@@ -886,8 +896,10 @@ class Manejador(BaseHTTPRequestHandler):
                 for u in re.findall(r'https?://\S+', url):
                     if 'youtu' not in u:
                         return self.error(f'{u} no es un link de YouTube. Los demás videos súbelos como MP4.')
+                    canal = re.search(r'youtube\.com/(@[\w.\-]+|channel/|c/|user/)|[?&]list=', u) and \
+                        not re.search(r'(?:v=|youtu\.be/|shorts/)[\w-]{11}', u)
                     if not any(f.get('url') == u for f in lista):
-                        lista.append({'tipo': 'youtube', 'url': u})
+                        lista.append({'tipo': 'canal' if canal else 'youtube', 'url': u})
                 guardar_fuentes(e, lista)
                 return self.responder({'ok': True})
             if ruta == '/api/estilo_subir':

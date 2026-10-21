@@ -1,7 +1,9 @@
 """ALIMENTACIÓN: la app aprende tu estilo de tus propios videos.
 
 Le das links de YouTube o MP4 de tus videos (o de un canal que te guste) y un perfil escrito a mano si
-tienes uno. Por cada video: lo baja (YouTube, con yt-dlp), lo transcribe (subtítulos de YouTube si hay;
+tienes uno. Con el link de un CANAL (youtube.com/@tucanal) o de una lista, toma todos sus videos: de cada uno lee los
+subtítulos completos y baja solo los primeros 3 minutos (para medir el tráiler y los cortes sin bajar horas de video).
+Deja también catalogo.json con todos los títulos, para que la IA pueda recomendar tus otros videos en el guion. Por cada video: lo baja (YouTube, con yt-dlp), lo transcribe (subtítulos de YouTube si hay;
 si no, Scribe o Whisper) y mide sin IA:
   - ritmo: palabras por minuto, largo de las frases, preguntas por minuto
   - estructura: cómo abre (primeros 20 s) y cómo cierra (últimos 40 s)
@@ -48,6 +50,37 @@ def leer_fuentes(e):
         return []
 
 
+CANAL = r'youtube\.com/(@[\w.\-]+|channel/|c/|user/)|[?&]list='
+PARCIAL_S = 180  # de los videos de un canal se baja solo el comienzo
+
+
+def es_canal(url):
+    return bool(re.search(CANAL, url or '')) and not re.search(r'(?:v=|youtu\.be/|shorts/)[\w-]{11}', url)
+
+
+def videos_del_canal(url, maximo):
+    """Los videos de un canal o lista, del más nuevo al más viejo: [{'url', 'titulo', 'duracion'}] (sin bajar nada)."""
+    u = url.rstrip('/')
+    if re.search(r'youtube\.com/(@[\w.\-]+|channel/[\w-]+|c/[\w.\-]+|user/[\w.\-]+)$', u):
+        u += '/videos'  # la pestaña de videos (sin cortos ni directos)
+    print(f'Buscando los videos de {url}…', flush=True)
+    r = subprocess.run(yt_dlp() + ['--flat-playlist', '--playlist-end', str(maximo), '--print', '%(id)s|||%(title)s|||%(duration)s', u],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    out = []
+    for linea in r.stdout.splitlines():
+        partes = linea.split('|||')
+        if len(partes) == 3 and re.fullmatch(r'[\w-]{11}', partes[0]):
+            try:
+                dur = float(partes[2])
+            except ValueError:
+                dur = None
+            out.append({'url': f'https://www.youtube.com/watch?v={partes[0]}', 'titulo': partes[1], 'duracion': dur})
+    if not out:
+        raise RuntimeError(f'no encontré videos en {url}: {(r.stderr or "").strip()[-300:]}')
+    print(f'· {len(out)} videos en el canal', flush=True)
+    return out
+
+
 def id_youtube(url):
     m = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', url)
     return m.group(1) if m else re.sub(r'\W', '', url)[-11:]
@@ -77,6 +110,8 @@ def bajar(e, f):
         print(f'Bajando {f["url"]}…', flush=True)
         base = yt_dlp() + ['--no-playlist', '-f', 'bv*[height<=360]+ba/b[height<=360]/b', '--merge-output-format', 'mp4',
                            '--print', 'after_move:title', '-o', os.path.join(carpeta, vid + '.%(ext)s')]
+        if f.get('canal'):  # de un canal: solo el comienzo (tráiler, apertura, ritmo de cortes); el texto sale de los subtítulos
+            base += ['--download-sections', f'*0-{PARCIAL_S}', '--sleep-requests', '1', '--sleep-interval', '2']  # sin apurar a YouTube
         subs = ['--write-subs', '--write-auto-subs', '--sub-langs', 'es.*,es', '--sub-format', 'vtt']
         r = subprocess.run(base + subs + [f['url']], capture_output=True, text=True)
         if not os.path.exists(destino):  # a veces fallan solo los subtítulos: sin ellos, se transcribe el audio
@@ -156,9 +191,13 @@ def analizar(e, f, k):
     else:
         video, titulo, lineas = os.path.join(e, 'videos', f['archivo']), f.get('titulo') or f['archivo'], []
     print(f'[{k}] {titulo}', flush=True)
+    parcial = bool(f.get('canal'))
     if not lineas:
+        if parcial:
+            raise RuntimeError('no tiene subtítulos en español (de los videos del canal solo se usan sus subtítulos)')
         lineas = transcribir(video)
-    dur = ff_dur(video) or (lineas[-1][0] + 5 if lineas else 0)
+    medido = ff_dur(video)
+    dur = (f.get('duracion') if parcial else None) or max(medido, lineas[-1][0] + 5 if lineas else 0)
     texto = ' '.join(t for _, t in lineas)
     palabras = texto.split()
     frases = [x.strip() for x in re.split(r'(?<=[.?!¿¡])\s+', texto) if len(x.split()) >= 2]
@@ -169,7 +208,7 @@ def analizar(e, f, k):
         'palabras_por_min': round(len(palabras) / dur * 60, 1) if dur else 0,
         'palabras_por_frase': round(len(palabras) / max(1, len(frases)), 1) if re.search(r'[.?!]', texto) else None,
         'preguntas_por_min': round(texto.count('?') / dur * 60, 2) if dur and '?' in texto else None,
-        'cortes_por_min': round(len(cs) / dur * 60, 1) if dur else 0,
+        'cortes_por_min': round(len(cs) / (min(medido, dur) if parcial and medido else dur) * 60, 1) if dur else 0,
         'apertura': ' '.join(t for s, t in lineas if s < 20),
         'cierre': ' '.join(t for s, t in lineas if s > dur - 40),
         'trailer': {'dura_s': tr[0], 'tomas': tr[1], 'toma_media_s': round(tr[0] / tr[1], 2),
@@ -293,14 +332,30 @@ def main():
     ap.add_argument('--estilo', required=True)
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--sin-ia', action='store_true')
+    ap.add_argument('--maximo', type=int, default=300, help='videos como máximo por canal (los más nuevos)')
     a = ap.parse_args()
     e = a.estilo
     nombre = os.path.basename(os.path.normpath(e))
     fuentes = leer_fuentes(e)
     if not fuentes:
         raise SystemExit('ERROR: este estilo no tiene videos. Agrega links de YouTube o sube MP4 en el panel Alimentación.')
+    catalogo, propias = [], list(fuentes)  # en fuentes.json queda el link del canal, no sus cientos de videos
+    for c in [f for f in fuentes if f['tipo'] == 'canal']:  # el link de un canal se vuelve la lista de todos sus videos
+        try:
+            vids = videos_del_canal(c['url'], a.maximo)
+        except RuntimeError as err:
+            print(f'· {err}', flush=True)
+            continue
+        catalogo += vids
+        conocidos = {id_youtube(f['url']) for f in fuentes if f.get('url') and f['tipo'] == 'youtube'}
+        for v in vids:
+            if id_youtube(v['url']) not in conocidos:
+                fuentes.append({'tipo': 'youtube', 'url': v['url'], 'titulo': v['titulo'], 'duracion': v['duracion'], 'canal': c['url']})
+    if catalogo:
+        json.dump(catalogo, open(os.path.join(e, 'catalogo.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    fuentes_videos = [f for f in fuentes if f['tipo'] != 'canal']
     analisis, escritos, fallos = [], [], []
-    for k, f in enumerate(fuentes, 1):
+    for k, f in enumerate(fuentes_videos, 1):
         if f['tipo'] == 'texto':
             escritos.append((f['archivo'], open(os.path.join(e, 'videos', f['archivo']), encoding='utf-8', errors='replace').read()))
             continue
@@ -309,7 +364,7 @@ def main():
         except (RuntimeError, OSError, subprocess.CalledProcessError) as err:
             fallos.append(f"{f.get('url') or f.get('archivo')}: {err}")
             print(f'· lo salto: {err}', flush=True)
-    json.dump(fuentes, open(os.path.join(e, 'fuentes.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)  # con títulos
+    json.dump(propias, open(os.path.join(e, 'fuentes.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)  # con títulos
     if not analisis and not escritos:
         raise SystemExit('ERROR: no pude analizar ningún video.\n' + '\n'.join(fallos))
     r = resumen(analisis, escritos) if analisis else {'videos': 0, 'minutos': 0}
