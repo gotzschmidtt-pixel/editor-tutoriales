@@ -200,6 +200,12 @@ def srt_de(d, video):
     return '3_voz.srt'
 
 
+def trailer_pendiente(d):
+    """Falta el tráiler, o cambiaste las pistas del tráiler después de armarlo: la IA lo vuelve a elegir."""
+    f, t = os.path.join(d, 'pistas_trailer', 'pistas.json'), os.path.join(d, 'trailer.json')
+    return not os.path.exists(t) or (os.path.exists(f) and os.path.getmtime(f) > os.path.getmtime(t))
+
+
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
     cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4']
@@ -257,6 +263,8 @@ def comandos(paso, d, op):
         srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
+    if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'etiquetas_ia':
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'etiquetas', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'senales_ia':
@@ -303,6 +311,7 @@ PASOS = [
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
+    {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
@@ -334,7 +343,7 @@ def clave_eleven():
     return (k or '').strip()
 
 
-USAN_ELEVEN = {'voz', 'musica', 'trailer'}
+USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
 
 
 def carpeta(p):
@@ -474,6 +483,10 @@ def correr(proyecto, pasos, opciones):
                 if len(pasos) > 1 and paso in TODO and info.get('opcional'):
                     log.write(f'\n— {info["nombre"]}: lo salto (falta {", ".join(falta)})\n'); log.flush()
                     saltados.append(info['nombre'])
+                    if paso == 'trailer' and 'final_sin_trailer' not in pasos:  # sin tráiler, el video final igual sale
+                        pasos.append('final_sin_trailer')
+                        with CANDADO:
+                            TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
                     continue
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
@@ -771,8 +784,11 @@ class Manejador(BaseHTTPRequestHandler):
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 pasos = [q['paso']]
                 if q['paso'] == 'todo':
-                    pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                    pasos = list(TODO) if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']  # copia: se le agregan pasos
                 aj = leer_ajustes()
+                if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url') and trailer_pendiente(carpeta(q['p'])):
+                    # por defecto el tráiler lo arma la IA con las tomas más importantes (con tus pistas, si pusiste)
+                    pasos = TODO[:-1] + ['trailer_ia', 'trailer']
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
                     for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
