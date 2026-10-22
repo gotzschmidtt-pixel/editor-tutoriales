@@ -230,8 +230,9 @@
 
     <section class="panel" id="panelTestimonios">
       <h2>🎥 Testimonios de clientes</h2>
-      <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte con su propio sonido:
-      el tutorial se pausa, se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase.</p>
+      <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte: el tutorial se pausa,
+      se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase. Por defecto suena el audio del propio clip;
+      si le escribes una «narración», en su lugar habla tu voz principal contando lo que se ve y el audio del cliente se silencia.</p>
       <div id="listaTestimonios"></div>
       <label class="subida" id="soltarTestimonio"><div class="t">➕ Video de testimonio</div>
         <div class="e">Arrastra aquí tus videos (mp4, mov, webm…), o haz clic</div><input type="file" multiple accept="video/*"></label>
@@ -1021,7 +1022,8 @@ function pintarTestimonios() {
       <div class="datos" style="grid-template-columns: 1fr 5em 5em">
         <input type="text" placeholder="Momento: auto" title="auto, 4:30, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTestimonio(${i}, 'momento', this.value)">
         <input type="text" placeholder="Desde" title="Desde qué segundo del testimonio (vacío = el comienzo), por ejemplo 0:05" value="${esc(c.desde)}" onchange="cambiarTestimonio(${i}, 'desde', this.value)">
-        <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)"></div>
+        <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)">
+        <textarea rows="2" style="grid-column:1/-1; margin-top:6px; resize:vertical" placeholder="Narración con tu voz (opcional): lo que dice el narrador sobre este testimonio. Si lo llenas, habla tu voz principal y se silencia el audio del cliente." title="Déjalo vacío para que suene el audio propio del testimonio. Si escribes algo, lo dice tu voz principal (ElevenLabs) encima del clip en silencio." onchange="cambiarTestimonio(${i}, 'texto', this.value)">${esc(c.texto || '')}</textarea></div>
       <button title="Quitar" onclick="TESTI.TESTIMONIOS.splice(${i}, 1); guardarTestimonios()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste testimonios.</p>';
 }
 function cambiarTestimonio(i, k, v) { TESTI.TESTIMONIOS[i][k] = v.trim(); guardarTestimonios(); }
@@ -1030,7 +1032,7 @@ async function agregarTestimonios(files) {
     for (const f of files) {
       if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) { alert(`${f.name}: solo videos`); continue; }
       const r = await api(`/api/pista_archivo?g=testimonios&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: ''});
+      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: '', texto: ''});
     }
   } catch (e) { alert(e.message); }
   guardarTestimonios();
