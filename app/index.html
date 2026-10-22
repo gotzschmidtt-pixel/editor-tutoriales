@@ -610,8 +610,16 @@ const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1
   '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', '9_modelos.mp4': 'con nuevos modelos', 'FINAL.mp4': 'el video final'};
 let viendo = null, avanceVisto = '';
 function masAvanzado(arch) {
-  let mejor = null;
-  for (const f of AVANCE) if (arch[f] && arch[f].tam > 0 && !arch[f].en_proceso && (!mejor || arch[f].fecha >= arch[mejor].fecha)) mejor = f;
+  // las etapas van en orden (montaje -> insertos -> voz -> ... -> FINAL). Si rehiciste una etapa,
+  // las de después quedaron viejas (son de un guion anterior): una etapa más vieja que la anterior se ignora,
+  // así el preview muestra el último montaje de verdad y no un FINAL.mp4 de antes.
+  let mejor = null, piso = 0;
+  for (const f of AVANCE) {
+    const a = arch[f];
+    if (!a || !a.tam || a.en_proceso) continue;
+    if (a.fecha < piso) continue;
+    mejor = f; piso = a.fecha;
+  }
   return mejor;
 }
 function seguirAvance(t, arch) {

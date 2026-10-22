@@ -22,6 +22,16 @@ LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note meno
 EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app mientras se arma
 
 
+def voz_al_dia(carpeta_voz, bid, texto):
+    """¿El mp3 de este bloque dice el texto actual del guion? Si no, no se mete en el preview,
+    para que el «montaje mientras se arma» nunca suene con la voz de un guion anterior."""
+    try:
+        al = json.load(open(os.path.join(carpeta_voz, f'{bid}.align.json'), encoding='utf-8'))
+        return ''.join(al['characters']).strip() == (texto or '').strip()
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def avance(partes, tmp, destino, voces=()):
     """Une lo que va hecho en un video que la app puede reproducir, con la voz de esos bloques encima
     (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
@@ -121,7 +131,7 @@ def main():
                 + enc + [f])
             partes.append(f)
         print(i, 'ok', flush=True)
-        if b.get('inicio_min') is not None:
+        if b.get('inicio_min') is not None and voz_al_dia(carpeta_voz, i, b.get('texto', '')):
             voces.append((b['inicio_min'] + 0.3, os.path.join(carpeta_voz, f'{i}.mp3')))  # el mismo desfase que «Poner la voz»
         avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
     lista = os.path.join(tmp, 'lista.txt')
