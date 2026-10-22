@@ -378,14 +378,15 @@
           <button onclick="ajustesIA()" style="margin-left:auto">⚙ Ajustes IA</button>
         </div>
         <div class="fila">
-          <button onclick="ia('api')">✨ Escribir con IA</button>
+          <button onclick="ia('api')" title="Escribe el guion con el modelo elegido. Si ya hay guion, lo rehace y reemplaza (el anterior queda como .anterior)">✨ Escribir / rehacer con IA</button>
           <button onclick="ia('prompt')">📋 Prompt para copiar</button>
           <button onclick="pegar()">✅ Revisar respuesta pegada</button>
           <button onclick="abrirPromptCapturas()" title="Abre la carpeta del proyecto con ia_prompt_guion.txt y la carpeta ia_capturas, para reusar lo ya generado con otro modelo sin volver a procesar el video">📂 Guardar prompt y capturas</button>
         </div>
         <p class="aviso">Escribe primero en «idea» de qué trata el video y los datos seguros (webs, precios, pines). La IA no inventa lo que no le das.
         «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.<br>
-        «Guardar prompt y capturas»: después de «Escribir con IA», deja el prompt en <code>ia_prompt_guion.txt</code> y las imágenes en <code>ia_capturas/</code>. Así pruebas otro modelo (GPT, DeepSeek…) sin reprocesar el video.</p>
+        <b>Rehacer con otro modelo:</b> cámbialo en ⚙ Ajustes IA y pulsa otra vez «✨ Escribir / rehacer con IA». Reemplaza el guion (el anterior queda como <code>guion.json.anterior</code>).<br>
+        «Guardar prompt y capturas»: después de escribir con IA, deja el prompt en <code>ia_prompt_guion.txt</code> y las imágenes en <code>ia_capturas/</code>. Así pruebas otro modelo (GPT, DeepSeek…) sin reprocesar el video.</p>
       </div>
     </section>
 
