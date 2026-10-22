@@ -429,7 +429,7 @@
 </dialog>
 
 <dialog id="dlgDiag">
-  <h3>⚠ LA IA NO PUDO COMPLETAR ESTA OPERACIÓN</h3>
+  <h3 id="diagTitulo">⚠ LA IA NO PUDO COMPLETAR ESTA OPERACIÓN</h3>
   <div id="diagResumen"></div>
   <pre id="diagTexto" style="display:none; max-height:50vh; overflow:auto; white-space:pre-wrap; font-size:12px"></pre>
   <div class="fila"><button class="principal" onclick="verDiagnostico()">📄 Ver diagnóstico</button>
@@ -1289,9 +1289,12 @@ function pintarBarra(t, r, arch) {
   if (r.ok) {
     b.className = 'ok';
     const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
-    b.innerHTML = `<div class="arriba"><span class="que">✓ Todo salió bien</span>
+    const inc = r.resultado === 'completado_con_incidencias';
+    const botonInc = (r.incidencias || []).length ? `<button onclick="abrirIncidencias()">⚠ Incidencias (${r.incidencias.length})</button>` : '';
+    INCID = r;
+    b.innerHTML = `<div class="arriba"><span class="que">${inc ? '✓ Terminado con incidencias' : '✓ Todo salió bien'}</span>
       <span class="cuanto">${r.hechos.length} ${r.hechos.length === 1 ? 'paso hecho' : 'pasos hechos'} en ${reloj(r.segundos)}${r.saltados.length ? ` · salté ${r.saltados.length} opcional${r.saltados.length > 1 ? 'es' : ''} (${esc(r.saltados.join(', '))})` : ''}</span>
-      <span class="chips">${final}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+      <span class="chips">${final}${botonInc}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
   } else {
     mostrarDiag(r);
     b.className = 'mal';
@@ -1303,14 +1306,27 @@ function pintarBarra(t, r, arch) {
   }
 }
 
-let DIAG = null, avisoDiag = null;
+let DIAG = null, avisoDiag = null, INCID = null;
 function mostrarDiag(r) {  // un fallo con diagnóstico: la ventana se abre sola una vez
   DIAG = r.diagnostico;
   if (DIAG && avisoDiag !== r.cuando) { avisoDiag = r.cuando; abrirDiag(); }
 }
+function abrirIncidencias() {  // el video salió, pero alguna solicitud falló o fue rechazada: se informa sin llamarlo fracaso
+  const lista = (INCID && INCID.incidencias) || [];
+  if (!lista.length) return;
+  DIAG = lista[0];
+  abrirDiag();
+  $('#diagTitulo').textContent = '⚠ PROCESO COMPLETADO CON INCIDENCIAS';
+  $('#diagResumen').innerHTML = `<p>El proceso terminó. Estas solicitudes fallaron o fueron rechazadas, pero no frenaron el proyecto:</p><ul>${
+    lista.map(x => `<li><b>${esc(x.etapa)}</b> · ${esc(x.ia)} · ${esc(x.tipo)}<br>${esc(x.resultado_paso || '')} ${esc(x.explicacion)}</li>`).join('')}</ul>
+    ${INCID.resumen ? `<p><a href="/archivo?p=${q(P)}&sub=diagnosticos&f=${q(INCID.resumen.archivo + '.txt')}" target="_blank">📄 Resumen de la ejecución (modelos usados)</a></p>` : ''}
+    <p class="aviso">Los informes quedan en la carpeta <code>diagnosticos</code> del proyecto, sin claves ni el guion.</p>`;
+  $('#diagReintentar').style.display = 'none'; $('#msgDiag').textContent = '';
+}
 function abrirDiag() {
   if (!DIAG) return;
   const base = `/archivo?p=${q(P)}&sub=diagnosticos&f=`;
+  $('#diagTitulo').textContent = '⚠ LA IA NO PUDO COMPLETAR ESTA OPERACIÓN';
   $('#diagResumen').innerHTML = `<p><b>Etapa donde falló:</b> ${esc(DIAG.etapa)}</p><p><b>IA o servicio:</b> ${esc(DIAG.ia)}</p>
     <p><b>Tipo de error:</b> ${esc(DIAG.tipo)}</p><p><b>En pocas palabras:</b> ${esc(DIAG.explicacion)}</p>
     <p class="aviso">El informe queda en la carpeta <code>diagnosticos</code> del proyecto. No lleva claves, ni el guion, ni imágenes: puedes compartirlo con ChatGPT para investigar.</p>`;

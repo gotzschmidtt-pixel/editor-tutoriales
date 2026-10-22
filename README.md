@@ -82,6 +82,19 @@ NO PUDO COMPLETAR ESTA OPERACIÓN» con Ver diagnóstico, Exportar TXT/JSON y Re
 nunca tras un rechazo explícito, permisos o facturación). Con `"diagnostico_guardar_respuesta": true` en
 `app/ajustes.json` se guarda además un extracto redactado de lo que contestó la IA.
 
+- **Modelo pedido y modelo que respondió:** cada llamada anota los dos, según el campo `model` de la respuesta. Con
+  Claude también se leen los bloques `fallback` y `usage.iterations`: si el servidor pasó el pedido a otro modelo
+  (solo lo hace tras un rechazo por políticas) se anota de cuál a cuál y por qué. Si la API no da el modelo, se dice
+  «no confirmado».
+- **Tipo de respuesta:** distingue un rechazo con HTTP 200 (`stop_reason: refusal`, `refusal`, `content_filter`) de un
+  JSON inválido, una respuesta vacía, una cortada por largo y un error HTTP.
+- **Resultado de cada ejecución:** completado correctamente, completado con incidencias (el paso o el video salió pero
+  alguna solicitud falló o fue rechazada, o un opcional se saltó) o interrumpido. Queda en
+  `diagnosticos/resumen_<fecha>_<id>.txt` y `.json`, con los modelos usados.
+- **Reintentar sin pagar dos veces:** mientras un paso no termina bien, las respuestas de la IA se guardan en
+  `cache_ia/<paso>/`. «Reintentar» sigue desde el paso que falló y reutiliza esas respuestas en vez de volver a
+  pedirlas; la que hizo fallar el paso no se reutiliza. Al terminar bien el paso, se borran.
+
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.

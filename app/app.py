@@ -612,8 +612,10 @@ def correr(proyecto, pasos, opciones):
     nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
     ejec = time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6]  # para el diagnóstico: qué llamadas son de esta ejecución
     env.update(DIAG_DIR=os.path.join(d, 'diagnosticos'), DIAG_RUN=ejec)
+    # «Reintentar»: las respuestas que la IA ya dio en el paso que falló se reutilizan (no se vuelven a pedir ni a cobrar)
+    env['REANUDAR_IA'] = '1' if opciones.get('_reanudar') else ''
     diag = None
-    saltados, hechos = [], []
+    saltados, hechos, informes = [], [], []
     with CANDADO:
         TRABAJO.update(plan=nombres, i=0, inicio_total=time.time(), detenido=False)
     RESULTADO.pop(proyecto, None)
@@ -656,6 +658,9 @@ def correr(proyecto, pasos, opciones):
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             blando = False
             env['DIAG_PASO'] = paso
+            env['CACHE_IA'] = os.path.join(d, 'cache_ia', paso)
+            if not env['REANUDAR_IA']:
+                shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
@@ -663,7 +668,8 @@ def correr(proyecto, pasos, opciones):
                 if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
                     # un extra de la IA que no salió no frena el video: se sigue sin eso
                     log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
-                    informe_paso(d, proyecto, paso, info, ejec, 'saltado', log)
+                    informes.append(informe_paso(d, proyecto, paso, info, ejec, 'saltado', log))
+                    shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
                     blando = True
                     break
                 if proc.returncode != 0:
@@ -683,7 +689,8 @@ def correr(proyecto, pasos, opciones):
                         TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
                 continue
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
-            informe_paso(d, proyecto, paso, info, ejec, 'ok', log)  # solo escribe algo si hubo llamadas a la IA que fallaron
+            informes.append(informe_paso(d, proyecto, paso, info, ejec, 'ok', log))  # solo si hubo llamadas fallidas o rechazadas
+            shutil.rmtree(env['CACHE_IA'], ignore_errors=True)  # el paso terminó: sus respuestas guardadas ya no hacen falta
             hechos.append(info['nombre'])
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
@@ -695,9 +702,20 @@ def correr(proyecto, pasos, opciones):
         FALLOS[proyecto] = {'paso': paso, 'msg': msg}
         diag = informe_paso(d, proyecto, paso, next((x for x in PASOS if x['id'] == paso), {'nombre': paso}), ejec, 'fallo', log)
     finally:
-        log.close()
         f = FALLOS.get(proyecto)
-        RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
+        informes = [x for x in informes + [diag] if x]
+        resultado = 'interrumpido' if f else 'completado_con_incidencias' if informes or saltados else 'completado'
+        resumen = None
+        try:
+            resumen = diagnostico.resumen_ejecucion(os.path.join(d, 'diagnosticos'), proyecto, ejec, resultado, hechos, saltados,
+                                                    next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), ''), informes,
+                                                    motivo='lo detuviste' if f and f.get('msg') == 'detenido por ti' else '')
+            if resumen:
+                log.write(f"· {resumen['texto']} Resumen en diagnosticos/{resumen['archivo']}.txt\n")
+        except Exception as e:
+            log.write(f'· no pude escribir el resumen de la ejecución ({type(e).__name__}: {e})\n')
+        log.close()
+        RESULTADO[proyecto] = {'resultado': resultado, 'incidencias': informes if not f else [], 'resumen': resumen,'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
                                'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
                                'pausa': None if f else opciones.get('_pausa'), 'diagnostico': diag if f else None,
@@ -1015,7 +1033,7 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
-                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), dict(rep['opciones'])), daemon=True).start()
+                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True}), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))

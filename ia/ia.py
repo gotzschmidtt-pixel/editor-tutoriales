@@ -25,7 +25,7 @@ import guardado  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402
 import numpy as np  # noqa: E402
-import inspect, time  # noqa: E402
+import hashlib, inspect, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
@@ -431,6 +431,7 @@ def verificar_orden(d, bloques):
 def extraer_json(txt):
     txt = (txt or '').strip()
     if not txt:
+        _olvidar_respuesta()
         _anotar_respuesta('respuesta_vacia', txt)
         raise ErrorIA('ERROR: la IA contestó sin texto (respuesta vacía). Puede ser un corte del servicio o un filtro del '
                       'proveedor: mira el diagnóstico de esta ejecución (carpeta diagnosticos del proyecto) antes de suponer la causa.', 'F')
@@ -441,6 +442,7 @@ def extraer_json(txt):
     try:
         return json.loads(txt[i:])
     except json.JSONDecodeError:
+        _olvidar_respuesta()
         _anotar_respuesta('respuesta_ilegible', txt)
         raise ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
                       'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
@@ -649,6 +651,8 @@ def _anotar_respuesta(tipo, txt):
           'etapa': diagnostico.ETAPA_FUNCION.get(funcion), 'largo_respuesta': len(txt or ''), 'hash_respuesta': diagnostico.huella(txt),
           'parece_negativa': diagnostico.parece_negativa(txt), 'proveedor': _ULTIMA.get('proveedor'), 'modelo': _ULTIMA.get('modelo'),
           'id_solicitud': _ULTIMA.get('id_solicitud'), 'motivo_fin': _ULTIMA.get('motivo_fin'),
+          'modelo_solicitado': _ULTIMA.get('modelo_solicitado'), 'modelo_respondio': _ULTIMA.get('modelo_respondio'), 'http': 200,
+          'tipo_respuesta': 'vacia' if tipo == 'respuesta_vacia' else 'json_invalido',
           'mensaje': 'La IA contestó, pero ' + ('sin texto.' if tipo == 'respuesta_vacia' else 'no en JSON válido.')}
     if GUARDAR_RESPUESTA:
         ev['extracto_respuesta'] = diagnostico.redactar(txt, 1500)
@@ -656,6 +660,38 @@ def _anotar_respuesta(tipo, txt):
 
 
 _ULTIMA = {}  # datos de la última respuesta, para el diagnóstico de una respuesta ilegible
+
+
+def _clave_cache(ev, ajustes, texto, caps):
+    """Dónde se guarda la respuesta de este pedido exacto (mismo proveedor, modelo, texto e imágenes) mientras su paso no
+    termine bien. Así «Reintentar» reutiliza lo ya contestado y no vuelve a pagar por ello. None si no hay caché."""
+    carpeta = os.environ.get('CACHE_IA')
+    if not carpeta:
+        return None
+    h = hashlib.sha256(json.dumps([ev['proveedor'], ev['modelo'], texto, bool(ajustes.get('imagenes', True))]).encode())
+    if ajustes.get('imagenes', True):
+        for _, f in caps:
+            try:
+                h.update(open(f, 'rb').read())
+            except OSError:
+                return None
+    return os.path.join(carpeta, h.hexdigest()[:32] + '.json')
+
+
+def _olvidar_respuesta():
+    """La última respuesta no sirvió (vacía o sin JSON): no se reutiliza al reintentar."""
+    f = _ULTIMA.get('cache')
+    if f:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def _mismo_modelo(pedido, respondio):
+    """«claude-opus-5-5» y «claude-opus-5-5-20261001», o «gpt-4.1» y «gpt-4.1-2025-04-14», son el mismo modelo."""
+    a, b = (pedido or '').lower(), (respondio or '').lower()
+    return a == b or b.startswith(a + '-') or a.startswith(b + '-')
 
 
 def _proveedor(ajustes):
@@ -684,6 +720,19 @@ def llamar(ajustes, texto, caps):
           'hash_pedido': diagnostico.huella(texto)}
     _ULTIMA.clear()
     _ULTIMA.update(proveedor=ev['proveedor'], modelo=ev['modelo'])
+    cache = _clave_cache(ev, ajustes, texto, caps)
+    if cache and os.environ.get('REANUDAR_IA') and os.path.isfile(cache):
+        try:
+            guardada = json.load(open(cache, encoding='utf-8'))
+            r = guardada['respuesta']
+        except (OSError, ValueError, KeyError):
+            guardada = None
+        if guardada is not None:
+            diagnostico.anotar({**ev, **guardada.get('det', {}), 'ok': True, 'reutilizada': True, 'duracion_s': 0,
+                                'largo_respuesta': len(r or ''), 'tipo_respuesta': 'reutilizada'})
+            _ULTIMA.update(cache=cache, **{k: guardada.get('det', {}).get(k) for k in ('id_solicitud', 'motivo_fin', 'modelo_respondio')})
+            print('· reutilizo la respuesta que la IA ya había dado a este mismo pedido (no se vuelve a cobrar)', flush=True)
+            return r
     t0 = time.time()
     try:
         if ev['proveedor'] == 'Claude':
@@ -700,8 +749,22 @@ def llamar(ajustes, texto, caps):
         diagnostico.anotar({**ev, **det, 'ok': False, 'tipo': 'programa', 'tipo_error': type(e).__name__,
                             'mensaje': str(e)[:600], 'duracion_s': round(time.time() - t0, 1)})
         raise
+    det.setdefault('tipo_respuesta', 'ok')
     diagnostico.anotar({**ev, **det, 'ok': True, 'duracion_s': round(time.time() - t0, 1), 'largo_respuesta': len(r or '')})
-    _ULTIMA.update(id_solicitud=det.get('id_solicitud'), motivo_fin=det.get('motivo_fin'))
+    _ULTIMA.update(id_solicitud=det.get('id_solicitud'), motivo_fin=det.get('motivo_fin'), modelo_solicitado=det.get('modelo_solicitado'),
+                   modelo_respondio=det.get('modelo_respondio'))
+    if det.get('motivo_cambio'):
+        print(f"· {det['motivo_cambio']}", flush=True)
+    if cache:
+        try:
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            guardado_det = {k: det.get(k) for k in ('id_solicitud', 'motivo_fin', 'modelo_solicitado', 'modelo_respondio')}
+            with open(cache + '.nuevo', 'w', encoding='utf-8') as f:
+                json.dump({'respuesta': r, 'det': guardado_det}, f, ensure_ascii=False)
+            os.replace(cache + '.nuevo', cache)
+            _ULTIMA['cache'] = cache
+        except OSError:
+            pass
     return r
 
 
@@ -734,10 +797,11 @@ def llamar_claude(ajustes, texto, caps, det=None):
         raise ErrorIA('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
                       'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).', 'C')
     cliente = anthropic.Anthropic(api_key=ajustes.get('clave') or None, timeout=900)
+    det['modelo_solicitado'] = ajustes.get('modelo') or 'claude-opus-5-5'
     try:
         # en streaming para que una respuesta larga no corte la conexión
         with cliente.beta.messages.stream(
-            model=ajustes.get('modelo') or 'claude-opus-5-5',
+            model=det['modelo_solicitado'],
             max_tokens=64000,
             system='Respondes únicamente con JSON válido.',
             output_config={'effort': 'medium'},
@@ -749,7 +813,7 @@ def llamar_claude(ajustes, texto, caps, det=None):
     except anthropic.APIStatusError as e:
         tipo, mensaje = _cuerpo_error(e)
         rid = getattr(e, 'request_id', None) or (e.response.headers.get('request-id') if getattr(e, 'response', None) is not None else None)
-        det.update(http=e.status_code, tipo_error=tipo, mensaje_api=mensaje, id_solicitud=rid)
+        det.update(http=e.status_code, tipo_error=tipo, mensaje_api=mensaje, id_solicitud=rid, tipo_respuesta='error_http')
         clase, _, _ = diagnostico.clasificar(det)
         bajo = str(mensaje).lower()
         if clase == 'D':
@@ -772,22 +836,63 @@ def llamar_claude(ajustes, texto, caps, det=None):
                           'Espera un poco o baja las capturas en «⚙ Ajustes IA».', 'E')
         raise ErrorIA(f'ERROR: Claude respondió con error {e.status_code}: {mensaje}', clase)
     except anthropic.APIConnectionError as e:
-        det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300])
+        det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300], tipo_respuesta='sin_conexion')
         raise ErrorIA('ERROR: no hay conexión con Claude. Revisa tu internet.', 'H')
-    det.update(id_solicitud=getattr(r, '_request_id', None), motivo_fin=r.stop_reason, modelo_respondio=getattr(r, 'model', None),
-               uso={k: getattr(r.usage, k, None) for k in ('input_tokens', 'output_tokens')} if getattr(r, 'usage', None) else None,
-               respondio_otro_modelo=any(getattr(b, 'type', '') == 'fallback' for b in r.content))
+    det.update(http=200, id_solicitud=getattr(r, '_request_id', None), motivo_fin=r.stop_reason,
+               uso={k: getattr(r.usage, k, None) for k in ('input_tokens', 'output_tokens')} if getattr(r, 'usage', None) else None)
+    det.update(modelos_claude(r, det['modelo_solicitado']))
     if r.stop_reason == 'refusal':
         sd = getattr(r, 'stop_details', None)
         cat = getattr(sd, 'category', None) if sd is not None else None
-        det.update(rechazo_explicito=True, categoria_rechazo=cat,
+        det.update(rechazo_explicito=True, categoria_rechazo=cat, tipo_respuesta='rechazo_200',
+                   modelo_recomendado=getattr(sd, 'recommended_model', None) if sd is not None else None,
                    mensaje_api=(getattr(sd, 'explanation', None) if sd is not None else None) or 'stop_reason=refusal')
         raise ErrorIA('ERROR: Claude rechazó esta petición por sus políticas de uso' + (f' (categoría «{cat}»)' if cat else '') +
                       '. No se reintenta igual. Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
     if r.stop_reason == 'max_tokens':
+        det['tipo_respuesta'] = 'incompleta'
         raise ErrorIA('ERROR: la respuesta de Claude se cortó por el límite de largo y quedó incompleta. '
                       'Vuelve a intentar o pide un guion más corto.', 'E', False)
     return ''.join(b.text for b in r.content if b.type == 'text')
+
+
+def modelos_claude(r, pedido):
+    """Qué modelo se pidió y cuál respondió, según los metadatos oficiales de la respuesta: el campo `model` (el que
+    produjo el mensaje), los bloques `fallback` (cada cambio de modelo: de cuál a cuál) y `usage.iterations` (una
+    entrada `fallback_message` = respondió un modelo de respaldo). El servidor de Anthropic solo cambia de modelo cuando
+    el pedido es rechazado por políticas; si la respuesta no trae el dato, se dice que no está confirmado."""
+    respondio = getattr(r, 'model', None)
+    saltos = []
+    for b in getattr(r, 'content', None) or []:
+        if getattr(b, 'type', '') == 'fallback':
+            de, a = getattr(b, 'from_', None) or getattr(b, 'from', None), getattr(b, 'to', None)
+            saltos.append({'de': getattr(de, 'model', None), 'a': getattr(a, 'model', None)})
+    iteraciones = []
+    for it in getattr(getattr(r, 'usage', None), 'iterations', None) or []:
+        iteraciones.append({'tipo': getattr(it, 'type', None), 'modelo': getattr(it, 'model', None)})
+    respaldo = any(x['tipo'] == 'fallback_message' for x in iteraciones)
+    out = {'modelo_solicitado': pedido, 'modelo_respondio': respondio, 'modelo_confirmado': bool(respondio),
+           'cambios_modelo': saltos, 'iteraciones': iteraciones}
+    if not respondio:
+        out['nota_modelo'] = 'No se pudo confirmar qué modelo respondió: la respuesta no trae el campo «model».'
+    rechazo_final = getattr(r, 'stop_reason', None) == 'refusal'
+    if saltos:
+        cadena = ' → '.join([saltos[0]['de'] or pedido] + [s['a'] or '¿?' for s in saltos])
+        out['motivo_cambio'] = (f'cambio automático de modelo de Anthropic ({cadena}): el modelo anterior rechazó el pedido por '
+                                'políticas, y el servidor solo cambia de modelo por ese motivo. La API no informa la categoría de '
+                                'cada rechazo intermedio.')
+    elif respaldo:
+        out['motivo_cambio'] = (f'respondió un modelo de respaldo ({respondio or "no confirmado"}) sin probar {pedido}: '
+                                '«usage.iterations» trae «fallback_message» sin bloque «fallback», que es el enrutamiento '
+                                'persistente que Anthropic aplica por un rato después de un rechazo anterior del mismo pedido.')
+    elif respondio and not _mismo_modelo(pedido, respondio):
+        out['motivo_cambio'] = f'pediste {pedido} y respondió {respondio}; la API no informó el motivo.'
+    if out.get('motivo_cambio'):
+        out['cambio_modelo'] = True
+        if (saltos or respaldo) and not rechazo_final:
+            out['incidencia'] = 'rechazo_recuperado'
+            out['tipo_respuesta'] = 'ok_otro_modelo'
+    return out
 
 
 def contexto_ollama(texto, imagenes):
@@ -815,15 +920,16 @@ def llamar_ollama(ajustes, texto, caps, det=None):
         r = json.load(urllib.request.urlopen(req, timeout=3600))
     except urllib.error.HTTPError as e:
         cuerpo = e.read()[:400].decode(errors='replace')
-        det.update(http=e.code, mensaje_api=cuerpo)
+        det.update(http=e.code, mensaje_api=cuerpo, tipo_respuesta='error_http')
         if e.code == 404:
             raise ErrorIA(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}', 'C')
         raise ErrorIA(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}', diagnostico.clasificar(det)[0])
     except urllib.error.URLError as e:
-        det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason))
+        det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
         raise ErrorIA('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.', 'H')
-    det.update(motivo_fin=r.get('done_reason'), modelo_respondio=r.get('model'))
+    det.update(http=200, motivo_fin=r.get('done_reason'), **modelos_compatible(r, ajustes['modelo']))
     if r.get('done_reason') == 'length':
+        det['tipo_respuesta'] = 'incompleta'
         raise ErrorIA('ERROR: la respuesta de Ollama se cortó por largo y quedó incompleta.', 'E', False)
     return r['message']['content']
 
@@ -866,7 +972,8 @@ def llamar_compatible(ajustes, texto, caps, det=None):
                 err = {}
             err = err if isinstance(err, dict) else {'message': str(err)}
             det.update(http=e.code, tipo_error=err.get('type') or err.get('code') or 'HTTPError', mensaje_api=err.get('message') or detalle,
-                       id_solicitud=e.headers.get('x-request-id') if e.headers else None, ajustes_quitados=ajustes_quitados)
+                       id_solicitud=e.headers.get('x-request-id') if e.headers else None, ajustes_quitados=ajustes_quitados,
+                       tipo_respuesta='error_http')
             if err.get('code') in ('insufficient_quota', 'billing_hard_limit_reached'):
                 det['mensaje_api'] = f"{err.get('code')}: {det['mensaje_api']}"
             clase = diagnostico.clasificar(det)[0]
@@ -883,7 +990,7 @@ def llamar_compatible(ajustes, texto, caps, det=None):
                               f'Espera un poco o baja las capturas. Detalle: {detalle}', 'E')
             raise ErrorIA(f'ERROR: la IA respondió con error {e.code}: {detalle}', clase)
         except urllib.error.URLError as e:
-            det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason))
+            det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
             raise ErrorIA(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.', 'H')
     det['ajustes_quitados'] = ajustes_quitados
     try:
@@ -892,20 +999,22 @@ def llamar_compatible(ajustes, texto, caps, det=None):
         contenido = mensaje.get('content')
     except (KeyError, IndexError, TypeError, AttributeError):
         eleccion, mensaje, contenido = {}, {}, ''
-    det.update(id_solicitud=r.get('id') if isinstance(r, dict) else None, motivo_fin=eleccion.get('finish_reason'),
-               modelo_respondio=r.get('model') if isinstance(r, dict) else None, uso=r.get('usage') if isinstance(r, dict) else None)
+    det.update(http=200, id_solicitud=r.get('id') if isinstance(r, dict) else None, motivo_fin=eleccion.get('finish_reason'),
+               uso=r.get('usage') if isinstance(r, dict) else None, **modelos_compatible(r, ajustes['modelo']))
     if mensaje.get('refusal') or eleccion.get('finish_reason') == 'content_filter':
-        det.update(rechazo_explicito=True, mensaje_api=str(mensaje.get('refusal') or 'finish_reason=content_filter')[:600])
+        det.update(rechazo_explicito=True, tipo_respuesta='rechazo_200', mensaje_api=str(mensaje.get('refusal') or 'finish_reason=content_filter')[:600])
         raise ErrorIA('ERROR: la IA rechazó esta petición por sus políticas de uso (lo marcó la API). No se reintenta igual. '
                       'Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
     if not (contenido or '').strip():
         if eleccion.get('finish_reason') == 'length':
+            det['tipo_respuesta'] = 'incompleta'
             raise ErrorIA('ERROR: la respuesta de la IA se cortó por largo antes de escribir nada (si usas GPT-5 con «capturas» '
                           'altas, bájalas en «⚙ Ajustes IA»).', 'E', False)
-        det.update(tipo='respuesta_vacia')
+        det.update(tipo='respuesta_vacia', tipo_respuesta='vacia')
         raise ErrorIA('ERROR: la IA no devolvió texto (respuesta vacía) y no dio motivo. Mira el diagnóstico antes de suponer '
                       'la causa; revisa también tu saldo y la clave en «⚙ Ajustes IA».', 'F')
     if eleccion.get('finish_reason') == 'length':
+        det['tipo_respuesta'] = 'incompleta'
         raise ErrorIA('ERROR: la respuesta de la IA se cortó por el límite de largo y quedó incompleta. Vuelve a intentar.', 'E', False)
     return contenido
 
@@ -1369,6 +1478,18 @@ MAPA_HUECO = 15  # aunque no cambie nada, un cuadro cada tantos segundos
 def es_local(ajustes):
     """Ollama o LM Studio en tu PC: aguantan menos imágenes por pedido."""
     return bool(re.search(r':(11434|1234)\b', (ajustes or {}).get('url', '')))
+
+
+def modelos_compatible(r, pedido):
+    """OpenAI, Ollama y compatibles: el campo `model` de la respuesta dice qué modelo respondió. Estas APIs no tienen
+    cambios automáticos de modelo con motivo; si el modelo es otro, se anota sin inventar la causa."""
+    respondio = r.get('model') if isinstance(r, dict) else None
+    out = {'modelo_solicitado': pedido, 'modelo_respondio': respondio, 'modelo_confirmado': bool(respondio)}
+    if not respondio:
+        out['nota_modelo'] = 'No se pudo confirmar qué modelo respondió: la respuesta no trae el campo «model».'
+    elif not _mismo_modelo(pedido, respondio):
+        out.update(cambio_modelo=True, motivo_cambio=f'pediste {pedido} y respondió {respondio}; la API no informó el motivo.')
+    return out
 
 
 def por_tandas(ajustes, items, tanda, pedir, que):
@@ -2181,4 +2302,11 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except BaseException as e:
+        # el paso falló DESPUÉS de la última respuesta (p. ej. un guion sin bloques): esa respuesta no se reutiliza al
+        # reintentar; las anteriores sí. Si falló la llamada misma, no queda ninguna marcada.
+        if not (isinstance(e, SystemExit) and e.code in (0, None)):
+            _olvidar_respuesta()
+        raise

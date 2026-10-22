@@ -21,7 +21,21 @@ CLASES = {
     'H': 'Fallo de red o servicio externo',
     'I': 'Causa desconocida',
 }
-PERMANENTES = {'A', 'B', 'C', 'D'}  # reintentar igual no sirve: hay que cambiar algo antes
+PERMANENTES = {'A', 'B', 'C', 'D'}
+TIPOS_RESPUESTA = {
+    'ok': 'HTTP 200 con respuesta completa', 'ok_otro_modelo': 'HTTP 200: respondió otro modelo tras un rechazo del pedido',
+    'reutilizada': 'respuesta ya obtenida antes, reutilizada sin volver a pedirla',
+    'rechazo_200': 'HTTP 200 con rechazo del modelo (stop_reason=refusal / refusal / content_filter)',
+    'incompleta': 'HTTP 200 con respuesta incompleta (cortada por el límite de tokens)',
+    'vacia': 'HTTP 200 con respuesta vacía', 'json_invalido': 'HTTP 200 con respuesta que no es JSON válido',
+    'error_http': 'error HTTP de la API', 'sin_conexion': 'sin respuesta (red o servicio)',
+}
+RESULTADOS = {
+    'completado': 'Proceso completado correctamente.',
+    'completado_con_incidencias': 'Proceso completado con incidencias: terminó, pero alguna solicitud falló, fue '
+                                  'rechazada o un paso opcional se saltó.',
+    'interrumpido': 'Proceso interrumpido por un error.',
+}  # reintentar igual no sirve: hay que cambiar algo antes
 
 ETAPAS = {
     1: 'Análisis visual del video', 2: 'Extracción y procesamiento de fotogramas', 3: 'Transcripción del audio',
@@ -117,9 +131,13 @@ def clasificar(ev):
     sr = ev.get('motivo_fin') or ''
     st = ev.get('http') or 0
     msg = ' '.join(str(ev.get(k) or '') for k in ('mensaje_api', 'tipo_error', 'mensaje')).lower()
+    if ev.get('incidencia') == 'rechazo_recuperado':
+        return 'A', True, ('HTTP 200: la API marcó un rechazo del modelo pedido y el servidor pasó el pedido a otro modelo, que sí '
+                           f"respondió ({ev.get('motivo_cambio') or 'cambio de modelo'}). Esa solicitud siguió adelante.")
     if ev.get('rechazo_explicito') or sr in ('refusal', 'content_filter'):
         cat = ev.get('categoria_rechazo')
-        return 'A', True, ('La API marcó la respuesta como rechazo (' + (f'categoría «{cat}»' if cat else f'motivo «{sr or "refusal"}»') + ').')
+        return 'A', True, ('HTTP 200 (la solicitud se completó), pero la API marcó la respuesta como rechazo del modelo ('
+                           + (f'categoría «{cat}»' if cat else f'motivo «{sr or "refusal"}»') + '). No es un error HTTP ni de JSON.')
     if re.search(r'(organization|organisation|account).{0,40}(disabled|deactivated|suspended|banned)|'
                  r'(disabled|deactivated|suspended).{0,40}(organization|account)', msg):
         return 'B', True, 'La API dice que la organización o la cuenta está deshabilitada.'
@@ -231,7 +249,8 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
     hay nada que informar (paso bien hecho y sin llamadas fallidas)."""
     todas = llamadas(d, ejec)
     propias = [x for x in todas if x.get('paso') == paso] or todas
-    fallidas = [x for x in propias if not x.get('ok')]
+    # problemas: llamadas que fallaron y las que siguieron solo porque respondió otro modelo tras un rechazo
+    fallidas = [x for x in propias if not x.get('ok') or x.get('incidencia')]
     if estado == 'ok' and not fallidas:
         return None
     reg = _error_del_registro(registro or '') if estado != 'ok' else {}
@@ -247,7 +266,16 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
     ident = uuid.uuid4().hex[:8]
     datos = {
         'id': ident, 'proyecto': proyecto, 'fecha': time.strftime('%Y-%m-%d %H:%M:%S'), 'ejecucion': ejec,
-        'estado': {'fallo': 'falló', 'saltado': 'se saltó (no frenó el video)', 'ok': 'terminó con llamadas fallidas'}[estado],
+        'estado': {'fallo': 'falló', 'saltado': 'se saltó (no frenó el video)', 'ok': 'terminó con llamadas fallidas o rechazadas'}[estado],
+        'resultado_paso': {'fallo': 'Paso interrumpido por un error.',
+                           'saltado': 'Paso no hecho; el proceso siguió sin él (incidencia, no fracaso del proyecto).',
+                           'ok': 'Paso completado con incidencias: una solicitud individual falló o fue rechazada, pero el paso '
+                                 'terminó (no es un fracaso del proyecto).'}[estado],
+        'modelo_solicitado': base.get('modelo_solicitado') or base.get('modelo') or '',
+        'modelo_respondio': base.get('modelo_respondio') or '',
+        'modelo_confirmado': bool(base.get('modelo_respondio')),
+        'cambio_modelo': base.get('motivo_cambio') or '', 'nota_modelo': base.get('nota_modelo') or '',
+        'tipo_respuesta': TIPOS_RESPUESTA.get(base.get('tipo_respuesta'), base.get('tipo_respuesta') or ''),
         'paso': paso, 'paso_nombre': nombre_paso, 'etapa': f'{etapa}. {ETAPAS.get(etapa, "")}',
         'proveedor': ia, 'modelo': base.get('modelo') or (modelo if ia == proveedor else ''),
         'operacion': base.get('operacion') or base.get('funcion') or nombre_paso,
@@ -262,7 +290,8 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
         'clase': clase, 'clase_nombre': CLASES[clase], 'causa_confirmada': confirmada,
         'causa': ('Confirmada: ' if confirmada else 'Causa no confirmada (probable): ') + CLASES[clase],
         'evidencias': explica, 'falta': '' if confirmada and clase not in ('A', 'F', 'G', 'I') else FALTA[clase],
-        'solucion': SOLUCION[clase], 'resumen_simple': SIMPLE[clase], 'reintentable': clase not in PERMANENTES and clase != 'G',
+        'solucion': SOLUCION[clase] if estado != 'ok' else 'Nada que hacer para este video. Para próximas veces: ' + SOLUCION[clase],
+        'resumen_simple': ('El paso terminó igual. ' if estado == 'ok' else '') + SIMPLE[clase], 'reintentable': clase not in PERMANENTES and clase != 'G',
         'llamadas': propias[-30:],
     }
     if clase == 'A' and confirmada:
@@ -276,7 +305,7 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
             f.write(redactar(contenido, 10 ** 7))
     return {'archivo': nombre, 'etapa': datos['etapa'], 'ia': ia + (f" ({datos['modelo']})" if datos['modelo'] else ''),
             'tipo': f"{clase}. {CLASES[clase]}" + ('' if confirmada else ' (no confirmada)'), 'explicacion': datos['resumen_simple'],
-            'reintentable': datos['reintentable'], 'estado': estado}
+            'reintentable': datos['reintentable'], 'estado': estado, 'paso': paso, 'resultado_paso': datos['resultado_paso']}
 
 
 def texto(x):
@@ -288,7 +317,12 @@ def texto(x):
         f"Proveedor: {v('proveedor')}", f"Modelo: {v('modelo')}", f"Etapa del proceso: {v('etapa')}",
         f"Paso de la app: {v('paso_nombre')} ({v('paso')})", f"Operación: {v('operacion')}",
         f"Archivo y función: {v('archivo')} · {v('funcion')}" + (f" (línea {x['linea']})" if x.get('linea') else ''),
-        f"Estado: {v('estado')}", f"Código de error: {v('http')} {x.get('tipo_error') or ''}".rstrip(),
+        f"Estado: {v('estado')}", f"Resultado del paso: {v('resultado_paso')}",
+        f"Modelo solicitado: {v('modelo_solicitado')}",
+        f"Modelo que respondió: {v('modelo_respondio')}" + ('' if x.get('modelo_confirmado') else ' (no confirmado por la API)'),
+        f"Cambio de modelo: {x.get('cambio_modelo') or 'ninguno informado por la API'}",
+        f"Tipo de respuesta: {v('tipo_respuesta')}",
+        f"Código HTTP y tipo de error: {v('http')} {x.get('tipo_error') or ''}".rstrip(),
         f"Mensaje original: {v('mensaje_original')}", f"Mensaje que mostró la app: {v('mensaje_app')}",
         f"Identificador de solicitud: {v('id_solicitud')}", f"Motivo de finalización: {v('motivo_fin')}"
         + (f" · categoría {x['categoria_rechazo']}" if x.get('categoria_rechazo') else ''),
@@ -299,9 +333,12 @@ def texto(x):
     for c in x.get('llamadas', [])[-12:]:
         lineas.append(f"  - {c.get('fecha')} · {c.get('operacion') or c.get('funcion')} · intento {c.get('intento', 1)} · "
                       f"{'OK' if c.get('ok') else 'FALLÓ'} · HTTP {c.get('http') or '—'} · fin {c.get('motivo_fin') or '—'} · "
-                      f"{c.get('imagenes', 0)} imágenes · pedido {c.get('hash_pedido', '—')}"
+                      f"{c.get('imagenes', 0)} imágenes · pedido {c.get('hash_pedido', '—')} · "
+                      f"modelo {c.get('modelo_solicitado') or c.get('modelo') or '—'} → {c.get('modelo_respondio') or 'no confirmado'}"
+                      + (' · ' + TIPOS_RESPUESTA.get(c.get('tipo_respuesta'), c.get('tipo_respuesta')) if c.get('tipo_respuesta') else '')
                       + (' · ' + ': '.join(x for x in (c.get('tipo_error') or c.get('tipo'), str(c.get('mensaje_api') or c.get('mensaje') or '')[:180]) if x)
                          if not c.get('ok') else '')
+                      + (f" · {c['motivo_cambio']}" if c.get('motivo_cambio') else '')
                       + (f" · solicitud {c['id_solicitud']}" if c.get('id_solicitud') else ''))
     if not x.get('llamadas'):
         lineas.append('  (no hubo llamadas a la IA registradas en este paso)')
@@ -312,3 +349,58 @@ def texto(x):
                'EN POCAS PALABRAS', '-' * 17, x['resumen_simple'] + ' ' + x['solucion'], '',
                'Este informe no incluye claves, tokens, el guion, imágenes ni audio. Los pedidos se identifican por su hash.']
     return '\n'.join(lineas) + '\n'
+
+
+def resumen_ejecucion(d, proyecto, ejec, resultado, hechos, saltados, fallo, informes, motivo=''):
+    """Resumen de UNA ejecución (todos sus pasos): si terminó bien, con incidencias o interrumpida, qué modelos se
+    pidieron y cuáles respondieron (según la API), y qué informes de diagnóstico dejó. resumen_<fecha>_<ejec>.json/.txt"""
+    todas = llamadas(d, ejec)
+    modelos = {}
+    for c in todas:
+        k = (c.get('proveedor') or '—', c.get('modelo_solicitado') or c.get('modelo') or '—',
+             c.get('modelo_respondio') or ('(no confirmado)' if c.get('ok') or 'intento' not in c else '(sin respuesta)'))
+        if 'intento' not in c:  # aviso de respuesta vacía o ilegible: la llamada ya contó como bien, pero no sirvió
+            if k in modelos and modelos[k]['bien']:
+                modelos[k]['bien'] -= 1
+                modelos[k]['fallidas'] += 1
+            continue
+        m = modelos.setdefault(k, {'proveedor': k[0], 'modelo_solicitado': k[1], 'modelo_respondio': k[2], 'llamadas': 0,
+                                   'bien': 0, 'fallidas': 0, 'reutilizadas': 0, 'cambios_de_modelo': 0, 'rechazos_200': 0})
+        m['llamadas'] += 1
+        m['bien'] += bool(c.get('ok'))
+        m['fallidas'] += not c.get('ok')
+        m['reutilizadas'] += bool(c.get('reutilizada'))
+        m['cambios_de_modelo'] += bool(c.get('cambio_modelo'))
+        m['rechazos_200'] += c.get('tipo_respuesta') in ('rechazo_200', 'ok_otro_modelo')
+    if not todas and resultado == 'completado' and not informes:
+        return None
+    datos = {'proyecto': proyecto, 'fecha': time.strftime('%Y-%m-%d %H:%M:%S'), 'ejecucion': ejec, 'resultado': resultado,
+             'resultado_texto': RESULTADOS[resultado] + (f' ({motivo})' if motivo else ''), 'pasos_hechos': hechos,
+             'pasos_saltados': saltados, 'paso_que_fallo': fallo or '', 'modelos': list(modelos.values()),
+             'cambios_de_modelo': [{'modelo_solicitado': c.get('modelo_solicitado'), 'modelo_respondio': c.get('modelo_respondio'),
+                                    'motivo': c.get('motivo_cambio'), 'id_solicitud': c.get('id_solicitud'), 'paso': c.get('paso')}
+                                   for c in todas if c.get('cambio_modelo')],
+             'informes': informes}
+    lineas = ['RESUMEN DE LA EJECUCIÓN', '=' * 23, '', f'Proyecto: {proyecto}', f"Fecha: {datos['fecha']}", f'Ejecución: {ejec}', '',
+              datos['resultado_texto'], '',
+              'Pasos completados: ' + (', '.join(hechos) or '—'), 'Pasos saltados: ' + (', '.join(saltados) or '—'),
+              'Paso interrumpido: ' + (fallo or '—'), '', 'Modelos (lo que pediste y lo que respondió, según la API):']
+    for m in datos['modelos']:
+        lineas.append(f"  - {m['proveedor']} · pedido {m['modelo_solicitado']} → respondió {m['modelo_respondio']} · "
+                      f"{m['llamadas']} llamadas ({m['bien']} bien, {m['fallidas']} fallidas, {m['reutilizadas']} reutilizadas, "
+                      f"{m['rechazos_200']} rechazos con HTTP 200, {m['cambios_de_modelo']} con cambio de modelo)")
+    if not datos['modelos']:
+        lineas.append('  (no hubo llamadas a la IA en esta ejecución)')
+    if datos['cambios_de_modelo']:
+        lineas += ['', 'Cambios de modelo:'] + [f"  - {c['paso'] or '—'}: {c['motivo']}" + (f" (solicitud {c['id_solicitud']})"
+                                                                                            if c['id_solicitud'] else '')
+                                                 for c in datos['cambios_de_modelo']]
+    lineas += ['', 'Informes de diagnóstico:'] + ([f"  - {i['archivo']}.txt · {i.get('paso', '')} · {i['tipo']} · {i.get('resultado_paso', '')}"
+                                                   for i in informes] or ['  (ninguno)'])
+    lineas += ['', 'Este resumen no incluye claves, tokens, el guion, imágenes ni audio.']
+    os.makedirs(d, exist_ok=True)
+    nombre = f"resumen_{time.strftime('%Y%m%d_%H%M%S')}_{ejec[-6:]}"
+    for ext, contenido in (('json', json.dumps(datos, ensure_ascii=False, indent=1)), ('txt', '\n'.join(lineas) + '\n')):
+        with open(os.path.join(d, f'{nombre}.{ext}'), 'w', encoding='utf-8') as f:
+            f.write(redactar(contenido, 10 ** 7))
+    return {'archivo': nombre, 'resultado': resultado, 'texto': datos['resultado_texto']}
