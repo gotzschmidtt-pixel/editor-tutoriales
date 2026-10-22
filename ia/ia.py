@@ -1747,9 +1747,14 @@ Cómo devolver el resultado, según lo que puedas hacer:
     with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('LEEME.txt', leeme)
         z.write(prompt, os.path.basename(prompt))
-        for nombre in ['transcripcion.json', 'transcripcion.txt', 'idea.txt', ARCHIVO[tarea], 'mejoras_guion.txt']:
+        # el guion se escribe desde cero: NO metemos el guion actual ni ningún .anterior, para no sesgar a la IA.
+        # las tareas que parten del guion (etiquetas, tráiler) sí lo necesitan como base.
+        incluir = ['transcripcion.json', 'transcripcion.txt', 'idea.txt', 'mejoras_guion.txt']
+        if tarea in ('etiquetas', 'trailer'):
+            incluir.append('guion.json')
+        for nombre in incluir:
             f = os.path.join(d, nombre)
-            if os.path.exists(f):
+            if os.path.exists(f) and not nombre.endswith('.anterior'):
                 z.write(f, nombre)
         for _, f in caps:
             z.write(f, 'ia_capturas/' + os.path.basename(f))
@@ -1757,8 +1762,8 @@ Cómo devolver el resultado, según lo que puedas hacer:
             z.write(os.path.join(d, 'mapa_video.json'), 'mapa_video.json')
             for f in sorted(os.listdir(os.path.join(d, 'ia_capturas', 'mapa'))):
                 z.write(os.path.join(d, 'ia_capturas', 'mapa', f), 'ia_capturas/mapa/' + f)
-    print(f'Listo para_claude.zip ({os.path.getsize(destino) / 1e6:.1f} MB, {len(caps)} capturas). '
-          'Súbelo al chat con Claude y pídele el guion.', flush=True)
+    print(f'Listo el ZIP ({os.path.getsize(destino) / 1e6:.1f} MB, {len(caps)} capturas). '
+          'Súbelo al chat de ChatGPT, Claude o DeepSeek y pídele el guion.', flush=True)
 
 
 def main():
