@@ -515,6 +515,22 @@ def actualizar_app():
             'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta. Tus proyectos y claves siguen igual.'}
 
 
+def ultimo_proyecto():
+    """{'nombre', 'cuando'} del proyecto con actividad más reciente (un paso, una subida, un guardado), o {} si no hay."""
+    mejor = {}
+    for x in os.listdir(PROYECTOS) if os.path.isdir(PROYECTOS) else []:
+        d = os.path.join(PROYECTOS, x)
+        if not os.path.isdir(d):
+            continue
+        try:
+            cuando = max([os.path.getmtime(d)] + [os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)])
+        except OSError:
+            continue
+        if cuando > mejor.get('cuando', 0):
+            mejor = {'nombre': x, 'cuando': cuando}
+    return mejor
+
+
 def escribir_bytes(destino, contenido):
     tmp = destino + '.nuevo'
     with open(tmp, 'wb') as f:
@@ -824,6 +840,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/proyectos':
                 return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
+            if ruta == '/api/ultimo_proyecto':  # el último proyecto trabajado: el que tiene el archivo más reciente
+                return self.responder(ultimo_proyecto())
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
