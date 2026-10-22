@@ -2,7 +2,7 @@
 
 Uso: python3 mezclar_voz.py <video_sin_audio.mp4> <guion.json> <carpeta_voz> <salida.mp4> [desfase=0.3]
 """
-import json, subprocess, sys
+import json, os, subprocess, sys
 
 video, guion, voz, salida = sys.argv[1:5]
 desfase = float(sys.argv[5]) if len(sys.argv) > 5 else 0.3
@@ -17,6 +17,14 @@ def ts(x):
 
 
 ins, flt, labs, srt = ['-i', video], [], [], []
+if os.path.getmtime(guion) > os.path.getmtime(video):
+    print('AVISO: el guion cambió después de montar el video (por ejemplo, la voz alargó bloques). '
+          'Vuelve a «Montar video» para que la imagen siga a la voz.', flush=True)
+bl = d['bloques']
+for b, sig in zip(bl, bl[1:]):  # una voz que se mete en el bloque siguiente
+    real = b.get('voz_real_s')
+    if real and b['inicio_min'] + desfase + real > sig['inicio_min'] + desfase - 0.05:
+        print(f"AVISO: la voz de {b['id']} se pisa con la de {sig['id']}. Vuelve a «Generar voz» para que se ajuste el guion.", flush=True)
 for k, b in enumerate(d['bloques'], 1):
     st = b['inicio_min'] + desfase
     ins += ['-i', f"{voz}/{b['id']}.mp3"]

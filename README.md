@@ -16,6 +16,11 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `musica/` | Genera música con ElevenLabs Music, la repite hasta cubrir el video y la baja sola cuando habla la voz. |
 | `nitidez/` | Mide nitidez y movimiento de cada cuadro y elige el más quieto y enfocado. Los congelados, capturas y miniaturas nunca caen en una mano moviéndose ni en una toma borrosa. |
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
+| `trailer/pistas.py` | Pistas del autor para el tráiler: en cada fase (ANTES, DURANTE, DESPUÉS) le das capturas, audios o texto y la app los convierte en segundos candidatos (busca la captura en el video, transcribe el audio y busca lo que dice) para que la IA elija los tramos cerca de ahí. |
+| `tarjetas/` | Tarjetas de **COMENTARIOS** y **WHATSAPP** encima del video: entran cuando la voz invita a comentar o a escribir (lo busca en los subtítulos), o en el segundo que digas. No cambian la duración. |
+| `alimentacion/` | **ALIMENTACIÓN**: aprende tu estilo de tus videos (links de YouTube o MP4) y de perfiles escritos: ritmo, aperturas, cierres, frases típicas, cortes por minuto y cómo armas el tráiler del inicio. Con el link de tu canal (`youtube.com/@tucanal`) lee todos tus videos (subtítulos y los primeros 3 minutos de imagen) y deja el catálogo de títulos para que la IA recomiende tus otros videos. Guarda un perfil por canal en `mis_estilos/` que la IA usa al escribir el guion y el tráiler. |
+| `acortar/` | **ACORTAR**: mira la grabación entera y quita lo que sobra hasta la duración que pidas: corta silencios con la pantalla quieta, acelera esperas (reinicio del celular, clave del Wi-Fi, cargas) y, con IA, corta las partes que no suman. Tu voz nunca se acelera. Deja `acortado.mp4` y `acortar.json`, que el guion con IA usa para apuntar a esa duración. |
+| Mis páginas (en la app) | Tus webs y canales (nombre, link, para qué sirven), guardados para todos los proyectos. La IA los nombra en el guion donde ayudan y en el cierre, y les pone su etiqueta «web» con la dirección exacta. |
 | `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
 | `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
@@ -41,14 +46,39 @@ Creas un proyecto, subes el video grabado (y si quieres el material extra, la im
 **Hacer todo**, o cada paso por separado. Cada proyecto queda en `mis_proyectos/<nombre>/` y el video terminado es `FINAL.mp4`.
 El guion, las etiquetas, las señales, los insertos y el tráiler se editan en la misma página; el botón *Cargar ejemplo* trae los de la Pico 2.
 
-**Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (OpenAI, DeepSeek, Gemini, Ollama u otro compatible) y pegas tu clave.
+**Con tu IA:** en *⚙ Ajustes IA* eliges proveedor (Claude, OpenAI, DeepSeek, Gemini, Qwen, Ollama u otro compatible) y pegas tu clave.
+Los modelos con visión (GPT-5 y GPT-4.1, Qwen-VL por Alibaba Cloud u OpenRouter, Qwen 3 VL en tu PC con Ollama, Gemma 3,
+Claude) reciben las capturas del video; si escribes a mano un modelo con visión conocido, la casilla «ve imágenes» se marca sola.
 *✨ Escribir con IA* llena el guion, las etiquetas o el tráiler solo. *📋 Prompt para copiar* te da el texto y las capturas para pegar en
 cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te contestó. Escribe antes en «idea» los datos seguros del video.
+
+**Controles que no dependen de la IA:** la IA recibe la transcripción completa (nunca se corta: si es larga se agrupa en
+tramos) y capturas repartidas por todo el video más las de los momentos de mayor movimiento. Al revisar el guion, la app avisa
+si un tramo vuelve atrás en el video o si lo que narra un bloque se dice en otro momento de tu grabación (`revision_guion.txt`).
+*Generar voz* solo regenera los bloques cuyo texto cambió y, con la duración real de cada voz, alarga en el guion los bloques
+donde no cabía; después vuelve a *Montar video*.
+
+**Alimentación:** en el panel *📚* creas un estilo (por ejemplo, tu canal), pegas links de YouTube o subes MP4 y perfiles
+escritos (.md), y *🧠 Aprender mi estilo* lo analiza (los videos ya analizados no se repiten). Marca «Usar este estilo» para que
+la IA lo siga al escribir el guion y el tráiler. Si YouTube bloquea una descarga, baja el video y súbelo como MP4.
+
+**Tráiler con pistas:** en el panel *🎞️ Tráiler* eliges ANTES, DURANTE o DESPUÉS y agregas pistas: capturas (arrastradas o
+con *📸 Capturar del reproductor* sobre `original.mp4`, que guarda el segundo), audios o notas de voz (*🎙 Grabar*) y texto
+(«cuando muestro la placa sin soldar», «en el 2:10»). *✨ Armar tráiler con estas pistas* le pide el tráiler a tu IA usando esos
+momentos como referencia; son orientativos, no cortes exactos.
+
+**Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
+segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.
 2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, Chromium y Remotion, y te pide tu API key de ElevenLabs.
+
+**Llevar la app a otra PC.** Todo lo que la app descarga queda en `descargas_app/` (librerías de Python, modelos de Whisper,
+y lo que guarde `guardar_para_otra_pc.bat`: ffmpeg, los instaladores de Python y Node, el navegador de las etiquetas y, si
+quieres, los modelos de Ollama). Corre `guardar_para_otra_pc.bat`, copia la carpeta `editor-tutoriales` entera a la PC nueva
+y ahí corre `instalar.bat`: usa lo guardado y solo baja lo que falte.
    Si te dice que falta algo en el PATH, cierra la ventana y ábrelo otra vez.
 3. Para ver y editar el tráiler o las señales en el navegador: abre una terminal en la carpeta `remotion` y escribe `npm run studio`.
 4. Al final crea **Estudio.exe** y el acceso directo «Estudio de tutoriales» en el escritorio. Ábrelo desde ahí: la app sale en su

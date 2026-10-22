@@ -8,33 +8,59 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
   material.mp4        material extra para insertos (opcional)
   musica.mp3          pista de música (si falta, se genera y se guarda aquí)
   etiquetas.json  senales.json  insertos.json  trailer.json   (opcionales)
+  pistas_trailer/     pistas del tráiler por fase (capturas, audios, texto) + pistas.json
+  tarjetas/           imágenes de COMENTARIOS y WHATSAPP para poner encima del video + tarjetas.json
+  testimonios/        videos de clientes reales que se intercalan en el tutorial + testimonios.json
+  nuevos_modelos/     video corto de los modelos más recientes (la voz dice que el método sirve para ellos) + modelos.json
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
-import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, webbrowser
+import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
+sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
+import guardado  # noqa: E402  todo lo que se descarga queda en descargas_app/
+guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
 PY = sys.executable
 # en Windows, sin esto cada paso abre su propia ventana negra cuando la app corre sin consola (Estudio.exe)
 SIN_VENTANA = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
 LATIDO = [time.time()]  # última vez que la página dio señales de vida
 os.makedirs(PROYECTOS, exist_ok=True)
+os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json']
+EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
+IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+VIDEOS = {'.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'}
+# grupos de archivos que se arman desde la app: carpeta, json, apartados y qué se puede subir
+GRUPOS = {
+    'pistas': ('pistas_trailer', 'pistas.json', ['ANTES', 'DURANTE', 'DESPUES'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
+    'tarjetas': ('tarjetas', 'tarjetas.json', ['COMENTARIOS', 'WHATSAPP'], IMAGENES),
+    'testimonios': ('testimonios', 'testimonios.json', ['TESTIMONIOS'], VIDEOS),
+    'modelos': ('nuevos_modelos', 'modelos.json', ['MODELOS'], VIDEOS),
+    'marcas': ('marcas_senales', 'marcas.json', ['MARCAS'], IMAGENES | {'.mp3', '.wav', '.m4a', '.ogg', '.webm', '.opus', '.aac'}),
+}
 PROVEEDORES = {
     'Claude (Anthropic)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
     'OpenAI (GPT)': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4o', 'imagenes': True},
+    'OpenAI · GPT-5 con visión': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-5', 'imagenes': True},
+    'OpenAI · GPT-4.1 con visión': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4.1', 'imagenes': True},
+    'Qwen-VL multimodal (Alibaba Cloud)': {'url': 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'modelo': 'qwen-vl-max',
+                                           'imagenes': True, 'json': False},
+    'Qwen-VL multimodal (OpenRouter)': {'url': 'https://openrouter.ai/api/v1', 'modelo': 'qwen/qwen2.5-vl-72b-instruct',
+                                        'imagenes': True, 'json': False},
     'DeepSeek': {'url': 'https://api.deepseek.com', 'modelo': 'deepseek-chat', 'imagenes': False},
     'Gemini': {'url': 'https://generativelanguage.googleapis.com/v1beta/openai', 'modelo': 'gemini-2.0-flash', 'imagenes': True},
     'Ollama (en tu PC, gratis)': {'url': 'http://localhost:11434/v1', 'modelo': 'gemma3:12b', 'imagenes': True},
     'Ollama · Gemma 3 liviana (PC sencilla)': {'url': 'http://localhost:11434/v1', 'modelo': 'gemma3:4b', 'imagenes': True},
     'Ollama · Qwen 2.5 VL': {'url': 'http://localhost:11434/v1', 'modelo': 'qwen2.5vl:7b', 'imagenes': True},
+    'Ollama · Qwen 3 VL (multimodal)': {'url': 'http://localhost:11434/v1', 'modelo': 'qwen3-vl:8b', 'imagenes': True},
     'LM Studio (en tu PC, gratis)': {'url': 'http://localhost:1234/v1', 'modelo': 'local-model', 'imagenes': True},
 }
 EJEMPLOS = {
@@ -54,9 +80,135 @@ def existe(d, f):
     return os.path.exists(os.path.join(d, f))
 
 
+LARGO_VERSION = 2  # sube cuando cambia el margen de duración: los guiones revisados con el margen viejo se vuelven a medir
+
+
+def guion_fuera_de_largo(d):
+    """Un guion hecho antes del control de duración que deja el video muy lejos del largo de la grabación
+    (o de «que dure unos N minutos» en la idea)."""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+        if g.get('largo_revisado') == LARGO_VERSION or not existe(d, 'original.mp4'):
+            return False
+        dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0',
+                                    os.path.join(d, 'original.mp4')], capture_output=True, text=True, **SIN_VENTANA).stdout)
+        idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
+        m = re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+        meta = int(m.group(1)) * 60 if m else dur
+        t = float(g.get('duracion_s') or sum(b.get('fin_max', 0) - b.get('inicio_min', 0) for b in g.get('bloques', [])))
+        return not (meta * 0.9 <= t <= meta * 1.15)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def borrar_seguro(f, intentos=10):
+    """Borra un archivo; en Windows, si el reproductor lo tiene abierto, reintenta unos segundos. Devuelve si se pudo."""
+    for k in range(intentos):
+        try:
+            os.remove(f)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            time.sleep(0.5)
+    return False
+
+
+_DURACIONES = {}
+
+
+def duracion_original(d):
+    """Lo que dura tu grabación (en caché mientras el archivo no cambie)."""
+    f = os.path.join(d, 'original.mp4')
+    if not os.path.exists(f):
+        return 0
+    clave = (f, os.path.getmtime(f))
+    if clave not in _DURACIONES:
+        try:
+            _DURACIONES[clave] = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
+                                                      capture_output=True, text=True, **SIN_VENTANA).stdout)
+        except ValueError:
+            _DURACIONES[clave] = 0
+    return _DURACIONES[clave]
+
+
+def etiquetas_viejas(d):
+    """Si etiquetas.json es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
+    import unicodedata
+    n = lambda c: ' '.join(''.join(x for x in unicodedata.normalize('NFD', str(c).lower()) if unicodedata.category(x) != 'Mn').split())
+    try:
+        textos = {b['id']: n(b.get('texto', '')) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}
+        lista = json.load(open(os.path.join(d, 'etiquetas.json'), encoding='utf-8'))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista)
+
+
+def marcas_nuevas(d):
+    """Si tus capturas o notas de «Flechas y círculos» son más nuevas que senales.json."""
+    f = os.path.join(d, 'marcas_senales', 'marcas.json')
+    s = os.path.join(d, 'senales.json')
+    return os.path.exists(f) and (not os.path.exists(s) or os.path.getmtime(f) > os.path.getmtime(s))
+
+
+def unir_videos(destino, n):
+    """Une en orden los n videos subidos juntos (destino.parte01, .parte02…) en uno solo. Si son de la misma cámara se
+    pegan tal cual (rápido, sin perder calidad); si no, se pasan a un mismo formato. Devuelve un resumen."""
+    partes = [f'{destino}.parte{k:02d}' for k in range(1, n + 1)]
+    faltan = [os.path.basename(x) for x in partes if not os.path.exists(x)]
+    if faltan:
+        raise RuntimeError('faltan partes: ' + ', '.join(faltan))
+    lista = destino + '.lista.txt'
+    with open(lista, 'w', encoding='utf-8') as f:
+        f.writelines(f"file '{os.path.basename(x)}'\n" for x in partes)
+    dur = lambda f: float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
+                                         capture_output=True, text=True, **SIN_VENTANA).stdout.strip() or 0)
+    suma = sum(dur(x) for x in partes)
+    tmp = destino + '.unido.mp4'
+    base = ['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', os.path.basename(lista)]
+    cwd = os.path.dirname(destino)
+    formato = lambda f: subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
+                                        'stream=codec_type,codec_name,width,height,r_frame_rate,pix_fmt,sample_rate,channels',
+                                        '-of', 'csv=p=0', f], capture_output=True, text=True, **SIN_VENTANA).stdout
+    iguales = len({formato(x) for x in partes}) == 1  # misma cámara y mismos ajustes: se pueden pegar sin recodificar
+    r = subprocess.run(base + ['-c', 'copy', '-movflags', '+faststart', os.path.basename(tmp)], cwd=cwd, capture_output=True,
+                       **SIN_VENTANA) if iguales else None
+    modo = 'pegados tal cual'
+    if not iguales or r.returncode != 0 or abs(dur(tmp) - suma) > max(2.0, suma * 0.01):  # formatos distintos: se igualan
+        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
+                           ['-filter_complex', ''.join(f'[{k}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1,'
+                                                       f'fps=30,setsar=1[v{k}];' + (f'[{k}:a]aresample=48000,aformat=channel_layouts=stereo[a{k}];' if 'audio' in formato(x)
+                                                       else f'aevalsrc=0|0:s=48000:d={dur(x):.3f}[a{k}];')  # sin sonido: silencio
+                                                       for k, x in enumerate(partes)) +
+                            ''.join(f'[v{k}][a{k}]' for k in range(n)) + f'concat=n={n}:v=1:a=1[v][a]',
+                            '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-c:a', 'aac',
+                            '-b:a', '192k', '-movflags', '+faststart', os.path.basename(tmp)], cwd=cwd, capture_output=True, **SIN_VENTANA)
+        modo = 'pasados a un mismo formato'
+        if r.returncode != 0:
+            raise RuntimeError('no pude unir los videos: ' + r.stderr.decode(errors='replace')[-300:])
+    os.replace(tmp, destino)
+    for x in partes + [lista]:
+        os.remove(x)
+    return f'{n} videos unidos en orden ({modo}), {int(suma // 60)}:{int(suma % 60):02d} en total'
+
+
+def srt_de(d, video):
+    """Los subtítulos que van con `video`: los pasos que meten cortes (testimonios, nuevos modelos) dejan los suyos corridos."""
+    for v in ('9_modelos', '8_testimonios'):
+        if video and video >= v and existe(d, v + '.srt'):
+            return v + '.srt'
+    return '3_voz.srt'
+
+
+def trailer_pendiente(d):
+    """Falta el tráiler, o cambiaste las pistas del tráiler después de armarlo: la IA lo vuelve a elegir."""
+    f, t = os.path.join(d, 'pistas_trailer', 'pistas.json'), os.path.join(d, 'trailer.json')
+    return not os.path.exists(t) or (os.path.exists(f) and os.path.getmtime(f) > os.path.getmtime(t))
+
+
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
-    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4']
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4']
     previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
     for f in reversed(previos):
         if existe(d, f):
@@ -96,20 +248,52 @@ def comandos(paso, d, op):
         return [[PY, m('etiquetas', 'etiquetas.py')] + g + ['--voz', 'voz', '--etiquetas', 'etiquetas.json', '--video', ultimo_video(d, '5_etiquetas.mp4'), '--salida', '5_etiquetas.mp4']]
     if paso == 'senales':
         return [[PY, m('senales', 'senales.py')] + g + ['--voz', 'voz', '--senales', 'senales.json', '--video', ultimo_video(d, '6_senales.mp4'), '--salida', '6_senales.mp4']]
+    if paso == 'tarjetas':
+        return [[PY, m('tarjetas', 'tarjetas.py'), '--video', ultimo_video(d, '7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
+                 '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4']]
+    if paso == 'testimonios':
+        return [[PY, m('testimonios', 'testimonios.py'), '--video', ultimo_video(d, '8_testimonios.mp4'),
+                 '--testimonios', os.path.join('testimonios', 'testimonios.json'), '--srt', '3_voz.srt', '--salida', '8_testimonios.mp4']]
+    if paso == 'nuevos_modelos':
+        v = ultimo_video(d, '9_modelos.mp4')
+        return [[PY, m('nuevos_modelos', 'nuevos_modelos.py'), '--video', v, '--modelos', os.path.join('nuevos_modelos', 'modelos.json'),
+                 '--srt', srt_de(d, v), '--salida', '9_modelos.mp4', '--ajustes', AJUSTES]]
     if paso == 'trailer':
+        unir = ultimo_video(d, None)  # testimonios y nuevos modelos corren los subtítulos: se usan los suyos
+        srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
-                 '--unir', ultimo_video(d, None), '--final', 'FINAL.mp4', '--srt', '3_voz.srt']]
+                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
+    if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
+    if paso == 'etiquetas_ia':
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'etiquetas', '--modo', 'api', '--ajustes', AJUSTES]]
+    if paso == 'senales_ia':
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'senales', '--modo', 'api', '--ajustes', AJUSTES,
+                 '--video', ultimo_video(d, '6_senales.mp4')]]
+    if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
+                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
             c += ['--entrada', 'ia_respuesta_pegada.txt']
         return [c]
+    if paso == 'alimentar':
+        return [[PY, m('alimentacion', 'alimentacion.py'), '--estilo', carpeta_estilo(op.get('estilo')), '--ajustes', AJUSTES]]
     if paso == 'exportar':
         h = int(op.get('altura', 480))
         if h not in (720, 480, 360):
             raise ValueError('calidad no válida')
         return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', 'FINAL.mp4', '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
                  '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', f'FINAL_{h}p.mp4']]
+    if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
+        mb = min(max(float(op.get('mb') or 300), 5), 400)
+        return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--mb', f'{mb:g}']]
+    if paso == 'acortar':  # quita silencios, esperas y lo que sobra de la grabación, hasta la duración pedida
+        c = [PY, m('acortar', 'acortar.py'), '--proyecto', '.', '--ajustes', AJUSTES]
+        if op.get('rehacer'):
+            return [c + ['--rehacer']]
+        return [c + ['--objetivo', f"{min(max(float(op.get('minutos') or 0), 0), 600):g}"] + ([] if op.get('ia', True) else ['--sin-ia'])]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
     raise ValueError(paso)
@@ -120,20 +304,31 @@ PASOS = [
     {'id': 'transcribir', 'nombre': 'Transcribir tu voz', 'necesita': ['original.mp4'], 'produce': 'transcripcion.txt', 'opcional': True},
     {'id': 'voz', 'nombre': 'Generar voz (ElevenLabs)', 'necesita': ['guion.json'], 'produce': 'voz'},
     {'id': 'montaje', 'nombre': 'Montar video', 'necesita': ['original.mp4', 'guion.json'], 'produce': '1_montaje.mp4'},
-    {'id': 'insertos', 'nombre': 'Cortes y zooms con material extra', 'necesita': ['1_montaje.mp4', 'insertos.json', 'voz'], 'produce': '2_insertos.mp4', 'opcional': True},
+    {'id': 'insertos', 'nombre': 'Cortes y zooms con material extra', 'necesita': ['1_montaje.mp4', 'insertos.json', 'voz'], 'produce': '2_insertos.mp4', 'opcional': True, 'blando': True},
     {'id': 'mezclar', 'nombre': 'Poner la voz y subtítulos', 'necesita': ['1_montaje.mp4', 'voz'], 'produce': '3_voz.mp4'},
     {'id': 'musica', 'nombre': 'Música de fondo', 'necesita': ['3_voz.mp4'], 'produce': '4_musica.mp4'},
-    {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True},
-    {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True},
-    {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True},
+    {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True, 'blando': True},
+    {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True, 'blando': True},
+    {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True, 'blando': True},
+    {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
+    {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
+    {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
+    {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
+    {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
+    {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'acortar', 'nombre': 'Acortar la grabación', 'necesita': ['original.mp4'], 'produce': 'acortado.mp4', 'oculto': True},
+    {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'trailer']
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
-TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': []}
+TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
+RESULTADO = {}  # proyecto -> cómo terminó la última tanda (para la barra de progreso)
 CANDADO = threading.Lock()
 
 
@@ -154,7 +349,46 @@ def clave_eleven():
     return (k or '').strip()
 
 
-USAN_ELEVEN = {'voz', 'musica', 'trailer'}
+def probar_clave(aj):
+    """Hace una llamada corta al proveedor para ver si la clave sirve. No gasta tokens: solo pide la lista de modelos."""
+    url = (aj.get('url') or '').strip().rstrip('/')
+    clave = (aj.get('clave') or '').strip()
+    if not url:
+        return {'ok': False, 'mensaje': 'Falta la dirección (URL) del proveedor.'}
+    es_claude = aj.get('tipo') == 'claude' or (aj.get('proveedor') or '').startswith('Claude')
+    es_local = 'localhost' in url or '127.0.0.1' in url
+    if es_claude:
+        destino = url + '/v1/models'
+        cab = {'x-api-key': clave, 'anthropic-version': '2023-06-01'}
+    else:
+        destino = url + '/models'
+        cab = {}
+        if clave:
+            cab['Authorization'] = 'Bearer ' + clave
+    if not clave and not es_local:
+        return {'ok': False, 'mensaje': 'Falta la clave API.'}
+    req = urllib.request.Request(destino, headers=cab)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read(1)
+        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.'}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {'ok': False, 'mensaje': 'La clave no es válida o no tiene permisos (el proveedor la rechazó).'}
+        if e.code == 429:
+            return {'ok': False, 'mensaje': 'La clave sirve, pero el proveedor dice que no tienes saldo o hiciste muchas peticiones.'}
+        if e.code == 404:
+            return {'ok': False, 'mensaje': 'La dirección (URL) parece incorrecta para este proveedor.'}
+        return {'ok': False, 'mensaje': f'El proveedor respondió con un error ({e.code}).'}
+    except urllib.error.URLError:
+        if es_local:
+            return {'ok': False, 'mensaje': 'No se pudo conectar. ¿Está encendido Ollama o LM Studio en tu PC?'}
+        return {'ok': False, 'mensaje': 'No se pudo conectar con el proveedor. Revisa el internet o la dirección (URL).'}
+    except Exception:
+        return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
+
+
+USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
 
 
 def carpeta(p):
@@ -164,8 +398,106 @@ def carpeta(p):
     return os.path.join(PROYECTOS, p)
 
 
+def carpeta_estilo(nombre):
+    n = re.sub(r'[^\w\- ]', '', nombre or '').strip()
+    if not n:
+        raise ValueError('nombre de estilo vacío')
+    return os.path.join(ESTILOS, n)
+
+
+def fuentes_estilo(e):
+    try:
+        return json.load(open(os.path.join(e, 'fuentes.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+
+
+def guardar_fuentes(e, lista):
+    os.makedirs(e, exist_ok=True)
+    json.dump(lista, open(os.path.join(e, 'fuentes.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+
+
+def estilos():
+    out = []
+    for n in sorted(os.listdir(ESTILOS)):
+        e = os.path.join(ESTILOS, n)
+        if os.path.isdir(e):
+            hechos = {os.path.splitext(x)[0] for x in os.listdir(os.path.join(e, 'analisis'))} if os.path.isdir(os.path.join(e, 'analisis')) else set()
+            fu = fuentes_estilo(e)
+            try:
+                catalogo = json.load(open(os.path.join(e, 'catalogo.json'), encoding='utf-8'))
+            except (OSError, ValueError):
+                catalogo = []
+            for f in fu:
+                if f['tipo'] == 'canal':  # cuántos videos del canal ya se leyeron
+                    ids = [re.search(r'v=([\w-]{11})', v['url']).group(1) for v in catalogo if re.search(r'v=([\w-]{11})', v.get('url', ''))]
+                    f['titulo'] = f"Canal: {f['url']}" + (f' · {len(ids)} videos' if ids else '')
+                    f['leidos'] = sum(i in hechos for i in ids)
+                    f['analizado'] = bool(ids) and f['leidos'] > 0
+                    continue
+                clave = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', f.get('url', ''))
+                f['analizado'] = f['tipo'] == 'texto' or (clave.group(1) if clave else os.path.splitext(f.get('archivo', ''))[0]) in hechos
+            out.append({'nombre': n, 'fuentes': fu, 'perfil': os.path.exists(os.path.join(e, 'perfil.md'))})
+    return out
+
+
 def registro(d):
     return os.path.join(d, 'registro.txt')
+
+
+VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
+INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
+
+
+def falta_libreria(mod, env):
+    # se prueba en un proceso aparte, igual que los pasos: una instalación rota también cuenta como faltante
+    return subprocess.run([PY, '-c', f'import {mod}'], capture_output=True, env=env, **SIN_VENTANA).returncode != 0
+
+
+NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion')}
+
+
+def asegurar_node(paso, log, env):
+    """Las etiquetas (Playwright) y las señales y el tráiler (Remotion) usan Node: si esta copia no corrió
+    instalar.bat, se instala lo que falta la primera vez."""
+    if paso not in NODE:
+        return
+    sub, modulo = NODE[paso]
+    carpeta_n = os.path.join(RAIZ, sub) if sub else RAIZ
+    if os.path.isdir(os.path.join(carpeta_n, 'node_modules', modulo)):
+        return
+    npm, npx = shutil.which('npm'), shutil.which('npx')
+    if not (shutil.which('node') and npm and npx):
+        raise RuntimeError('Falta Node.js, que usan las etiquetas, las flechas y el tráiler. Corre instalar.bat '
+                           '(o instala Node.js LTS desde nodejs.org), reinicia la PC y vuelve a abrir la app.')
+    log.write(f'\nInstalando lo de Node para {paso} (solo la primera vez, tarda unos minutos)…\n'); log.flush()
+    cmds = [[npm, 'install', '--no-audit', '--no-fund']]
+    if modulo == 'playwright':
+        cmds.append([npx, 'playwright', 'install', 'chromium'])
+    for c in cmds:
+        if subprocess.run(c, cwd=carpeta_n, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA).returncode != 0:
+            raise RuntimeError(f'No pude instalar lo de Node ({" ".join(os.path.basename(x) for x in c[:2])}). '
+                               f'Corre instalar.bat en {RAIZ} y vuelve a intentar.')
+    log.write('✓ Listo\n'); log.flush()
+
+
+def asegurar_librerias(log, env):
+    """Si esta copia de la app se abrió sin correr instalar.bat, instala lo básico la primera vez."""
+    libs = dict(LIBRERIAS)
+    aj = leer_ajustes()
+    if aj.get('tipo') == 'claude' or str(aj.get('proveedor', '')).startswith('Claude'):
+        libs['anthropic'] = 'anthropic'  # Claude no habla el formato de OpenAI: usa su librería
+    faltan = [pip for mod, pip in libs.items() if falta_libreria(mod, env)]
+    if not faltan:
+        return
+    log.write(f'\nInstalando {", ".join(faltan)} (solo la primera vez, tarda un minuto)…\n'); log.flush()
+    ok = guardado.instalar(faltan, mostrar=lambda x: (log.write(x + '\n'), log.flush()), python=PY)
+    if not ok or any(falta_libreria(m, env) for m, p in libs.items() if p in faltan):
+        raise RuntimeError(f'No pude instalar {", ".join(faltan)}. Cierra la app, corre instalar.bat en esta carpeta '
+                           f'({RAIZ}) y vuelve a abrir iniciar.bat.')
+    log.write('✓ Librerías instaladas\n'); log.flush()
 
 
 def correr(proyecto, pasos, opciones):
@@ -181,17 +513,35 @@ def correr(proyecto, pasos, opciones):
     if clave_eleven():
         env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
+    nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
+    saltados, hechos = [], []
+    with CANDADO:
+        TRABAJO.update(plan=nombres, i=0, inicio_total=time.time(), detenido=False)
+    RESULTADO.pop(proyecto, None)
     try:
         FALLOS.pop(proyecto, None)
         if not shutil.which('ffmpeg'):
             raise RuntimeError('ffmpeg no está instalado o Windows no lo encuentra. Corre instalar.bat, '
                                'reinicia la PC y vuelve a abrir iniciar.bat.')
-        for paso in pasos:
+        asegurar_librerias(log, env)
+        if len(pasos) > 1 and 'montaje' in pasos:
+            # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
+            for viejo in VIDEOS_GENERADOS:
+                if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
+                    log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
+        for k, paso in enumerate(pasos):
             info = next(x for x in PASOS if x['id'] == paso)
+            with CANDADO:
+                TRABAJO['i'] = k
             falta = [n for n in info['necesita'] if not existe(d, n)]
             if falta:
-                if paso in TODO and info.get('opcional'):
+                if len(pasos) > 1 and paso in TODO and info.get('opcional'):
                     log.write(f'\n— {info["nombre"]}: lo salto (falta {", ".join(falta)})\n'); log.flush()
+                    saltados.append(info['nombre'])
+                    if paso == 'trailer' and 'final_sin_trailer' not in pasos:  # sin tráiler, el video final igual sale
+                        pasos.append('final_sin_trailer')
+                        with CANDADO:
+                            TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
                     continue
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
@@ -203,16 +553,31 @@ def correr(proyecto, pasos, opciones):
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
             FALLOS.pop(proyecto, None)
+            asegurar_node(paso, log, env)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
+            blando = False
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
                     TRABAJO['proc'] = proc
-                if proc.wait() != 0:
+                if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
+                    # un extra de la IA que no salió no frena el video: se sigue sin eso
+                    log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
+                    blando = True
+                    break
+                if proc.returncode != 0:
                     log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
                     return
+            if blando:
+                saltados.append(info['nombre'])
+                if paso == 'trailer':  # sin tráiler, el video final igual sale
+                    pasos.append('final_sin_trailer')
+                    with CANDADO:
+                        TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
+                continue
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+            hechos.append(info['nombre'])
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
         import traceback
@@ -223,8 +588,23 @@ def correr(proyecto, pasos, opciones):
         FALLOS[proyecto] = {'paso': paso, 'msg': msg}
     finally:
         log.close()
+        f = FALLOS.get(proyecto)
+        RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
+                               'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
+                               'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
+                               'pausa': None if f else opciones.get('_pausa')}
         with CANDADO:
-            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
+
+
+def ultima_linea(log):
+    """Lo último que escribió el paso (también el avance de ffmpeg, que reescribe la línea con \\r)."""
+    for l in reversed(re.split(r'[\r\n]+', log[-3000:])):
+        l = l.strip()
+        if l:
+            m = re.search(r'time=(\d+:\d\d:\d\d)', l)
+            return f'procesando el video… va en {m.group(1)}' if m and l.startswith('frame=') else l[:200]
+    return ''
 
 
 def causa(d):
@@ -253,8 +633,24 @@ def estado(proyecto):
     log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
     with CANDADO:
         t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
-                 segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0)
-    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto)}
+                 segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0,
+                 plan=TRABAJO['plan'], i=TRABAJO['i'],
+                 total_s=int(time.time() - TRABAJO['inicio_total']) if TRABAJO['inicio_total'] else 0)
+    if t['proyecto'] == proyecto:
+        t['linea'] = ultima_linea(log)
+        # el video que el paso está escribiendo todavía no se puede ver (está a medias): la página no lo abre
+        prod = {x['produce'] for x in PASOS if x['id'] == t['paso'] or x['nombre'] == t['paso']}
+        if t['paso'] in ('trailer', 'final_sin_trailer') or prod & {'trailer.mp4'}:
+            prod.add('FINAL.mp4')
+        ahora = time.time()
+        for f, info in archivos.items():
+            if f.endswith('.mp4') and f != 'montaje_en_curso.mp4' and (f in prod or ahora - info['fecha'] < 8):
+                info['en_proceso'] = True
+    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
+            'resultado': RESULTADO.get(proyecto),
+            'actualizada': os.path.getmtime(__file__) != INICIO_APP,
+            'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
+            'duracion_original': duracion_original(d)}
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -284,12 +680,29 @@ class Manejador(BaseHTTPRequestHandler):
         try:
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/guion':  # el editor de guion, en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
+                d = carpeta(q['p'])
+                t = round(max(0.0, float(q.get('t') or 0)), 1)
+                c = os.path.join(d, 'ia_capturas', 'cuadros')
+                f = os.path.join(c, f'{t:.1f}.jpg')
+                if not os.path.exists(f) and existe(d, 'original.mp4'):
+                    os.makedirs(c, exist_ok=True)
+                    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', str(t), '-i', os.path.join(d, 'original.mp4'),
+                                    '-frames:v', '1', '-vf', 'scale=400:-2', '-q:v', '4', f], capture_output=True, **SIN_VENTANA)
+                return self.servir(f)
             if ruta == '/api/latido':
                 return self.responder({'ok': True})
             if ruta == '/api/proyectos':
                 return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
+            if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
+                d = carpeta(q['p'])
+                leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
+                return self.responder({'mejoras': [x for x in leer('mejoras_guion.txt').splitlines() if x.strip()],
+                                       'orden': leer('revision_guion.txt').strip()})
             if ruta == '/api/json':
                 f = q['f']
                 if f not in EDITABLES:
@@ -305,8 +718,20 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/archivo':
-                sub = 'ia_capturas' if q.get('sub') == 'ia_capturas' else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
+            if ruta == '/api/pistas':
+                sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
+                try:
+                    datos = json.load(open(os.path.join(carpeta(q['p']), sub, nombre), encoding='utf-8'))
+                except (OSError, ValueError):
+                    datos = {}
+                return self.responder({x: datos.get(x, []) for x in apartados})
+            if ruta == '/api/estilos':
+                return self.responder({'estilos': estilos(), 'activo': leer_ajustes().get('estilo', '')})
+            if ruta == '/api/estilo_perfil':
+                f = os.path.join(carpeta_estilo(q['e']), 'perfil.md')
+                return self.responder(open(f, 'rb').read() if os.path.exists(f) else b'', 'text/plain; charset=utf-8')
             if ruta == '/api/capturas':
                 c = os.path.join(carpeta(q['p']), 'ia_capturas')
                 return self.responder(sorted(os.listdir(c)) if os.path.isdir(c) else [])
@@ -359,6 +784,14 @@ class Manejador(BaseHTTPRequestHandler):
         LATIDO[0] = time.time()
         largo = int(self.headers.get('Content-Length', 0))
         try:
+            if ruta == '/api/reiniciar':  # después de actualizar la app: abre la copia nueva y cierra esta
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error('Hay un paso trabajando. Espera a que termine o detenlo.')
+                env = dict(os.environ, SIN_NAVEGADOR='1')
+                subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
+                                 **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
+                return self.responder({'ok': True})
             if ruta == '/api/salir':
                 with CANDADO:
                     if TRABAJO['proyecto']:
@@ -371,6 +804,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True, 'nombre': os.path.basename(d)})
             if ruta == '/api/subir':
                 destino = os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']])
+                de, parte = int(q.get('de', 1)), int(q.get('parte', 1))
+                if de > 1:  # varios videos: cada uno llega aparte y con el último se unen en orden
+                    destino = f'{destino}.parte{parte:02d}'
                 with open(destino + '.parcial', 'wb') as fh:
                     resto = largo
                     while resto > 0:
@@ -380,6 +816,11 @@ class Manejador(BaseHTTPRequestHandler):
                         fh.write(trozo)
                         resto -= len(trozo)
                 os.replace(destino + '.parcial', destino)
+                if de > 1 and parte == de:
+                    try:
+                        return self.responder({'ok': True, 'unido': unir_videos(os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']]), de)})
+                    except (RuntimeError, OSError) as e:
+                        return self.error(str(e))
                 return self.responder({'ok': True})
             if ruta == '/api/json':
                 f = q['f']
@@ -398,7 +839,46 @@ class Manejador(BaseHTTPRequestHandler):
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 pasos = [q['paso']]
                 if q['paso'] == 'todo':
-                    pasos = TODO if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']
+                    pasos = list(TODO) if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']  # copia: se le agregan pasos
+                aj = leer_ajustes()
+                if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url') and trailer_pendiente(carpeta(q['p'])):
+                    # por defecto el tráiler lo arma la IA con las tomas más importantes (con tus pistas, si pusiste)
+                    pasos = TODO[:-1] + ['trailer_ia', 'trailer']
+                if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
+                    # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
+                    for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
+                        viejo = paso_ia == 'etiquetas_ia' and etiquetas_viejas(carpeta(q['p']))  # guion nuevo: etiquetas nuevas
+                        if (not existe(carpeta(q['p']), archivo) or viejo) and antes in pasos:
+                            pasos.insert(pasos.index(antes), paso_ia)
+                if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
+                    pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
+                if q['paso'] == 'todo' and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
+                    # guion revisado con un margen viejo y muy corto o muy largo: la IA lo alarga o acorta (los bloques
+                    # que no cambian conservan su voz) y te lo muestro antes de seguir
+                    pasos = ['guion_ia']
+                    datos['ajustar_largo'] = True
+                    datos['_pausa'] = 'guion'
+                if q['paso'] == 'guion_ia' and datos.get('respuestas'):
+                    datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
+                if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
+                    # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
+                    if not existe(carpeta(q['p']), 'original.mp4'):
+                        return self.error('Primero sube tu video grabado (original.mp4): de ahí sale el guion.')
+                    aj = leer_ajustes()
+                    if not (aj.get('modelo') and aj.get('url')):
+                        return self.error('Para sacar el guion solo de tu video hace falta una IA. Elige una en «⚙ Ajustes IA» '
+                                          '(Claude, GPT, Qwen u Ollama gratis en tu PC) y vuelve a pulsar.')
+                    previos = ['guion_ia']
+                    if not existe(carpeta(q['p']), 'transcripcion.srt'):
+                        previos.insert(0, 'transcribir')
+                        datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                    pasos = previos  # se para con el guion listo, para que lo revises antes de seguir
+                    datos['_pausa'] = 'guion'
+                if q['paso'] == 'ia' and datos.get('modo') == 'paquete' and not existe(carpeta(q['p']), 'transcripcion.srt'):
+                    pasos = ['transcribir', 'ia']  # el paquete lleva tu transcripción
+                    datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                if any(p not in {x['id'] for x in PASOS} for p in pasos):
+                    return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
@@ -414,14 +894,145 @@ class Manejador(BaseHTTPRequestHandler):
                 viejo.update(nuevo)
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
+            if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
+                    datos['clave'] = leer_ajustes().get('clave', '')  # si no mandan clave nueva, prueba la guardada
+                return self.responder(probar_clave(datos))
+            if ruta == '/api/pista_archivo':
+                sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
+                ext = os.path.splitext(q.get('nombre', ''))[1].lower()
+                if ext not in extensiones:
+                    if extensiones == VIDEOS:
+                        return self.error('Solo videos (mp4, mov, mkv, webm, avi)')
+                    return self.error('Solo imágenes (jpg, png, webp)' + (' o audios (mp3, wav, m4a, ogg, webm)' if ext not in IMAGENES and len(extensiones) > len(IMAGENES) else ''))
+                d = os.path.join(carpeta(q['p']), sub)
+                os.makedirs(d, exist_ok=True)
+                nombre = uuid.uuid4().hex[:10] + ext
+                with open(os.path.join(d, nombre), 'wb') as fh:
+                    resto = largo
+                    while resto > 0:
+                        trozo = self.rfile.read(min(1 << 20, resto))
+                        if not trozo:
+                            break
+                        fh.write(trozo)
+                        resto -= len(trozo)
+                return self.responder({'archivo': nombre})
+            if ruta == '/api/pistas':
+                sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
+                datos = json.loads(self.rfile.read(largo))
+                limpio = {x: [p for p in datos.get(x, []) if isinstance(p, dict)] for x in apartados}
+                d = os.path.join(carpeta(q['p']), sub)
+                os.makedirs(d, exist_ok=True)
+                hay = any(limpio.values())
+                if hay:
+                    json.dump(limpio, open(os.path.join(d, nombre), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                elif os.path.exists(os.path.join(d, nombre)):  # sin nada, el paso que lo usa queda «necesita»
+                    os.remove(os.path.join(d, nombre))
+                usados = {os.path.basename(p.get('archivo') or '') for x in apartados for p in limpio[x]}
+                for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
+                    base = f[:-4] if f.endswith('.txt') else f
+                    if f != nombre and base not in usados:
+                        os.remove(os.path.join(d, f))
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo':
+                e = carpeta_estilo(json.loads(self.rfile.read(largo))['nombre'])
+                os.makedirs(e, exist_ok=True)
+                return self.responder({'ok': True, 'nombre': os.path.basename(e)})
+            if ruta == '/api/estilo_link':
+                e = carpeta_estilo(q['e'])
+                url = self.rfile.read(largo).decode('utf-8').strip()
+                lista = fuentes_estilo(e)
+                for u in re.findall(r'https?://\S+', url):
+                    if 'youtu' not in u:
+                        return self.error(f'{u} no es un link de YouTube. Los demás videos súbelos como MP4.')
+                    canal = re.search(r'youtube\.com/(@[\w.\-]+|channel/|c/|user/)|[?&]list=', u) and \
+                        not re.search(r'(?:v=|youtu\.be/|shorts/)[\w-]{11}', u)
+                    if not any(f.get('url') == u for f in lista):
+                        lista.append({'tipo': 'canal' if canal else 'youtube', 'url': u})
+                guardar_fuentes(e, lista)
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo_subir':
+                e = carpeta_estilo(q['e'])
+                nombre = os.path.basename(q['nombre'])
+                ext = os.path.splitext(nombre)[1].lower()
+                if ext not in ('.mp4', '.mov', '.mkv', '.webm', '.m4v', '.md', '.txt'):
+                    return self.error('Sube videos (mp4, mov, mkv, webm) o un perfil escrito (.md, .txt)')
+                nombre = re.sub(r'[^\w\-. ]', '_', nombre)
+                os.makedirs(os.path.join(e, 'videos'), exist_ok=True)
+                with open(os.path.join(e, 'videos', nombre), 'wb') as fh:
+                    resto = largo
+                    while resto > 0:
+                        trozo = self.rfile.read(min(1 << 20, resto))
+                        if not trozo:
+                            break
+                        fh.write(trozo)
+                        resto -= len(trozo)
+                lista = [f for f in fuentes_estilo(e) if f.get('archivo') != nombre]
+                lista.append({'tipo': 'texto' if ext in ('.md', '.txt') else 'mp4', 'archivo': nombre, 'titulo': nombre})
+                guardar_fuentes(e, lista)
+                return self.responder({'ok': True})
+            if ruta == '/api/estilo_quitar':
+                e = carpeta_estilo(q['e'])
+                lista = fuentes_estilo(e)
+                f = lista.pop(int(q['i']))
+                guardar_fuentes(e, lista)
+                clave = f.get('archivo') or ''
+                m_ = re.search(r'(?:v=|youtu\.be/|shorts/|embed/|live/)([\w-]{11})', f.get('url', ''))
+                base = m_.group(1) if m_ else os.path.splitext(clave)[0]
+                for sub in ('videos', 'analisis'):
+                    c = os.path.join(e, sub)
+                    for x in os.listdir(c) if os.path.isdir(c) else []:
+                        if x == clave or (base and x.startswith(base + '.')):
+                            os.remove(os.path.join(c, x))
+                return self.responder({'ok': True})
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
+                return self.responder({'ok': True})
+            if ruta == '/api/abrir_carpeta':  # abre en tu PC la carpeta del proyecto (o una de adentro, como para_claude)
+                c = os.path.join(carpeta(q['p']), os.path.basename(q.get('sub', '')))
+                if not os.path.isdir(c):
+                    return self.error('Esa carpeta todavía no existe.')
+                if sys.platform == 'win32':
+                    os.startfile(c)
+                else:
+                    subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', c])
                 return self.responder({'ok': True})
             if ruta == '/api/detener':
                 with CANDADO:
                     if TRABAJO['proc']:
+                        TRABAJO['detenido'] = True
                         TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
+            if ruta == '/api/actualizar':  # «Actualizar»: quita videos y fallas viejas; voces, guion y transcripción quedan
+                d = carpeta(q['p'])
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                quitados = []
+                for f in os.listdir(d):
+                    if (f in VIDEOS_GENERADOS or f.endswith(('.parcial', '.etiquetas_tiempos.json'))) and borrar_seguro(os.path.join(d, f)):
+                        quitados.append(f)
+                if existe(d, 'registro.txt'):  # el registro viejo queda aparte, para no confundir con fallas pasadas
+                    os.replace(os.path.join(d, 'registro.txt'), os.path.join(d, 'registro_anterior.txt'))
+                FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
+                return self.responder({'ok': True, 'quitados': quitados})
+            if ruta == '/api/empezar_de_nuevo':  # «Borrar todo»: quita lo generado y deja lo que subiste
+                d = carpeta(q['p'])
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz'} | \
+                    {sub for sub, *_ in GRUPOS.values()}
+                borrados = 0
+                for f in os.listdir(d):
+                    if f in quedan:
+                        continue
+                    r = os.path.join(d, f)
+                    shutil.rmtree(r) if os.path.isdir(r) else os.remove(r)
+                    borrados += 1
+                FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
+                return self.responder({'ok': True, 'borrados': borrados})
             if ruta == '/api/borrar':
                 f = os.path.join(carpeta(q['p']), os.path.basename(q['f']))
                 if os.path.isdir(f):
@@ -437,8 +1048,37 @@ class Manejador(BaseHTTPRequestHandler):
         self.error('no encontrado', 404)
 
 
+class Servidor(ThreadingHTTPServer):
+    # en Windows, SO_REUSEADDR deja que dos copias de la app escuchen en el mismo puerto y la vieja sigue
+    # contestando: aquí el puerto es exclusivo, y si está ocupado se le pide a la otra copia que se cierre
+    allow_reuse_address = sys.platform != 'win32'
+
+    def server_bind(self):
+        import socket
+        if sys.platform == 'win32':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def abrir_servidor():
+    import urllib.request
+    for intento in range(20):
+        try:
+            return Servidor(('127.0.0.1', PUERTO), Manejador)
+        except OSError:
+            if intento == 0:
+                print('Ya hay otra copia de la app abierta: le pido que se cierre…', flush=True)
+                try:
+                    urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{PUERTO}/api/salir', data=b'', method='POST'), timeout=3)
+                except Exception as e:  # la otra copia está trabajando o no contesta
+                    print(f'  (contestó: {e})', flush=True)
+            time.sleep(0.5)
+    raise SystemExit(f'El puerto {PUERTO} sigue ocupado por otra copia de la app. Ciérrala (su ventana negra, o '
+                     'Estudio.exe desde el Administrador de tareas) y vuelve a abrir iniciar.bat.')
+
+
 def main():
-    srv = ThreadingHTTPServer(('127.0.0.1', PUERTO), Manejador)
+    srv = abrir_servidor()
     url = f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):

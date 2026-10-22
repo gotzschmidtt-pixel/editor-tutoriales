@@ -16,6 +16,7 @@ tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (col
 import argparse, json, os, shutil, subprocess, tempfile, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(AQUI)
 FPS = 25
 
 
@@ -61,7 +62,11 @@ def main():
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
     items = []
     for e in json.load(open(a.etiquetas)):
-        al = json.load(open(os.path.join(a.voz, e['bloque'] + '.align.json')))
+        f_al = os.path.join(a.voz, str(e.get('bloque')) + '.align.json')
+        if e.get('bloque') not in inicio or not os.path.exists(f_al):
+            print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
+            continue
+        al = json.load(open(f_al))
         t = buscar(al, e['frase'])
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
@@ -69,6 +74,12 @@ def main():
         items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + t, 2), 'dur': e.get('dur', 3.5)})
 
     grupos = agrupar(items)
+    if not grupos:  # ninguna etiqueta cabe en este guion: el video sigue igual, sin fallar
+        print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '
+              'Pulsa «Escribir con IA» en etiquetas para hacerlas de nuevo con este guion.')
+        shutil.copyfile(a.video, a.salida)
+        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'))
+        return
     tmp = tempfile.mkdtemp(prefix='etiquetas_')
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, g in enumerate(grupos, 1):
@@ -76,7 +87,13 @@ def main():
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
         carpeta = os.path.join(tmp, f'g{k:02d}')
-        subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)], check=True)
+        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)],
+                           cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if r.returncode != 0:  # se muestra lo que dijo Node, no solo «exit status 1»
+            detalle = ' '.join((r.stderr or r.stdout).split())[-600:]
+            if 'playwright' in detalle.lower() and ('cannot find' in detalle.lower() or 'executable' in detalle.lower()):
+                detalle += ' → Falta Playwright: corre instalar.bat (o «npm install» y «npx playwright install chromium» en la carpeta del editor).'
+            raise SystemExit(f'ERROR: no pude dibujar las etiquetas con Node: {detalle}')
         ins += ['-framerate', str(FPS), '-i', os.path.join(carpeta, 'f_%04d.png')]
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'

@@ -7,7 +7,7 @@ const [, , outDir, total, itemsJson] = process.argv;
   fs.mkdirSync(outDir, { recursive: true });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-  const url = 'file://' + path.join(__dirname, 'plantilla.html') +
+  const url = require('url').pathToFileURL(path.join(__dirname, 'plantilla.html')).href +
     '?total=' + total + '&items=' + encodeURIComponent(itemsJson);
   await page.goto(url);
   await page.evaluate(() => document.fonts.ready);

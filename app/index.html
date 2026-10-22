@@ -16,9 +16,13 @@
   header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
   header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
-  select, input[type=text] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
-  button { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
-  button:hover { border-color: var(--azul); }
+  select, input[type=text], input[type=number] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
+  input[type=number] { color: var(--texto); -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; filter: invert(0.8); }
+  input::placeholder, textarea::placeholder { color: var(--suave); opacity: 1; }
+  button, label.boton { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover, label.boton:hover { border-color: var(--azul); }
+  .preguntas { border: 1px solid #f0c36d; border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .pregunta { margin: 10px 0; }
   button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
   button.principal:hover { filter: brightness(1.1); }
   button:disabled { opacity: .4; cursor: not-allowed; }
@@ -33,6 +37,8 @@
   .subida .t { font-weight: 600; }
   .subida .e { font-size: 12px; color: var(--suave); margin-top: 4px; }
   .subida.ok { border-style: solid; border-color: #38f28a66; background: #38f28a0d; }
+  .subida .barra { height: 6px; border-radius: 3px; background: var(--borde); margin-top: 8px; overflow: hidden; }
+  .subida .barra div { height: 100%; background: linear-gradient(90deg, var(--rosa), var(--azul)); transition: width .3s; }
   .subida input { display: none; }
   .paso { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; border: 1px solid transparent; }
   .paso.corriendo { border-color: var(--amarillo); box-shadow: 0 0 0 1px #ffd23f55, 0 0 18px #ffd23f22; }
@@ -67,6 +73,43 @@
   dialog label input[type=text], dialog select { width: 100%; margin-top: 4px; }
   .caps { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
   .caps img { height: 64px; border-radius: 6px; border: 1px solid var(--borde); }
+  .pista { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: var(--panel2); margin-bottom: 8px; }
+  .pista .vista { width: 112px; flex: none; text-align: center; font-size: 26px; }
+  .pista .vista img, .pista .vista video { width: 112px; border-radius: 8px; display: block; }
+  .pista .vista video { height: 63px; object-fit: cover; background: #000; cursor: pointer; }
+  .pista .vista audio { width: 112px; }
+  .pista .datos { flex: 1; min-width: 0; display: grid; grid-template-columns: 7em 1fr; gap: 6px; }
+  .pista .datos input, .pista .datos select { padding: 6px 9px; font-size: 13px; min-width: 0; }
+  .pista button { padding: 6px 10px; }
+  #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
+  #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarModelo, #soltarEstilo { display: block; margin-top: 4px; }
+  #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
+  section.panel { scroll-margin-top: 80px; }
+  #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
+  .bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
+  .bloque .cab { font-size: 13px; color: var(--suave, #9aa3c0); margin-bottom: 4px; }
+  .bloque textarea { width: 100%; height: 4.6em; min-height: 0; box-sizing: border-box; font-family: inherit; }
+  #mejorasGuion ul { margin: 4px 0 0 18px; padding: 0; font-size: 13px; }
+  #barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 10px 22px 12px; background: #0e1120f2;
+    border-top: 2px solid var(--borde); backdrop-filter: blur(8px); box-shadow: 0 -8px 30px #0008; }
+  #barra.trabaja { border-top-color: var(--amarillo); } #barra.ok { border-top-color: var(--verde); } #barra.mal { border-top-color: var(--rojo); }
+  #barra .arriba { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  #barra .que { font-weight: 700; font-size: 15px; } #barra.ok .que { color: var(--verde); } #barra.mal .que { color: var(--rojo); }
+  #barra .cuanto { color: var(--suave); font-size: 13px; }
+  #barra .riel { height: 10px; border-radius: 999px; background: #ffffff14; margin: 8px 0 6px; overflow: hidden; position: relative; }
+  #barra .lleno { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--rosa), var(--azul)); transition: width .6s; }
+  #barra.ok .lleno { background: var(--verde); } #barra.mal .lleno { background: var(--rojo); }
+  #barra.trabaja .riel::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #ffffff33, transparent);
+    animation: brillo 1.4s linear infinite; }
+  @keyframes brillo { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  #barra .detalle { font: 12px/1.4 Consolas, monospace; color: #c9d1ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #barra.mal .detalle { white-space: normal; color: #ffc2cc; font-family: inherit; font-size: 13px; }
+  #barra .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+  #barra .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #ffffff10; color: var(--suave); }
+  #barra .chip.hecho { background: #38f28a22; color: var(--verde); } #barra .chip.ahora { background: #ffd23f22; color: var(--amarillo); }
+  #barra .chip.mal { background: #ff4d6d22; color: var(--rojo); }
+  #barra button { padding: 5px 10px; font-size: 12px; }
+  body.con-barra { padding-bottom: 120px; }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -75,6 +118,15 @@
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
+  <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
+  <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
+  <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
+  <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
+  <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
+  <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
+  <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
+  <button onclick="irA('#panelPaginas')">🌐 Mis páginas</button>
+  <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
 </header>
@@ -90,7 +142,8 @@
     <section class="panel">
       <h2>1 · Archivos</h2>
       <div class="subidas" id="subidas"></div>
-      <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto.</p>
+      <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto. Para mandarme el proyecto
+      partido en trozos de 300 o 400 MB, pulsa «☁ Hacer en la nube con Claude» (en «2 · Pasos»): ahí eliges el tamaño.</p>
     </section>
 
     <section class="panel">
@@ -99,10 +152,177 @@
       <div class="fila">
         <button class="principal grande" id="todo">▶ Hacer todo</button>
         <button id="detener">■ Detener</button>
+        <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
+        <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
+        <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
+        <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
+        <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
       </div>
+    </section>
+
+    <section class="panel" id="panelTrailer">
+      <h2>🎞️ Tráiler · pistas para la IA</h2>
+      <div class="tabs" id="fases"></div>
+      <p class="aviso" id="ayudaFase"></p>
+      <div id="listaPistas"></div>
+      <label class="subida" id="soltarPista"><div class="t">➕ Captura o audio</div>
+        <div class="e">Arrastra aquí imágenes o audios, o haz clic</div><input type="file" multiple accept="image/*,audio/*"></label>
+      <div class="fila">
+        <input type="text" id="pSegundo" placeholder="Segundo (ej. 1:25)" style="width:10em">
+        <input type="text" id="pNota" placeholder="Qué quieres de aquí (texto libre)" style="flex:1; min-width:12em">
+      </div>
+      <div class="fila">
+        <button onclick="agregarTexto()">+ Pista de texto</button>
+        <button onclick="capturarVideo()">📸 Capturar del reproductor</button>
+        <button id="btnGrabar" onclick="grabar()">🎙 Grabar nota de voz</button>
+      </div>
+      <div class="fila">
+        <button class="principal" onclick="ia('api', 'trailer')">✨ Armar tráiler con estas pistas</button>
+        <button onclick="ia('prompt', 'trailer')">📋 Prompt para copiar</button>
+      </div>
+      <p class="aviso">«Hacer todo» arma el tráiler solo con la IA: elige las tomas más importantes del video y las pone al inicio. Las pistas son opcionales, para guiarla. Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
+      Una captura sin segundo se compara con todo el video; un audio se transcribe y se busca lo que dice en tu grabación
+      (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
+    </section>
+
+    <section class="panel" id="panelMarcas">
+      <h2>🎯 Flechas y círculos · tus capturas</h2>
+      <p class="aviso">Si a la IA se le pasa algo, muéstraselo: arrastra o pega (Ctrl+V) una captura de ese momento (puedes dibujar
+      encima dónde va), o captúrala del reproductor. Agrega una nota por escrito o de voz: «círculo en Aceptar», «flecha al conector».</p>
+      <div id="listaMarcas"></div>
+      <label class="subida" id="soltarMarca" tabindex="0"><div class="t">➕ Captura o audio</div>
+        <div class="e">Arrastra aquí, pega con Ctrl+V o haz clic</div><input type="file" multiple accept="image/*,audio/*"></label>
+      <div class="fila">
+        <input type="text" id="mNota" placeholder="Qué señalar (ej. círculo en «Aceptar»)" style="flex:1; min-width:12em">
+        <select id="mForma"><option value="auto">Forma: la IA elige</option><option value="circulo">Círculo</option>
+          <option value="flecha">Flecha</option><option value="caja">Recuadro</option></select>
+      </div>
+      <div class="fila">
+        <button onclick="marcaTexto()">+ Pedido de texto</button>
+        <button onclick="capturarMarca()">📸 Capturar del reproductor</button>
+        <button id="btnGrabarMarca" onclick="grabarMarca()">🎙 Grabar nota de voz</button>
+      </div>
+      <div class="fila">
+        <button class="principal" onclick="ejecutar('senales')">▶ Poner flechas y círculos</button>
+      </div>
+      <p class="aviso">Tus capturas mandan: la IA busca en qué segundo del video están, ubica lo que marcaste y quita las suyas
+      que caigan encima. Los pedidos de texto o voz («pon una flecha cuando hablo del PIN») se suman a los que elige la IA.
+      «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
+    </section>
+
+    <section class="panel" id="panelTarjetas">
+      <h2>💬 Comentarios y WhatsApp</h2>
+      <div class="tabs" id="grupos"></div>
+      <p class="aviso" id="ayudaGrupo"></p>
+      <div id="listaTarjetas"></div>
+      <label class="subida" id="soltarTarjeta"><div class="t">➕ Imagen</div>
+        <div class="e">Arrastra aquí tus imágenes (PNG con fondo transparente se ve mejor), o haz clic</div><input type="file" multiple accept="image/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnTarjetas" onclick="ejecutar('tarjetas')">▶ Poner tarjetas en el video</button>
+      </div>
+      <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
+      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
+      (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+    </section>
+
+    <section class="panel" id="panelTestimonios">
+      <h2>🎥 Testimonios de clientes</h2>
+      <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte: el tutorial se pausa,
+      se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase. Por defecto suena el audio del propio clip;
+      si le escribes una «narración», en su lugar habla tu voz principal contando lo que se ve y el audio del cliente se silencia.</p>
+      <div id="listaTestimonios"></div>
+      <label class="subida" id="soltarTestimonio"><div class="t">➕ Video de testimonio</div>
+        <div class="e">Arrastra aquí tus videos (mp4, mov, webm…), o haz clic</div><input type="file" multiple accept="video/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnTestimonios" onclick="ejecutar('testimonios')">▶ Poner testimonios en el video</button>
+      </div>
+      <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
+      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. También puedes escribir un segundo (4:30)
+      o «inicio», «mitad», «final». «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
+      testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
+    </section>
+
+    <section class="panel" id="panelModelos">
+      <h2>📱 Nuevos modelos</h2>
+      <p class="aviso">Sube un video corto con los modelos más recientes: las cajas, los celulares o la lista de equipos. La voz
+      dice que este método también sirve para ellos mientras se ve tu video, con su subtítulo.</p>
+      <div id="listaModelos"></div>
+      <label class="subida" id="soltarModelo"><div class="t">➕ Video de nuevos modelos</div>
+        <div class="e">Arrastra aquí un video corto (mp4, mov…), o haz clic</div><input type="file" accept="video/*"></label>
+      <div class="fila">
+        <button class="principal" id="btnModelos" onclick="ejecutar('nuevos_modelos')">▶ Poner nuevos modelos en el video</button>
+      </div>
+      <p class="aviso">«Modelos»: si los escribes (por ejemplo «Honor 600, Honor 8 Lite»), se dicen esos. Si lo dejas vacío, la IA
+      los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
+      Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
+      introducción. También «inicio», «mitad», «final» o un segundo (1:10). Si el video es más largo que la frase se acelera;
+      si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
+    </section>
+
+    <section class="panel" id="panelAcortar">
+      <h2>✂️ Acortar</h2>
+      <p class="aviso">Miro tu grabación entera y quito lo que sobra: silencios con la pantalla quieta, esperas (el celular
+      reiniciando, poner la clave del Wi-Fi, una carga) que se aceleran a 2 o 3 segundos, y con tu IA las partes que no suman
+      (repeticiones, errores). Tu voz nunca se acelera.</p>
+      <div class="fila" style="margin-top:0">
+        <label>Que dure unos <input type="number" id="acMin" min="0" step="any" style="width:5em"> min</label>
+        <label class="aviso"><input type="checkbox" id="acIA" checked> Que la IA marque lo que no importa</label>
+      </div>
+      <div class="fila">
+        <button class="principal" id="btnAcortar" onclick="acortar()">🔎 Buscar qué acortar</button>
+        <button id="btnAcortarRehacer" onclick="acortarRehacer()" hidden>🎬 Rehacer con lo marcado</button>
+      </div>
+      <div id="acResumen" class="aviso"></div>
+      <div id="listaAcortar" style="max-height:22em;overflow:auto"></div>
+      <p class="aviso">Vacío = quitar todo lo que sobra. Con minutos, uso primero lo más obvio y paro al llegar. Queda
+      «acortado.mp4» (tu grabación con tu voz, ya corta) y, si después escribes el guion con IA, la voz en off apunta a esa
+      duración y salta los mismos tramos. Desmarca un tramo para dejarlo como estaba y pulsa «Rehacer».</p>
+    </section>
+
+    <section class="panel" id="panelPaginas">
+      <h2>🌐 Mis páginas</h2>
+      <p class="aviso">Tus webs, tu canal de WhatsApp, tus redes. Sirven para todos tus videos: la voz las nombra donde ayudan
+      (comprar la key, pedir el servicio, ver testimonios, el cierre) y cuando las nombra aparece su etiqueta con la dirección.</p>
+      <div id="listaPaginas"></div>
+      <div class="fila">
+        <input type="text" id="pgNombre" placeholder="Nombre (ej.: Xiaomi Unlock)" style="flex:1;min-width:9em">
+        <input type="text" id="pgUrl" placeholder="Link (ej.: xiaomiunlock.com)" style="flex:1;min-width:10em">
+      </div>
+      <div class="fila">
+        <input type="text" id="pgPara" placeholder="Para qué sirve (ej.: comprar keys, canal de WhatsApp con testimonios)" style="flex:1;min-width:12em">
+        <button onclick="agregarPagina()">+ Agregar</button>
+      </div>
+      <p class="aviso">Se usan cuando la IA escribe el guion y elige las etiquetas. Si ya tienes guion, vuelve a escribirlo con IA
+      para que las nombre.</p>
+    </section>
+
+    <section class="panel" id="panelEstilo">
+      <h2>📚 Alimentación · tu estilo</h2>
+      <div class="fila" style="margin-top:0">
+        <select id="estiloSel" style="flex:1"></select>
+        <button onclick="nuevoEstilo()">+ Nuevo estilo</button>
+      </div>
+      <label class="aviso" style="display:block;margin-top:8px"><input type="checkbox" id="estiloUsar"> Usar este estilo cuando la IA escribe el guion y arma el tráiler</label>
+      <div id="listaFuentes" style="margin-top:10px"></div>
+      <div class="fila">
+        <input type="text" id="ytLink" placeholder="Links de YouTube, o el link de tu canal (youtube.com/@tucanal)" style="flex:1; min-width:12em">
+        <button onclick="agregarLink()">+ Link</button>
+      </div>
+      <label class="subida" id="soltarEstilo"><div class="t">➕ Video MP4 o perfil escrito</div>
+        <div class="e">Arrastra aquí tus videos (mp4) o un perfil de estilo (.md, .txt), o haz clic</div><input type="file" multiple accept="video/*,.md,.txt"></label>
+      <div class="fila">
+        <button class="principal" id="btnAlimentar" onclick="alimentar()">🧠 Aprender mi estilo</button>
+        <button onclick="verPerfil()">📄 Ver perfil</button>
+      </div>
+      <p class="aviso">La app baja y transcribe cada video y mide tu ritmo (palabras por minuto, preguntas, cortes), cómo abres y cierras,
+      tus frases típicas y cómo armas el tráiler del inicio. Con tu IA configurada, ella redacta el perfil; si no, queda con las medidas.
+      Los videos ya analizados no se repiten. Sirve para todos tus proyectos.<br>
+      <b>Con el link de tu canal</b> lee todos tus videos (hasta 300, los más nuevos): de cada uno sus subtítulos y solo los primeros
+      3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
+      La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
     </section>
   </div>
 
@@ -129,18 +349,45 @@
         <span class="msg" id="msgEditor"></span>
       </div>
       <p class="aviso" id="ayudaEditor"></p>
+      <div class="ia" id="cajaArchGuion" hidden>
+        <b>📄 Trabajar el guion con calma</b>
+        <p class="aviso" style="margin:4px 0 8px">«Abrir editor» lo abre en otra pestaña, bloque por bloque con su imagen, y con un botón para mejorarlo con ChatGPT u otra IA.
+        También puedes descargarlo (texto, o Word desde el editor),
+        corrige o mejora lo que dice la voz y vuelve a importarlo. Solo cambia el texto bajo cada <code>### L01…</code>; para quitar un bloque,
+        borra su encabezado y su texto. Al importar, la app lo revisa (duración, orden) y guarda el anterior como .anterior.</p>
+        <div class="fila" style="margin-top:0">
+          <button class="principal" onclick="abrirEditorGuion()">✏️ Abrir editor de guion</button>
+          <button onclick="bajarGuion('txt')">⬇ Descargar como texto</button>
+          <button onclick="bajarGuion('json')">⬇ Descargar JSON</button>
+          <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="importarGuion(this)">⬆ Importar guion editado</label>
+        </div>
+      </div>
+      <div class="ia" id="cajaRefs" hidden>
+        <b>🔗 Videos de referencia</b>
+        <p class="aviso" style="margin:4px 0 8px">Pega links de YouTube de videos parecidos: la IA los mira (lo que dicen, título y descripción)
+        para entender el tema y explicarlo mejor, sin copiarlos. Se usan la próxima vez que pidas el guion.</p>
+        <div id="listaRefs"></div>
+        <div class="fila">
+          <input type="text" id="refUrl" placeholder="https://youtube.com/watch?v=…" style="flex:2; min-width:14em">
+          <input type="text" id="refNota" placeholder="Qué tomar de este (opcional)" style="flex:1; min-width:10em">
+          <button onclick="agregarRef()">+ Agregar</button>
+        </div>
+      </div>
       <div class="ia" id="cajaIA">
         <div class="fila" style="margin-top:0">
           <b>✨ Con tu IA</b><span class="aviso" id="iaQuien"></span>
           <button onclick="ajustesIA()" style="margin-left:auto">⚙ Ajustes IA</button>
         </div>
         <div class="fila">
-          <button onclick="ia('api')">✨ Escribir con IA</button>
+          <button onclick="ia('api')" title="Escribe el guion con el modelo elegido. Si ya hay guion, lo rehace y reemplaza (el anterior queda como .anterior)">✨ Escribir / rehacer con IA</button>
           <button onclick="ia('prompt')">📋 Prompt para copiar</button>
           <button onclick="pegar()">✅ Revisar respuesta pegada</button>
+          <button onclick="abrirPromptCapturas()" title="Abre la carpeta del proyecto con ia_prompt_guion.txt y la carpeta ia_capturas, para reusar lo ya generado con otro modelo sin volver a procesar el video">📂 Guardar prompt y capturas</button>
         </div>
         <p class="aviso">Escribe primero en «idea» de qué trata el video y los datos seguros (webs, precios, pines). La IA no inventa lo que no le das.
-        «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.</p>
+        «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.<br>
+        <b>Rehacer con otro modelo:</b> cámbialo en ⚙ Ajustes IA y pulsa otra vez «✨ Escribir / rehacer con IA». Reemplaza el guion (el anterior queda como <code>guion.json.anterior</code>).<br>
+        «Guardar prompt y capturas»: después de escribir con IA, deja el prompt en <code>ia_prompt_guion.txt</code> y las imágenes en <code>ia_capturas/</code>. Así pruebas otro modelo (GPT, DeepSeek…) sin reprocesar el video.</p>
       </div>
     </section>
 
@@ -152,12 +399,29 @@
   </div>
 </main>
 
+<div id="barra" hidden></div>
+
 <dialog id="dlgPrompt">
   <h3>Prompt para tu IA</h3>
   <p class="aviso">Cópialo y pégalo en ChatGPT, DeepSeek o Gemini. Si tu IA ve imágenes, adjunta también las capturas (clic para descargar).</p>
   <textarea id="txtPrompt" readonly></textarea>
   <div class="caps" id="caps"></div>
   <div class="fila"><button class="principal" onclick="copiar()">Copiar prompt</button><button onclick="dlgPrompt.close()">Cerrar</button><span class="msg" id="msgCopia"></span></div>
+</dialog>
+
+<dialog id="dlgGuion">
+  <h3>📝 Tu guion</h3>
+  <p class="aviso">Lee lo que va a decir la voz en cada bloque y cambia lo que quieras. Al seguir, la voz se genera con este texto.</p>
+  <div class="fila" style="margin-top:0">
+    <button onclick="abrirEditorGuion()" title="Bloque por bloque con su imagen, y con un botón para mejorarlo con ChatGPT u otra IA">✏️ Abrir editor completo (con imágenes y ChatGPT)</button>
+    <button onclick="bajarGuion('txt')">⬇ Descargar</button>
+    <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="dlgGuion.close(); importarGuion(this)">⬆ Importar editado</label>
+  </div>
+  <div id="preguntasGuion"></div>
+  <div id="mejorasGuion"></div>
+  <div id="bloquesGuion"></div>
+  <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
+    <button onclick="guardarGuion(false)">Guardar</button><button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
 </dialog>
 
 <dialog id="dlgEleven">
@@ -171,12 +435,20 @@
 
 <dialog id="dlgAjustes">
   <h3>Ajustes de IA</h3>
+  <p class="aviso">✨ <b>Que Claude haga todo:</b> pulsa «Usar Claude», pega tu clave y guarda. Desde ahí «Hacer todo» le pide a Claude
+  el guion, las etiquetas y las flechas solo. La clave se saca en
+  <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com → API Keys</a>
+  (se paga aparte de la suscripción de Claude: carga unos dólares de saldo en Billing).</p>
+  <div class="fila" style="margin-top:0"><button onclick="$('#ajProv').value = 'Claude (Anthropic)'; $('#ajProv').onchange(); $('#ajClave').focus()">✨ Usar Claude</button></div>
   <label>Proveedor <select id="ajProv"></select></label>
   <label>Dirección (URL) <input type="text" id="ajUrl"></label>
   <label>Modelo <input type="text" id="ajModelo"></label>
   <label>Clave API <input type="text" id="ajClave" placeholder="sk-... (Claude: sk-ant-..., en console.anthropic.com)"></label>
+  <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarClave()">🔍 Comprobar clave</button><span id="ajPrueba" class="aviso" style="align-self:center"></span></div>
   <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
   <label>Capturas del video <input type="number" id="ajCaps" min="4" max="60" step="1" style="width:6em"></label>
+  <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
+  <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
@@ -184,8 +456,8 @@
 
 <script>
 const SUBIDAS = [
-  {tipo: 'original', f: 'original.mp4', t: '🎥 Video grabado', acepta: 'video/*'},
-  {tipo: 'material', f: 'material.mp4', t: '🖥️ Material extra', acepta: 'video/*'},
+  {tipo: 'original', f: 'original.mp4', t: '🎥 Video grabado', acepta: 'video/*', varios: true},
+  {tipo: 'material', f: 'material.mp4', t: '🖥️ Material extra', acepta: 'video/*', varios: true},
   {tipo: 'imagen', f: 'imagen.png', t: '🗺️ Imagen / mapa', acepta: 'image/png'},
   {tipo: 'musica', f: 'musica.mp3', t: '🎵 Música (opcional)', acepta: 'audio/mpeg'},
 ];
@@ -197,7 +469,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'acortado.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -212,7 +484,7 @@ async function cargarProyectos(sel) {
   P = sel || localStorage.getItem('proyecto') || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -222,27 +494,62 @@ async function nuevo() {
 $('#nuevo').onclick = nuevo;
 $('#proyecto').onchange = e => cargarProyectos(e.target.value);
 
+const SUBIENDO = {};  // tipo -> {pc, texto}: la página se repinta cada 2 s y no debe borrar el avance de la subida
 function pintarSubidas(arch) {
   $('#subidas').innerHTML = SUBIDAS.map(s => {
-    const a = arch[s.f];
-    return `<label class="subida ${a ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
-      <div class="e">${a ? '✓ ' + tam(a.tam) : 'Subir'}</div><input type="file" accept="${s.acepta}"></label>`;
+    const a = arch[s.f], sb = SUBIENDO[s.tipo];
+    return `<label class="subida ${a && !sb ? 'ok' : ''}" data-tipo="${s.tipo}"><div class="t">${s.t}</div>
+      <div class="e">${sb ? sb.texto : a ? '✓ ' + tam(a.tam) : s.varios ? 'Subir (uno o varios)' : 'Subir'}</div>
+      ${sb ? `<div class="barra"><div style="width:${sb.pc}%"></div></div>` : ''}<input type="file" accept="${s.acepta}" ${s.varios ? 'multiple' : ''}></label>`;
   }).join('');
-  document.querySelectorAll('.subida').forEach(el => {
+  document.querySelectorAll('#subidas .subida').forEach(el => {
     const tipo = el.dataset.tipo, inp = el.querySelector('input');
-    inp.onchange = () => inp.files[0] && subir(tipo, inp.files[0], el);
+    inp.onchange = () => inp.files.length && subirVarios(tipo, [...inp.files], el);
     el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
     el.ondragleave = () => el.style.borderColor = '';
-    el.ondrop = e => { e.preventDefault(); e.dataTransfer.files[0] && subir(tipo, e.dataTransfer.files[0], el); };
+    el.ondrop = e => { e.preventDefault(); e.dataTransfer.files.length && subirVarios(tipo, [...e.dataTransfer.files], el); };
   });
 }
-function subir(tipo, file, el) {
-  const x = new XMLHttpRequest();
-  x.open('POST', `/api/subir?p=${q(P)}&tipo=${tipo}`);
-  x.upload.onprogress = e => el.querySelector('.e').textContent = `Subiendo ${Math.round(100 * e.loaded / e.total)} %`;
-  x.onload = () => refrescar();
-  x.onerror = () => el.querySelector('.e').textContent = 'Error al subir';
-  x.send(file);
+function subir(tipo, file, el, parte = 1, de = 1) {
+  return new Promise((listo, fallo) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/subir?p=${q(P)}&tipo=${tipo}&parte=${parte}&de=${de}`);
+    const cual = de > 1 ? `video ${parte} de ${de}: ` : '';
+    const pinta = (pc, texto) => {
+      SUBIENDO[tipo] = {pc, texto};
+      const caja = document.querySelector(`#subidas .subida[data-tipo="${tipo}"]`);
+      if (!caja) return;
+      caja.querySelector('.e').textContent = texto;
+      if (!caja.querySelector('.barra')) caja.querySelector('.e').insertAdjacentHTML('afterend', '<div class="barra"><div></div></div>');
+      caja.querySelector('.barra div').style.width = pc + '%';
+    };
+    pinta(0, `Subiendo ${cual}0 %`);
+    x.upload.onprogress = e => {
+      const pc = Math.round(100 * e.loaded / e.total);
+      pinta(pc, pc < 100 ? `Subiendo ${cual}${pc} % · ${tam(e.loaded)} de ${tam(e.total)}` : de > 1 && parte === de ? 'Uniendo los videos… (no cierres la página)' : `Subiendo ${cual}100 %`);
+    };
+    x.onload = () => {
+      let r = {}; try { r = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status >= 400) { delete SUBIENDO[tipo]; return fallo(new Error(r.error || x.responseText)); }
+      if (parte === de) delete SUBIENDO[tipo];
+      listo(r);
+    };
+    x.onerror = () => { delete SUBIENDO[tipo]; fallo(new Error('se cortó la subida')); };
+    x.send(file);
+  });
+}
+async function subirVarios(tipo, files, el) {
+  // varios videos: se unen en el orden de sus nombres (01…, 02…), como los ves en la carpeta
+  files.sort((a, b) => a.name.localeCompare(b.name, 'es', {numeric: true}));
+  if (files.length > 1 && !confirm(`Uno estos ${files.length} videos en este orden:\n\n` + files.map((f, i) => `${i + 1}. ${f.name} (${tam(f.size)})`).join('\n')
+      + '\n\nSi el orden no es el correcto, cancela y ponles 01, 02… al comienzo del nombre.')) return;
+  try {
+    for (const [i, f] of files.entries()) {
+      const r = await subir(tipo, f, el, i + 1, files.length);
+      if (r.unido) alert('Listo: ' + r.unido + '.');
+    }
+  } catch (e) { alert(e.message); }
+  refrescar();
 }
 
 let avisado = null;
@@ -258,7 +565,8 @@ function pintarPasos(pasos, t, fallo) {
   }).join('');
 }
 async function ejecutar(paso) {
-  if (paso === 'voz') alert('Los bloques que ya tienen voz no se vuelven a generar. Para regenerar uno, borra su .mp3 de la carpeta voz.');
+  if (paso === 'todo') soltarVideo();
+  if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
@@ -273,12 +581,12 @@ $('#detener').onclick = () => api('/api/detener', {method: 'POST'});
 $('#studio').onclick = async () => { const r = await api('/api/studio', {method: 'POST'}); setTimeout(() => window.open(r.url), 4000); };
 
 function pintarSalidas(arch) {
-  const hay = VIDEOS.filter(v => arch[v]);
+  const hay = VIDEOS.filter(v => arch[v] && !arch[v].en_proceso);
   const nuevo = hay[0] || null;
   if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
     ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
   }
-  const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt'].filter(f => arch[f]);
+  const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt', 'revision_guion.txt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
     extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
     (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '') +
@@ -290,7 +598,43 @@ async function exportar() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }
   refrescar();
 }
-function ver(f) { $('#video').src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; }
+function ver(f, seguir) {
+  const v = $('#video'), t = v.currentTime, sonando = !v.paused && !v.ended;
+  v.src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; viendo = f;
+  if (seguir) v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); if (sonando) v.play(); }, {once: true});
+}
+// mientras «Hacer todo» trabaja, el reproductor va mostrando la etapa más avanzada que ya existe
+const AVANCE = ['montaje_en_curso.mp4', '1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4',
+                '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4', 'FINAL.mp4'];
+const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1_montaje.mp4': 'el montaje (sin voz)', '2_insertos.mp4': 'con cortes y zooms',
+  '3_voz.mp4': 'con voz y subtítulos', '4_musica.mp4': 'con música', '5_etiquetas.mp4': 'con etiquetas', '6_senales.mp4': 'con flechas',
+  '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', '9_modelos.mp4': 'con nuevos modelos', 'FINAL.mp4': 'el video final'};
+let viendo = null, avanceVisto = '';
+function masAvanzado(arch) {
+  // las etapas van en orden (montaje -> insertos -> voz -> ... -> FINAL). Si rehiciste una etapa,
+  // las de después quedaron viejas (son de un guion anterior): una etapa más vieja que la anterior se ignora,
+  // así el preview muestra el último montaje de verdad y no un FINAL.mp4 de antes.
+  let mejor = null, piso = 0;
+  for (const f of AVANCE) {
+    const a = arch[f];
+    if (!a || !a.tam || a.en_proceso) continue;
+    if (a.fecha < piso) continue;
+    mejor = f; piso = a.fecha;
+  }
+  return mejor;
+}
+function seguirAvance(t, arch) {
+  if (t.proyecto !== P) return '';
+  const f = masAvanzado(arch);
+  if (!f) return '';
+  const firma = f + arch[f].fecha, v = $('#video');
+  const actual = new URLSearchParams(v.src.split('?')[1] || '').get('f');
+  if (arch[actual]?.en_proceso) avanceVisto = '';  // lo que estabas viendo se está rehaciendo: te paso al último listo
+  if (firma !== avanceVisto && (v.paused || v.ended || !v.src || arch[actual]?.en_proceso)) { avanceVisto = firma; ver(f, !arch[actual]?.en_proceso); }
+  const nuevo = firma !== avanceVisto;
+  return `<button onclick="avanceVisto='${firma}'; ver('${f}', true); irA('#video')">${nuevo ? '🔄 Ver lo nuevo' : '👁 Viendo'}: ${NOMBRE_AVANCE[f]}</button>`;
+}
+$('#video').addEventListener('ended', () => refrescar());
 
 $('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace(/\.(json|txt)$/, '')}</button>`).join('');
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => abrir(b.dataset.f));
@@ -301,7 +645,7 @@ async function abrir(f, ejemplo) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('activo', b.dataset.f === f));
   $('#editor').value = await api(`/api/json?p=${q(P)}&f=${f}${ejemplo ? '&ejemplo=1' : ''}`);
   $('#ayudaEditor').textContent = AYUDA[f];
-  $('#cajaIA').hidden = !TAREA[f]; $('#ejemplo').hidden = f === 'idea.txt'; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
+  $('#cajaIA').hidden = !TAREA[f]; $('#cajaRefs').hidden = $('#cajaArchGuion').hidden = f !== 'guion.json'; if (f === 'guion.json') cargarRefs(); $('#ejemplo').hidden = f === 'idea.txt'; $('#msgEditor').textContent = ejemplo ? 'Ejemplo cargado: ajústalo y guarda.' : '';
   $('#msgEditor').className = 'msg';
 }
 $('#ejemplo').onclick = () => abrir(archivo, true);
@@ -311,26 +655,136 @@ $('#guardar').onclick = async () => {
   } catch (e) { $('#msgEditor').textContent = e.message; $('#msgEditor').className = 'msg err'; }
 };
 
+async function guionActual() {
+  const g = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null');
+  if (!g || !(g.bloques || []).length) throw new Error('Todavía no hay guion. Pídelo primero a la IA.');
+  return g;
+}
+const mmssG = s => `${Math.floor((s || 0) / 60)}:${String(Math.round((s || 0) % 60)).padStart(2, '0')}`;
+async function bajarGuion(tipo) {
+  let g; try { g = await guionActual(); } catch (e) { return alert(e.message); }
+  const txt = tipo === 'json' ? JSON.stringify(g, null, 1) :
+    `GUION · ${P}\nEdita solo el texto que dice la voz, debajo de cada encabezado. No cambies las líneas que empiezan con ###.\n` +
+    `Para quitar un bloque, borra su encabezado y su texto. Luego impórtalo en la app (pestaña guion → «Importar guion editado»).\n\n` +
+    g.bloques.map(b => `### ${b.id} · ${mmssG(b.inicio_min)}–${mmssG(b.fin_max)}${b.ancla ? ' · en pantalla: ' + b.ancla.replace(/\s+/g, ' ') : ''}\n${b.texto.trim()}\n`).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([tipo === 'json' ? txt : '\ufeff' + txt.replace(/\n/g, '\r\n')], {type: 'text/plain;charset=utf-8'}));
+  a.download = `guion_${P}.${tipo}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+async function importarGuion(inp) {
+  const f = inp.files[0]; inp.value = ''; if (!f) return;
+  const txt = (await f.text()).replace(/^\ufeff/, '');
+  let nuevo;
+  try {
+    if (/^\s*[\[{]/.test(txt)) nuevo = JSON.parse(txt);
+    else {
+      const g = await guionActual(), porId = Object.fromEntries(g.bloques.map(b => [b.id, b]));
+      const partes = txt.split(/^###\s*/m).slice(1), raros = [], bloques = [];
+      for (const p of partes) {
+        const [cab, ...resto] = p.split(/\r?\n/), id = (cab.match(/^([A-Za-z]+\d+)/) || [])[1];
+        const texto = resto.join('\n').trim().replace(/\s*\n\s*/g, ' ');
+        if (!id || !porId[id]) { raros.push(cab.trim().slice(0, 30)); continue; }
+        if (texto) bloques.push({...porId[id], texto});
+      }
+      if (!bloques.length) throw new Error('No encontré bloques «### L01…» en el archivo. ¿Es el guion que descargaste como texto?');
+      if (raros.length && !confirm(`Estos encabezados no son de este guion y los salto (un bloque nuevo necesita su parte del video):\n${raros.join('\n')}\n\n¿Sigo con el resto?`)) return;
+      nuevo = {...g, bloques};
+    }
+  } catch (e) { return alert('No pude leer el guion: ' + e.message); }
+  const n = (nuevo.bloques || nuevo).length;
+  if (!confirm(`Importar el guion con ${n} bloques. La app lo revisa y lo guarda (el actual queda como guion.json.anterior). Los bloques cuyo texto cambió vuelven a generar su voz en el próximo «Hacer todo». ¿Seguir?`)) return;
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(nuevo)});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar'})});
+    esperaIA = {tarea: 'guion', modo: 'revisar', archivo: 'guion.json'}; editado = false;
+  } catch (e) { alert(e.message); }
+}
+
+let editorAbierto = false;
+function abrirEditorGuion() { editorAbierto = true; window.open('/guion?p=' + q(P), '_blank'); }
+// al volver del editor, la ventana de revisión y la pestaña guion muestran lo que guardaste allá
+window.addEventListener('focus', async () => {
+  if (!editorAbierto) return;
+  editorAbierto = false;
+  if (dlgGuion.open) verGuion();
+  if (archivo === 'guion.json' && !editado) abrir('guion.json');
+});
+
+let REFS = [];
+async function cargarRefs() {
+  try { REFS = JSON.parse(await api(`/api/json?p=${q(P)}&f=referencias.json`) || '[]'); } catch (e) { REFS = []; }
+  if (!Array.isArray(REFS)) REFS = [];
+  $('#listaRefs').innerHTML = REFS.map((r, i) => `<div class="pista"><div class="vista">▶️</div>
+      <div class="datos" style="grid-template-columns: 1fr"><a href="${esc(r.url)}" target="_blank">${esc(r.url)}</a>
+        <input type="text" placeholder="Qué tomar de este (opcional)" value="${esc(r.nota)}" onchange="REFS[${i}].nota = this.value.trim(); guardarRefs()"></div>
+      <button title="Quitar" onclick="REFS.splice(${i}, 1); guardarRefs()">✕</button></div>`).join('') || '<p class="aviso">Sin videos de referencia.</p>';
+}
+async function guardarRefs() {
+  try { await api(`/api/json?p=${q(P)}&f=referencias.json`, {method: 'POST', body: JSON.stringify(REFS, null, 1)}); } catch (e) { alert(e.message); }
+  cargarRefs();
+}
+function agregarRef() {
+  const links = $('#refUrl').value.match(/https?:\/\/\S+/g) || [];
+  if (!links.length || links.some(u => !/youtu/.test(u))) return alert('Pega un link de YouTube (youtube.com o youtu.be).');
+  for (const url of links) if (!REFS.some(r => r.url === url)) REFS.push({url, nota: $('#refNota').value.trim()});
+  $('#refUrl').value = ''; $('#refNota').value = ''; guardarRefs();
+}
+
 const TAREA = {'guion.json': 'guion', 'etiquetas.json': 'etiquetas', 'trailer.json': 'trailer'};
 let esperaIA = null;
-async function ia(modo) {
-  const tarea = TAREA[archivo];
+async function ia(modo, forzar) {
+  const tarea = forzar || TAREA[archivo];
+  const f = Object.keys(TAREA).find(k => TAREA[k] === tarea);
   if (modo === 'api') {
     const a = (await api('/api/ajustes')).ajustes;
     if (!a.url) return ajustesIA();
-    if (!confirm(`Pedir ${tarea} a ${a.modelo}? Reemplaza ${archivo} (la versión actual queda como .anterior).`)) return;
+    if (!confirm(`Pedir ${tarea} a ${a.modelo}? Reemplaza ${f} (la versión actual queda como .anterior).`)) return;
   }
   try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo})}); }
   catch (e) { return alert(e.message); }
-  esperaIA = {tarea, modo, archivo};
+  esperaIA = {tarea, modo, archivo: f};
+}
+async function nubeClaude() {
+  const mb = prompt('Junto todo lo de este proyecto en la carpeta para_claude: tu video y el material extra partidos en trozos, '
+    + 'tu idea, testimonios, tarjetas, pistas del tráiler, tu estilo y los ajustes (sin tus claves). Los trozos quedan en tu PC.\n\n'
+    + 'Cuando termine, escríbele a Claude en el chat: «hazlo desde la nube: ' + P + '».\n\nTamaño máximo de cada trozo, en MB:', '300');
+  if (mb === null) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { return alert(e.message); }
+  esperaNube = P; refrescar();
+}
+let esperaNube = null;
+async function finNube(e) {
+  const p = esperaNube; esperaNube = null;
+  const lineas = (e.registro || '').split('\n'), listo = lineas.filter(l => l.startsWith('Listo para_claude')).pop();
+  if (!listo) return;  // falló: el aviso rojo y el registro ya lo cuentan
+  const trozos = lineas.filter(l => l.startsWith('· ') && l.includes('trozos'));
+  if (confirm(`✅ Proyecto dividido para Claude.\n\n${listo}\n${trozos.join('\n')}\n\nQuedó en la carpeta «para_claude» de «${p}».\n`
+      + `Ahora escríbele a Claude en el chat: «hazlo desde la nube: ${p}».\n\n¿Abrir la carpeta?`))
+    api(`/api/abrir_carpeta?p=${q(p)}&sub=para_claude`, {method: 'POST'}).catch(err => alert(err.message));
+}
+async function abrirPromptCapturas() {
+  try { await api(`/api/abrir_carpeta?p=${q(P)}`, {method: 'POST'}); }
+  catch (err) { alert(err.message + '\n\nAbre primero el proyecto; el prompt y las capturas aparecen después de «Escribir con IA» o «Prompt para copiar».'); }
+}
+async function paqueteClaude() {
+  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete'})}); }
+  catch (e) { return alert(e.message); }
+  esperaIA = {tarea: 'guion', modo: 'paquete', archivo: 'guion.json'};
 }
 async function finIA() {
   const {tarea, modo, archivo: f} = esperaIA; esperaIA = null;
+  if (modo === 'paquete') {
+    const e = await api(`/api/estado?p=${q(P)}`);
+    if (!e.archivos['para_claude.zip']) return;
+    const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=para_claude.zip`; a.download = `paquete_${P}.zip`; a.click();
+    return alert('Listo: se descargó el ZIP (también queda en la carpeta del proyecto).\n\nSúbelo al chat de ChatGPT, Claude o DeepSeek y escribe «hazme el guion siguiendo ia_prompt_guion.txt».\n\nCuando te dé el guion, cópialo y pégalo en la app con «✅ Revisar respuesta pegada».');
+  }
   if (modo === 'prompt') {
     try { $('#txtPrompt').value = await api(`/archivo?p=${q(P)}&f=ia_prompt_${tarea}.txt`); } catch (e) { return; }
     const caps = await api(`/api/capturas?p=${q(P)}`);
     $('#caps').innerHTML = caps.map(c => `<a href="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" download><img src="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" title="${c}"></a>`).join('');
-    $('#msgCopia').textContent = ''; dlgPrompt.showModal();
+    $('#msgCopia').textContent = ''; dlgPrompt.querySelector('h3').textContent = 'Prompt para tu IA'; dlgPrompt.showModal();
   } else { editado = false; await abrir(f); }
 }
 async function pegar() {
@@ -340,20 +794,428 @@ async function pegar() {
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
 function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
+const FASES = {ANTES: 'Cómo empieza: el equipo o la pieza antes de tocarlo, el problema. Ej.: «cuando muestro la placa sin soldar».',
+  DURANTE: 'El proceso: las tomas más vistosas mientras trabajas. Ej.: una captura del cautín en los pines.',
+  DESPUES: 'El resultado: funcionando, la pantalla final. Ej.: «cuando aparece el bypass listo».'};
+const NOMBRE_FASE = {ANTES: 'ANTES', DURANTE: 'DURANTE', DESPUES: 'DESPUÉS'};
+let PISTAS = {ANTES: [], DURANTE: [], DESPUES: []}, fase = 'ANTES';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+async function cargarPistas() { PISTAS = await api(`/api/pistas?p=${q(P)}`); pintarPistas(); }
+async function guardarPistas() {
+  try { await api(`/api/pistas?p=${q(P)}`, {method: 'POST', body: JSON.stringify(PISTAS)}); } catch (e) { alert(e.message); }
+  pintarPistas();
+}
+function pintarPistas() {
+  $('#fases').innerHTML = Object.keys(FASES).map(f => `<button data-f="${f}" class="${f === fase ? 'activo' : ''}">${NOMBRE_FASE[f]}<span class="cuenta">${PISTAS[f].length || ''}</span></button>`).join('');
+  document.querySelectorAll('#fases button').forEach(b => b.onclick = () => { fase = b.dataset.f; pintarPistas(); });
+  $('#ayudaFase').textContent = FASES[fase];
+  const url = a => `/archivo?p=${q(P)}&sub=pistas_trailer&f=${q(a)}`;
+  $('#listaPistas').innerHTML = PISTAS[fase].map((p, i) => `<div class="pista">
+      <div class="vista">${p.tipo === 'captura' ? `<img src="${url(p.archivo)}">` : p.tipo === 'audio' ? `<audio controls preload="none" src="${url(p.archivo)}"></audio>` : '📝'}</div>
+      <div class="datos"><input type="text" placeholder="Segundo" value="${esc(p.segundo)}" onchange="cambiarPista(${i}, 'segundo', this.value)">
+        <input type="text" placeholder="${p.tipo === 'texto' ? 'Tu pista' : 'Nota (opcional)'}" value="${esc(p.nota)}" onchange="cambiarPista(${i}, 'nota', this.value)"></div>
+      <button title="Quitar" onclick="quitarPista(${i})">✕</button></div>`).join('') || '<p class="aviso">Sin pistas en esta fase: la IA la elige sola.</p>';
+}
+function cambiarPista(i, k, v) { PISTAS[fase][i][k] = v.trim(); guardarPistas(); }
+function quitarPista(i) { PISTAS[fase].splice(i, 1); guardarPistas(); }
+function tomarCampos() {
+  const c = {segundo: $('#pSegundo').value.trim(), nota: $('#pNota').value.trim()};
+  $('#pSegundo').value = ''; $('#pNota').value = ''; return c;
+}
+async function subirPista(blob, nombre, tipo, campos, f = fase) {
+  const r = await api(`/api/pista_archivo?p=${q(P)}&nombre=${q(nombre)}`, {method: 'POST', body: blob});
+  PISTAS[f].push({tipo, archivo: r.archivo, ...campos});
+}
+async function agregarArchivos(files) {
+  const campos = tomarCampos();
+  try {
+    for (const f of files) {
+      const tipo = f.type.startsWith('image/') ? 'captura' : f.type.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm|opus|aac)$/i.test(f.name) ? 'audio' : null;
+      if (!tipo) { alert(`${f.name}: solo imágenes o audios`); continue; }
+      await subirPista(f, f.name, tipo, campos);
+    }
+  } catch (e) { alert(e.message); }
+  guardarPistas();
+}
+function agregarTexto() {
+  const c = tomarCampos();
+  if (!c.nota && !c.segundo) return alert('Escribe la pista en el cuadro de texto (y el segundo, si lo sabes).');
+  PISTAS[fase].push({tipo: 'texto', ...c}); guardarPistas();
+}
+async function capturarVideo() {
+  const v = $('#video');
+  if (!v.src.includes('f=original.mp4')) return alert('Abre «▶ original.mp4» en «Ver resultado», pausa en el momento que quieres y vuelve a pulsar.');
+  if (!v.videoWidth) return alert('El video todavía no carga. Dale play un segundo y vuelve a intentar.');
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const campos = tomarCampos(), t = v.currentTime;
+  campos.segundo = campos.segundo || `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  try { await subirPista(blob, 'captura.jpg', 'captura', campos); } catch (e) { alert(e.message); }
+  guardarPistas();
+}
+let grabadora = null;
+async function grabar() {
+  if (grabadora) return grabadora.stop();
+  let flujo;
+  try { flujo = await navigator.mediaDevices.getUserMedia({audio: true}); } catch (e) { return alert('No pude usar el micrófono: ' + e.message); }
+  const trozos = [], campos = tomarCampos(), f = fase;
+  grabadora = new MediaRecorder(flujo);
+  grabadora.ondataavailable = e => trozos.push(e.data);
+  grabadora.onstop = async () => {
+    flujo.getTracks().forEach(t => t.stop()); grabadora = null;
+    $('#btnGrabar').textContent = '🎙 Grabar nota de voz'; $('#btnGrabar').classList.remove('grabando');
+    try { await subirPista(new Blob(trozos, {type: 'audio/webm'}), 'nota.webm', 'audio', campos, f); } catch (e) { alert(e.message); }
+    guardarPistas();
+  };
+  grabadora.start();
+  $('#btnGrabar').textContent = '■ Detener grabación'; $('#btnGrabar').classList.add('grabando');
+}
+{
+  const el = $('#soltarPista'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarArchivos([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarArchivos([...e.dataTransfer.files]); };
+}
+
+const FORMA = {auto: 'La IA elige', circulo: 'Círculo', flecha: 'Flecha', caja: 'Recuadro'};
+let MARCAS = {MARCAS: []};
+async function cargarMarcas() { MARCAS = await api(`/api/pistas?g=marcas&p=${q(P)}`); pintarMarcas(); }
+async function guardarMarcas() {
+  try { await api(`/api/pistas?g=marcas&p=${q(P)}`, {method: 'POST', body: JSON.stringify(MARCAS)}); } catch (e) { alert(e.message); }
+  pintarMarcas();
+}
+function pintarMarcas() {
+  const url = a => `/archivo?p=${q(P)}&sub=marcas_senales&f=${q(a)}`;
+  $('#listaMarcas').innerHTML = MARCAS.MARCAS.map((p, i) => `<div class="pista">
+      <div class="vista">${p.tipo === 'captura' ? `<img src="${url(p.archivo)}">` : p.tipo === 'audio' ? `<audio controls preload="none" src="${url(p.archivo)}"></audio>` : '📝'}</div>
+      <div class="datos" style="grid-template-columns: 6em 1fr 8em">
+        <input type="text" placeholder="Segundo" title="Opcional: si no lo pones, se busca en el video" value="${esc(p.segundo)}" onchange="cambiarMarca(${i}, 'segundo', this.value)">
+        <input type="text" placeholder="${p.tipo === 'texto' ? 'Tu pedido' : 'Qué señalar (opcional)'}" value="${esc(p.nota)}" onchange="cambiarMarca(${i}, 'nota', this.value)">
+        ${p.tipo === 'captura' ? `<select onchange="cambiarMarca(${i}, 'forma', this.value)">${Object.entries(FORMA).map(([k, v]) => `<option value="${k}" ${(p.forma || 'auto') === k ? 'selected' : ''}>${v}</option>`).join('')}</select>` : '<span></span>'}</div>
+      <button title="Quitar" onclick="MARCAS.MARCAS.splice(${i}, 1); guardarMarcas()">✕</button></div>`).join('') || '<p class="aviso">Sin capturas ni pedidos: la IA elige sola dónde poner flechas y círculos.</p>';
+}
+function cambiarMarca(i, k, v) { MARCAS.MARCAS[i][k] = v.trim(); guardarMarcas(); }
+function camposMarca() {
+  const c = {nota: $('#mNota').value.trim(), forma: $('#mForma').value};
+  $('#mNota').value = ''; $('#mForma').value = 'auto'; return c;
+}
+async function subirMarca(blob, nombre, tipo, campos) {
+  const r = await api(`/api/pista_archivo?g=marcas&p=${q(P)}&nombre=${q(nombre)}`, {method: 'POST', body: blob});
+  MARCAS.MARCAS.push({tipo, archivo: r.archivo, ...campos});
+}
+async function agregarMarcas(files) {
+  const campos = camposMarca();
+  try {
+    for (const f of files) {
+      const tipo = f.type.startsWith('image/') ? 'captura' : f.type.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm|opus|aac)$/i.test(f.name) ? 'audio' : null;
+      if (!tipo) { alert(`${f.name}: solo imágenes o audios`); continue; }
+      await subirMarca(f, f.name || 'captura.png', tipo, campos);
+    }
+  } catch (e) { alert(e.message); }
+  guardarMarcas();
+}
+function marcaTexto() {
+  const c = camposMarca();
+  if (!c.nota) return alert('Escribe tu pedido en el cuadro de texto, por ejemplo: «círculo en el botón Restablecer cuando lo nombro».');
+  MARCAS.MARCAS.push({tipo: 'texto', nota: c.nota}); guardarMarcas();
+}
+async function capturarMarca() {
+  const v = $('#video');
+  if (!v.videoWidth) return alert('Abre un video en «Ver resultado» (mejor el ya montado, con voz), pausa en el momento y vuelve a pulsar.');
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const campos = camposMarca(), t = v.currentTime;
+  campos.segundo = `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  campos.video = new URLSearchParams(v.src.split('?')[1] || '').get('f') || '';
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  try { await subirMarca(blob, 'captura.jpg', 'captura', campos); } catch (e) { alert(e.message); }
+  guardarMarcas();
+}
+let grabadoraMarca = null;
+async function grabarMarca() {
+  if (grabadoraMarca) return grabadoraMarca.stop();
+  let flujo;
+  try { flujo = await navigator.mediaDevices.getUserMedia({audio: true}); } catch (e) { return alert('No pude usar el micrófono: ' + e.message); }
+  const trozos = [], b = $('#btnGrabarMarca');
+  grabadoraMarca = new MediaRecorder(flujo);
+  grabadoraMarca.ondataavailable = e => trozos.push(e.data);
+  grabadoraMarca.onstop = async () => {
+    flujo.getTracks().forEach(t => t.stop()); grabadoraMarca = null;
+    b.textContent = '🎙 Grabar nota de voz'; b.classList.remove('grabando');
+    try { await subirMarca(new Blob(trozos, {type: 'audio/webm'}), 'nota.webm', 'audio', camposMarca()); } catch (e) { alert(e.message); }
+    guardarMarcas();
+  };
+  grabadoraMarca.start();
+  b.textContent = '■ Detener grabación'; b.classList.add('grabando');
+}
+{
+  const el = $('#soltarMarca'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarMarcas([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarMarcas([...e.dataTransfer.files]); };
+  // Ctrl+V con una imagen copiada (recorte de Windows, captura de pantalla): va a tus capturas de flechas,
+  // salvo que estés escribiendo en un cuadro de texto o el último panel que tocaste sea el del tráiler
+  let panelActivo = '';
+  document.addEventListener('pointerdown', e => { panelActivo = e.target.closest('section.panel')?.id || ''; });
+  document.addEventListener('paste', e => {
+    if (/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '') || !P) return;
+    const imgs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    e.preventDefault();
+    if (panelActivo === 'panelTrailer') agregarArchivos(imgs);
+    else { agregarMarcas(imgs); irA('#panelMarcas'); }
+  });
+}
+
+const GRUPOS = {COMENTARIOS: 'Tu invitación a comentar: «¡déjame tu duda abajo!», una flecha hacia los comentarios, tu sticker.',
+  WHATSAPP: 'Tus tarjetas de WhatsApp para que te escriban: número, código QR, «escríbeme para el servicio».'};
+const POS = {'abajo-derecha': 'Abajo derecha', 'abajo-izquierda': 'Abajo izquierda', 'arriba-derecha': 'Arriba derecha', 'arriba-izquierda': 'Arriba izquierda', 'centro': 'Centro (grande)'};
+let TARJ = {COMENTARIOS: [], WHATSAPP: []}, grupo = 'COMENTARIOS';
+async function cargarTarjetas() { TARJ = await api(`/api/pistas?g=tarjetas&p=${q(P)}`); pintarTarjetas(); }
+async function guardarTarjetas() {
+  try { await api(`/api/pistas?g=tarjetas&p=${q(P)}`, {method: 'POST', body: JSON.stringify(TARJ)}); } catch (e) { alert(e.message); }
+  pintarTarjetas(); refrescar();
+}
+function pintarTarjetas() {
+  $('#grupos').innerHTML = Object.keys(GRUPOS).map(g => `<button data-g="${g}" class="${g === grupo ? 'activo' : ''}">${g === 'WHATSAPP' ? 'WhatsApp' : 'Comentarios'}<span class="cuenta">${TARJ[g].length || ''}</span></button>`).join('');
+  document.querySelectorAll('#grupos button').forEach(b => b.onclick = () => { grupo = b.dataset.g; pintarTarjetas(); });
+  $('#ayudaGrupo').textContent = GRUPOS[grupo];
+  $('#listaTarjetas').innerHTML = TARJ[grupo].map((c, i) => `<div class="pista">
+      <div class="vista"><img src="/archivo?p=${q(P)}&sub=tarjetas&f=${q(c.archivo)}"></div>
+      <div class="datos" style="grid-template-columns: 1fr 4.5em 1fr">
+        <input type="text" placeholder="Momento: auto" title="auto, 1:25, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTarjeta(${i}, 'momento', this.value)">
+        <input type="text" placeholder="6 s" title="Segundos en pantalla" value="${esc(c.dur)}" onchange="cambiarTarjeta(${i}, 'dur', this.value)">
+        <select onchange="cambiarTarjeta(${i}, 'posicion', this.value)">${Object.entries(POS).map(([k, v]) => `<option value="${k}" ${(c.posicion || 'abajo-derecha') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <button title="Quitar" onclick="TARJ[grupo].splice(${i}, 1); guardarTarjetas()">✕</button></div>`).join('') || '<p class="aviso">Sin tarjetas en este grupo.</p>';
+}
+function cambiarTarjeta(i, k, v) { TARJ[grupo][i][k] = v.trim(); guardarTarjetas(); }
+async function agregarTarjetas(files) {
+  try {
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) { alert(`${f.name}: solo imágenes`); continue; }
+      const r = await api(`/api/pista_archivo?g=tarjetas&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+      TARJ[grupo].push({archivo: r.archivo, momento: 'auto', dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
+    }
+  } catch (e) { alert(e.message); }
+  guardarTarjetas();
+}
+{
+  const el = $('#soltarTarjeta'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarTarjetas([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTarjetas([...e.dataTransfer.files]); };
+}
+
+let TESTI = {TESTIMONIOS: []};
+async function cargarTestimonios() { TESTI = await api(`/api/pistas?g=testimonios&p=${q(P)}`); pintarTestimonios(); }
+async function guardarTestimonios() {
+  try { await api(`/api/pistas?g=testimonios&p=${q(P)}`, {method: 'POST', body: JSON.stringify(TESTI)}); } catch (e) { alert(e.message); }
+  pintarTestimonios(); refrescar();
+}
+function pintarTestimonios() {
+  $('#listaTestimonios').innerHTML = TESTI.TESTIMONIOS.map((c, i) => `<div class="pista">
+      <div class="vista"><video src="/archivo?p=${q(P)}&sub=testimonios&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
+      <div class="datos" style="grid-template-columns: 1fr 5em 5em">
+        <input type="text" placeholder="Momento: auto" title="auto, 4:30, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTestimonio(${i}, 'momento', this.value)">
+        <input type="text" placeholder="Desde" title="Desde qué segundo del testimonio (vacío = el comienzo), por ejemplo 0:05" value="${esc(c.desde)}" onchange="cambiarTestimonio(${i}, 'desde', this.value)">
+        <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)">
+        <textarea rows="2" style="grid-column:1/-1; margin-top:6px; resize:vertical" placeholder="Narración con tu voz (opcional): lo que dice el narrador sobre este testimonio. Si lo llenas, habla tu voz principal y se silencia el audio del cliente." title="Déjalo vacío para que suene el audio propio del testimonio. Si escribes algo, lo dice tu voz principal (ElevenLabs) encima del clip en silencio." onchange="cambiarTestimonio(${i}, 'texto', this.value)">${esc(c.texto || '')}</textarea></div>
+      <button title="Quitar" onclick="TESTI.TESTIMONIOS.splice(${i}, 1); guardarTestimonios()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste testimonios.</p>';
+}
+function cambiarTestimonio(i, k, v) { TESTI.TESTIMONIOS[i][k] = v.trim(); guardarTestimonios(); }
+async function agregarTestimonios(files) {
+  try {
+    for (const f of files) {
+      if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) { alert(`${f.name}: solo videos`); continue; }
+      const r = await api(`/api/pista_archivo?g=testimonios&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: '', texto: ''});
+    }
+  } catch (e) { alert(e.message); }
+  guardarTestimonios();
+}
+{
+  const el = $('#soltarTestimonio'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarTestimonios([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarTestimonios([...e.dataTransfer.files]); };
+}
+
+let MODS = {MODELOS: []};
+async function cargarModelos() { MODS = await api(`/api/pistas?g=modelos&p=${q(P)}`); pintarModelos(); }
+async function guardarModelos() {
+  try { await api(`/api/pistas?g=modelos&p=${q(P)}`, {method: 'POST', body: JSON.stringify(MODS)}); } catch (e) { alert(e.message); }
+  pintarModelos(); refrescar();
+}
+function pintarModelos() {
+  $('#listaModelos').innerHTML = MODS.MODELOS.map((c, i) => `<div class="pista">
+      <div class="vista"><video src="/archivo?p=${q(P)}&sub=nuevos_modelos&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
+      <div class="datos" style="grid-template-columns: 7em 1fr">
+        <input type="text" placeholder="Momento: auto" title="auto, 1:10, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarModelo(${i}, 'momento', this.value)">
+        <input type="text" placeholder="Modelos (vacío = la IA los lee del video)" title="Separados por coma, por ejemplo: Honor 600, Honor 8 Lite" value="${esc(c.modelos)}" onchange="cambiarModelo(${i}, 'modelos', this.value)">
+        <input type="text" style="grid-column: 1 / -1" placeholder="Frase de la voz (vacío = la IA la escribe con tu estilo)" value="${esc(c.frase)}" onchange="cambiarModelo(${i}, 'frase', this.value)"></div>
+      <button title="Quitar" onclick="MODS.MODELOS.splice(${i}, 1); guardarModelos()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste el video de nuevos modelos.</p>';
+  $('#soltarModelo').style.display = MODS.MODELOS.length ? 'none' : '';  // un video por tutorial
+}
+function cambiarModelo(i, k, v) { MODS.MODELOS[i][k] = v.trim(); guardarModelos(); }
+async function agregarModelo(files) {
+  const f = files[0];
+  if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) return alert(`${f.name}: solo videos`);
+  try {
+    const r = await api(`/api/pista_archivo?g=modelos&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+    MODS.MODELOS = [{archivo: r.archivo, momento: 'auto', modelos: '', frase: ''}];
+  } catch (e) { alert(e.message); }
+  guardarModelos();
+}
+{
+  const el = $('#soltarModelo'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && agregarModelo([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && agregarModelo([...e.dataTransfer.files]); };
+}
+
+let ESTILOS = [], estilo = null;
+async function cargarEstilos(sel) {
+  const r = await api('/api/estilos'); ESTILOS = r.estilos;
+  estilo = sel || estilo || r.activo || (ESTILOS[0] || {}).nombre || null;
+  if (estilo && !ESTILOS.find(e => e.nombre === estilo)) estilo = (ESTILOS[0] || {}).nombre || null;
+  $('#estiloSel').innerHTML = ESTILOS.map(e => `<option ${e.nombre === estilo ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('') || '<option value="">(crea un estilo)</option>';
+  $('#estiloUsar').checked = !!estilo && r.activo === estilo;
+  const e = ESTILOS.find(x => x.nombre === estilo);
+  $('#listaFuentes').innerHTML = !e ? '<p class="aviso">Crea un estilo (por ejemplo, el nombre de tu canal) y agrégale videos.</p>' :
+    e.fuentes.map((f, i) => `<div class="pista"><div class="vista">${f.tipo === 'canal' ? '📺' : f.tipo === 'youtube' ? '▶️' : f.tipo === 'texto' ? '📝' : '🎞️'}</div>
+      <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.titulo || f.url || f.archivo)}
+        <div class="aviso">${f.tipo === 'canal' ? (f.leidos ? `✓ ${f.leidos} videos leídos` : 'sin leer: pulsa Alimentar') : f.analizado ? '✓ analizado' : 'sin analizar'}</div></div>
+      <button title="Quitar" onclick="quitarFuente(${i})">✕</button></div>`).join('') || '<p class="aviso">Sin videos todavía.</p>';
+  $('#btnAlimentar').disabled = !e || !e.fuentes.length;
+}
+$('#estiloSel').onchange = () => cargarEstilos($('#estiloSel').value);
+$('#estiloUsar').onchange = async () => {
+  await api('/api/ajustes', {method: 'POST', body: JSON.stringify({estilo: $('#estiloUsar').checked ? estilo : ''})}); cargarEstilos();
+};
+async function nuevoEstilo() {
+  const n = prompt('Nombre del estilo (por ejemplo, el nombre de tu canal):'); if (!n) return;
+  const r = await api('/api/estilo', {method: 'POST', body: JSON.stringify({nombre: n})});
+  if (!(await api('/api/estilos')).activo) await api('/api/ajustes', {method: 'POST', body: JSON.stringify({estilo: r.nombre})});
+  cargarEstilos(r.nombre);
+}
+async function agregarLink() {
+  if (!estilo) return alert('Primero crea un estilo.');
+  const t = $('#ytLink').value.trim(); if (!t) return;
+  try { await api(`/api/estilo_link?e=${q(estilo)}`, {method: 'POST', body: t}); $('#ytLink').value = ''; } catch (e) { alert(e.message); }
+  cargarEstilos();
+}
+async function subirEstilo(files) {
+  if (!estilo) return alert('Primero crea un estilo.');
+  for (const f of files) {
+    $('#soltarEstilo .e').textContent = `Subiendo ${f.name}…`;
+    try { await api(`/api/estilo_subir?e=${q(estilo)}&nombre=${q(f.name)}`, {method: 'POST', body: f}); } catch (e) { alert(e.message); }
+  }
+  $('#soltarEstilo .e').textContent = 'Arrastra aquí tus videos (mp4) o un perfil de estilo (.md, .txt), o haz clic';
+  cargarEstilos();
+}
+async function quitarFuente(i) { await api(`/api/estilo_quitar?e=${q(estilo)}&i=${i}`, {method: 'POST'}); cargarEstilos(); }
+async function alimentar() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=alimentar`, {method: 'POST', body: JSON.stringify({estilo})}); } catch (e) { return alert(e.message); }
+  esperaEstilo = true; refrescar();
+}
+let esperaEstilo = false;
+let PAGINAS = [];
+async function cargarPaginas() { PAGINAS = (await api('/api/ajustes')).ajustes.paginas || []; pintarPaginas(); }
+function pintarPaginas() {
+  $('#listaPaginas').innerHTML = PAGINAS.map((x, i) => `<div class="pista"><div class="vista">🌐</div>
+    <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"><b>${esc(x.nombre || x.url)}</b> · ${esc(x.url)}
+      <div class="aviso">${esc(x.para || '')}</div></div>
+    <button title="Quitar" onclick="quitarPagina(${i})">✕</button></div>`).join('') || '<p class="aviso">Todavía no agregaste páginas.</p>';
+}
+async function guardarPaginas() { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({paginas: PAGINAS})}); pintarPaginas(); }
+async function agregarPagina() {
+  const url = $('#pgUrl').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (!url) return alert('Pon el link de la página.');
+  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim()});
+  $('#pgNombre').value = $('#pgUrl').value = $('#pgPara').value = '';
+  await guardarPaginas();
+}
+async function quitarPagina(i) { PAGINAS.splice(i, 1); await guardarPaginas(); }
+let ACORTAR = null, esperaAcortar = false;
+async function cargarAcortar() {
+  try { const t = await api(`/api/json?p=${q(P)}&f=acortar.json`); ACORTAR = t ? JSON.parse(t) : null; } catch (e) { ACORTAR = null; }
+  pintarAcortar();
+}
+function pintarAcortar() {
+  const a = ACORTAR, tr = (a && a.tramos) || [];
+  $('#btnAcortarRehacer').hidden = !tr.length;
+  if (a && a.objetivo_s && !$('#acMin').value) $('#acMin').value = +(a.objetivo_s / 60).toFixed(1);
+  if (!a) { $('#acResumen').textContent = ''; $('#listaAcortar').innerHTML = ''; return; }
+  const queda = a.original_s - tr.filter(c => c.usar).reduce((s, c) => s + (c.accion === 'cortar' ? c.fin - c.inicio : (c.fin - c.inicio) * (1 - 1 / c.velocidad)), 0);
+  $('#acResumen').innerHTML = tr.length ? `De <b>${mmss(a.original_s)}</b> queda en <b>${mmss(queda)}</b>` +
+    (a.objetivo_s ? ` (pediste ${mmss(a.objetivo_s)})` : '') + ` · ${tr.filter(c => c.usar).length} de ${tr.length} tramos` : 'No encontré nada que quitar.';
+  $('#listaAcortar').innerHTML = tr.map((c, i) => `<label class="pista" style="cursor:pointer"><input type="checkbox" ${c.usar ? 'checked' : ''} onchange="marcarAcortar(${i}, this.checked)">
+    <div style="flex:1;min-width:0"><b>${mmss(c.inicio)}–${mmss(c.fin)}</b> ${esc(c.motivo)}
+    <div class="aviso">${c.accion === 'cortar' ? 'se corta' : 'se acelera ×' + c.velocidad}</div></div></label>`).join('');
+}
+async function marcarAcortar(i, v) {
+  ACORTAR.tramos[i].usar = v;
+  try { await api(`/api/json?p=${q(P)}&f=acortar.json`, {method: 'POST', body: JSON.stringify(ACORTAR, null, 1)}); } catch (e) { alert(e.message); }
+  pintarAcortar();
+}
+async function acortar() {
+  const op = {minutos: parseFloat($('#acMin').value) || 0, ia: $('#acIA').checked};
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { return alert(e.message); }
+  esperaAcortar = true; refrescar();
+}
+async function acortarRehacer() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify({rehacer: true})}); } catch (e) { return alert(e.message); }
+  esperaAcortar = true; refrescar();
+}
+async function verPerfil() {
+  const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
+  if (!t) return alert('Todavía no hay perfil: agrega videos y pulsa «Aprender mi estilo».');
+  dlgPrompt.querySelector('h3').textContent = `Perfil de estilo: ${estilo}`; $('#txtPrompt').value = t; $('#caps').innerHTML = ''; $('#msgCopia').textContent = ''; dlgPrompt.showModal();
+}
+{
+  const el = $('#soltarEstilo'), inp = el.querySelector('input');
+  inp.onchange = () => { inp.files.length && subirEstilo([...inp.files]); inp.value = ''; };
+  el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--rosa)'; };
+  el.ondragleave = () => el.style.borderColor = '';
+  el.ondrop = e => { e.preventDefault(); el.style.borderColor = ''; e.dataTransfer.files.length && subirEstilo([...e.dataTransfer.files]); };
+}
+
 let PROV = {};
+function irA(s) { $(s).scrollIntoView({behavior: 'smooth', block: 'start'}); }
+const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
-  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14;
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia;
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
+  // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
+  $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
   dlgAjustes.showModal();
 }
+async function comprobarClave() {
+  const e = $('#ajPrueba'); e.style.color = ''; e.textContent = 'Comprobando…';
+  try {
+    const r = await api('/api/probar_ia', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
+      clave: $('#ajClave').value.trim(), tipo: (PROV[$('#ajProv').value] || {}).tipo || ''})});
+    e.style.color = r.ok ? 'var(--verde)' : 'var(--rojo)';
+    e.textContent = (r.ok ? '✓ ' : '✗ ') + r.mensaje;
+  } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = '✗ No se pudo comprobar.'; }
+}
 async function guardarAjustes() {
+  const cl = $('#ajClave').value.trim();
+  if (/\.\.\.|…/.test(cl) && !cl.startsWith('••••'))
+    return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14))})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked})});
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
@@ -373,18 +1235,160 @@ async function guardarEleven() {
 }
 verEleven().then(k => { if (!k) dlgEleven.showModal(); });  // sin clave, la pide apenas abre
 
+const reloj = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+// al abrir la pestaña no se repite un resultado viejo: solo los de esta visita (o de hace un par de minutos)
+const CARGA = Date.now() / 1000;
+let barraCerrada = null;
+try { barraCerrada = +localStorage.getItem('barraCerrada') || null; } catch (e) {}
+const reciente = r => r && r.cuando >= CARGA - 120 && r.cuando !== barraCerrada;
+function pintarBarra(t, r, arch) {
+  if (reiniciando) return;
+  const b = $('#barra');
+  const corre = t.proyecto === P;
+  if (corre && !(t.plan && t.plan.length)) { t.plan = [t.paso || 'empezando']; t.i = 0; }
+  if (!corre && !reciente(r)) { b.hidden = true; document.body.classList.remove('con-barra'); return; }
+  b.hidden = false; document.body.classList.add('con-barra');
+  if (corre) {
+    const avance = seguirAvance(t, arch);
+    const n = t.plan.length, pct = Math.round(100 * (t.i + 0.5) / n);
+    b.className = 'trabaja';
+    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
+      <span class="cuanto">este paso ${reloj(t.segundos)} · total ${reloj(t.total_s)}</span>
+      ${n > 1 ? `<span class="chips">${t.plan.map((x, k) => `<span class="chip ${k < t.i ? 'hecho' : k === t.i ? 'ahora' : ''}">${k < t.i ? '✓' : k === t.i ? '⏳' : '○'} ${esc(x)}</span>`).join('')}</span>` : ''}
+      ${avance}<button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
+      <div class="riel"><div class="lleno" style="width:${pct}%"></div></div>
+      <div class="detalle">${esc(t.linea || 'empezando…')}</div>`;
+    return;
+  }
+  const cerrar = `<button onclick="cerrarBarra(${r.cuando})">✕</button>`;
+  if (r.ok && r.pausa === 'guion') {
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">✓ Guion listo: revísalo antes de seguir</span>
+      <span class="cuanto">la IA lo escribió desde tu video en ${reloj(r.segundos)}</span>
+      <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
+      <button onclick="seguirTodo()">▶ Seguir con todo</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
+    return;
+  }
+  if (r.ok) {
+    b.className = 'ok';
+    const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
+    b.innerHTML = `<div class="arriba"><span class="que">✓ Todo salió bien</span>
+      <span class="cuanto">${r.hechos.length} ${r.hechos.length === 1 ? 'paso hecho' : 'pasos hechos'} en ${reloj(r.segundos)}${r.saltados.length ? ` · salté ${r.saltados.length} opcional${r.saltados.length > 1 ? 'es' : ''} (${esc(r.saltados.join(', '))})` : ''}</span>
+      <span class="chips">${final}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+  } else {
+    b.className = 'mal';
+    b.innerHTML = `<div class="arriba"><span class="que">✗ Falló: ${esc(r.paso || 'un paso')}</span>
+      <span class="cuanto">${r.hechos.length ? `antes salieron bien ${r.hechos.length} de ${r.total}` : ''}</span>
+      <span class="chips"><button onclick="irA('#log')">Ver registro</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:${Math.round(100 * (r.hechos.length + r.saltados.length) / r.total)}%"></div></div>
+      <div class="detalle">${esc(r.msg)}</div>`;
+  }
+}
+
+let avisoGuion = null, GUION = null;
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+async function verGuion() {
+  let txt;
+  try { txt = await api(`/api/json?p=${q(P)}&f=guion.json`); GUION = JSON.parse(txt); } catch (e) { GUION = null; }
+  if (!GUION || !(GUION.bloques || []).length) { alert('Todavía no hay guion. Pulsa «▶ Hacer todo» y la IA lo escribe desde tu video.'); return; }
+  const rv = await api(`/api/revision_guion?p=${q(P)}`);
+  const lista = rv.mejoras;
+  $('#mejorasGuion').innerHTML = (lista.length ? `<b>Lo que la app corrigió o te avisa:</b><ul>${lista.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
+    : '<b>✓ La app lo revisó:</b> tiempos y orden bien, no tuvo que corregir nada.');
+  await verPreguntas();
+  $('#bloquesGuion').innerHTML = GUION.bloques.map((b, k) => {
+    const mo = b.montaje || {}, tramo = mo.src_inicio != null ? `video ${mmss(mo.src_inicio)}${mo.src_fin != null ? '–' + mmss(mo.src_fin) : ''}` : 'imagen';
+    return `<div class="bloque"><div class="cab"><b>${esc(b.id)}</b> · ${tramo}${b.ancla ? ' · ' + esc(b.ancla) : ''}</div>
+      <textarea data-k="${k}">${esc(b.texto)}</textarea></div>`;
+  }).join('');
+  $('#msgGuion').textContent = ''; dlgGuion.showModal();
+}
+let PREGUNTAS = [];
+async function verPreguntas() {
+  try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`)) || []; } catch (e) { PREGUNTAS = []; }
+  const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
+  $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA tiene ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre datos que no vio claros</b>
+    <p class="aviso">Contéstalas para que el guion diga lo correcto. Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías quedan como están.</p>
+    ${pend.map(([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
+      <div class="fila" style="margin:4px 0">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
+      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`).join('')}
+    <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button><span class="msg" id="msgPreg"></span></div></div>`;
+}
+async function responderPreguntas() {
+  document.querySelectorAll('#preguntasGuion input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
+  if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { $('#msgPreg').textContent = 'Escribe o elige al menos una respuesta'; $('#msgPreg').className = 'msg err'; return; }
+  document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
+  try {
+    await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)});
+    await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true})});
+  } catch (e) { $('#msgPreg').textContent = e.message; $('#msgPreg').className = 'msg err'; return; }
+  dlgGuion.close(); refrescar();
+}
+async function guardarGuion(seguir) {
+  document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
+  try { await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)}); }
+  catch (e) { $('#msgGuion').textContent = e.message; $('#msgGuion').className = 'msg err'; return; }
+  if (archivo === 'guion.json' && !editado) abrir('guion.json');
+  if (!seguir) { $('#msgGuion').textContent = '✓ Guardado'; $('#msgGuion').className = 'msg ok'; return; }
+  dlgGuion.close(); seguirTodo();
+}
+async function seguirTodo() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
+  refrescar();
+}
+
+function cerrarBarra(cuando) {
+  barraCerrada = cuando; try { localStorage.setItem('barraCerrada', cuando); } catch (e) {}
+  refrescar();
+}
+let reiniciando = false, PAGINA = null;
+function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
+  const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
+}
+async function actualizarProyecto() {
+  soltarVideo();
+  try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
+}
+async function borrarTodo() {
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
+  try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
+  catch (e) { alert(e.message); return; }
+  editado = false; abrir(archivo); refrescar();
+}
+async function reiniciarApp() {
+  if (reiniciando) return; reiniciando = true;
+  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
+  const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
+  b.innerHTML = '<div class="arriba"><span class="que">🔄 Actualizando la app a la versión nueva…</span></div>';
+  setTimeout(() => location.reload(), 5000);
+}
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo);
-  if (e.fallo && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
+  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
+  // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
+  if (PAGINA === null) PAGINA = e.pagina;
+  else if (e.pagina !== PAGINA && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) location.reload();
+  if (e.fallo && reciente(e.resultado) && avisado !== e.fallo.msg) { avisado = e.fallo.msg; document.querySelector('#log').scrollIntoView({behavior: 'smooth', block: 'center'}); } pintarSalidas(e.archivos);
   const log = $('#log'), abajo = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.textContent = e.registro || 'Aquí verás lo que va haciendo cada paso.'; if (abajo) log.scrollTop = log.scrollHeight;
   const t = e.trabajo;
   $('#estado').textContent = t.proyecto ? `⏳ ${t.paso} · ${t.proyecto} · ${t.segundos} s` : 'Sin trabajos';
   $('#estado').classList.toggle('activo', !!t.proyecto);
   $('#todo').disabled = !!t.proyecto;
+  $('#btnTarjetas').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !(TARJ.COMENTARIOS.length + TARJ.WHATSAPP.length);
+  $('#btnTestimonios').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !TESTI.TESTIMONIOS.length;
+  $('#btnModelos').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !MODS.MODELOS.length;
   if (esperaIA && !t.proyecto) finIA();
+  if (esperaNube && !t.proyecto) finNube(e);
+  if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
+  if (esperaAcortar && !t.proyecto) { esperaAcortar = false; cargarAcortar(); }
+  $('#btnAcortar').disabled = $('#btnAcortarRehacer').disabled = !!t.proyecto || !e.archivos['original.mp4'];
 }
 setInterval(refrescar, 2000);
 setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta

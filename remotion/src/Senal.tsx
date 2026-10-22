@@ -11,9 +11,10 @@ export type SenalProps = {
   texto?: string;
   foco?: boolean; // oscurece el resto de la imagen
   angulo?: number; // de dónde viene la flecha, en grados (0 = desde la derecha)
+  hueco?: number; // distancia del centro a la punta de la flecha (para no tapar el texto señalado)
 };
 
-export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 80, color = estilo.amarillo, texto, foco, angulo = -35}) => {
+export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 80, color = estilo.amarillo, texto, foco, angulo = -35, hueco = 18}) => {
   const f = useCurrentFrame();
   const {fps, durationInFrames, width, height} = useVideoConfig();
   const [x, y] = puntos[Math.min(f, puntos.length - 1)];
@@ -44,7 +45,7 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
     const a = (angulo * Math.PI) / 180;
     const largo = r * 2.2;
     const rebote = Math.sin((f / fps) * Math.PI * 3) * 8 * (f > 0.45 * fps ? 1 : 0);
-    const px = x + Math.cos(a) * (18 + rebote), py = y + Math.sin(a) * (18 + rebote);
+    const px = x + Math.cos(a) * (hueco + rebote), py = y + Math.sin(a) * (hueco + rebote);
     const ox = px + Math.cos(a) * largo, oy = py + Math.sin(a) * largo;
     const cx = (px + ox) / 2 - Math.sin(a) * 30, cy = (py + oy) / 2 + Math.cos(a) * 30; // curva leve
     const L = largo * 1.2;
@@ -60,16 +61,30 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
   const rf = (tipo === 'caja' ? Math.max(w, h) * 0.75 : r * 1.3) * pulso;
   return (
     <AbsoluteFill style={{opacity: sale}}>
-      {foco && (
-        <AbsoluteFill style={{opacity: 0.55 * dibuja,
+      {foco && tipo === 'caja' && (
+        // recuadro: oscurece todo menos el rectángulo marcado
+        <div style={{position: 'absolute', left: x - w / 2 - 10, top: y - h / 2 - 10, width: w + 20, height: h + 20, borderRadius: 22,
+          opacity: 0.42 * dibuja, boxShadow: '0 0 0 4000px rgba(0,0,0,.85), 0 0 40px 20px rgba(0,0,0,.6)'}} />
+      )}
+      {foco && tipo !== 'caja' && (
+        <AbsoluteFill style={{opacity: 0.42 * dibuja,
           background: `radial-gradient(circle at ${x}px ${y}px, transparent ${rf}px, rgba(0,0,0,.85) ${rf + 60}px)`}} />
       )}
       <svg width={width} height={height} style={{position: 'absolute', filter: brillo}}>{forma}</svg>
-      {texto && (
-        <div style={{position: 'absolute', left: x - 300, width: 600, top: y + (tipo === 'caja' ? h / 2 : r) + 22, textAlign: 'center',
-          transform: `scale(${pop})`, fontFamily: estilo.fuente, fontWeight: 900, fontSize: 44, color: 'white',
-          textShadow: `0 0 12px ${color}, 0 3px 0 rgba(0,0,0,.7)`}}>{texto}</div>
-      )}
+      {texto && (() => {
+        // rótulo tipo píldora: debajo de la marca, o encima si no cabe; nunca se sale del cuadro
+        const alto = tipo === 'caja' ? h / 2 : r;
+        const abajo = y + alto + 110 < height;
+        const ancho = Math.min(620, 60 + texto.length * 26);
+        const left = Math.min(Math.max(x - ancho / 2, 24), width - ancho - 24);
+        const top = abajo ? y + alto + 24 : y - alto - 24 - 74;
+        return (
+          <div style={{position: 'absolute', left, top, width: ancho, height: 74, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', transform: `scale(${pop})`, transformOrigin: abajo ? '50% 0' : '50% 100%',
+            background: estilo.fondo, border: `4px solid ${color}`, borderRadius: 40, boxShadow: `0 0 18px ${color}88, 0 8px 18px rgba(0,0,0,.55)`,
+            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, color: 'white', whiteSpace: 'nowrap'}}>{texto}</div>
+        );
+      })()}
     </AbsoluteFill>
   );
 };

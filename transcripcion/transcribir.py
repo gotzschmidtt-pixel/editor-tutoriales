@@ -68,7 +68,10 @@ def whisper(f, idioma, modelo):
         raise SystemExit('ERROR: Whisper no está instalado. Abre una terminal en la carpeta de la app y escribe:\n'
                          '    python -m pip install faster-whisper\nLuego vuelve a darle a Transcribir.')
     print(f'Cargando Whisper «{modelo}» (la primera vez descarga el modelo, unos cientos de MB)…', flush=True)
-    segs, _ = WhisperModel(modelo, compute_type='int8').transcribe(f, language=idioma, word_timestamps=True)
+    # el modelo queda en descargas_app/modelos (para no bajarlo otra vez y llevarlo a otra PC)
+    guardar = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'descargas_app', 'modelos', 'whisper')
+    os.makedirs(guardar, exist_ok=True)
+    segs, _ = WhisperModel(modelo, compute_type='int8', download_root=guardar).transcribe(f, language=idioma, word_timestamps=True)
     return [{'texto': w.word.strip(), 'inicio': w.start, 'fin': w.end} for s in segs for w in s.words]
 
 

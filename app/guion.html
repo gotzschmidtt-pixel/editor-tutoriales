@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de guion</title>
+<style>
+  :root {
+    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
+    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  select, input, textarea, button { font: inherit; color: var(--texto); }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid var(--borde);
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
+  .total { color: var(--suave); font-size: 14px; }
+  .total b.ok { color: var(--verde); } .total b.mal { color: var(--amarillo); }
+  .espacio { flex: 1; }
+  button { cursor: pointer; border-radius: 10px; padding: 8px 14px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover { border-color: var(--azul); }
+  button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
+  .ayuda { color: var(--suave); font-size: 13.5px; margin: 0 0 14px; }
+  .bloque { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+  .bloque.cambiado { border-color: var(--rosa); }
+  .bloque img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
+  .meta { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
+  .meta b { color: var(--texto); }
+  .cab { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--suave); margin-bottom: 6px; flex-wrap: wrap; }
+  .cab .id { font-weight: 700; color: var(--azul); }
+  .chip { border-radius: 99px; padding: 1px 9px; background: var(--panel2); border: 1px solid var(--borde); }
+  .chip.mal { color: var(--amarillo); border-color: #ffd23f66; }
+  .chip.ok { color: var(--verde); border-color: #38f28a55; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; background: #0e111b; border: 1px solid var(--borde); border-radius: 10px;
+    padding: 10px 12px; line-height: 1.55; font-size: 15.5px; }
+  textarea:focus { outline: none; border-color: var(--azul); }
+  .acciones { display: flex; gap: 6px; margin-top: 6px; }
+  .acciones button { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
+  dialog textarea { min-height: 300px; font-size: 13.5px; }
+  .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
+  @media (max-width: 700px) { .bloque { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📝 <b>Editor de guion</b> · <span id="nombre"></span></h1>
+  <span class="total" id="total"></span>
+  <span class="espacio"></span>
+  <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
+  <button onclick="bajarWord()">⬇ Word</button>
+  <button class="principal" id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
+</header>
+<main>
+  <p class="ayuda">Corrige lo que dice la voz en cada bloque. La imagen es el momento de tu grabación donde arranca el bloque.
+    El aviso de cada bloque compara lo que tarda la voz en decir el texto con lo que dura su imagen. Al guardar, la app revisa el
+    guion (duración y orden) y guarda el anterior como <code>guion.json.anterior</code>. Solo los bloques que cambiaste gastan voz nueva.</p>
+  <p class="msg" id="msg"></p>
+  <div id="bloques"></div>
+</main>
+
+<dialog id="dlgGpt">
+  <h3 style="margin-top:0">🤖 Mejorar con otra IA</h3>
+  <p class="msg">1. Copia esto y pégalo en ChatGPT, Gemini o Claude. 2. Copia lo que te responda y pégalo abajo. 3. «Aplicar».</p>
+  <textarea id="txtGpt" readonly></textarea>
+  <div class="acciones" style="margin:8px 0 14px"><button onclick="copiarGpt()">📋 Copiar</button><span class="msg" id="msgCopia"></span></div>
+  <textarea id="txtRespuesta" placeholder="Pega aquí la respuesta de la IA (con los ### L01…)"></textarea>
+  <div class="acciones" style="margin-top:10px">
+    <button class="principal" onclick="aplicarRespuesta()">Aplicar</button><button onclick="dlgGpt.close()">Cerrar</button>
+  </div>
+</dialog>
+
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const PALABRAS_POR_S = 2.6;
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mmss = s => `${Math.floor((s || 0) / 60)}:${String(Math.round((s || 0) % 60)).padStart(2, '0')}`;
+let G = null, ORIGINAL = {}, DUR = 0, sucio = false;
+$('#nombre').textContent = P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+const vozS = txt => txt.trim().split(/\s+/).filter(Boolean).length / PALABRAS_POR_S + 1;
+const largo = m => (m.modo.startsWith('lento') ? (m.src_fin - m.src_inicio) / (m.velocidad || 1) : 0) + (m.congelar_s || 0);
+
+async function cargar() {
+  try { G = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null'); } catch (e) { G = null; }
+  if (!G || !(G.bloques || []).length) { $('#bloques').innerHTML = '<p class="msg err">Todavía no hay guion en este proyecto. Pídelo primero a la IA en la app.</p>'; return; }
+  ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
+  try { DUR = (await api(`/api/estado?p=${q(P)}`)).duracion_original || 0; } catch (e) {}
+  pintar();
+}
+function pintar() {
+  $('#bloques').innerHTML = G.bloques.map((b, i) => {
+    const m = b.montaje || {}, t = m.src_inicio ?? 0;
+    return `<div class="bloque" id="b${i}">
+      <div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
+        <div class="meta"><b>${mmss(b.inicio_min)}–${mmss(b.fin_max)}</b> del video · de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div>
+        ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}</div>
+      <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
+        <span class="chip" id="aviso${i}"></span></div>
+        <textarea data-i="${i}">${esc(b.texto)}</textarea>
+        <div class="acciones"><button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
+  }).join('');
+  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; avisos(); });
+  avisos();
+}
+function avisos() {
+  let total = 0;
+  G.bloques.forEach((b, i) => {
+    const v = vozS(b.texto), l = largo(b.montaje || {}), el = $('#aviso' + i);
+    total += Math.max(v, l);
+    $('#b' + i).classList.toggle('cambiado', b.texto !== ORIGINAL[b.id]);
+    if (!el) return;
+    const pal = b.texto.trim().split(/\s+/).filter(Boolean).length;
+    if (v > l + 1.5) { el.className = 'chip mal'; el.textContent = `${pal} palabras · la voz (~${v.toFixed(0)} s) alarga el bloque ${(v - l).toFixed(0)} s`; }
+    else if (l > v + 6) { el.className = 'chip mal'; el.textContent = `${pal} palabras · sobran ~${(l - v).toFixed(0)} s de imagen sin voz`; }
+    else { el.className = 'chip ok'; el.textContent = `${pal} palabras · ~${v.toFixed(0)} s de voz`; }
+  });
+  const meta = DUR, ok = !DUR || (total >= meta * 0.9 && total <= meta * 1.15);
+  $('#total').innerHTML = `${G.bloques.length} bloques · video de unos <b class="${ok ? 'ok' : 'mal'}">${mmss(total)}</b>` + (DUR ? ` (tu grabación: ${mmss(DUR)})` : '');
+}
+function quitar(i) {
+  if (!confirm(`¿Quitar el bloque ${G.bloques[i].id}? Su parte del video sale del montaje.`)) return;
+  G.bloques.splice(i, 1); sucio = true; pintar();
+}
+function comoTexto() {
+  return G.bloques.map(b => `### ${b.id} · ${mmss(b.inicio_min)}–${mmss(b.fin_max)}${b.ancla ? ' · en pantalla: ' + b.ancla.replace(/\s+/g, ' ') : ''}\n${b.texto.trim()}`).join('\n\n');
+}
+function prepararGpt() {
+  $('#txtGpt').value = `Este es el guion de la voz en off de mi video tutorial (español latino, tuteando, entretenido y claro). ` +
+    `Cada bloque va sobre una parte del video que ya está cortada; el texto de cada bloque debe durar más o menos lo mismo al leerlo ` +
+    `(unas ${PALABRAS_POR_S * 60 | 0} palabras por minuto; el tiempo de cada bloque está en su encabezado).\n` +
+    `Mejora la redacción, corrige errores y hazlo más claro y entretenido. NO inventes datos (pines, precios, nombres de archivo) que no estén.\n` +
+    `Devuélveme TODOS los bloques en el MISMO formato: cada uno con su línea "### Lxx · …" igual, y debajo solo el texto nuevo. Nada más.\n\n` + comoTexto();
+  $('#msgCopia').textContent = '';
+}
+function copiarGpt() {
+  navigator.clipboard.writeText($('#txtGpt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtGpt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; });
+}
+function aplicarRespuesta() {
+  const porId = Object.fromEntries(G.bloques.map(b => [b.id, b]));
+  let n = 0;
+  for (const p of $('#txtRespuesta').value.replace(/\*\*/g, '').split(/^\s*#{2,}\s*/m).slice(1)) {
+    const [cab, ...resto] = p.split(/\r?\n/), id = (cab.match(/^([A-Za-z]+\d+)/) || [])[1];
+    const txt = resto.join('\n').trim().replace(/\s*\n\s*/g, ' ');
+    if (id && porId[id] && txt) { porId[id].texto = txt; n++; }
+  }
+  if (!n) return alert('No encontré bloques «### L01…» en la respuesta. Pídele a la IA que respete el formato.');
+  sucio = true; dlgGpt.close(); $('#txtRespuesta').value = ''; pintar();
+  $('#msg').textContent = `✓ Apliqué ${n} bloques de la IA (resaltados). Revísalos y pulsa «Guardar en la app».`; $('#msg').className = 'msg ok';
+}
+function bajarWord() {
+  const html = `<html><head><meta charset="utf-8"><title>Guion ${esc(P)}</title></head><body style="font-family:Calibri,Arial">
+    <h1>Guion · ${esc(P)}</h1><p><i>Edita solo el texto bajo cada encabezado. No cambies los encabezados «### L01…». Luego impórtalo en la app.</i></p>` +
+    G.bloques.map(b => `<h3>### ${esc(b.id)} · ${mmss(b.inicio_min)}–${mmss(b.fin_max)}</h3>${b.ancla ? `<p style="color:#888">En pantalla: ${esc(b.ancla)}</p>` : ''}<p>${esc(b.texto)}</p>`).join('') + '</body></html>';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + html], {type: 'application/msword'}));
+  a.download = `guion_${P}.doc`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+async function guardar() {
+  const b = $('#btnGuardar'), msg = $('#msg');
+  b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar'})});
+    for (let k = 0; k < 120; k++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const e = await api(`/api/estado?p=${q(P)}`);
+      if (e.trabajo.proyecto) continue;
+      if (e.fallo) throw new Error(e.fallo.msg || 'la revisión falló; mira el registro en la app');
+      break;
+    }
+    let mej = ''; try { mej = await api(`/archivo?p=${q(P)}&f=mejoras_guion.txt&v=${Date.now()}`); } catch (e) {}
+    sucio = false; await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Guardado en la app. ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; }
+  b.disabled = false;
+}
+addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
+cargar();
+</script>
+</body>
+</html>
