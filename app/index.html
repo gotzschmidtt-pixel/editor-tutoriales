@@ -495,17 +495,12 @@ async function cargarProyectos(sel) {
   $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;
-  let visto = null, vistoCuando = 0;
-  try { visto = localStorage.getItem('proyecto'); vistoCuando = +localStorage.getItem('proyecto_cuando') || 0; } catch (e) {}
-  if (!sel) {  // al abrir: el último proyecto trabajado, salvo que hayas elegido otro después
-    let u = {};
-    try { u = await api('/api/ultimo_proyecto'); } catch (e) {}
-    sel = u.nombre && (!visto || !lista.includes(visto) || u.cuando * 1000 > vistoCuando) ? u.nombre : visto;
+  if (!sel) {  // al abrir la app: siempre el último proyecto TRABAJADO (mirar otro no cuenta)
+    try { sel = (await api('/api/ultimo_proyecto')).nombre; } catch (e) {}
   }
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  try { localStorage.setItem('proyecto', P); localStorage.setItem('proyecto_cuando', Date.now()); } catch (e) {}
   ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
