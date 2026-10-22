@@ -1372,11 +1372,15 @@ let PREGUNTAS = [];
 async function verPreguntas() {
   try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`)) || []; } catch (e) { PREGUNTAS = []; }
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
-  $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA tiene ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre datos que no vio claros</b>
-    <p class="aviso">Contéstalas para que el guion diga lo correcto. Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías quedan como están.</p>
-    ${pend.map(([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
+  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
       <div class="fila" style="margin:4px 0">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
-      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`).join('')}
+      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`;
+  const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre tu guion</b>
+    <p class="aviso">Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías no cambian nada.
+    Solo se rehacen los bloques que tocan tus respuestas (el resto conserva su voz).</p>
+    ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
+    ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
     <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button><span class="msg" id="msgPreg"></span></div></div>`;
 }
 async function responderPreguntas() {

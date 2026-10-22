@@ -318,8 +318,14 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
 - PREGUNTAS AL AUTOR: un buen editor no adivina. Si un dato clave NO se ve claro ni se dice en la grabación (qué cable o
   pieza es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor), escribe la frase con lo más
-  probable y agrega una pregunta en "preguntas": {{"bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
-  Solo datos que importan para que el tutorial sea correcto (máximo 8); si todo está claro, "preguntas": [].
+  probable y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
+  Solo datos que importan para que el tutorial sea correcto (máximo 6).
+- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y 4): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
+  al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
+  (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
+  dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
+  concretas, por ejemplo {{"tipo": "mejora", "bloque": "L03", "pregunta": "¿Explico por qué hay que quitar la batería antes?",
+  "opciones": ["Sí, en una frase", "No hace falta"]}}. Pregunta solo lo que cambiaría el guion; no repitas lo que ya dice.
 Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
@@ -1804,7 +1810,8 @@ def autorrevision(d, ajustes, texto, datos):
               "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
               "estén tal cual se leen en pantalla, que tenga el HUMOR pedido (remates cada 3 o 4 bloques no críticos y la "
               "invitación a comentar con chiste) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
-              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros. "
+              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a 4 "
+              "preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
     try:
         nuevo = extraer_json(llamar(ajustes, pedido, []))
@@ -1937,15 +1944,20 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
 
 
 def guardar_preguntas(d, lista):
-    """Los datos clave que la IA no vio claros, para que el autor los conteste en la revisión del guion."""
+    """Lo que la IA pregunta al terminar el guion, para que el autor lo conteste en la revisión: los datos clave que no vio
+    claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»)."""
     out = []
     for x in lista or []:
         if isinstance(x, dict) and str(x.get('pregunta', '')).strip():
-            out.append({'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
+            out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
+                        'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
-    json.dump(out[:8], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    out = [x for x in out if x['tipo'] == 'dato'][:6] + [x for x in out if x['tipo'] == 'mejora'][:4]
+    json.dump(out, open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in out), sum(x['tipo'] == 'mejora' for x in out)
     if out:
-        print(f'La IA tiene {len(out[:8])} pregunta(s) sobre datos que no vio claros: contéstalas en la revisión del guion.', flush=True)
+        print(f'La IA te deja {len(out)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} para mejorar el guion): '
+              'contéstalas en la revisión del guion.', flush=True)
 
 
 def corregir_con_respuestas(d, ajustes, datos):
@@ -1956,15 +1968,18 @@ def corregir_con_respuestas(d, ajustes, datos):
     contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip()]
     if not contestadas:
         raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
-    qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'}: {x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
+    qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'} ({'idea para mejorar' if x.get('tipo') == 'mejora' else 'dato'}): "
+                   f"{x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
     pedido = f"""Este es el guion de un video tutorial, en JSON:
 {json.dumps(datos, ensure_ascii=False)[:60000]}
 
-Le pregunté al autor los datos que no se veían claros y respondió:
+Le pregunté al autor los datos que no se veían claros y cómo mejorar el guion, y respondió:
 {qa}
 
-Corrige el guion con esas respuestas: cambia SOLO las frases que tocan esos datos (en el bloque indicado y en cualquier otro que
-mencione lo mismo). Los demás bloques van TAL CUAL, mismo id, mismo texto y mismo montaje. No agregues datos que no estén aquí.
+Corrige el guion con esas respuestas: en los datos, cambia SOLO las frases que tocan ese dato (en el bloque indicado y en
+cualquier otro que lo mencione). En las ideas para mejorar, aplica lo que el autor eligió en el bloque indicado (agrega o
+cambia una o dos frases); si dijo que no, no cambies nada. Los demás bloques van TAL CUAL, mismo id, mismo texto y mismo
+montaje. No agregues datos que no estén aquí.
 {ESTILO}
 Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
     print(f'Corrigiendo el guion con tus {len(contestadas)} respuesta(s)…', flush=True)
@@ -1980,7 +1995,8 @@ Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
     print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
     fi = os.path.join(d, 'idea.txt')
     previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
-    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas if x['respuesta'].strip() not in previa]
+    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas
+               if x.get('tipo') != 'mejora' and x['respuesta'].strip() not in previa]
     if agregar:
         open(fi, 'w', encoding='utf-8').write(previa.rstrip() + ('\n\n' if previa.strip() else '') +
                                             'Datos confirmados por el autor:\n' + '\n'.join(agregar) + '\n')
