@@ -34,10 +34,16 @@ PALABRAS_POR_S = 2.6
 
 ESTILO = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
 - Entretenido y sencillo de entender, en español latino, tuteando.
-- Humor picante ligero (doble sentido suave) SOLO fuera de los pasos críticos. En los pasos críticos (pines, archivos, valores) nada de chistes: claro y exacto.
-- Al inicio, una invitación con humor a comentar las dudas.
+- HUMOR (obligatorio; manda sobre el estilo aprendido de los videos de referencia, aunque ahí el autor suene serio):
+  humor picante ligero, con doble sentido suave, en frases cortas y naturales. Al menos un remate cada 3 o 4 bloques
+  que NO sean pasos críticos (esperas, cargas, explicaciones, el antes y el después, el cierre). En los pasos críticos
+  (pines, códigos, keys, archivos, valores) nada de chistes: claro y exacto.
+- Al inicio, una invitación CON UN CHISTE a comentar las dudas (no una invitación seria).
 - Nombres de botones, menús y archivos escritos tal cual aparecen en pantalla.
 - NO inventes datos: precios, pines, temperaturas, webs o nombres de archivo solo si están en la transcripción, en las capturas o en la idea del autor. Si falta un dato, escribe la frase sin él."""
+# se repite en los pedidos de corrección (alargar, acortar, revisar), que si no vuelven a un tono serio
+RECUERDA_HUMOR = ("Mantén el HUMOR de las reglas de estilo: remates picantes ligeros cada 3 o 4 bloques que no sean pasos "
+                  "críticos, también en los bloques nuevos o cambiados, y la invitación a comentar del inicio con un chiste. ")
 
 
 def duracion(f):
@@ -243,7 +249,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
-                      f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
+                      f"aperturas, llamados y cierre, sin copiar datos de otros videos. El HUMOR de las reglas de estilo de más abajo "
+                      f"se agrega igual aunque en estos videos no lo haya:\n{estilo[1][:9000]}")
         catalogo = estilo[3] if len(estilo) > 3 else []
         if catalogo:
             titulos = '\n'.join(f"- {v['titulo']}" for v in catalogo[:200 if tarea == 'guion' else 60] if v.get('titulo'))[:7000]
@@ -1496,7 +1503,8 @@ def autorrevision(d, ajustes, texto, datos):
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
               "dice su texto, que los pasos clave estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en "
               "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
-              "estén tal cual se leen en pantalla y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
+              "estén tal cual se leen en pantalla, que tenga el HUMOR pedido (remates cada 3 o 4 bloques no críticos y la "
+              "invitación a comentar con chiste) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
               "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
     try:
@@ -1708,6 +1716,7 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
                   ("Alárgalo: explica con más detalle cada paso, agrega bloques para las partes de la grabación que saltaste "
                    "y usa tramos más largos del original. " if corto else
                    "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ") +
+                  RECUERDA_HUMOR +
                   "Conserva TAL CUAL (mismo id y mismo texto) los bloques que no necesites cambiar: ya tienen la voz grabada. "
                   "Los bloques nuevos llevan ids nuevos (por ejemplo L12b). "
                   "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
