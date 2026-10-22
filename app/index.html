@@ -421,7 +421,9 @@
   <div id="mejorasGuion"></div>
   <div id="bloquesGuion"></div>
   <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
-    <button onclick="guardarGuion(false)">Guardar</button><button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
+    <button onclick="guardarGuion(false)">Guardar</button>
+    <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
+    <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
 </dialog>
 
 <dialog id="dlgEleven">
@@ -1266,7 +1268,8 @@ function pintarBarra(t, r, arch) {
     b.innerHTML = `<div class="arriba"><span class="que">✓ Guion listo: revísalo antes de seguir</span>
       <span class="cuanto">la IA lo escribió desde tu video en ${reloj(r.segundos)}</span>
       <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
-      <button onclick="seguirTodo()">▶ Seguir con todo</button>${cerrar}</span></div>
+      <button onclick="seguirTodo()">▶ Seguir con todo</button>
+      <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
     return;
@@ -1334,6 +1337,15 @@ async function guardarGuion(seguir) {
   if (archivo === 'guion.json' && !editado) abrir('guion.json');
   if (!seguir) { $('#msgGuion').textContent = '✓ Guardado'; $('#msgGuion').className = 'msg ok'; return; }
   dlgGuion.close(); seguirTodo();
+}
+async function otroGuion() {  // otro guion sin repetir el análisis del video (queda guardado en mapa_video.json)
+  const pedido = prompt('¿Qué quieres distinto en el nuevo guion? (opcional: «otro inicio», «más corto», «más humor»…)\n' +
+    'El análisis del video ya está hecho: solo se vuelve a escribir el guion. El actual queda como guion.json.anterior.', '');
+  if (pedido === null) return;
+  if (dlgGuion.open) dlgGuion.close();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({otro: true, pedido: pedido.trim().slice(0, 1000)})}); }
+  catch (e) { alert(e.message); }
+  refrescar();
 }
 async function seguirTodo() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }

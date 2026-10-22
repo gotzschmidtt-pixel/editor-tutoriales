@@ -272,7 +272,10 @@ def comandos(paso, d, op):
                  '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
-                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])]
+                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
+                + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])]
+    if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
@@ -316,6 +319,7 @@ PASOS = [
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
+    {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
@@ -386,6 +390,15 @@ def probar_clave(aj):
         return {'ok': False, 'mensaje': 'No se pudo conectar con el proveedor. Revisa el internet o la dirección (URL).'}
     except Exception:
         return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
+
+
+def revision_imagen_pendiente(d):
+    """¿El guion quedó sin revisar contra sus imágenes? (se deja para después de que lo apruebas)"""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    return isinstance(g, dict) and bool(g.get('revision_imagen_pendiente'))
 
 
 USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
@@ -860,6 +873,10 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'
                 if q['paso'] == 'guion_ia' and datos.get('respuestas'):
                     datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
+                if q['paso'] == 'guion_ia' and datos.get('otro'):
+                    datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
+                if q['paso'] == 'todo' and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
+                    pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):

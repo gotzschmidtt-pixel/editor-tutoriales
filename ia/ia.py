@@ -1766,6 +1766,52 @@ Cómo devolver el resultado, según lo que puedas hacer:
           'Súbelo al chat de ChatGPT, Claude o DeepSeek y pídele el guion.', flush=True)
 
 
+def otro_guion(d, pedido=''):
+    """«🔄 Otro guion»: la IA sabe que el autor ya vio un guion de este video y quiere otro distinto."""
+    try:
+        viejo = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')).get('bloques', [])
+    except (OSError, ValueError, AttributeError):
+        viejo = []
+    partes = ["OTRA VERSIÓN: el autor ya vio un guion de este video y pidió uno nuevo. Los datos y pasos reales del video "
+              "son los mismos; cambia cómo se cuenta."]
+    if pedido:
+        partes.append(f"Lo que el autor pidió cambiar: «{pedido}».")
+    if viejo:
+        partes.append("El guion anterior, para que no lo repitas igual:\n" +
+                      '\n'.join(f"{b.get('id')}: {b.get('texto', '')}" for b in viejo if isinstance(b, dict))[:8000])
+    return '\n\n' + '\n'.join(partes)
+
+
+def revision_pendiente(d, ajustes_f, destino):
+    """La revisión de cada bloque contra su imagen, que quedó para después de que aprobaste el guion
+    (así ves el guion apenas la IA lo escribe). Usa el mapa del video ya guardado y tus cambios al texto."""
+    datos = json.load(open(destino, encoding='utf-8'))
+    modo = datos.pop('revision_imagen_pendiente', None) if isinstance(datos, dict) else None
+    if not modo:
+        print('El guion ya estaba revisado contra sus imágenes.', flush=True)
+        return
+    try:
+        mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8'))['cuadros']
+    except (OSError, ValueError, KeyError, TypeError):
+        mapa = None
+    avisos = []
+    if mapa:
+        vistos = revisar_con_imagen(d, json.load(open(ajustes_f, encoding='utf-8')), datos, mapa, con_ocr=modo != 'ia')
+        if vistos:  # se movieron tramos: se vuelven a medir los largos
+            datos, despues = revisar(d, 'guion', datos)
+            avisos = vistos + [x for x in despues if x not in vistos]
+        else:
+            avisos = ['revisé cada bloque contra su imagen: todos coinciden']
+    tmp = destino + '.tmp'
+    json.dump(datos, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    os.replace(tmp, destino)
+    for x in avisos:
+        print('·', x, flush=True)
+    with open(os.path.join(d, 'mejoras_guion.txt'), 'a', encoding='utf-8') as f:
+        f.write(''.join(x + '\n' for x in avisos))
+    print('Guardado guion.json revisado contra sus imágenes', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', required=True)
@@ -1775,6 +1821,9 @@ def main():
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
+    ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
+    ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
+    ap.add_argument('--revisar-imagen', action='store_true', help='tarea guion: hace la revisión contra imágenes que quedó pendiente')
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
@@ -1792,6 +1841,9 @@ def main():
             os.replace(destino, destino + '.anterior')
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'Guardado senales.json con {len(datos)} señales')
+        return
+    if a.tarea == 'guion' and a.revisar_imagen:
+        revision_pendiente(d, a.ajustes, destino)
         return
     mapa, todo_ia = None, False
     if a.modo == 'revisar':
@@ -1844,7 +1896,8 @@ def main():
                     print(f'Sumo {len(hojas)} hojas de contacto con todo el video ({len(mapa)} miniaturas).', flush=True)
                 except Exception as e:
                     print(f'· no pude armar las hojas de contacto ({e}); sigo sin ellas', flush=True)
-        texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
+        extra = otro_guion(d, a.pedido.strip()[:1000]) if a.tarea == 'guion' and a.otro else ''
+        texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa) + extra
         if a.modo == 'api' and a.tarea in ('guion', 'trailer') and not (a.ajustar_largo or a.respuestas):
             # guarda también el prompt usado (las capturas ya quedan en ia_capturas/), para reusarlo con otro
             # modelo sin volver a procesar el video
@@ -1892,7 +1945,7 @@ def main():
             if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
                 raise
             print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
-            texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa)
+            texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
             caps = pocas
             respuesta = llamar(ajustes, texto, caps)
         open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
@@ -1916,14 +1969,11 @@ def main():
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
     datos, avisos = revisar(d, a.tarea, datos)
-    if a.tarea == 'guion' and a.modo == 'api' and mapa:
-        vistos = revisar_con_imagen(d, ajustes, datos, mapa, con_ocr=not todo_ia)
-        if vistos:  # se movieron tramos: se vuelven a medir los largos
-            datos, despues = revisar(d, a.tarea, datos)
-            avisos = [x for x in avisos if not x.startswith(('duración estimada', 'quedó corto', 'el video queda'))] + vistos
-            avisos += [x for x in despues if x not in avisos]
-        else:
-            avisos.append('revisé cada bloque contra su imagen: todos coinciden')
+    if a.tarea == 'guion' and a.modo == 'api' and mapa and ajustes.get('imagenes', True) and isinstance(datos, dict):
+        # la revisión de cada bloque contra su imagen es lo más lento: se hace al pulsar «Seguir con todo»,
+        # así ves el guion apenas la IA lo escribe y, si no te gusta, pides otro sin esperarla
+        datos['revision_imagen_pendiente'] = 'ia' if todo_ia else 'ocr'
+        avisos.append('la revisión de cada bloque contra su imagen se hace cuando pulses «Seguir con todo»')
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
