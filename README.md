@@ -107,6 +107,12 @@ Sin clave funciona todo menos voz, música y transcripción en línea.
 Estudio.exe es un lanzador (`lanzador/estudio.py` con PyInstaller): usa el Python, ffmpeg, Node y Remotion que instaló `instalar.bat`
 y abre la app con Edge o Chrome en modo aplicación. No los lleva dentro, por eso pesa poco y se actualiza con solo cambiar el código.
 
+### Actualizar sin perder nada
+
+Pulsa **«⬇ Actualizar la app»** (arriba). Baja la versión nueva de GitHub y la copia encima de **esta misma carpeta**:
+`mis_proyectos`, `mis_estilos` y `app/ajustes.json` (tus claves) no se tocan, y cada archivo que se reemplaza
+queda antes guardado en `descargas_app/respaldo_app_<fecha>.zip`. La app se reinicia sola al terminar.
+
 ## Requisitos
 
 - Python 3 con numpy y opencv-python-headless, ffmpeg y Node con Playwright (Chromium), para renderizar las etiquetas.

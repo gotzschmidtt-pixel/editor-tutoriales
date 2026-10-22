@@ -130,6 +130,7 @@
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
+  <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
 </header>
 
 <div id="sinProyecto" class="vacio" hidden>
@@ -1410,6 +1411,13 @@ async function borrarTodo() {
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
+}
+async function actualizarApp() {
+  if (!confirm('Bajo la versión nueva de la app y la pongo en esta misma carpeta.\n\nTus proyectos, estilos y claves no se tocan, ' +
+               'y lo que se reemplace queda en un respaldo (descargas_app). Si cambió la app, se reinicia sola.')) return;
+  try { const r = await api('/api/actualizar_app', {method: 'POST'}); alert(r.mensaje + (r.respaldo ? `\nRespaldo: ${r.respaldo}` : '')); }
+  catch (e) { alert(e.message); }
+  refrescar();
 }
 async function reiniciarApp() {
   if (reiniciando) return; reiniciando = true;

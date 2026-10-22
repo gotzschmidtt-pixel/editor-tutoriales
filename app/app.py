@@ -460,6 +460,68 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
+NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'descargas_app', '.git', 'node_modules', 'trabajo'}  # lo tuyo: nunca se reemplaza
+NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
+
+
+def actualizar_app():
+    """«⬇ Actualizar la app»: baja la versión nueva de GitHub y la copia ENCIMA de esta misma carpeta. Tus proyectos,
+    estilos y claves no se tocan, y lo que se reemplaza queda antes en un respaldo (descargas_app/respaldo_app_*.zip)."""
+    import io, zipfile
+    if os.path.isdir(os.path.join(RAIZ, '.git')):
+        raise RuntimeError('Esta carpeta es un clon de git: actualízala con «git pull».')
+    rama = leer_ajustes().get('rama_app') or RAMA_APP
+    url = f'https://codeload.github.com/gotzschmidtt-pixel/editor-tutoriales/zip/refs/heads/{urllib.parse.quote(rama)}'
+    try:
+        datos = urllib.request.urlopen(url, timeout=120).read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'GitHub no encontró la versión nueva (error {e.code} en la rama «{rama}»).')
+    except urllib.error.URLError as e:
+        raise RuntimeError(f'No pude bajar la versión nueva: revisa tu internet ({e.reason}).')
+    zf = zipfile.ZipFile(io.BytesIO(datos))
+    nuevos = {}
+    for n in zf.namelist():
+        rel = n.split('/', 1)[1] if '/' in n else ''
+        if not rel or n.endswith('/') or '..' in rel.split('/') or rel.startswith('/') or ':' in rel \
+                or rel.split('/')[0] in NO_TOCAR or rel in NO_TOCAR_ARCHIVOS:
+            continue
+        nuevos[rel] = n
+    if 'app/app.py' not in nuevos:
+        raise RuntimeError('El ZIP bajado no parece ser esta app; no cambié nada.')
+    cambian = []
+    for rel, n in nuevos.items():
+        destino = os.path.join(RAIZ, *rel.split('/'))
+        contenido = zf.read(n)
+        if not os.path.exists(destino) or open(destino, 'rb').read() != contenido:
+            cambian.append((rel, destino, contenido))
+    if not cambian:
+        return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+    carpeta_resp = os.path.join(RAIZ, 'descargas_app')
+    os.makedirs(carpeta_resp, exist_ok=True)
+    respaldo = os.path.join(carpeta_resp, f"respaldo_app_{time.strftime('%Y%m%d_%H%M%S')}.zip")
+    with zipfile.ZipFile(respaldo, 'w', zipfile.ZIP_DEFLATED) as r:
+        for rel, destino, _ in cambian:
+            if os.path.exists(destino):
+                r.write(destino, rel)
+    for rel, destino, contenido in cambian:  # app.py al final: al cambiar, la página reinicia la app sola
+        if rel != 'app/app.py':
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            escribir_bytes(destino, contenido)
+    for rel, destino, contenido in cambian:
+        if rel == 'app/app.py':
+            escribir_bytes(destino, contenido)
+    return {'ok': True, 'cambiados': len(cambian), 'respaldo': os.path.relpath(respaldo, RAIZ),
+            'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta. Tus proyectos y claves siguen igual.'}
+
+
+def escribir_bytes(destino, contenido):
+    tmp = destino + '.nuevo'
+    with open(tmp, 'wb') as f:
+        f.write(contenido)
+    os.replace(tmp, destino)
+
+
 def informe_paso(d, proyecto, paso, info, ejec, estado, log):
     """El diagnóstico de un paso (ver diagnostico/diagnostico.py). Nunca frena la app: si algo falla aquí, se sigue."""
     try:
@@ -840,6 +902,14 @@ class Manejador(BaseHTTPRequestHandler):
                 subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
                                  **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
                 return self.responder({'ok': True})
+            if ruta == '/api/actualizar_app':
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error('Hay un paso trabajando. Espera a que termine o detenlo antes de actualizar.')
+                try:
+                    return self.responder(actualizar_app())
+                except (RuntimeError, OSError, ValueError) as e:
+                    return self.error(str(e))
             if ruta == '/api/salir':
                 with CANDADO:
                     if TRABAJO['proyecto']:
