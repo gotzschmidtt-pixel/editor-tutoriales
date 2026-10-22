@@ -650,6 +650,10 @@ def llamar_claude(ajustes, texto, caps):
     except anthropic.RateLimitError:
         raise SystemExit('ERROR: Claude dice que hiciste muchas peticiones o no tienes saldo. Espera un poco o revisa tu cuenta en console.anthropic.com.')
     except anthropic.APIStatusError as e:
+        if 'workspace' in str(e.message).lower():
+            raise SystemExit('ERROR: tu clave de Claude no está atada a un «Workspace». Crea una nueva clave dentro de un '
+                             'workspace: en console.anthropic.com/settings/keys, arriba a la izquierda elige un Workspace '
+                             '(por ejemplo «Default») y pulsa «Create Key». Pega esa clave en «⚙ Ajustes IA». O usa GPT.')
         raise SystemExit(f'ERROR: Claude respondió con error {e.status_code}: {e.message}')
     except anthropic.APIConnectionError:
         raise SystemExit('ERROR: no hay conexión con Claude. Revisa tu internet.')
@@ -1875,7 +1879,7 @@ def main():
         except SystemExit as e:
             # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
             pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
-            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso', str(e)):
+            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
                 raise
             print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
             texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa)
