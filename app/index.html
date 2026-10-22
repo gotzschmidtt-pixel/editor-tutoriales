@@ -419,6 +419,7 @@
     <button onclick="bajarGuion('txt')">⬇ Descargar</button>
     <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="dlgGuion.close(); importarGuion(this)">⬆ Importar editado</label>
   </div>
+  <div id="versionesGuion"></div>
   <div id="preguntasGuion"></div>
   <div id="mejorasGuion"></div>
   <div id="bloquesGuion"></div>
@@ -467,6 +468,10 @@
   <p class="aviso">La app cuenta los bloques con chiste. Si la IA se pasa, se queda con los mejores (nunca dos seguidos, nunca en pasos delicados, sin repetir tema) y quita el resto.</p>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
+  <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con 3 IAs a la vez</b> (GPT, Claude y Gemini): las tres escriben el guion
+    al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
+    Después eliges la versión que más te guste o pides que se combinen.</label>
+  <div id="ajTresIAs" class="aviso"></div>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
@@ -1216,10 +1221,34 @@ async function ajustesIA() {
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
+  $('#ajTres').checked = !!a.tres_ia;
+  const ias = a.ias_guion || {};
+  $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div class="fila" style="margin:4px 0; align-items:center">
+    <b style="width:4.5em">${nombre}</b>
+    <input type="text" id="ajTM_${id}" list="ajTL_${id}" placeholder="modelo (pulsa 🔍 para ver los tuyos)" value="${esc((ias[id] || {}).modelo || '')}" style="width:14em">
+    <datalist id="ajTL_${id}"></datalist>
+    <input type="text" id="ajTC_${id}" placeholder="clave API (${ayuda})" value="${esc((ias[id] || {}).clave || '')}" style="width:14em" autocomplete="off">
+    <button type="button" onclick="verModelos('${id}')">🔍 Comprobar y ver modelos</button><span id="ajTP_${id}"></span></div>`).join('') +
+    '<p class="aviso">Si la de tu IA principal queda vacía, se usa la clave de arriba. Las claves se guardan solo en tu PC.</p>';
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
   $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
   dlgAjustes.showModal();
+}
+// «3 IAs a la vez»: [id, nombre, url, tipo, dónde se saca la clave]
+const TRES_IAS = [['gpt', 'GPT', 'https://api.openai.com/v1', '', 'platform.openai.com'],
+  ['claude', 'Claude', 'https://api.anthropic.com', 'claude', 'console.anthropic.com'],
+  ['gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '', 'aistudio.google.com']];
+async function verModelos(id) {  // comprueba la clave y trae los modelos que esa cuenta puede usar (no gasta tokens)
+  const [, , url, tipo] = TRES_IAS.find(x => x[0] === id), e = $('#ajTP_' + id);
+  e.style.color = ''; e.textContent = ' Comprobando…';
+  try {
+    const r = await api('/api/probar_ia', {method: 'POST', body: JSON.stringify({ia: id, url, tipo, proveedor: tipo ? 'Claude' : '',
+      clave: $('#ajTC_' + id).value.trim()})});
+    $('#ajTL_' + id).innerHTML = (r.modelos || []).map(m => `<option value="${esc(m)}">`).join('');
+    e.style.color = r.ok ? 'var(--verde)' : 'var(--rojo)';
+    e.textContent = r.ok ? ` ✓ ${(r.modelos || []).length} modelos: haz clic en «modelo» para elegir` : ' ✗ ' + r.mensaje;
+  } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = ' ✗ No se pudo comprobar.'; }
 }
 async function comprobarClave() {
   const e = $('#ajPrueba'); e.style.color = ''; e.textContent = 'Comprobando…';
@@ -1236,7 +1265,10 @@ async function guardarAjustes() {
     return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
+    tres_ia: $('#ajTres').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
+  const listas = TRES_IAS.filter(([id]) => $('#ajTM_' + id).value.trim()).length;
+  if ($('#ajTres').checked && listas < 2) alert('Para el guion con varias IAs pon el modelo (y la clave) de al menos dos. Mientras tanto se usa solo tu IA principal.');
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
@@ -1373,13 +1405,36 @@ async function verGuion() {
   const lista = rv.mejoras;
   $('#mejorasGuion').innerHTML = (lista.length ? `<b>Lo que la app corrigió o te avisa:</b><ul>${lista.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
     : '<b>✓ La app lo revisó:</b> tiempos y orden bien, no tuvo que corregir nada.');
+  verVersiones(rv.versiones || []);
   await verPreguntas();
   $('#bloquesGuion').innerHTML = GUION.bloques.map((b, k) => {
     const mo = b.montaje || {}, tramo = mo.src_inicio != null ? `video ${mmss(mo.src_inicio)}${mo.src_fin != null ? '–' + mmss(mo.src_fin) : ''}` : 'imagen';
     return `<div class="bloque"><div class="cab"><b>${esc(b.id)}</b> · ${tramo}${b.ancla ? ' · ' + esc(b.ancla) : ''}</div>
       <textarea data-k="${k}">${esc(b.texto)}</textarea></div>`;
   }).join('');
-  $('#msgGuion').textContent = ''; dlgGuion.showModal();
+  $('#msgGuion').textContent = ''; if (!dlgGuion.open) dlgGuion.showModal();
+}
+function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus números, para elegirla o combinarlas
+  const buenas = vs.filter(v => v.archivo);
+  if (!vs.length) { $('#versionesGuion').innerHTML = ''; return; }
+  $('#versionesGuion').innerHTML = `<div class="preguntas"><b>✍️ Versiones de cada IA</b>
+    <p class="aviso">Ves la marcada con ✓. Cambiar de versión guarda la actual como guion.json.anterior.</p>
+    ${vs.map(v => `<div class="fila" style="margin:4px 0; align-items:center">${v.archivo
+      ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirVersion('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
+         <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
+      : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>`}</div>`).join('')}
+    ${buenas.length > 1 ? `<div class="fila"><button onclick="combinarVersiones()" title="Tu IA principal arma un guion con lo mejor de cada versión. No vuelve a mirar el video: es un pedido más.">🧩 Combinar lo mejor de las ${buenas.length}</button><span class="msg" id="msgVers"></span></div>` : ''}</div>`;
+}
+async function elegirVersion(id) {
+  if (!confirm('¿Usar esta versión como tu guion? Lo que cambiaste en la actual sin guardar se pierde (la actual queda como guion.json.anterior).')) return;
+  try { await api(`/api/elegir_version?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  verGuion();
+}
+async function combinarVersiones() {
+  if (!confirm('Tu IA principal va a armar un guion con lo mejor de cada versión (un pedido más, sin volver a mirar el video). ¿Seguir?')) return;
+  dlgGuion.close();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({combinar: true})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 let PREGUNTAS = [];
 async function verPreguntas() {

@@ -275,7 +275,7 @@ def comandos(paso, d, op):
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
                 + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
-                + (['--ajustar-humor'] if op.get('ajustar_humor') else [])
+                + (['--ajustar-humor'] if op.get('ajustar_humor') else []) + (['--combinar'] if op.get('combinar') else [])
                 + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])]
     if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
@@ -377,8 +377,12 @@ def probar_clave(aj):
     req = urllib.request.Request(destino, headers=cab)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
-            r.read(1)
-        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.'}
+            cuerpo = r.read(2_000_000)
+        try:  # los modelos que esa clave puede usar, tal como los lista el proveedor
+            modelos = sorted({re.sub(r'^models/', '', str(x.get('id', ''))) for x in json.loads(cuerpo).get('data', []) if x.get('id')})
+        except (ValueError, AttributeError):
+            modelos = []
+        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.', 'modelos': modelos}
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             return {'ok': False, 'mensaje': 'La clave no es válida o no tiene permisos (el proveedor la rechazó).'}
@@ -862,8 +866,12 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
                 d = carpeta(q['p'])
                 leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
+                try:  # «3 IAs a la vez»: las versiones que hay para elegir o combinar
+                    versiones = [v for v in json.loads(leer('versiones_guion.json') or '[]') if not v.get('archivo') or existe(d, v['archivo'])]
+                except ValueError:
+                    versiones = []
                 return self.responder({'mejoras': [x for x in leer('mejoras_guion.txt').splitlines() if x.strip()],
-                                       'orden': leer('revision_guion.txt').strip()})
+                                       'orden': leer('revision_guion.txt').strip(), 'versiones': versiones})
             if ruta == '/api/json':
                 f = q['f']
                 if f not in EDITABLES:
@@ -901,6 +909,9 @@ class Manejador(BaseHTTPRequestHandler):
                 for k in ('clave', 'elevenlabs'):
                     if aj.get(k):
                         aj[k] = '••••' + aj[k][-4:]
+                for x in (aj.get('ias_guion') or {}).values():  # «3 IAs a la vez»: sus claves tampoco salen de tu PC
+                    if isinstance(x, dict) and x.get('clave'):
+                        x['clave'] = '••••' + x['clave'][-4:]
                 k = clave_eleven()
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 aj['ruta'] = AJUSTES
@@ -1033,6 +1044,8 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # «✨ Escribir / rehacer con IA»: se abre la revisión con las preguntas de la IA
                 if q['paso'] == 'guion_ia' and datos.get('ajustar_humor'):
                     datos['_pausa'] = 'guion'  # «🎚 Ajustar el humor»: te muestro el guion con lo que cambió
+                if q['paso'] == 'guion_ia' and datos.get('combinar'):
+                    datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
                 if q['paso'] == 'todo' and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
@@ -1062,6 +1075,27 @@ class Manejador(BaseHTTPRequestHandler):
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
                 return self.responder({'ok': True})
+            if ruta == '/api/elegir_version':  # «3 IAs a la vez»: esa versión pasa a ser tu guion (el actual queda de respaldo)
+                d = carpeta(q['p'])
+                if not existe(d, 'versiones_guion.json'):
+                    return self.error('este proyecto no tiene versiones del guion de varias IAs')
+                versiones = json.load(open(os.path.join(d, 'versiones_guion.json'), encoding='utf-8'))
+                v = next((x for x in versiones if x.get('id') == q.get('v') and x.get('archivo')), None)
+                if not v or not existe(d, v['archivo']):
+                    return self.error('esa versión del guion ya no está')
+                nuevo = json.load(open(os.path.join(d, v['archivo']), encoding='utf-8'))
+                if existe(d, 'guion.json'):
+                    actual = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+                    if isinstance(actual, dict) and isinstance(nuevo, dict) and actual.get('revision_imagen_pendiente'):
+                        nuevo['revision_imagen_pendiente'] = actual['revision_imagen_pendiente']
+                    os.replace(os.path.join(d, 'guion.json'), os.path.join(d, 'guion.json.anterior'))
+                json.dump(nuevo, open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                json.dump(v.get('preguntas') or [], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in v.get('avisos') or []))
+                for x in versiones:
+                    x['elegida'] = x is v
+                json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
             if ruta == '/api/reintentar':  # «Reintentar» del diagnóstico: desde el paso que falló, solo si tiene sentido
                 rep = (RESULTADO.get(q['p']) or {}).get('repetir')
                 if not rep or not rep.get('pasos'):
@@ -1078,13 +1112,20 @@ class Manejador(BaseHTTPRequestHandler):
                 for k in ('clave', 'elevenlabs'):  # una clave enmascarada o vacía no reemplaza la guardada
                     if k in nuevo and (not nuevo[k] or nuevo[k].startswith('••••')):
                         del nuevo[k]
+                if isinstance(nuevo.get('ias_guion'), dict):
+                    antes = viejo.get('ias_guion') or {}
+                    for ide, x in nuevo['ias_guion'].items():
+                        if isinstance(x, dict) and (not x.get('clave') or str(x['clave']).startswith('••••')):
+                            x['clave'] = (antes.get(ide) or {}).get('clave', '')
                 viejo.update(nuevo)
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
-                    datos['clave'] = leer_ajustes().get('clave', '')  # si no mandan clave nueva, prueba la guardada
+                    aj = leer_ajustes()
+                    guardada = ((aj.get('ias_guion') or {}).get(datos.get('ia')) or {}).get('clave') if datos.get('ia') else ''
+                    datos['clave'] = guardada or aj.get('clave', '')  # si no mandan clave nueva, prueba la guardada
                 return self.responder(probar_clave(datos))
             if ruta == '/api/pista_archivo':
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]

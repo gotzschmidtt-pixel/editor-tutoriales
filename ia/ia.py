@@ -2134,18 +2134,140 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
 def guardar_preguntas(d, lista):
     """Lo que la IA pregunta al terminar el guion, para que el autor lo conteste en la revisión: los datos clave que no vio
     claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»)."""
+    out = normalizar_preguntas(lista)
+    json.dump(out, open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in out), sum(x['tipo'] == 'mejora' for x in out)
+    if out:
+        print(f'La IA te deja {len(out)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} para mejorar el guion): '
+              'contéstalas en la revisión del guion.', flush=True)
+
+
+def normalizar_preguntas(lista):
     out = []
     for x in lista or []:
         if isinstance(x, dict) and str(x.get('pregunta', '')).strip():
             out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
                         'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
-    out = [x for x in out if x['tipo'] == 'dato'][:6] + [x for x in out if x['tipo'] == 'mejora'][:4]
-    json.dump(out, open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in out), sum(x['tipo'] == 'mejora' for x in out)
-    if out:
-        print(f'La IA te deja {len(out)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} para mejorar el guion): '
-              'contéstalas en la revisión del guion.', flush=True)
+    return [x for x in out if x['tipo'] == 'dato'][:6] + [x for x in out if x['tipo'] == 'mejora'][:4]
+
+
+# «✍️ Guion con 3 IAs a la vez»: el mismo encargo (mismo mapa, mismas capturas) a GPT, Claude y Gemini en paralelo.
+# Tarda lo que la más lenta, no la suma; se paga un guion a cada una.
+IAS_GUION = {'gpt': ('GPT', 'OpenAI (GPT)', 'https://api.openai.com/v1', ''),
+             'claude': ('Claude', 'Claude (Anthropic)', 'https://api.anthropic.com', 'claude'),
+             'gemini': ('Gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '')}
+
+
+def ias_del_guion(ajustes):
+    """[(id, ajustes de esa IA)] de las que tienen modelo y clave, si «3 IAs a la vez» está activo. La clave de la IA
+    principal sirve también para la suya si no le pusiste otra."""
+    if not ajustes.get('tres_ia'):
+        return []
+    principal = _proveedor(ajustes)
+    out = []
+    for ide, (nombre, proveedor, url, tipo) in IAS_GUION.items():
+        cfg = (ajustes.get('ias_guion') or {}).get(ide) or {}
+        aj = {**ajustes, 'proveedor': proveedor, 'url': url, 'tipo': tipo, 'json': True, 'imagenes': True,
+              'modelo': str(cfg.get('modelo') or '').strip(), 'clave': str(cfg.get('clave') or '').strip()}
+        if not aj['clave'] and _proveedor(aj) == principal:
+            aj['clave'] = ajustes.get('clave') or ''
+        if aj['modelo'] and aj['clave']:
+            out.append((ide, aj))
+    return out
+
+
+def guion_varias(d, ajustes, ias, texto, caps, todo_ia):
+    """Cada IA escribe su guion a la vez y cada uno pasa por los mismos controles (largo, humor, tiempos). Quedan todos
+    en guion_<ia>.json; el de tu IA principal (o el primero que salió bien) pasa a ser guion.json. Devuelve (datos, avisos)."""
+    res = {}
+
+    def una(ide, aj):
+        nombre, avisos = IAS_GUION[ide][0], []
+        t0 = time.time()
+        try:
+            r = llamar(aj, texto, caps)
+            datos = extraer_json(r)
+            if not (datos.get('bloques') if isinstance(datos, dict) else datos):
+                raise ValueError('contestó sin bloques de guion')
+            preguntas = datos.get('preguntas') if isinstance(datos, dict) else None
+            print(f'· {nombre} entregó su guion ({len(datos["bloques"] if isinstance(datos, dict) else datos)} bloques); lo reviso', flush=True)
+            if todo_ia:
+                datos = autorrevision(d, aj, texto, datos)
+                preguntas = (datos.get('preguntas') if isinstance(datos, dict) else None) or preguntas
+            datos = corregir_largo(d, aj, texto, caps, r, datos)
+            datos = dosificar_humor(d, aj, datos, avisos)
+            res[ide] = {'datos': datos, 'avisos': avisos, 'preguntas': normalizar_preguntas(preguntas), 'segundos': round(time.time() - t0)}
+        except BaseException as e:  # una que falla (o la rechaza) no frena a las otras; queda en el diagnóstico
+            res[ide] = {'error': ' '.join(str(e).split())[:300] or type(e).__name__, 'segundos': round(time.time() - t0)}
+            print(f'· {nombre} no entregó guion: {res[ide]["error"]}', flush=True)
+
+    print('Le pido el guion a ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in ias) + ' a la vez…', flush=True)
+    hilos = [threading.Thread(target=una, args=x, daemon=True) for x in ias]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    versiones = []
+    for ide, aj in ias:
+        x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
+        v['segundos'] = x.get('segundos')
+        if 'datos' in x:
+            datos, av = revisar(d, 'guion', x['datos'])
+            x['datos'], x['avisos'] = datos, x['avisos'] + av
+            bloques = datos['bloques'] if isinstance(datos, dict) else datos
+            m = medir_humor(bloques)
+            v.update(archivo=f'guion_{ide}.json', bloques=len(bloques), palabras=sum(len(str(b.get('texto', '')).split()) for b in bloques),
+                     humor=texto_medida(m) if m else '', preguntas=x['preguntas'], avisos=x['avisos'])
+            json.dump(datos, open(os.path.join(d, v['archivo']), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        else:
+            v['error'] = x['error']
+        versiones.append(v)
+    buenas = [v for v in versiones if 'archivo' in v]
+    if not buenas:
+        raise SystemExit('ERROR: ninguna IA entregó el guion. ' + ' · '.join(f"{v['nombre']}: {v['error']}" for v in versiones))
+    principal = _proveedor(ajustes)
+    elegida = next((v for v in buenas if _proveedor({**ajustes, 'proveedor': IAS_GUION[v['id']][1], 'url': IAS_GUION[v['id']][2],
+                                                     'tipo': IAS_GUION[v['id']][3]}) == principal), buenas[0])
+    for v in versiones:
+        v['elegida'] = v is elegida
+    json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    guardar_preguntas(d, elegida['preguntas'])
+    malas = [f"{v['nombre']} no entregó guion ({v['error'][:120]})" for v in versiones if 'error' in v]
+    avisos = [f"{len(buenas)} IAs escribieron su versión ({', '.join(v['nombre'] for v in buenas)}). Ves la de {elegida['nombre']}: "
+              'arriba puedes cambiar a otra o combinarlas'] + malas + res[elegida['id']]['avisos']
+    return res[elegida['id']]['datos'], avisos
+
+
+def combinar_versiones(d, ajustes):
+    """«🧩 Combinar»: tu IA principal arma un guion final con lo mejor de cada versión, sin ver otra vez el video."""
+    f = os.path.join(d, 'versiones_guion.json')
+    versiones = [v for v in (json.load(open(f, encoding='utf-8')) if os.path.exists(f) else [])
+                 if v.get('archivo') and os.path.exists(os.path.join(d, v['archivo']))]
+    if len(versiones) < 2:
+        raise SystemExit('ERROR: para combinar hacen falta al menos dos versiones del guion. Activa «✍️ Guion con 3 IAs a la vez» '
+                         'en «⚙ Ajustes IA» y escribe el guion otra vez.')
+    encargo_f = os.path.join(d, 'ia_prompt_guion.txt')
+    reglas = open(encargo_f, encoding='utf-8').read() if os.path.exists(encargo_f) else ''
+    partes = []
+    for v in versiones:
+        g = json.load(open(os.path.join(d, v['archivo']), encoding='utf-8'))
+        partes.append(f"=== VERSIÓN DE {v['nombre']} ===\n" + json.dumps(g, ensure_ascii=False))
+    texto = ('Varias IAs escribieron el guion del MISMO video con el MISMO encargo (abajo). Arma UN guion final con lo mejor de '
+             'cada versión: elige para cada parte del video el bloque más claro y fiel a lo que se ve, o une frases de varias. '
+             'Reglas: no inventes datos que ninguna versión tenga; cada bloque conserva los tiempos de montaje (montaje, '
+             'src_inicio, src_fin) de la versión de la que lo tomas y los bloques siguen el orden del video sin solaparse; '
+             'el humor sigue la regla del encargo; misma voz en todo el guion. Devuelve el MISMO formato JSON que las versiones '
+             '({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
+             + '\n\n'.join(partes) + ('\n\n=== ENCARGO ORIGINAL (reglas) ===\n' + reglas if reglas else ''))
+    print(f"Combino {len(versiones)} versiones ({', '.join(v['nombre'] for v in versiones)}) con {ajustes['modelo']}…", flush=True)
+    tramo(5, 80)
+    progreso(0, 'La IA combina las versiones…')
+    datos = extraer_json(llamar(ajustes, texto, []))
+    if not (datos.get('bloques') if isinstance(datos, dict) else datos):
+        raise SystemExit('ERROR: la IA no devolvió bloques al combinar. Prueba otra vez o elige una de las versiones.')
+    guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
+    return datos
 
 
 def corregir_con_respuestas(d, ajustes, datos):
@@ -2341,6 +2463,7 @@ def main():
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
     ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
+    ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
     ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
@@ -2385,6 +2508,25 @@ def main():
             print('·', x)
         open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos_humor + avisos))
         print('Guardado guion.json con el humor ajustado (el anterior quedó como guion.json.anterior)')
+        return
+    if a.tarea == 'guion' and a.combinar:  # «🧩 Combinar»: lo mejor de cada versión, sin volver a mirar el video
+        ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        datos = combinar_versiones(d, ajustes)
+        tramo(80, 95)
+        progreso(0, 'Mido el humor…')
+        datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+        datos, avisos = revisar(d, a.tarea, datos)
+        if os.path.exists(destino):
+            os.replace(destino, destino + '.anterior')
+        json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        json.dump(datos, open(os.path.join(d, 'guion_combinado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        avisos = ['guion combinado con lo mejor de cada versión (también quedó en guion_combinado.json)'] + avisos_humor + avisos
+        for x in avisos:
+            print('·', x)
+        open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
+        print('Guardado guion.json combinado (el anterior quedó como guion.json.anterior)')
+        tramo(0, 100)
+        progreso(100, 'Listo')
         return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
@@ -2478,49 +2620,61 @@ def main():
             open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
             print(f'Guardado guion.json ajustado de largo (el anterior quedó como guion.json.anterior)')
             return
-        tramo(35, 65)
-        progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
-        try:
-            respuesta = llamar(ajustes, texto, caps)
-        except SystemExit as e:
-            # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
-            pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
-            # solo tiene sentido con menos imágenes si el fallo puede ser por tamaño; nunca tras un rechazo, permisos o saldo
-            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or getattr(e, 'permanente', False) \
-                    or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
-                raise
-            print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
-            texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
-            caps = pocas
-            respuesta = llamar(ajustes, texto, caps)
-        open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
-        try:
-            datos = extraer_json(respuesta)
-        except ValueError:
-            corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
-            raise ErrorIA(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido. Eso no confirma '
-                          f'un rechazo: mira el diagnóstico. Contestó: «{corto}».', 'F')
-        if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
-            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
-                             f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
-        tramo(65, 70)
-        progreso(0, 'La IA respondió: leo el guion')
-        if a.tarea == 'guion':
+        varias = ias_del_guion(ajustes) if a.tarea == 'guion' else []
+        if len(varias) > 1:  # «✍️ Guion con 3 IAs a la vez»
+            tramo(35, 94)
+            progreso(0, 'Las IAs escriben su guion a la vez…')
+            datos, avisos_humor = guion_varias(d, ajustes, varias, texto, caps, todo_ia)
             if todo_ia:
-                tramo(70, 75)
-                progreso(0, 'La IA revisa su propio guion…')
-                datos = autorrevision(d, ajustes, texto, datos)
-            guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
-            tramo(75, 88)
-            progreso(0, 'Reviso el largo del guion…')
-            datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
-            tramo(88, 94)
-            progreso(0, 'Mido el humor…')
-            datos = dosificar_humor(d, ajustes, datos, avisos_humor)
-            if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
                 for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
+        else:
+            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
+                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
+            tramo(35, 65)
+            progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
+            try:
+                respuesta = llamar(ajustes, texto, caps)
+            except SystemExit as e:
+                # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
+                pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
+                # solo tiene sentido con menos imágenes si el fallo puede ser por tamaño; nunca tras un rechazo, permisos o saldo
+                if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or getattr(e, 'permanente', False) \
+                        or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
+                    raise
+                print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
+                texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
+                caps = pocas
+                respuesta = llamar(ajustes, texto, caps)
+            open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
+            try:
+                datos = extraer_json(respuesta)
+            except ValueError:
+                corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
+                raise ErrorIA(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido. Eso no confirma '
+                              f'un rechazo: mira el diagnóstico. Contestó: «{corto}».', 'F')
+            if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
+                raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
+                                 f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
+            tramo(65, 70)
+            progreso(0, 'La IA respondió: leo el guion')
+            if a.tarea == 'guion':
+                if todo_ia:
+                    tramo(70, 75)
+                    progreso(0, 'La IA revisa su propio guion…')
+                    datos = autorrevision(d, ajustes, texto, datos)
+                guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
+                tramo(75, 88)
+                progreso(0, 'Reviso el largo del guion…')
+                datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
+                tramo(88, 94)
+                progreso(0, 'Mido el humor…')
+                datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+                if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
+                    for b in (datos['bloques'] if isinstance(datos, dict) else datos):
+                        if isinstance(b.get('montaje'), dict):
+                            b['montaje']['visto'] = True
     tramo(94, 100)
     progreso(0, 'Reviso tiempos y orden de los bloques…')
     datos, avisos = revisar(d, a.tarea, datos)

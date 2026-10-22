@@ -70,6 +70,16 @@ momentos como referencia; son orientativos, no cortes exactos.
 **Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
 segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
+## Guion con 3 IAs a la vez (GPT, Claude y Gemini)
+
+En «⚙ Ajustes IA» marca «✍️ Guion con 3 IAs a la vez» y pon el modelo y la clave de cada una («🔍 Comprobar y ver
+modelos» lista los modelos que tu cuenta puede usar, sin gastar). El video se analiza una sola vez y las tres escriben su
+guion al mismo tiempo: tarda lo que la más lenta, pero se paga un guion a cada una. Cada versión pasa por los mismos
+controles (largo, humor, tiempos) y queda en `guion_gpt.json`, `guion_claude.json` y `guion_gemini.json`. En la revisión del
+guion eliges la que prefieras o pulsas «🧩 Combinar» para que tu IA principal arme una con lo mejor de cada una (un pedido
+más, sin volver a mirar el video). Si una IA falla o rechaza el pedido, las otras siguen y el diagnóstico lo anota; no se
+reintenta un rechazo.
+
 ## Diagnóstico cuando la IA (o un paso) no completa su trabajo
 
 Cada llamada a una IA queda anotada en `mis_proyectos/<proyecto>/diagnosticos/llamadas_<ejecución>.jsonl` (proveedor,
