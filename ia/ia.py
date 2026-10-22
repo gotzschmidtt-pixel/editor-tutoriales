@@ -22,7 +22,10 @@ sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
+import diagnostico  # noqa: E402
 import numpy as np  # noqa: E402
+import inspect, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
@@ -428,8 +431,9 @@ def verificar_orden(d, bloques):
 def extraer_json(txt):
     txt = (txt or '').strip()
     if not txt:
-        raise SystemExit('ERROR: la IA no devolvió nada (respuesta vacía). Casi siempre es falta de saldo o un corte de la IA. '
-                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
+        _anotar_respuesta('respuesta_vacia', txt)
+        raise ErrorIA('ERROR: la IA contestó sin texto (respuesta vacía). Puede ser un corte del servicio o un filtro del '
+                      'proveedor: mira el diagnóstico de esta ejecución (carpeta diagnosticos del proyecto) antes de suponer la causa.', 'F')
     m = re.search(r'```(?:json)?\s*(.*?)```', txt, re.S)
     if m:
         txt = m.group(1)
@@ -437,9 +441,10 @@ def extraer_json(txt):
     try:
         return json.loads(txt[i:])
     except json.JSONDecodeError:
-        raise SystemExit('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). '
-                         'Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
-                         'Lo que devolvió la IA:\n' + txt[:600])
+        _anotar_respuesta('respuesta_ilegible', txt)
+        raise ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
+                      'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
+                      'Lo que devolvió la IA:\n' + txt[:600], 'F')
 
 
 def leer_idea(d):
@@ -617,13 +622,106 @@ def revisar(d, tarea, datos):
     return datos, avisos
 
 
-def llamar_claude(ajustes, texto, caps):
+class ErrorIA(SystemExit):
+    """Un fallo de la IA ya clasificado (A–I, ver diagnostico.py). Sigue siendo SystemExit, así que todo lo que ya
+    atrapaba SystemExit funciona igual; `permanente` dice que repetir el mismo pedido no sirve."""
+    def __init__(self, mensaje, clase='I', permanente=None):
+        super().__init__(mensaje)
+        self.clase = clase
+        self.permanente = clase in diagnostico.PERMANENTES if permanente is None else permanente
+
+
+GUARDAR_RESPUESTA = False  # «diagnostico_guardar_respuesta» en ajustes.json: guarda un extracto redactado de lo que contestó la IA
+_INTENTOS = {}
+
+
+def _quien():
+    """(archivo, función) de quien pidió la llamada: la primera función fuera de llamar*/extraer_json."""
+    for fr in inspect.stack()[2:]:
+        if not fr.function.startswith(('llamar', '_llamar', 'extraer_json', '_anotar', 'por_tandas', '<')):
+            return os.path.basename(fr.filename), fr.function
+    return 'ia.py', 'main'
+
+
+def _anotar_respuesta(tipo, txt):
+    archivo, funcion = _quien()
+    ev = {'ok': False, 'tipo': tipo, 'archivo': archivo, 'funcion': funcion, 'operacion': funcion,
+          'etapa': diagnostico.ETAPA_FUNCION.get(funcion), 'largo_respuesta': len(txt or ''), 'hash_respuesta': diagnostico.huella(txt),
+          'parece_negativa': diagnostico.parece_negativa(txt), 'proveedor': _ULTIMA.get('proveedor'), 'modelo': _ULTIMA.get('modelo'),
+          'id_solicitud': _ULTIMA.get('id_solicitud'), 'motivo_fin': _ULTIMA.get('motivo_fin'),
+          'mensaje': 'La IA contestó, pero ' + ('sin texto.' if tipo == 'respuesta_vacia' else 'no en JSON válido.')}
+    if GUARDAR_RESPUESTA:
+        ev['extracto_respuesta'] = diagnostico.redactar(txt, 1500)
+    diagnostico.anotar(ev)
+
+
+_ULTIMA = {}  # datos de la última respuesta, para el diagnóstico de una respuesta ilegible
+
+
+def _proveedor(ajustes):
+    if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
+        return 'Claude'
+    if ':11434' in ajustes.get('url', ''):
+        return 'Ollama'
+    url = ajustes.get('url', '')
+    for clave, nombre in (('openai.com', 'OpenAI (GPT)'), ('dashscope', 'Qwen (DashScope)'), ('openrouter', 'OpenRouter'),
+                          ('deepseek', 'DeepSeek'), ('generativelanguage', 'Gemini'), (':1234', 'LM Studio')):
+        if clave in url:
+            return nombre
+    return ajustes.get('proveedor') or 'otro'
+
+
+def llamar(ajustes, texto, caps):
+    """Pide a la IA configurada y deja anotada la llamada (bien o mal) para el diagnóstico, sin claves ni contenido."""
+    global GUARDAR_RESPUESTA
+    GUARDAR_RESPUESTA = bool(ajustes.get('diagnostico_guardar_respuesta'))
+    archivo, funcion = _quien()
+    _INTENTOS[funcion] = _INTENTOS.get(funcion, 0) + 1
+    det = {}
+    ev = {'proveedor': _proveedor(ajustes), 'modelo': ajustes.get('modelo') or '', 'operacion': funcion, 'funcion': funcion,
+          'archivo': archivo, 'etapa': diagnostico.ETAPA_FUNCION.get(funcion), 'intento': _INTENTOS[funcion],
+          'imagenes': len(caps) if ajustes.get('imagenes', True) else 0, 'caracteres_pedido': len(texto),
+          'hash_pedido': diagnostico.huella(texto)}
+    _ULTIMA.clear()
+    _ULTIMA.update(proveedor=ev['proveedor'], modelo=ev['modelo'])
+    t0 = time.time()
+    try:
+        if ev['proveedor'] == 'Claude':
+            r = llamar_claude(ajustes, texto, caps, det)
+        elif ev['proveedor'] == 'Ollama':
+            r = llamar_ollama(ajustes, texto, caps, det)
+        else:
+            r = llamar_compatible(ajustes, texto, caps, det)
+    except SystemExit as e:
+        diagnostico.anotar({**ev, **det, 'ok': False, 'duracion_s': round(time.time() - t0, 1),
+                            'mensaje': str(e)[:600], 'clase_app': getattr(e, 'clase', None)})
+        raise
+    except Exception as e:  # un error del programa (no de la IA): queda anotado con su tipo y sigue su camino
+        diagnostico.anotar({**ev, **det, 'ok': False, 'tipo': 'programa', 'tipo_error': type(e).__name__,
+                            'mensaje': str(e)[:600], 'duracion_s': round(time.time() - t0, 1)})
+        raise
+    diagnostico.anotar({**ev, **det, 'ok': True, 'duracion_s': round(time.time() - t0, 1), 'largo_respuesta': len(r or '')})
+    _ULTIMA.update(id_solicitud=det.get('id_solicitud'), motivo_fin=det.get('motivo_fin'))
+    return r
+
+
+def _cuerpo_error(e):
+    """(tipo, mensaje) del error que devolvió la API de Claude, tal cual."""
+    cuerpo = getattr(e, 'body', None)
+    err = cuerpo.get('error', {}) if isinstance(cuerpo, dict) else {}
+    return (err.get('type') if isinstance(err, dict) else None) or type(e).__name__, \
+        (err.get('message') if isinstance(err, dict) else None) or getattr(e, 'message', '') or str(e)
+
+
+def llamar_claude(ajustes, texto, caps, det=None):
     """Claude con la librería oficial de Anthropic (no habla el formato de OpenAI)."""
+    det = {} if det is None else det
     try:
         import anthropic
     except ImportError:
-        raise SystemExit('ERROR: falta la librería de Claude. Corre instalar.bat, o abre una terminal en la carpeta '
-                         'de la app y escribe:\n  python -m pip install anthropic')
+        det.update(tipo='programa', tipo_error='ImportError')
+        raise ErrorIA('ERROR: falta la librería de Claude. Corre instalar.bat, o abre una terminal en la carpeta '
+                      'de la app y escribe:\n  python -m pip install anthropic', 'G', True)
     contenido = []
     if ajustes.get('imagenes', True):
         for _, f in caps:
@@ -633,8 +731,8 @@ def llamar_claude(ajustes, texto, caps):
     else:
         contenido.append({'type': 'text', 'text': texto + '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'})
     if re.search(r'\.\.\.|…', ajustes.get('clave') or ''):
-        raise SystemExit('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
-                         'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).')
+        raise ErrorIA('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
+                      'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).', 'C')
     cliente = anthropic.Anthropic(api_key=ajustes.get('clave') or None, timeout=900)
     try:
         # en streaming para que una respuesta larga no corte la conexión
@@ -648,24 +746,47 @@ def llamar_claude(ajustes, texto, caps):
             messages=[{'role': 'user', 'content': contenido}],
         ) as flujo:
             r = flujo.get_final_message()
-    except anthropic.AuthenticationError:
-        raise SystemExit('ERROR: Claude rechazó la clave. Revisa la clave en «⚙ Ajustes IA» (empieza con sk-ant-).')
-    except anthropic.PermissionDeniedError as e:
-        raise SystemExit(f'ERROR: tu clave de Claude no tiene permiso para este modelo: {e.message}')
-    except anthropic.NotFoundError:
-        raise SystemExit(f'ERROR: Claude no conoce el modelo «{ajustes.get("modelo")}». Prueba con claude-opus-5-5.')
-    except anthropic.RateLimitError:
-        raise SystemExit('ERROR: Claude dice que hiciste muchas peticiones o no tienes saldo. Espera un poco o revisa tu cuenta en console.anthropic.com.')
     except anthropic.APIStatusError as e:
-        if 'workspace' in str(e.message).lower():
-            raise SystemExit('ERROR: tu clave de Claude no está atada a un «Workspace». Crea una nueva clave dentro de un '
-                             'workspace: en console.anthropic.com/settings/keys, arriba a la izquierda elige un Workspace '
-                             '(por ejemplo «Default») y pulsa «Create Key». Pega esa clave en «⚙ Ajustes IA». O usa GPT.')
-        raise SystemExit(f'ERROR: Claude respondió con error {e.status_code}: {e.message}')
-    except anthropic.APIConnectionError:
-        raise SystemExit('ERROR: no hay conexión con Claude. Revisa tu internet.')
+        tipo, mensaje = _cuerpo_error(e)
+        rid = getattr(e, 'request_id', None) or (e.response.headers.get('request-id') if getattr(e, 'response', None) is not None else None)
+        det.update(http=e.status_code, tipo_error=tipo, mensaje_api=mensaje, id_solicitud=rid)
+        clase, _, _ = diagnostico.clasificar(det)
+        bajo = str(mensaje).lower()
+        if clase == 'D':
+            raise ErrorIA(f'ERROR: Claude dice que no hay saldo o hay un problema de facturación: {mensaje}. '
+                          'Revisa tu saldo en console.anthropic.com.', 'D')
+        if clase == 'B':
+            raise ErrorIA(f'ERROR: Claude dice que la organización o la cuenta está deshabilitada: {mensaje}', 'B')
+        if 'workspace' in bajo:
+            raise ErrorIA('ERROR: tu clave de Claude no está atada a un «Workspace». Crea una nueva clave dentro de un '
+                          'workspace: en console.anthropic.com/settings/keys, arriba a la izquierda elige un Workspace '
+                          '(por ejemplo «Default») y pulsa «Create Key». Pega esa clave en «⚙ Ajustes IA». O usa GPT.', 'C')
+        if e.status_code == 401:
+            raise ErrorIA('ERROR: Claude rechazó la clave. Revisa la clave en «⚙ Ajustes IA» (empieza con sk-ant-).', 'C')
+        if e.status_code == 403:
+            raise ErrorIA(f'ERROR: tu clave de Claude no tiene permiso para este modelo: {mensaje}', 'C')
+        if e.status_code == 404:
+            raise ErrorIA(f'ERROR: Claude no conoce el modelo «{ajustes.get("modelo")}». Prueba con claude-opus-5-5.', 'C')
+        if clase == 'E':
+            raise ErrorIA(f'ERROR: Claude dice que se pasó un límite ({e.status_code}): {mensaje}. '
+                          'Espera un poco o baja las capturas en «⚙ Ajustes IA».', 'E')
+        raise ErrorIA(f'ERROR: Claude respondió con error {e.status_code}: {mensaje}', clase)
+    except anthropic.APIConnectionError as e:
+        det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300])
+        raise ErrorIA('ERROR: no hay conexión con Claude. Revisa tu internet.', 'H')
+    det.update(id_solicitud=getattr(r, '_request_id', None), motivo_fin=r.stop_reason, modelo_respondio=getattr(r, 'model', None),
+               uso={k: getattr(r.usage, k, None) for k in ('input_tokens', 'output_tokens')} if getattr(r, 'usage', None) else None,
+               respondio_otro_modelo=any(getattr(b, 'type', '') == 'fallback' for b in r.content))
     if r.stop_reason == 'refusal':
-        raise SystemExit('ERROR: Claude no quiso responder esta petición. Prueba cambiando la idea o usa otra IA.')
+        sd = getattr(r, 'stop_details', None)
+        cat = getattr(sd, 'category', None) if sd is not None else None
+        det.update(rechazo_explicito=True, categoria_rechazo=cat,
+                   mensaje_api=(getattr(sd, 'explanation', None) if sd is not None else None) or 'stop_reason=refusal')
+        raise ErrorIA('ERROR: Claude rechazó esta petición por sus políticas de uso' + (f' (categoría «{cat}»)' if cat else '') +
+                      '. No se reintenta igual. Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
+    if r.stop_reason == 'max_tokens':
+        raise ErrorIA('ERROR: la respuesta de Claude se cortó por el límite de largo y quedó incompleta. '
+                      'Vuelve a intentar o pide un guion más corto.', 'E', False)
     return ''.join(b.text for b in r.content if b.type == 'text')
 
 
@@ -676,8 +797,9 @@ def contexto_ollama(texto, imagenes):
     return min(131072, max(32768, -(-tokens // 8192) * 8192))
 
 
-def llamar_ollama(ajustes, texto, caps):
+def llamar_ollama(ajustes, texto, caps, det=None):
     """Ollama por su API propia: la compatible con OpenAI no deja subir el contexto y cortaría el pedido."""
+    det = {} if det is None else det
     msg = {'role': 'user', 'content': texto}
     if ajustes.get('imagenes', True):
         msg['images'] = [base64.b64encode(open(f, 'rb').read()).decode() for _, f in caps]
@@ -693,19 +815,22 @@ def llamar_ollama(ajustes, texto, caps):
         r = json.load(urllib.request.urlopen(req, timeout=3600))
     except urllib.error.HTTPError as e:
         cuerpo = e.read()[:400].decode(errors='replace')
+        det.update(http=e.code, mensaje_api=cuerpo)
         if e.code == 404:
-            raise SystemExit(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}')
-        raise SystemExit(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}')
-    except urllib.error.URLError:
-        raise SystemExit('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.')
+            raise ErrorIA(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}', 'C')
+        raise ErrorIA(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}', diagnostico.clasificar(det)[0])
+    except urllib.error.URLError as e:
+        det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason))
+        raise ErrorIA('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.', 'H')
+    det.update(motivo_fin=r.get('done_reason'), modelo_respondio=r.get('model'))
+    if r.get('done_reason') == 'length':
+        raise ErrorIA('ERROR: la respuesta de Ollama se cortó por largo y quedó incompleta.', 'E', False)
     return r['message']['content']
 
 
-def llamar(ajustes, texto, caps):
-    if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
-        return llamar_claude(ajustes, texto, caps)
-    if ':11434' in ajustes.get('url', ''):
-        return llamar_ollama(ajustes, texto, caps)
+def llamar_compatible(ajustes, texto, caps, det=None):
+    """OpenAI (GPT) y los que hablan su formato: Qwen, DeepSeek, Gemini, OpenRouter, LM Studio."""
+    det = {} if det is None else det
     contenido = [{'type': 'text', 'text': texto}]
     if ajustes.get('imagenes', True):
         for _, f in caps:
@@ -722,6 +847,7 @@ def llamar(ajustes, texto, caps):
     if ajustes.get('clave'):
         cab['Authorization'] = 'Bearer ' + ajustes['clave']
     print('Mandando ' + (f'{len(caps)} capturas y ' if ajustes.get('imagenes', True) else 'solo texto (sin capturas) y ') + 'el encargo…', flush=True)
+    ajustes_quitados = []
     for intento in range(3):
         req = urllib.request.Request(url, data=json.dumps(cuerpo).encode(), headers=cab)
         try:
@@ -731,29 +857,56 @@ def llamar(ajustes, texto, caps):
             detalle = e.read()[:500].decode(errors='replace')
             # algunos modelos (GPT-5, varios Qwen-VL) no aceptan temperatura o el modo JSON: se reintenta sin eso
             if e.code == 400 and 'temperature' in detalle and 'temperature' in cuerpo:
-                del cuerpo['temperature']; continue
+                del cuerpo['temperature']; ajustes_quitados.append('temperature'); continue
             if e.code == 400 and 'response_format' in detalle and 'response_format' in cuerpo:
-                del cuerpo['response_format']; continue
+                del cuerpo['response_format']; ajustes_quitados.append('response_format'); continue
+            try:
+                err = json.loads(detalle).get('error', {})
+            except ValueError:
+                err = {}
+            err = err if isinstance(err, dict) else {'message': str(err)}
+            det.update(http=e.code, tipo_error=err.get('type') or err.get('code') or 'HTTPError', mensaje_api=err.get('message') or detalle,
+                       id_solicitud=e.headers.get('x-request-id') if e.headers else None, ajustes_quitados=ajustes_quitados)
+            if err.get('code') in ('insufficient_quota', 'billing_hard_limit_reached'):
+                det['mensaje_api'] = f"{err.get('code')}: {det['mensaje_api']}"
+            clase = diagnostico.clasificar(det)[0]
+            if clase == 'D':
+                raise ErrorIA(f'ERROR: el proveedor dice que no hay saldo o hay un problema de facturación ({e.code}). Detalle: {detalle}', 'D')
+            if clase == 'B':
+                raise ErrorIA(f'ERROR: el proveedor dice que la cuenta u organización está deshabilitada ({e.code}). Detalle: {detalle}', 'B')
             if e.code in (401, 403):
-                raise SystemExit(f'ERROR: la IA rechazó la clave ({e.code}). Revísala en «⚙ Ajustes IA». Detalle: {detalle}')
+                raise ErrorIA(f'ERROR: la IA rechazó la clave ({e.code}). Revísala en «⚙ Ajustes IA». Detalle: {detalle}', 'C')
             if e.code == 404:
-                raise SystemExit(f'ERROR: la IA no conoce el modelo «{ajustes["modelo"]}» o la dirección está mal. Detalle: {detalle}')
-            raise SystemExit(f'ERROR: la IA respondió con error {e.code}: {detalle}')
+                raise ErrorIA(f'ERROR: la IA no conoce el modelo «{ajustes["modelo"]}» o la dirección está mal. Detalle: {detalle}', 'C')
+            if clase == 'E':
+                raise ErrorIA(f'ERROR: la IA dice que se pasó un límite ({e.code}): demasiados pedidos o un pedido muy grande. '
+                              f'Espera un poco o baja las capturas. Detalle: {detalle}', 'E')
+            raise ErrorIA(f'ERROR: la IA respondió con error {e.code}: {detalle}', clase)
         except urllib.error.URLError as e:
-            raise SystemExit(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.')
+            det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason))
+            raise ErrorIA(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.', 'H')
+    det['ajustes_quitados'] = ajustes_quitados
     try:
-        contenido = r['choices'][0]['message']['content']
-    except (KeyError, IndexError, TypeError):
-        contenido = ''
+        eleccion = r['choices'][0]
+        mensaje = eleccion.get('message') or {}
+        contenido = mensaje.get('content')
+    except (KeyError, IndexError, TypeError, AttributeError):
+        eleccion, mensaje, contenido = {}, {}, ''
+    det.update(id_solicitud=r.get('id') if isinstance(r, dict) else None, motivo_fin=eleccion.get('finish_reason'),
+               modelo_respondio=r.get('model') if isinstance(r, dict) else None, uso=r.get('usage') if isinstance(r, dict) else None)
+    if mensaje.get('refusal') or eleccion.get('finish_reason') == 'content_filter':
+        det.update(rechazo_explicito=True, mensaje_api=str(mensaje.get('refusal') or 'finish_reason=content_filter')[:600])
+        raise ErrorIA('ERROR: la IA rechazó esta petición por sus políticas de uso (lo marcó la API). No se reintenta igual. '
+                      'Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
     if not (contenido or '').strip():
-        motivo = ''
-        try:
-            motivo = r['choices'][0].get('finish_reason') or ''
-        except (KeyError, IndexError, TypeError):
-            pass
-        extra = ' (el modelo cortó por longitud; si usas GPT-5 con «capturas» altas, baja las capturas en «⚙ Ajustes IA»)' if motivo == 'length' else ''
-        raise SystemExit('ERROR: la IA no devolvió texto (respuesta vacía).' + extra + ' Casi siempre es falta de saldo o un corte de la IA. '
-                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
+        if eleccion.get('finish_reason') == 'length':
+            raise ErrorIA('ERROR: la respuesta de la IA se cortó por largo antes de escribir nada (si usas GPT-5 con «capturas» '
+                          'altas, bájalas en «⚙ Ajustes IA»).', 'E', False)
+        det.update(tipo='respuesta_vacia')
+        raise ErrorIA('ERROR: la IA no devolvió texto (respuesta vacía) y no dio motivo. Mira el diagnóstico antes de suponer '
+                      'la causa; revisa también tu saldo y la clave en «⚙ Ajustes IA».', 'F')
+    if eleccion.get('finish_reason') == 'length':
+        raise ErrorIA('ERROR: la respuesta de la IA se cortó por el límite de largo y quedó incompleta. Vuelve a intentar.', 'E', False)
     return contenido
 
 
@@ -1231,6 +1384,13 @@ def por_tandas(ajustes, items, tanda, pedir, que):
             out.append((a, lote, extraer_json(llamar(ajustes, texto, imgs))))
             a += len(lote)
         except (SystemExit, ValueError) as e:
+            if getattr(e, 'permanente', False):
+                if getattr(e, 'clase', '') != 'A':
+                    raise  # clave, permisos, cuenta o saldo: los demás pedidos fallarían igual
+                # rechazo explícito: no se repite el mismo pedido partido en pedazos; queda en el diagnóstico
+                print(f'· la IA rechazó {que} {a + 1}–{a + len(lote)} ({str(e)[:160]}); no lo reintento, sigo con el resto', flush=True)
+                a += len(lote)
+                continue
             if tanda > 1:
                 tanda = max(1, tanda // 2)
                 print(f'· la IA no pudo con {len(lote)} imágenes juntas ({str(e)[:120]}); pruebo de a {tanda}', flush=True)
@@ -1977,7 +2137,9 @@ def main():
         except SystemExit as e:
             # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
             pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
-            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
+            # solo tiene sentido con menos imágenes si el fallo puede ser por tamaño; nunca tras un rechazo, permisos o saldo
+            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or getattr(e, 'permanente', False) \
+                    or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
                 raise
             print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
             texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
@@ -1988,9 +2150,8 @@ def main():
             datos = extraer_json(respuesta)
         except ValueError:
             corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
-            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido; '
-                             f'puede que lo haya rechazado. Contestó: «{corto}». Prueba con otro modelo en «⚙ Ajustes IA» '
-                             f'(GPT o Qwen suelen aceptar estos temas) y vuelve a pulsar.')
+            raise ErrorIA(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido. Eso no confirma '
+                          f'un rechazo: mira el diagnóstico. Contestó: «{corto}».', 'F')
         if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
             raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                              f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')

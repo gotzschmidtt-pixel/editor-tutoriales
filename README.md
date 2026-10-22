@@ -70,6 +70,18 @@ momentos como referencia; son orientativos, no cortes exactos.
 **Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
 segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
+## Diagnóstico cuando la IA (o un paso) no completa su trabajo
+
+Cada llamada a una IA queda anotada en `mis_proyectos/<proyecto>/diagnosticos/llamadas_<ejecución>.jsonl` (proveedor,
+modelo, operación, código HTTP, mensaje original de la API, id de solicitud, motivo de fin, intento, duración y un hash
+del pedido; nunca claves, guion, imágenes ni audio). Si un paso falla, o si alguna llamada falló aunque el paso siguió,
+se escribe `diagnostico_<fecha>_<id>.txt` y `.json` con la etapa (1 a 9), la clase de error (A rechazo por políticas ·
+B cuenta deshabilitada · C autenticación o permisos · D créditos · E límites · F formato · G programa · H red o servicio ·
+I desconocida), si la causa está confirmada por la API o no, qué falta saber y qué hacer. La app abre la ventana «LA IA
+NO PUDO COMPLETAR ESTA OPERACIÓN» con Ver diagnóstico, Exportar TXT/JSON y Reintentar (solo si reintentar tiene sentido:
+nunca tras un rechazo explícito, permisos o facturación). Con `"diagnostico_guardar_respuesta": true` en
+`app/ajustes.json` se guarda además un extracto redactado de lo que contestó la IA.
+
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.

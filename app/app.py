@@ -22,6 +22,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402  todo lo que se descarga queda en descargas_app/
+sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
+import diagnostico  # noqa: E402  informes locales cuando una IA o un paso no completa su trabajo
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
@@ -458,6 +460,25 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+def informe_paso(d, proyecto, paso, info, ejec, estado, log):
+    """El diagnóstico de un paso (ver diagnostico/diagnostico.py). Nunca frena la app: si algo falla aquí, se sigue."""
+    try:
+        log.flush()
+        texto = open(registro(d), encoding='utf-8', errors='replace').read().split('\n▶')[-1]
+        aj = leer_ajustes()
+        r = diagnostico.informe(os.path.join(d, 'diagnosticos'), proyecto, paso, info['nombre'], ejec, texto, estado,
+                                proveedor=aj.get('proveedor') or '', modelo=aj.get('modelo') or '')
+        if r:
+            log.write(f"· diagnóstico guardado en diagnosticos/{r['archivo']}.txt ({r['tipo']})\n"); log.flush()
+        return r
+    except Exception as e:
+        try:
+            log.write(f'· no pude escribir el diagnóstico ({type(e).__name__}: {e})\n'); log.flush()
+        except Exception:
+            pass
+        return None
+
+
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
                     '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
@@ -527,6 +548,9 @@ def correr(proyecto, pasos, opciones):
         env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
     nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
+    ejec = time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6]  # para el diagnóstico: qué llamadas son de esta ejecución
+    env.update(DIAG_DIR=os.path.join(d, 'diagnosticos'), DIAG_RUN=ejec)
+    diag = None
     saltados, hechos = [], []
     with CANDADO:
         TRABAJO.update(plan=nombres, i=0, inicio_total=time.time(), detenido=False)
@@ -569,6 +593,7 @@ def correr(proyecto, pasos, opciones):
             asegurar_node(paso, log, env)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             blando = False
+            env['DIAG_PASO'] = paso
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
@@ -576,11 +601,17 @@ def correr(proyecto, pasos, opciones):
                 if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
                     # un extra de la IA que no salió no frena el video: se sigue sin eso
                     log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
+                    informe_paso(d, proyecto, paso, info, ejec, 'saltado', log)
                     blando = True
                     break
                 if proc.returncode != 0:
+                    if TRABAJO.get('detenido'):
+                        log.write(f'✗ {info["nombre"]}: lo detuviste.\n'); log.flush()
+                        FALLOS[proyecto] = {'paso': paso, 'msg': 'detenido por ti'}
+                        return
                     log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
+                    diag = informe_paso(d, proyecto, paso, info, ejec, 'fallo', log)
                     return
             if blando:
                 saltados.append(info['nombre'])
@@ -590,6 +621,7 @@ def correr(proyecto, pasos, opciones):
                         TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
                 continue
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+            informe_paso(d, proyecto, paso, info, ejec, 'ok', log)  # solo escribe algo si hubo llamadas a la IA que fallaron
             hechos.append(info['nombre'])
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
@@ -599,13 +631,16 @@ def correr(proyecto, pasos, opciones):
             msg = f'Windows no encontró un programa que hace falta ({e}). Corre instalar.bat y reinicia la PC.'
         log.write(f'\nERROR: {msg}\n{traceback.format_exc()}\n✗ falló\n'); log.flush()
         FALLOS[proyecto] = {'paso': paso, 'msg': msg}
+        diag = informe_paso(d, proyecto, paso, next((x for x in PASOS if x['id'] == paso), {'nombre': paso}), ejec, 'fallo', log)
     finally:
         log.close()
         f = FALLOS.get(proyecto)
         RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
                                'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
-                               'pausa': None if f else opciones.get('_pausa')}
+                               'pausa': None if f else opciones.get('_pausa'), 'diagnostico': diag if f else None,
+                               'repetir': {'pasos': pasos[pasos.index(f['paso']):] if f and f['paso'] in pasos else [],
+                                           'opciones': opciones} if f and diag and diag.get('reintentable') else None}
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
 
@@ -731,7 +766,7 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ['ia_capturas'] + [g[0] for g in GRUPOS.values()] else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
@@ -901,6 +936,16 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/reintentar':  # «Reintentar» del diagnóstico: desde el paso que falló, solo si tiene sentido
+                rep = (RESULTADO.get(q['p']) or {}).get('repetir')
+                if not rep or not rep.get('pasos'):
+                    return self.error('Este fallo no se reintenta solo: hay que corregir antes lo que dice el diagnóstico.')
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
+                    TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
+                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), dict(rep['opciones'])), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
