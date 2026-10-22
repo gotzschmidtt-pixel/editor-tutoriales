@@ -1240,11 +1240,29 @@ def por_tandas(ajustes, items, tanda, pedir, que):
     return out
 
 
+_DURACIONES = {}
+
+
 def sacar_cuadro(orig, s, f, ancho=None, calidad=4):
+    """Un cuadro del video en el segundo `s`. Un segundo pegado al final (o pasado) no tiene cuadro y ffmpeg falla:
+    se usa el último medio segundo del video y, si igual falla, se prueba un poco antes."""
+    if orig not in _DURACIONES:
+        try:
+            _DURACIONES[orig] = duracion(orig)
+        except (subprocess.CalledProcessError, ValueError):
+            _DURACIONES[orig] = None
+    fin = _DURACIONES[orig]
+    if fin:
+        s = min(s, fin - 0.5)
     vf = ['-vf', f'scale={ancho}:-2'] if ancho else []
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, s):.2f}', '-i', orig, '-frames:v', '1']
-                   + vf + ['-q:v', str(calidad), f], check=True)
-    return f
+    for antes in (0, 1.5, 4):
+        if os.path.exists(f):
+            os.remove(f)
+        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, s - antes):.2f}', '-i', orig, '-frames:v', '1']
+                           + vf + ['-q:v', str(calidad), f], capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(f) and os.path.getsize(f):
+            return f
+    raise RuntimeError(f'no pude sacar el cuadro del segundo {s:.1f} del video ({(r.stderr or "").strip()[-200:]})')
 
 
 def leer_con_zoom(ocr, orig, s, tmp):
@@ -1255,7 +1273,7 @@ def leer_con_zoom(ocr, orig, s, tmp):
     try:
         sacar_cuadro(orig, s, tmp, calidad=2)
         return [x[0] for x in leer_textos(ocr, tmp)]
-    except (subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, RuntimeError, OSError):
         return []
     finally:
         if os.path.exists(tmp):
@@ -1570,7 +1588,15 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
     print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo y final de cada tramo, detalle en los pasos clave)…', flush=True)
-    control = {b['id']: control_bloque(d, b, ocr) for b in bloques}
+    control = {}
+    for b in bloques:  # un bloque cuyas imágenes no salen no frena la revisión del resto
+        try:
+            control[b['id']] = control_bloque(d, b, ocr)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
+            print(f"· {b['id']}: no pude preparar sus imágenes de control ({str(e)[:160]}); no lo reviso", flush=True)
+    bloques = [b for b in bloques if b['id'] in control]
+    if not bloques:
+        return []
 
     def pedir(grupo, a):
         caps, lineas = [], []
