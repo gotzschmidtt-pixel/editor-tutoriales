@@ -1014,6 +1014,8 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'
                 if q['paso'] == 'guion_ia' and datos.get('respuestas'):
                     datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
+                if q['paso'] == 'ia' and datos.get('tarea') == 'guion' and datos.get('modo') == 'api':
+                    datos['_pausa'] = 'guion'  # «✨ Escribir / rehacer con IA»: se abre la revisión con las preguntas de la IA
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
                 if q['paso'] == 'todo' and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
