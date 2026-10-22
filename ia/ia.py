@@ -1831,6 +1831,13 @@ def main():
                 except Exception as e:
                     print(f'· no pude armar las hojas de contacto ({e}); sigo sin ellas', flush=True)
         texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
+        if a.modo == 'api' and a.tarea in ('guion', 'trailer') and not (a.ajustar_largo or a.respuestas):
+            # guarda también el prompt usado (las capturas ya quedan en ia_capturas/), para reusarlo con otro
+            # modelo sin volver a procesar el video
+            try:
+                open(os.path.join(d, f'ia_prompt_{a.tarea}.txt'), 'w', encoding='utf-8').write(texto)
+            except OSError:
+                pass
         if a.modo in ('prompt', 'paquete'):
             f = os.path.join(d, f'ia_prompt_{a.tarea}.txt')
             open(f, 'w', encoding='utf-8').write(texto)

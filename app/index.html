@@ -381,9 +381,11 @@
           <button onclick="ia('api')">✨ Escribir con IA</button>
           <button onclick="ia('prompt')">📋 Prompt para copiar</button>
           <button onclick="pegar()">✅ Revisar respuesta pegada</button>
+          <button onclick="abrirPromptCapturas()" title="Abre la carpeta del proyecto con ia_prompt_guion.txt y la carpeta ia_capturas, para reusar lo ya generado con otro modelo sin volver a procesar el video">📂 Guardar prompt y capturas</button>
         </div>
         <p class="aviso">Escribe primero en «idea» de qué trata el video y los datos seguros (webs, precios, pines). La IA no inventa lo que no le das.
-        «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.</p>
+        «Revisar respuesta pegada»: pega en el editor lo que te contestó ChatGPT o DeepSeek y la app lo corrige y guarda.<br>
+        «Guardar prompt y capturas»: después de «Escribir con IA», deja el prompt en <code>ia_prompt_guion.txt</code> y las imágenes en <code>ia_capturas/</code>. Así pruebas otro modelo (GPT, DeepSeek…) sin reprocesar el video.</p>
       </div>
     </section>
 
@@ -749,6 +751,10 @@ async function finNube(e) {
   if (confirm(`✅ Proyecto dividido para Claude.\n\n${listo}\n${trozos.join('\n')}\n\nQuedó en la carpeta «para_claude» de «${p}».\n`
       + `Ahora escríbele a Claude en el chat: «hazlo desde la nube: ${p}».\n\n¿Abrir la carpeta?`))
     api(`/api/abrir_carpeta?p=${q(p)}&sub=para_claude`, {method: 'POST'}).catch(err => alert(err.message));
+}
+async function abrirPromptCapturas() {
+  try { await api(`/api/abrir_carpeta?p=${q(P)}`, {method: 'POST'}); }
+  catch (err) { alert(err.message + '\n\nAbre primero el proyecto; el prompt y las capturas aparecen después de «Escribir con IA» o «Prompt para copiar».'); }
 }
 async function paqueteClaude() {
   if (!confirm('Armo para_claude.zip con tu transcripción, tu idea y capturas del video (si falta la transcripción, la hago primero).\n\nLuego súbelo al chat con Claude y pídele el guion: lo deja en tu carpeta y tú pulsas «Hacer todo».')) return;
