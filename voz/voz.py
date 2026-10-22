@@ -7,7 +7,7 @@ modelo o la estabilidad); si no, se reutiliza y no gasta créditos dos veces.
 Después mide cuánto dura de verdad cada voz y, si no cabe en su bloque, alarga el bloque en guion.json con una pausa
 congelada al final y corre los bloques siguientes. Así la voz nunca se monta encima de la del bloque siguiente.
 """
-import argparse, base64, json, os, shutil, subprocess, urllib.error, urllib.request
+import argparse, base64, json, os, shutil, subprocess, time, urllib.error, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -134,10 +134,19 @@ def main():
                            'voice_settings': {'stability': a.estabilidad}}).encode()
         req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{a.voz}/with-timestamps?output_format=mp3_44100_128',
                                      data=body, headers={'Content-Type': 'application/json', **CLAVE})
-        try:
-            r = json.load(urllib.request.urlopen(req, timeout=180))
-        except urllib.error.HTTPError as e:
-            raise SystemExit(f"{b['id']}: error {e.code} {e.read()[:300]}")
+        r = None
+        for intento in range(3):  # si se corta la conexión (internet lento, WinError 10060) reintenta solo
+            try:
+                r = json.load(urllib.request.urlopen(req, timeout=180))
+                break
+            except urllib.error.HTTPError as e:
+                raise SystemExit(f"{b['id']}: error {e.code} {e.read()[:300]}")
+            except urllib.error.URLError as e:
+                if intento == 2:
+                    raise SystemExit(f"{b['id']}: no se pudo conectar a ElevenLabs tras 3 intentos ({e.reason}). "
+                                     "Revisa tu internet y vuelve a pulsar «Rehacer»: no repite lo ya hecho.")
+                print(b['id'], f"se cortó la conexión ({e.reason}); reintento {intento + 2} de 3...", flush=True)
+                time.sleep(2 * (intento + 1))
         open(mp3, 'wb').write(base64.b64decode(r['audio_base64']))
         json.dump(r.get('alignment'), open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
