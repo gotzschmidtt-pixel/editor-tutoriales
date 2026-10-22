@@ -25,7 +25,7 @@ import guardado  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402
 import numpy as np  # noqa: E402
-import hashlib, inspect, time  # noqa: E402
+import hashlib, inspect, threading, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
@@ -874,6 +874,28 @@ def _proveedor(ajustes):
     return ajustes.get('proveedor') or 'otro'
 
 
+_TRAMO = [0, 100]  # parte del paso (en %) que cubre la fase actual; la app lee «[N%]» del registro para su barra
+
+
+def tramo(desde, hasta):
+    _TRAMO[:] = [desde, hasta]
+
+
+def progreso(dentro, texto):
+    """Escribe en el registro en qué va el paso y su porcentaje: «· [45%] Pidiendo el guion…». `dentro` (0–100) es
+    cuánto va de la fase actual (tramo)."""
+    pct = int(_TRAMO[0] + (_TRAMO[1] - _TRAMO[0]) * max(0, min(100, dentro)) / 100)
+    print(f'· [{pct}%] {texto}', flush=True)
+
+
+def _mientras_piensa(fin, t0, esperado=150):
+    """Mientras la IA responde, cada 15 s deja una línea con el tiempo que lleva, para que se vea que sigue viva.
+    El % de esa espera es estimado (la API no dice cuánto le falta)."""
+    while not fin.wait(15):
+        s = int(time.time() - t0)
+        progreso(min(90, 100 * s / esperado), f'la IA sigue escribiendo… {s // 60}:{s % 60:02d} (el % de la espera es estimado)')
+
+
 def llamar(ajustes, texto, caps):
     """Pide a la IA configurada y deja anotada la llamada (bien o mal) para el diagnóstico, sin claves ni contenido."""
     global GUARDAR_RESPUESTA
@@ -901,6 +923,8 @@ def llamar(ajustes, texto, caps):
             print('· reutilizo la respuesta que la IA ya había dado a este mismo pedido (no se vuelve a cobrar)', flush=True)
             return r
     t0 = time.time()
+    fin = threading.Event()
+    threading.Thread(target=_mientras_piensa, args=(fin, t0), daemon=True).start()
     try:
         if ev['proveedor'] == 'Claude':
             r = llamar_claude(ajustes, texto, caps, det)
@@ -909,13 +933,16 @@ def llamar(ajustes, texto, caps):
         else:
             r = llamar_compatible(ajustes, texto, caps, det)
     except SystemExit as e:
+        fin.set()
         diagnostico.anotar({**ev, **det, 'ok': False, 'duracion_s': round(time.time() - t0, 1),
                             'mensaje': str(e)[:600], 'clase_app': getattr(e, 'clase', None)})
         raise
     except Exception as e:  # un error del programa (no de la IA): queda anotado con su tipo y sigue su camino
+        fin.set()
         diagnostico.anotar({**ev, **det, 'ok': False, 'tipo': 'programa', 'tipo_error': type(e).__name__,
                             'mensaje': str(e)[:600], 'duracion_s': round(time.time() - t0, 1)})
         raise
+    fin.set()
     det.setdefault('tipo_respuesta', 'ok')
     diagnostico.anotar({**ev, **det, 'ok': True, 'duracion_s': round(time.time() - t0, 1), 'largo_respuesta': len(r or '')})
     _ULTIMA.update(id_solicitud=det.get('id_solicitud'), motivo_fin=det.get('motivo_fin'), modelo_solicitado=det.get('modelo_solicitado'),
@@ -1667,7 +1694,7 @@ def por_tandas(ajustes, items, tanda, pedir, que):
     while a < len(items):
         lote = items[a:a + tanda]
         texto, imgs = pedir(lote, a)
-        print(f'· {que} {a + 1}–{a + len(lote)} de {len(items)}…', flush=True)
+        progreso(100 * a / max(1, len(items)), f'{que} {a + 1}–{a + len(lote)} de {len(items)}…')
         try:
             out.append((a, lote, extraer_json(llamar(ajustes, texto, imgs))))
             a += len(lote)
@@ -2397,6 +2424,8 @@ def main():
             except Exception as e:
                 print(f'· no pude usar el mapa del video para el tráiler ({e}); sigo sin él', flush=True)
         elif a.tarea == 'guion' and aj.get('minucioso', True):
+            tramo(5, 35)
+            progreso(0, 'Miro el video entero (mapa de pantallas)…')
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
                 mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
@@ -2449,7 +2478,8 @@ def main():
             open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
             print(f'Guardado guion.json ajustado de largo (el anterior quedó como guion.json.anterior)')
             return
-        print(f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…", flush=True)
+        tramo(35, 65)
+        progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
         try:
             respuesta = llamar(ajustes, texto, caps)
         except SystemExit as e:
@@ -2473,16 +2503,26 @@ def main():
         if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
             raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                              f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
+        tramo(65, 70)
+        progreso(0, 'La IA respondió: leo el guion')
         if a.tarea == 'guion':
             if todo_ia:
+                tramo(70, 75)
+                progreso(0, 'La IA revisa su propio guion…')
                 datos = autorrevision(d, ajustes, texto, datos)
             guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
+            tramo(75, 88)
+            progreso(0, 'Reviso el largo del guion…')
             datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
+            tramo(88, 94)
+            progreso(0, 'Mido el humor…')
             datos = dosificar_humor(d, ajustes, datos, avisos_humor)
             if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
                 for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
+    tramo(94, 100)
+    progreso(0, 'Reviso tiempos y orden de los bloques…')
     datos, avisos = revisar(d, a.tarea, datos)
     avisos = avisos_humor + avisos
     if a.tarea == 'guion' and a.modo == 'api' and mapa and ajustes.get('imagenes', True) and isinstance(datos, dict):
@@ -2498,6 +2538,8 @@ def main():
     if a.tarea == 'guion':  # lo que la app corrigió, para mostrártelo antes de seguir
         open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
     print(f'Guardado {ARCHIVO[a.tarea]} (la versión anterior quedó como {ARCHIVO[a.tarea]}.anterior)')
+    tramo(0, 100)
+    progreso(100, 'Listo')
 
 
 if __name__ == '__main__':

@@ -752,6 +752,18 @@ def ultima_linea(log):
     return ''
 
 
+def avance_paso(completo, paso):
+    """Lo que la barra muestra del paso en curso: su % real (las líneas «[N%]» que escriben los pasos), las últimas
+    líneas del registro y cuánto tardó este mismo paso la última vez que salió bien (para estimar lo que falta)."""
+    nombre = next((x['nombre'] for x in PASOS if x['id'] == paso), paso or '')
+    seccion = completo[completo.rfind('\n▶'):] if '\n▶' in completo else completo[-6000:]
+    pcts = re.findall(r'\[(\d{1,3})%\]', seccion)
+    lineas = [l.strip() for l in re.split(r'[\r\n]+', seccion[-6000:]) if l.strip() and not l.startswith('frame=')][-8:]
+    antes = re.findall(r'✓ ' + re.escape(nombre) + r' listo en (\d+) s', completo) if nombre else []
+    return {'pct_paso': min(100, int(pcts[-1])) if pcts else None, 'ultimas': lineas,
+            'antes_s': int(antes[-1]) if antes else None}
+
+
 def causa(d):
     """La línea que explica el error, dentro de lo último que escribió el paso."""
     lineas = open(registro(d), encoding='utf-8', errors='replace').read().split('\n▶')[-1].strip().splitlines()
@@ -775,7 +787,8 @@ def estado(proyecto):
         if p.get('oculto'):
             continue
         pasos.append({**p, 'listo': existe(d, p['produce']), 'puede': all(existe(d, n) for n in p['necesita'])})
-    log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
+    completo = open(registro(d), encoding='utf-8', errors='replace').read() if existe(d, 'registro.txt') else ''
+    log = completo[-12000:]
     with CANDADO:
         t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
                  segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0,
@@ -783,6 +796,7 @@ def estado(proyecto):
                  total_s=int(time.time() - TRABAJO['inicio_total']) if TRABAJO['inicio_total'] else 0)
     if t['proyecto'] == proyecto:
         t['linea'] = ultima_linea(log)
+        t.update(avance_paso(completo, t['paso']))
         # el video que el paso está escribiendo todavía no se puede ver (está a medias): la página no lo abre
         prod = {x['produce'] for x in PASOS if x['id'] == t['paso'] or x['nombre'] == t['paso']}
         if t['paso'] in ('trailer', 'final_sin_trailer') or prod & {'trailer.mp4'}:
