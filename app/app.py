@@ -275,6 +275,7 @@ def comandos(paso, d, op):
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
                 + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
+                + (['--ajustar-humor'] if op.get('ajustar_humor') else [])
                 + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])]
     if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
@@ -1016,6 +1017,8 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
                 if q['paso'] == 'ia' and datos.get('tarea') == 'guion' and datos.get('modo') == 'api':
                     datos['_pausa'] = 'guion'  # «✨ Escribir / rehacer con IA»: se abre la revisión con las preguntas de la IA
+                if q['paso'] == 'guion_ia' and datos.get('ajustar_humor'):
+                    datos['_pausa'] = 'guion'  # «🎚 Ajustar el humor»: te muestro el guion con lo que cambió
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
                 if q['paso'] == 'todo' and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):

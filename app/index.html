@@ -425,6 +425,7 @@
   <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
     <button onclick="guardarGuion(false)">Guardar</button>
     <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
+    <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas. Solo cambian esos bloques.">🎚 Ajustar humor</button>
     <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
 </dialog>
 
@@ -461,6 +462,9 @@
   <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarClave()">🔍 Comprobar clave</button><span id="ajPrueba" class="aviso" style="align-self:center"></span></div>
   <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
   <label>Capturas del video <input type="number" id="ajCaps" min="4" max="60" step="1" style="width:6em"></label>
+  <label>Humor del guion <select id="ajHumor"><option value="0">Sin humor</option><option value="1">Poco: 1 chiste cada 7 u 8 bloques</option>
+    <option value="2">Normal: 1 cada 4 o 5 bloques</option><option value="3">Mucho: 1 cada 3 bloques</option></select></label>
+  <p class="aviso">La app cuenta los bloques con chiste. Si la IA se pasa, se queda con los mejores (nunca dos seguidos, nunca en pasos delicados, sin repetir tema) y quita el resto.</p>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
@@ -1211,7 +1215,7 @@ async function ajustesIA() {
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
-  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia;
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
   $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
@@ -1232,7 +1236,7 @@ async function guardarAjustes() {
     return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value})});
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
@@ -1284,7 +1288,8 @@ function pintarBarra(t, r, arch) {
       <span class="cuanto">la IA lo escribió desde tu video en ${reloj(r.segundos)}</span>
       <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
       <button onclick="seguirTodo()">▶ Seguir con todo</button>
-      <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>${cerrar}</span></div>
+      <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
+      <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas.">🎚 Ajustar humor</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
     return;
@@ -1401,6 +1406,21 @@ async function guardarGuion(seguir) {
   if (archivo === 'guion.json' && !editado) abrir('guion.json');
   if (!seguir) { $('#msgGuion').textContent = '✓ Guardado'; $('#msgGuion').className = 'msg ok'; return; }
   dlgGuion.close(); seguirTodo();
+}
+async function ajustarHumor() {  // mide el humor del guion actual y quita los chistes que sobran (sin rehacerlo)
+  const a = (await api('/api/ajustes')).ajustes;
+  const n = prompt('Nivel de humor: 0 = sin humor · 1 = poco (1 chiste cada 7 u 8 bloques) · 2 = normal (1 cada 4 o 5) · 3 = mucho (1 cada 3)\n\n' +
+    'La app cuenta los chistes y quita los que sobran, los de pasos delicados, los seguidos y los temas repetidos. Solo cambian esos ' +
+    'bloques; el resto conserva su voz. El guion actual queda como guion.json.anterior.', String(a.humor ?? 1));
+  if (n === null) return;
+  const nivel = Math.max(0, Math.min(3, parseInt(n) || 0));
+  if (dlgGuion.open) { document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
+    await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)}); dlgGuion.close(); }
+  try {
+    await api('/api/ajustes', {method: 'POST', body: JSON.stringify({humor: nivel})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({ajustar_humor: true})});
+  } catch (e) { alert(e.message); }
+  refrescar();
 }
 async function otroGuion() {  // otro guion sin repetir el análisis del video (queda guardado en mapa_video.json)
   const pedido = prompt('¿Qué quieres distinto en el nuevo guion? (opcional: «otro inicio», «más corto», «más humor»…)\n' +

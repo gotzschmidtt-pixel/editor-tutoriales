@@ -35,18 +35,178 @@ CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|p
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 PALABRAS_POR_S = 2.6
 
-ESTILO = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
+# HUMOR: el nivel se elige en «⚙ Ajustes IA» (ajustes «humor»: 0 sin, 1 poco, 2 normal, 3 mucho). Cada bloque con chiste
+# lleva "humor": true, así la app los cuenta y, si se pasa del máximo del nivel, le pide a la IA que quite los que sobran.
+HUMOR_NIVELES = {
+    0: ('sin humor', 0, None),
+    1: ('poco', 8, 'UN remate cada 7 u 8 bloques como máximo'),
+    2: ('normal', 5, 'un remate cada 4 o 5 bloques como máximo'),
+    3: ('mucho', 3, 'un remate cada 3 bloques como máximo'),
+}
+HUMOR_NIVEL = 1
+
+
+def nivel_humor(ajustes):
+    try:
+        n = int(ajustes.get('humor', 1))
+    except (TypeError, ValueError, AttributeError):
+        n = 1
+    return n if n in HUMOR_NIVELES else 1
+
+
+def maximo_humor(n_bloques, nivel=None):
+    """Cuántos bloques con chiste se aceptan en un guion de n_bloques (el chiste de la invitación a comentar cuenta)."""
+    nombre, cada, _ = HUMOR_NIVELES[HUMOR_NIVEL if nivel is None else nivel]
+    return 0 if not cada else max(1, -(-n_bloques // cada))
+
+
+def regla_humor(nivel):
+    nombre, cada, frecuencia = HUMOR_NIVELES[nivel]
+    if not cada:
+        return ('- HUMOR: sin humor. Tono cercano y ameno, pero sin chistes ni remates. '
+                'Marca todos los bloques con "humor": false.\n- Al inicio, una invitación sencilla a comentar las dudas.')
+    return (f'- HUMOR (nivel «{nombre}», manda sobre el estilo aprendido de los videos de referencia): {frecuencia}, nunca en '
+            'dos bloques seguidos. Cada remate es UNA frase corta (máximo 12 palabras), dicha de pasada, sin exagerar: el '
+            'resto del bloque explica normal. Picante ligero, doble sentido suave, nada grosero. Solo en bloques que NO son '
+            'pasos críticos (esperas, cargas, el antes y el después, el cierre). En los pasos críticos (pines, códigos, keys, '
+            'archivos, valores, copiar o pegar, borrar o conectar) nada de chistes: claro y exacto. Cada remate con un TEMA '
+            'distinto (no repitas ex, suegra, vecina…). Marca con "humor": true y "humor_tema" cada bloque que lleva un '
+            'remate, y con "humor": false los demás.\n- Al inicio, una invitación a comentar las dudas con un toque de humor (cuenta '
+            'como uno de los remates).')
+
+
+def configurar_humor(nivel):
+    """Ajusta el ESTILO y el recordatorio de humor al nivel elegido (se usan en todos los pedidos del guion)."""
+    global HUMOR_NIVEL, ESTILO, RECUERDA_HUMOR
+    HUMOR_NIVEL = nivel
+    ESTILO = ESTILO_BASE.replace('{HUMOR}', regla_humor(nivel))
+    nombre, cada, frecuencia = HUMOR_NIVELES[nivel]
+    RECUERDA_HUMOR = ('Sin humor: no agregues chistes. ' if not cada else
+                      f'Respeta el HUMOR de las reglas de estilo (nivel «{nombre}»): {frecuencia}, remates de una frase corta, '
+                      'nunca en pasos críticos ni en bloques seguidos, también en los bloques nuevos o cambiados; marca '
+                      '"humor": true o false en cada bloque. ')
+
+
+ESTILO_BASE = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
 - Entretenido y sencillo de entender, en español latino, tuteando.
-- HUMOR (obligatorio; manda sobre el estilo aprendido de los videos de referencia, aunque ahí el autor suene serio):
-  humor picante ligero, con doble sentido suave, en frases cortas y naturales. Al menos un remate cada 3 o 4 bloques
-  que NO sean pasos críticos (esperas, cargas, explicaciones, el antes y el después, el cierre). En los pasos críticos
-  (pines, códigos, keys, archivos, valores) nada de chistes: claro y exacto.
-- Al inicio, una invitación CON UN CHISTE a comentar las dudas (no una invitación seria).
+{HUMOR}
 - Nombres de botones, menús y archivos escritos tal cual aparecen en pantalla.
 - NO inventes datos: precios, pines, temperaturas, webs o nombres de archivo solo si están en la transcripción, en las capturas o en la idea del autor. Si falta un dato, escribe la frase sin él."""
-# se repite en los pedidos de corrección (alargar, acortar, revisar), que si no vuelven a un tono serio
-RECUERDA_HUMOR = ("Mantén el HUMOR de las reglas de estilo: remates picantes ligeros cada 3 o 4 bloques que no sean pasos "
-                  "críticos, también en los bloques nuevos o cambiados, y la invitación a comentar del inicio con un chiste. ")
+ESTILO = RECUERDA_HUMOR = ''
+configurar_humor(1)
+
+
+def critico_humor(b):
+    """Pasos donde no va un chiste: los críticos de la app y los que copian, pegan o borran algo (serial, key, Erase FRP)."""
+    return es_critico(b) or bool(re.search(r'\b(erase|borra|borrar|formate|fastboot|flashe|conect)', str(b.get('texto', '')) + ' '
+                                            + str(b.get('ancla', '')), re.I)) or bool(CRITICO.search(str(b.get('ancla', ''))))
+
+
+def medir_humor(bloques):
+    """Lo que se mide del humor, según la marca "humor" (y "humor_tema") de cada bloque: cuántos llevan chiste, el máximo
+    del nivel, cuáles van seguidos, cuáles caen en pasos críticos y qué temas se repiten. None si la IA no marcó nada."""
+    if not any(isinstance(b, dict) and 'humor' in b for b in bloques):
+        return None
+    con = [k for k, b in enumerate(bloques) if b.get('humor') is True]
+    temas = {}
+    for k in con:
+        t = str(bloques[k].get('humor_tema') or '').strip().lower()
+        if t:
+            temas.setdefault(t, []).append(bloques[k].get('id'))
+    return {'con': len(con), 'total': len(bloques), 'maximo': maximo_humor(len(bloques)),
+            'seguidos': [bloques[k].get('id') for k in con if k - 1 in con],
+            'criticos': [bloques[k].get('id') for k in con if critico_humor(bloques[k])],
+            'repetidos': {t: ids for t, ids in temas.items() if len(ids) > 1}}
+
+
+def texto_medida(m):
+    nombre = HUMOR_NIVELES[HUMOR_NIVEL][0]
+    out = f"humor: {m['con']} de {m['total']} bloques con chiste (nivel «{nombre}», máximo {m['maximo']})"
+    if m['seguidos']:
+        out += f"; seguidos: {', '.join(map(str, m['seguidos']))}"
+    if m['criticos']:
+        out += f"; en pasos delicados: {', '.join(map(str, m['criticos']))}"
+    if m['repetidos']:
+        out += '; temas repetidos: ' + ', '.join(f'{t} ×{len(i)}' for t, i in m['repetidos'].items())
+    return out
+
+
+def elegir_humor(bloques, maximo):
+    """Qué bloques conservan su chiste: los que no son pasos delicados, nunca dos seguidos, sin repetir tema, repartidos
+    a lo largo del video, hasta el máximo del nivel. La invitación a comentar (al inicio) va primero."""
+    candidatos = [k for k, b in enumerate(bloques) if b.get('humor') is True and not critico_humor(b)]
+    if not candidatos or not maximo:
+        return set()
+    hueco = max(2, len(bloques) // max(1, maximo))
+    quedan, temas, ultimo = [], set(), -99
+    for k in candidatos:
+        t = str(bloques[k].get('humor_tema') or '').strip().lower()
+        if len(quedan) >= maximo:
+            break
+        if k - ultimo < (2 if not quedan else hueco) or (t and t in temas):
+            continue
+        quedan.append(k); temas.add(t); ultimo = k
+    return {bloques[k].get('id') for k in quedan}
+
+
+def marcar_humor(ajustes, datos):
+    """Un guion viejo sin marcas: la IA solo marca qué bloques llevan chiste y de qué tema (no cambia ningún texto)."""
+    bloques = datos.get('bloques') if isinstance(datos, dict) else datos
+    pedido = ('Este es el guion de un video tutorial. Para cada bloque dime si su texto lleva un chiste o remate de humor y de '
+              'qué tema es (por ejemplo «ex», «suegra», «vecina», «comida»). NO cambies ningún texto. Responde SOLO con JSON '
+              '{"marcas": [{"id": "L01", "humor": true, "humor_tema": "suegra"}, {"id": "L02", "humor": false}, ...]}\n\n'
+              + json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in bloques], ensure_ascii=False)[:60000])
+    print('· la IA marca qué bloques del guion llevan chiste…', flush=True)
+    r = extraer_json(llamar(ajustes, pedido, []))
+    marcas = {str(x.get('id')): x for x in (r.get('marcas') if isinstance(r, dict) else r) or [] if isinstance(x, dict)}
+    for b in bloques:
+        m = marcas.get(str(b.get('id')))
+        b['humor'] = bool(m and m.get('humor') is True)
+        if m and m.get('humor_tema') and b['humor']:
+            b['humor_tema'] = str(m['humor_tema'])[:40]
+    return datos
+
+
+def dosificar_humor(d, ajustes, datos, avisos):
+    """Mide el humor del guion y, si se pasa del nivel (más chistes que el máximo, dos seguidos, chistes en pasos
+    delicados o temas repetidos), le pide a la IA que quite el chiste SOLO de los bloques que sobran. Los demás bloques
+    quedan exactamente igual (conservan su voz). Lo medido queda en los avisos de la revisión del guion."""
+    bloques = datos.get('bloques') if isinstance(datos, dict) else datos
+    if not bloques:
+        return datos
+    m = medir_humor(bloques)
+    if m is None:
+        avisos.append(f'humor: la IA no marcó qué bloques llevan chiste, así que no lo pude medir (nivel «{HUMOR_NIVELES[HUMOR_NIVEL][0]}»)')
+        return datos
+    if m['con'] <= m['maximo'] and not (m['seguidos'] or m['criticos'] or m['repetidos']):
+        avisos.append(texto_medida(m))
+        return datos
+    quedan = elegir_humor(bloques, m['maximo'])
+    quitar = [b for b in bloques if b.get('humor') is True and b.get('id') not in quedan]
+    print('· ' + texto_medida(m) + f'. Le pido a la IA que quite el chiste de {len(quitar)} bloque(s)…', flush=True)
+    pedido = (f"""En estos bloques de un video tutorial QUITA el chiste o remate de humor: deja la frase informativa y natural, con
+los mismos datos y más o menos el mismo largo. No agregues otro chiste ni cambies nada más.
+{json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in quitar], ensure_ascii=False)[:60000]}
+
+Responde SOLO con JSON {{"bloques": [{{"id": "...", "texto": "..."}}, ...]}} con los mismos ids.""")
+    try:
+        r = extraer_json(llamar(ajustes, pedido, []))
+        nuevos = {str(x.get('id')): x.get('texto') for x in (r.get('bloques') if isinstance(r, dict) else r) or []
+                  if isinstance(x, dict) and str(x.get('texto') or '').strip()}
+    except (SystemExit, ValueError) as e:
+        avisos.append(texto_medida(m) + f'. No pude bajarlo ({str(e)[:120]}); bájalo a mano o elige un nivel menor en «⚙ Ajustes IA»')
+        return datos
+    cambiados = []
+    for b in bloques:  # solo cambia el texto de los bloques que pierden el chiste; ids, montaje y tiempos quedan igual
+        if b.get('humor') is True and b.get('id') not in quedan and str(b.get('id')) in nuevos:
+            b['texto'] = str(nuevos[str(b.get('id'))]).strip()
+            b['humor'] = False
+            b.pop('humor_tema', None)
+            cambiados.append(b.get('id'))
+    m2 = medir_humor(bloques)
+    avisos.append(f"humor: tenía chistes en {m['con']} de {m['total']} bloques; quité el chiste de {len(cambiados)} "
+                  f"({', '.join(map(str, cambiados))}). Ahora: " + texto_medida(m2).split(': ', 1)[1])
+    return datos
 
 
 def duracion(f):
@@ -299,6 +459,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
 - "texto": lo que dice la voz en off. Unas {PALABRAS_POR_S} palabras por segundo de bloque.
+- "humor": true si el bloque lleva un remate de humor (y "humor_tema": de qué trata, p. ej. "suegra"), false si no.
 - "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
     {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.6 a {VEL_MAX:.0f}}}  (1 = normal; MÁS de 1 = acelerado, para esperas, cargas,
       instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien)
@@ -1808,8 +1969,8 @@ def autorrevision(d, ajustes, texto, datos):
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
               "dice su texto, que los pasos clave estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en "
               "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
-              "estén tal cual se leen en pantalla, que tenga el HUMOR pedido (remates cada 3 o 4 bloques no críticos y la "
-              "invitación a comentar con chiste) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
+              "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
+              "marcados con \"humor\") y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
               "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a 4 "
               "preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
@@ -2152,6 +2313,7 @@ def main():
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
+    ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
     ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
@@ -2161,6 +2323,10 @@ def main():
     a = ap.parse_args()
     global AJUSTES_F
     AJUSTES_F = a.ajustes
+    try:
+        configurar_humor(nivel_humor(json.load(open(a.ajustes, encoding='utf-8'))))
+    except (OSError, ValueError):
+        pass
     d = a.proyecto
     idea = a.idea or (open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else '')
     destino = os.path.join(d, ARCHIVO[a.tarea])
@@ -2178,6 +2344,21 @@ def main():
         revision_pendiente(d, a.ajustes, destino)
         return
     mapa, todo_ia = None, False
+    avisos_humor = []
+    if a.tarea == 'guion' and a.ajustar_humor:  # «🎚 Ajustar el humor»: el guion que ya tienes, sin rehacerlo
+        ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        datos = json.load(open(destino, encoding='utf-8'))
+        if medir_humor(datos['bloques']) is None:
+            datos = marcar_humor(ajustes, datos)
+        datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+        datos, avisos = revisar(d, a.tarea, datos)
+        os.replace(destino, destino + '.anterior')
+        json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        for x in avisos_humor + avisos:
+            print('·', x)
+        open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos_humor + avisos))
+        print('Guardado guion.json con el humor ajustado (el anterior quedó como guion.json.anterior)')
+        return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
     else:
@@ -2297,11 +2478,13 @@ def main():
                 datos = autorrevision(d, ajustes, texto, datos)
             guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
             datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
+            datos = dosificar_humor(d, ajustes, datos, avisos_humor)
             if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
                 for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
     datos, avisos = revisar(d, a.tarea, datos)
+    avisos = avisos_humor + avisos
     if a.tarea == 'guion' and a.modo == 'api' and mapa and ajustes.get('imagenes', True) and isinstance(datos, dict):
         # la revisión de cada bloque contra su imagen es lo más lento: se hace al pulsar «Seguir con todo»,
         # así ves el guion apenas la IA lo escribe y, si no te gusta, pides otro sin esperarla
