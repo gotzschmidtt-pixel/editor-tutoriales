@@ -1731,13 +1731,18 @@ def paquete(d, tarea, prompt, caps, mapa=None):
     import zipfile
     destino = os.path.join(d, 'para_claude.zip')
     proyecto = os.path.basename(os.path.abspath(d))
-    leeme = f"""Paquete para Claude · proyecto «{proyecto}» · tarea: {tarea}
+    leeme = f"""Paquete para una IA de chat (ChatGPT, Claude, DeepSeek, etc.) · proyecto «{proyecto}» · tarea: {tarea}
 
-Claude: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
+IA: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
 transcripción con tiempos en transcripcion.json; si está, mapa_video.json y ia_capturas/mapa/ traen el video entero
-cuadro a cuadro). Déjalo en la carpeta del proyecto, en mis_proyectos/{proyecto}/{ARCHIVO[tarea]}
-(si ya hay uno, el actual va aparte como {ARCHIVO[tarea]}.anterior). Después el autor pulsa «Hacer todo».
-Ruta de esta carpeta en la PC del autor: {os.path.abspath(d)}
+cuadro a cuadro con el texto de pantalla).
+
+Cómo devolver el resultado, según lo que puedas hacer:
+- Si puedes escribir archivos en la carpeta del autor (por ejemplo Claude con acceso a la carpeta): deja el resultado
+  en mis_proyectos/{proyecto}/{ARCHIVO[tarea]} (si ya hay uno, el actual va aparte como {ARCHIVO[tarea]}.anterior).
+  Después el autor pulsa «Hacer todo». Ruta en la PC del autor: {os.path.abspath(d)}
+- Si NO puedes escribir archivos (ChatGPT web y similares): devuelve el {ARCHIVO[tarea]} como JSON en el chat. El autor
+  lo copia y lo pega en la app con «✅ Revisar respuesta pegada», y la app lo revisa y lo guarda.
 """
     with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('LEEME.txt', leeme)

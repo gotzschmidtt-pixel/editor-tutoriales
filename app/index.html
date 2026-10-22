@@ -154,7 +154,7 @@
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
-        <button onclick="paqueteClaude()" title="Arma un ZIP con tu transcripción, tu idea y capturas para subirlo al chat con Claude, que te deja el guion en tu carpeta">📦 Paquete para Claude</button>
+        <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
         <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
         <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
         <label class="aviso">Montaje <select id="calidad">
@@ -758,7 +758,7 @@ async function abrirPromptCapturas() {
   catch (err) { alert(err.message + '\n\nAbre primero el proyecto; el prompt y las capturas aparecen después de «Escribir con IA» o «Prompt para copiar».'); }
 }
 async function paqueteClaude() {
-  if (!confirm('Armo para_claude.zip con tu transcripción, tu idea y capturas del video (si falta la transcripción, la hago primero).\n\nLuego súbelo al chat con Claude y pídele el guion: lo deja en tu carpeta y tú pulsas «Hacer todo».')) return;
+  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete'})}); }
   catch (e) { return alert(e.message); }
   esperaIA = {tarea: 'guion', modo: 'paquete', archivo: 'guion.json'};
@@ -768,8 +768,8 @@ async function finIA() {
   if (modo === 'paquete') {
     const e = await api(`/api/estado?p=${q(P)}`);
     if (!e.archivos['para_claude.zip']) return;
-    const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=para_claude.zip`; a.download = `para_claude_${P}.zip`; a.click();
-    return alert('Listo: se descargó para_claude.zip (también queda en la carpeta del proyecto).\n\nSúbelo al chat con Claude y escribe «hazme el guion». Cuando te avise, pulsa «Hacer todo».');
+    const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=para_claude.zip`; a.download = `paquete_${P}.zip`; a.click();
+    return alert('Listo: se descargó el ZIP (también queda en la carpeta del proyecto).\n\nSúbelo al chat de ChatGPT, Claude o DeepSeek y escribe «hazme el guion siguiendo ia_prompt_guion.txt».\n\nCuando te dé el guion, cópialo y pégalo en la app con «✅ Revisar respuesta pegada».');
   }
   if (modo === 'prompt') {
     try { $('#txtPrompt').value = await api(`/archivo?p=${q(P)}&f=ia_prompt_${tarea}.txt`); } catch (e) { return; }
