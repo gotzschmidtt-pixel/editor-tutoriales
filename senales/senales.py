@@ -85,15 +85,15 @@ def main():
     ap.add_argument('--prueba')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
+    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
     tmp = tempfile.mkdtemp(prefix='senales_')
     trabajos, colocadas = [], []
-    for k, s in enumerate(json.load(open(a.senales)), 1):
+    for k, s in enumerate(json.load(open(a.senales, encoding='utf-8')), 1):
         s.setdefault('frase', s.get('texto') or 'tu captura')
         if s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
             t = round(float(s['t']) + s.get('retraso', 0), 2)
         else:
-            al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json')))
+            al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json'), encoding='utf-8'))
             t = buscar(al, s['frase'])
             if t is None:
                 print(f"AVISO: no encontré «{s['frase']}» en {s['bloque']}, la salto"); continue
@@ -122,7 +122,7 @@ def main():
 
     if a.prueba and not a.salida:
         return
-    json.dump(trabajos, open(os.path.join(tmp, 'trabajos.json'), 'w'))
+    json.dump(trabajos, open(os.path.join(tmp, 'trabajos.json'), 'w', encoding='utf-8'))
     env = dict(os.environ)
     chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
     if os.path.exists(chrome):
@@ -139,7 +139,7 @@ def main():
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida], check=True)
     shutil.rmtree(tmp)
     json.dump([{k: v for k, v in c.items() if k != 'archivo'} for c in colocadas],
-              open(os.path.splitext(a.salida)[0] + '.senales_tiempos.json', 'w'), ensure_ascii=False, indent=1)
+              open(os.path.splitext(a.salida)[0] + '.senales_tiempos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':

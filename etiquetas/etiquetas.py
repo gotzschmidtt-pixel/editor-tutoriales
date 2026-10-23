@@ -59,14 +59,14 @@ def main():
     ap.add_argument('--desfase', type=float, default=0.3, help='retraso con que se colocó cada bloque de voz')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
+    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
     items = []
-    for e in json.load(open(a.etiquetas)):
+    for e in json.load(open(a.etiquetas, encoding='utf-8')):
         f_al = os.path.join(a.voz, str(e.get('bloque')) + '.align.json')
         if e.get('bloque') not in inicio or not os.path.exists(f_al):
             print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
             continue
-        al = json.load(open(f_al))
+        al = json.load(open(f_al, encoding='utf-8'))
         t = buscar(al, e['frase'])
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
@@ -78,7 +78,7 @@ def main():
         print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '
               'Pulsa «Escribir con IA» en etiquetas para hacerlas de nuevo con este guion.')
         shutil.copyfile(a.video, a.salida)
-        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'))
+        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'))
         return
     tmp = tempfile.mkdtemp(prefix='etiquetas_')
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
@@ -103,7 +103,7 @@ def main():
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida],
                    check=True)
     shutil.rmtree(tmp)
-    json.dump(items, open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'), ensure_ascii=False, indent=1)
+    json.dump(items, open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':

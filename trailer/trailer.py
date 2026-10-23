@@ -62,7 +62,12 @@ def correr_srt(srt, seg, destino):
         h, mi, s, ms = map(int, m.groups())
         t = h * 3600 + mi * 60 + s + ms / 1000 + seg
         return f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}"
-    open(destino, 'w').write(re.sub(r'(\d\d):(\d\d):(\d\d),(\d\d\d)', mover, open(srt).read()))
+    crudo = open(srt, 'rb').read()
+    try:
+        texto = crudo.decode('utf-8')
+    except UnicodeDecodeError:  # subtítulos hechos antes en Windows con su codificación vieja
+        texto = crudo.decode('cp1252', errors='replace')
+    open(destino, 'w', encoding='utf-8').write(re.sub(r'(\d\d):(\d\d):(\d\d),(\d\d\d)', mover, texto))
 
 
 def main():
@@ -74,7 +79,7 @@ def main():
     ap.add_argument('--final')
     ap.add_argument('--srt')
     a = ap.parse_args()
-    plan = json.load(open(a.plan))
+    plan = json.load(open(a.plan, encoding='utf-8'))
     shutil.rmtree(PUB, ignore_errors=True); os.makedirs(PUB)
     nt = analizar(a.video, os.path.join(PUB, 'original.nitidez.npz'))
 
@@ -101,9 +106,9 @@ def main():
     if plan.get('voz'):
         # la voz se guarda junto a la salida y se reutiliza mientras el texto no cambie
         vf = os.path.splitext(a.salida)[0] + '.voz.mp3'
-        previo = open(vf + '.txt').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
+        previo = open(vf + '.txt', encoding='utf-8').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
         if previo != plan['voz']:
-            voz(plan['voz'], vf); open(vf + '.txt', 'w').write(plan['voz'])
+            voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(plan['voz'])
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")
         if mus:

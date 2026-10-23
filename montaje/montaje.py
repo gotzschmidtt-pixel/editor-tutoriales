@@ -37,7 +37,7 @@ def avance(partes, tmp, destino, voces=()):
     (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
     se intenta en el bloque siguiente."""
     lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
-    with open(lista, 'w') as fh:
+    with open(lista, 'w', encoding='utf-8') as fh:
         fh.writelines(f"file '{p}'\n" for p in partes)
     voces = [(t, f) for t, f in voces if os.path.exists(f)]
     try:
@@ -135,7 +135,7 @@ def main():
             voces.append((b['inicio_min'] + 0.3, os.path.join(carpeta_voz, f'{i}.mp3')))  # el mismo desfase que «Poner la voz»
         avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
     lista = os.path.join(tmp, 'lista.txt')
-    with open(lista, 'w') as fh:
+    with open(lista, 'w', encoding='utf-8') as fh:
         for p in partes:
             fh.write(f"file '{p}'\n")
     run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])

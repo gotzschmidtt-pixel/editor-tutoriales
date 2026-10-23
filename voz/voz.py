@@ -148,7 +148,7 @@ def main():
                 print(b['id'], f"se cortó la conexión ({e.reason}); reintento {intento + 2} de 3...", flush=True)
                 time.sleep(2 * (intento + 1))
         open(mp3, 'wb').write(base64.b64decode(r['audio_base64']))
-        json.dump(r.get('alignment'), open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w'))
+        json.dump(r.get('alignment'), open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)
     for x in ajustar_guion(a.guion, a.salida):

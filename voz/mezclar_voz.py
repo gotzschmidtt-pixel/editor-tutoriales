@@ -6,7 +6,7 @@ import json, os, subprocess, sys
 
 video, guion, voz, salida = sys.argv[1:5]
 desfase = float(sys.argv[5]) if len(sys.argv) > 5 else 0.3
-d = json.load(open(guion))
+d = json.load(open(guion, encoding='utf-8'))
 total = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video],
                              capture_output=True, text=True).stdout)
 
@@ -30,7 +30,7 @@ for k, b in enumerate(d['bloques'], 1):
     ins += ['-i', f"{voz}/{b['id']}.mp3"]
     flt.append(f"[{k}:a]aresample=44100,adelay={int(st * 1000)}:all=1[a{k}]")
     labs.append(f"[a{k}]")
-    al = json.load(open(f"{voz}/{b['id']}.align.json"))
+    al = json.load(open(f"{voz}/{b['id']}.align.json", encoding='utf-8'))
     ch, s0, e0 = al['characters'], al['character_start_times_seconds'], al['character_end_times_seconds']
     i, L = 0, len(ch)
     while i < L:  # frases de ~45 caracteres, cortando en espacios o puntuación
@@ -54,4 +54,4 @@ flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:
 subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                ['-filter_complex', ';'.join(flt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',
                 '-c:a', 'aac', '-b:a', '160k', '-t', str(total), salida], check=True)
-open(salida.rsplit('.', 1)[0] + '.srt', 'w').write('\n'.join(srt))
+open(salida.rsplit('.', 1)[0] + '.srt', 'w', encoding='utf-8').write('\n'.join(srt))
