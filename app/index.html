@@ -640,13 +640,16 @@ function pintarSalidas(arch) {
   if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
     ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
   }
+  // sin FINAL.mp4 (por ejemplo, si falló el último paso), se baja el video más avanzado que haya
+  const armado = AVANCE.slice(1).reverse().find(v => hay.includes(v)) || null;
   const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt', 'revision_guion.txt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
     extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
-    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '') +
+    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>`
+      : armado ? `<a href="/archivo?p=${q(P)}&f=${armado}" download><button class="principal">⬇ Descargar ${armado}</button></a>` : '') +
     ['720', '480', '360'].filter(h => arch[`FINAL_${h}p.mp4`]).map(h =>
       `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button>⬇ FINAL ${h}p</button></a>`).join('');
-  $('#exportar').hidden = !arch['FINAL.mp4'];
+  $('#exportar').hidden = !armado;
 }
 async function exportar() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }

@@ -294,7 +294,10 @@ def comandos(paso, d, op):
         h = int(op.get('altura', 480))
         if h not in (720, 480, 360):
             raise ValueError('calidad no válida')
-        return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', 'FINAL.mp4', '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
+        fuente = 'FINAL.mp4' if existe(d, 'FINAL.mp4') else ultimo_video(d, None)  # sin FINAL, el video más avanzado que haya
+        if not fuente:
+            raise RuntimeError('Todavía no hay video armado para exportar. Pulsa «▶ Hacer todo».')
+        return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
                  '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', f'FINAL_{h}p.mp4']]
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
@@ -324,7 +327,7 @@ PASOS = [
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
-    {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': [], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
