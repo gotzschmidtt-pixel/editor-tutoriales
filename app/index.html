@@ -144,6 +144,7 @@
     <section class="panel">
       <h2>1 · Archivos</h2>
       <div class="subidas" id="subidas"></div>
+      <div id="musicaFija" class="aviso" style="margin-top:6px"></div>
       <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto. Para mandarme el proyecto
       partido en trozos de 300 o 400 MB, pulsa «☁ Hacer en la nube con Claude» (en «2 · Pasos»): ahí eliges el tamaño.</p>
     </section>
@@ -546,6 +547,22 @@ function pintarSubidas(arch) {
     el.ondrop = e => { e.preventDefault(); e.dataTransfer.files.length && subirVarios(tipo, [...e.dataTransfer.files], el); };
   });
 }
+let MUSICA_FIJA_VISTA = null;
+function pintarMusicaFija(e) {  // una sola pista para todos los videos
+  const clave = e.musica_fija + '|' + !!e.archivos['musica.mp3'];
+  if (clave === MUSICA_FIJA_VISTA) return;  // no repinta el reproductor mientras suena
+  MUSICA_FIJA_VISTA = clave;
+  $('#musicaFija').innerHTML = e.musica_fija
+    ? `📌 <b>Música fija:</b> todos los videos usan ${esc(e.musica_fija)} (no se genera otra).
+       <audio controls preload="none" src="/api/musica_fija" style="height:28px; vertical-align:middle"></audio>
+       <button onclick="musicaFija(true)">Quitar</button>`
+    : e.archivos['musica.mp3'] ? `<button onclick="musicaFija(false)">📌 Usar la música de este proyecto en todos los videos</button>` : '';
+}
+async function musicaFija(quitar) {
+  if (!quitar && !confirm('¿Usar la música de este proyecto (musica.mp3) en todos los videos desde ahora? No se generará música nueva.')) return;
+  try { await api(quitar ? '/api/musica_fija?quitar=1' : `/api/musica_fija?p=${q(P)}`, {method: 'POST'}); } catch (x) { alert(x.message); }
+  MUSICA_FIJA_VISTA = null; refrescar();
+}
 function subir(tipo, file, el, parte = 1, de = 1) {
   return new Promise((listo, fallo) => {
     const x = new XMLHttpRequest();
@@ -604,7 +621,8 @@ async function ejecutar(paso) {
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
-  if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
+  const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
+  if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
@@ -1577,7 +1595,7 @@ async function reiniciarApp() {
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  pintarSubidas(e.archivos); pintarMusicaFija(e); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
   if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
   if (PAGINA === null) PAGINA = e.pagina;

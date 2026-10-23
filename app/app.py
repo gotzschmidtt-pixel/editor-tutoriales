@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402  informes locales cuando una IA o un paso no completa su trabajo
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
 ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
 PY = sys.executable
@@ -242,7 +243,10 @@ def comandos(paso, d, op):
         return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
     if paso == 'musica':
         c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
-        c += ['--pista', 'musica.mp3'] if existe(d, 'musica.mp3') else ['--guardar_pista', 'musica.mp3']
+        if os.path.exists(MUSICA_FIJA):  # la música fija manda sobre la del proyecto (no se genera otra)
+            c += ['--pista', MUSICA_FIJA]
+        else:
+            c += ['--pista', 'musica.mp3'] if existe(d, 'musica.mp3') else ['--guardar_pista', 'musica.mp3']
         if op.get('prompt'):
             c += ['--prompt', op['prompt']]
         return [c]
@@ -472,7 +476,7 @@ def registro(d):
 
 
 RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
-NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'descargas_app', '.git', 'node_modules', 'trabajo'}  # lo tuyo: nunca se reemplaza
+NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'descargas_app', '.git', 'node_modules', 'trabajo'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
 
 
@@ -822,6 +826,7 @@ def estado(proyecto):
                 info['en_proceso'] = True
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
+            'musica_fija': (leer_ajustes().get('musica_fija_de') or 'una pista guardada') if os.path.exists(MUSICA_FIJA) else '',
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,
             'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
             'duracion_original': duracion_original(d)}
@@ -897,6 +902,8 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"material": "[^"]*"', '"material": "material.mp4"', txt)
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
+            if ruta == '/api/musica_fija':  # para escucharla desde la app
+                return self.servir(MUSICA_FIJA)
             if ruta == '/archivo':
                 sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
@@ -1100,6 +1107,21 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/musica_fija':  # la música de este proyecto pasa a usarse en todos los videos (o se quita)
+                if q.get('quitar'):
+                    if os.path.exists(MUSICA_FIJA):
+                        os.remove(MUSICA_FIJA)
+                    return self.responder({'ok': True})
+                d = carpeta(q['p'])
+                if not existe(d, 'musica.mp3'):
+                    return self.error('Este proyecto todavía no tiene música (musica.mp3).')
+                os.makedirs(os.path.dirname(MUSICA_FIJA), exist_ok=True)
+                shutil.copy(os.path.join(d, 'musica.mp3'), MUSICA_FIJA + '.nueva')
+                os.replace(MUSICA_FIJA + '.nueva', MUSICA_FIJA)
+                aj = leer_ajustes()
+                aj['musica_fija_de'] = f"la música del proyecto «{q['p']}»"
+                json.dump(aj, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/elegir_version':  # «3 IAs a la vez»: esa versión pasa a ser tu guion (el actual queda de respaldo)
                 d = carpeta(q['p'])
