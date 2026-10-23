@@ -120,9 +120,9 @@ def borrar_seguro(f, intentos=10):
 _DURACIONES = {}
 
 
-def duracion_original(d):
-    """Lo que dura tu grabación (en caché mientras el archivo no cambie)."""
-    f = os.path.join(d, 'original.mp4')
+def duracion_original(d, nombre='original.mp4'):
+    """Lo que dura tu grabación (u otro video del proyecto), en caché mientras el archivo no cambie."""
+    f = os.path.join(d, nombre)
     if not os.path.exists(f):
         return 0
     clave = (f, os.path.getmtime(f))
@@ -135,6 +135,70 @@ def duracion_original(d):
     return _DURACIONES[clave]
 
 
+DESFASE_VOZ = 0.3  # cada bloque de voz suena 0,3 s después de su inicio_min (igual que mezclar_voz, etiquetas y señales)
+
+
+def leer_srt(f):
+    crudo = open(f, 'rb').read()
+    try:
+        texto = crudo.decode('utf-8')
+    except UnicodeDecodeError:
+        texto = crudo.decode('cp1252', errors='replace')
+    seg = lambda x: (lambda h, m, s: int(h) * 3600 + int(m) * 60 + float(s.replace(',', '.')))(*x.strip().split(':'))
+    subs = []
+    for trozo in re.split(r'\n\s*\n', texto.replace('\r', '')):
+        lineas = [x for x in trozo.strip().split('\n') if x.strip()]
+        k = next((i for i, x in enumerate(lineas) if '-->' in x), None)
+        if k is None:
+            continue
+        a, b = lineas[k].split('-->')
+        subs.append({'ini': round(seg(a), 2), 'fin': round(seg(b), 2), 'texto': ' '.join(lineas[k + 1:])})
+    return subs
+
+
+def escribir_srt(f, subs):
+    ts = lambda x: f'{int(x // 3600):02d}:{int(x % 3600 // 60):02d}:{int(x % 60):02d},{int(round(x % 1 * 1000)) % 1000:03d}'
+    open(f, 'w', encoding='utf-8').write('\n'.join(f"{k}\n{ts(float(x['ini']))} --> {ts(float(x['fin']))}\n{str(x['texto']).strip()}\n"
+                                                  for k, x in enumerate(subs, 1)))
+
+
+def linea_tiempo(d):
+    """Todo lo del proyecto en segundos del video con voz (antes de testimonios y nuevos modelos, que meten cortes):
+    para el editor por pistas."""
+    if m('etiquetas') not in sys.path:
+        sys.path.insert(0, m('etiquetas'))
+    from etiquetas import buscar
+    leer = lambda f, defecto: json.load(open(os.path.join(d, f), encoding='utf-8')) if existe(d, f) else defecto
+    guion = leer('guion.json', {'bloques': []})
+    bloques, inicio, alin = [], {}, {}
+    for b in guion.get('bloques', []):
+        if b.get('inicio_min') is None:
+            continue
+        inicio[b['id']] = b['inicio_min']
+        f_al = os.path.join(d, 'voz', f"{b['id']}.align.json")
+        al = json.load(open(f_al, encoding='utf-8')) if os.path.exists(f_al) else None
+        alin[b['id']] = al
+        dur = (al['character_end_times_seconds'][-1] if al and al.get('character_end_times_seconds') else b.get('voz_real_s')) or 0
+        bloques.append({'id': b['id'], 'texto': b.get('texto', ''), 'ini': round(b['inicio_min'] + DESFASE_VOZ, 2), 'dur': round(dur, 2),
+                        'voz': existe(d, os.path.join('voz', f"{b['id']}.mp3"))})
+
+    def cuando(x, retraso=0):
+        if x.get('t') is not None:
+            return round(float(x['t']) + retraso, 2)
+        al = alin.get(x.get('bloque'))
+        t = buscar(al, x.get('frase', '')) if al else None
+        return None if t is None else round(inicio[x['bloque']] + DESFASE_VOZ + t + retraso, 2)
+    etiquetas = [{**e, '_t': cuando(e)} for e in leer('etiquetas.json', [])]
+    senales = [{**x, '_t': cuando(x, x.get('retraso', 0))} for x in leer('senales.json', [])]
+    base = next((v for v in ('4_musica.mp4', '3_voz.mp4', '1_montaje.mp4') if existe(d, v)), None)
+    edicion = leer('edicion.json', {})
+    return {'base': base, 'duracion': duracion_original(d, base) if base else 0, 'bloques': bloques,
+            'etiquetas': etiquetas, 'senales': senales, 'subtitulos': leer_srt(os.path.join(d, '3_voz.srt')) if existe(d, '3_voz.srt') else [],
+            'musica': {'volumen': edicion.get('musica_volumen', 0.22), 'fija': os.path.exists(MUSICA_FIJA), 'propia': existe(d, 'musica.mp3')},
+            'extras': [p['id'] for p in PASOS if p['id'] in EXTRAS and existe(d, p['produce']) and p['produce'] != 'FINAL.mp4']
+            + (['trailer'] if existe(d, 'trailer.mp4') else [])}
+
+
 def etiquetas_viejas(d):
     """Si etiquetas.json es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
     import unicodedata
@@ -144,7 +208,8 @@ def etiquetas_viejas(d):
         lista = json.load(open(os.path.join(d, 'etiquetas.json'), encoding='utf-8'))
     except (OSError, ValueError, KeyError, TypeError):
         return False
-    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista)
+    # las que pusiste o moviste a mano en el editor por pistas (traen su segundo «t») no cuentan: son tuyas
+    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista if e.get('t') is None)
 
 
 def marcas_nuevas(d):
@@ -243,6 +308,9 @@ def comandos(paso, d, op):
         return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
     if paso == 'musica':
         c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
+        vol = (json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')) if existe(d, 'edicion.json') else {}).get('musica_volumen')
+        if vol is not None:  # el volumen que elegiste en el editor por pistas
+            c += ['--volumen', f'{min(max(float(vol), 0), 1):g}']
         if os.path.exists(MUSICA_FIJA):  # la música fija manda sobre la del proyecto (no se genera otra)
             c += ['--pista', MUSICA_FIJA]
         else:
@@ -868,6 +936,10 @@ class Manejador(BaseHTTPRequestHandler):
         try:
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/pistas':  # el editor por pistas, en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'pistas.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/linea':
+                return self.responder(linea_tiempo(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
@@ -914,7 +986,7 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/musica_fija':  # para escucharla desde la app
                 return self.servir(MUSICA_FIJA)
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos'] + [g[0] for g in GRUPOS.values()] else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
@@ -1083,13 +1155,19 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
+                if datos.get('sin_ia'):  # el editor por pistas: tus etiquetas y flechas tal cual, la IA no las rehace
+                    pasos = [x for x in pasos if x not in PREPARA_EXTRA or x == 'trailer_ia' and not existe(carpeta(q['p']), 'trailer.json')]
                 if extras:
                     pasos = [x for x in pasos if x in elegidos or PREPARA_EXTRA.get(x) in elegidos]
                     if 'trailer' not in pasos:
                         pasos.append('final_sin_trailer')
                     datos['_limpiar_extras'] = True
                 elif q['paso'] == 'todo' and 'musica' in pasos:  # solo el video; los extras van después
-                    pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + ['final_sin_trailer']
+                    luego = set(datos.get('luego_extras') or [])  # el editor por pistas: rehace el video y vuelve a poner sus extras
+                    sigue = [x for x in pasos if x in luego or PREPARA_EXTRA.get(x) in luego]
+                    pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + sigue
+                    if 'trailer' not in sigue:
+                        pasos.append('final_sin_trailer')
                 if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
                     pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
@@ -1116,6 +1194,24 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/subtitulos':  # el texto de los subtítulos corregido en el editor (los tiempos no cambian)
+                subs = json.loads(self.rfile.read(largo))
+                d = carpeta(q['p'])
+                if not isinstance(subs, list) or not all(isinstance(x, dict) and {'ini', 'fin', 'texto'} <= set(x) for x in subs):
+                    return self.error('subtítulos con formato raro')
+                if existe(d, '3_voz.srt'):
+                    shutil.copy(os.path.join(d, '3_voz.srt'), os.path.join(d, '3_voz.srt.anterior'))
+                escribir_srt(os.path.join(d, '3_voz.srt'), subs)
+                return self.responder({'ok': True})
+            if ruta == '/api/edicion':  # ajustes del editor por pistas para este proyecto (volumen de la música)
+                nuevo = json.loads(self.rfile.read(largo))
+                d = carpeta(q['p'])
+                f = os.path.join(d, 'edicion.json')
+                viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
+                if 'musica_volumen' in nuevo:
+                    viejo['musica_volumen'] = min(max(float(nuevo['musica_volumen']), 0), 1)
+                json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/musica_fija':  # la música de este proyecto pasa a usarse en todos los videos (o se quita)
                 if q.get('quitar'):

@@ -45,6 +45,12 @@ se rehacen sobre ese video sin repetir la voz ni el montaje.
 
 ## La app con botones
 
+**🎚 Editor por pistas** (botón al lado de «Hacer todo»): el video con sus pistas debajo (video, voz por bloque, música,
+subtítulos, etiquetas y flechas). Se arrastran etiquetas y flechas en el tiempo, se hace clic en el video para que una flecha
+apunte ahí, se cambia el texto de un bloque de voz o de un subtítulo, el volumen de la música, y se borra o agrega lo que
+quieras. «Armar el video» vuelve a poner tus extras tal cual (la IA no los rehace) y, si cambiaste voz o música, rehace solo
+eso antes. Lo movido a mano queda con su segundo exacto (`"t"`) en etiquetas.json y senales.json.
+
 Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutoriales** en tu navegador, en http://localhost:8765.
 Creas un proyecto, subes el video grabado (y si quieres el material extra, la imagen y la música), pegas el guion y aprietas
 **Hacer todo**, o cada paso por separado. Cada proyecto queda en `mis_proyectos/<nombre>/` y el video terminado es `FINAL.mp4`.

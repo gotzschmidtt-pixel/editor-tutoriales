@@ -11,6 +11,7 @@ Uso:
 guion.json: {"bloques": [{"id": "L15", "inicio_min": 296.7, ...}]}  (cuándo arranca cada bloque de voz)
 etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí",
                   "texto": "gsmprime.co", "color": null, "dur": 3.5}]
+               con "t": segundo exacto en el video (lo pone el editor por pistas) en vez de buscar la frase
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 """
 import argparse, json, os, shutil, subprocess, tempfile, unicodedata
@@ -62,6 +63,9 @@ def main():
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
     items = []
     for e in json.load(open(a.etiquetas, encoding='utf-8')):
+        if e.get('t') is not None:  # movida a mano en el editor por pistas: ya trae su segundo en el video
+            items.append({**e, 't': round(float(e['t']), 2), 'dur': e.get('dur', 3.5)})
+            continue
         f_al = os.path.join(a.voz, str(e.get('bloque')) + '.align.json')
         if e.get('bloque') not in inicio or not os.path.exists(f_al):
             print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
