@@ -45,8 +45,8 @@ se rehacen sobre ese video sin repetir la voz ni el montaje.
 
 ## La app con botones
 
-**Tarjeta NVIDIA.** Si la PC tiene una NVIDIA que codifica video (NVENC), todos los pasos que arman video la usan en vez del
-procesador; si la tarjeta falla en un tramo, ese tramo y el resto del paso se hacen con el procesador (`codificar/`). Si tu
+**Tarjeta NVIDIA o gráfica Intel.** Si la PC tiene una NVIDIA que codifica video (NVENC), o si no una gráfica Intel con Quick
+Sync, todos los pasos que arman video la usan en vez del procesador; si la tarjeta falla en un tramo, ese tramo y el resto del paso se hacen con el procesador (`codificar/`). Si tu
 ffmpeg es más nuevo que lo que acepta el driver de tu tarjeta, pon un ffmpeg compatible en la carpeta `ffmpeg_nvidia/` (al
 actualizar la app no se toca): la tarjeta codifica con ese y todo lo demás sigue con el de siempre. Se apaga con
 `"nvidia": false` en `app/ajustes.json`.
