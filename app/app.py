@@ -728,7 +728,7 @@ def correr(proyecto, pasos, opciones):
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
         return
-    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     if clave_eleven():
         env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
