@@ -335,11 +335,11 @@
       <h2>3 · Ver resultado</h2>
       <video id="video" controls preload="metadata"></video>
       <div class="salidas" id="salidas"></div>
-      <div class="fila" id="exportar" hidden>
-        <span class="aviso">Bajar el video final a</span>
-        <select id="altura"><option value="720">720p</option><option value="480" selected>480p</option><option value="360">360p</option></select>
-        <button onclick="exportar()">Exportar</button>
-        <span class="aviso">(pesa menos, para WhatsApp o subirlo rápido)</span>
+      <div id="exportar" hidden>
+        <div class="fila" style="align-items:center"><b>⬇ Descargar en:</b> <span id="calidades"></span></div>
+        <div class="fila" style="align-items:center"><span class="aviso">Marca varias y pulsa:</span>
+          <button onclick="exportar()">⬇ Preparar las marcadas</button>
+          <span class="aviso">(las que no están hechas se preparan y se descargan solas al terminar; 480p y 360p pesan menos, para WhatsApp)</span></div>
       </div>
     </section>
 
@@ -644,15 +644,32 @@ function pintarSalidas(arch) {
   const armado = AVANCE.slice(1).reverse().find(v => hay.includes(v)) || null;
   const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt', 'revision_guion.txt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
-    extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
-    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>`
-      : armado ? `<a href="/archivo?p=${q(P)}&f=${armado}" download><button class="principal">⬇ Descargar ${armado}</button></a>` : '') +
-    ['720', '480', '360'].filter(h => arch[`FINAL_${h}p.mp4`]).map(h =>
-      `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button>⬇ FINAL ${h}p</button></a>`).join('');
+    extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('');
   $('#exportar').hidden = !armado;
+  if (armado) {  // cada calidad: lista si su archivo es más nuevo que el video del que sale
+    const fuente = arch['FINAL.mp4'] ? 'FINAL.mp4' : armado;
+    const lista = h => arch[`FINAL_${h}p.mp4`] && !arch[`FINAL_${h}p.mp4`].en_proceso && arch[`FINAL_${h}p.mp4`].fecha >= arch[fuente].fecha;
+    const marcadas = new Set([...document.querySelectorAll('#calidades input:checked')].map(i => i.value));
+    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
+      ['1080', '720', '480', '360'].map(h => lista(h)
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button class="principal">⬇ ${h}p</button></a>`
+        : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ');
+    if ($('#calidades').dataset.html !== html) {  // solo se repinta si cambió: así no se pierde un clic en las casillas
+      $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
+      $('#calidades').querySelectorAll('input').forEach(i => i.checked = marcadas.has(i.value));
+    }
+    for (const h of [...PEND_DESCARGA]) if (lista(h)) {  // terminó de prepararse: se descarga sola
+      PEND_DESCARGA.delete(h);
+      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=FINAL_${h}p.mp4`; a.download = `FINAL_${h}p.mp4`; a.click();
+    }
+  }
 }
+const PEND_DESCARGA = new Set();
 async function exportar() {
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }
+  const alturas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
+  if (!alturas.length) return alert('Marca al menos una calidad (las que ya están listas se descargan con su botón).');
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas})}); } catch (e) { alert(e.message); return; }
+  alturas.forEach(h => PEND_DESCARGA.add(h));
   refrescar();
 }
 function ver(f, seguir) {
