@@ -297,9 +297,14 @@ def comandos(paso, d, op):
         fuente = 'FINAL.mp4' if existe(d, 'FINAL.mp4') else ultimo_video(d, None)  # sin FINAL, el video más avanzado que haya
         if not fuente:
             raise RuntimeError('Todavía no hay video armado para exportar. Pulsa «▶ Hacer todo».')
-        return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
-                 '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', f'FINAL_{h}p.mp4']
-                for h in sorted(set(alturas), reverse=True)]
+        # se escribe con otro nombre y se renombra al final: así nadie descarga un archivo a medio hacer (no se abriría)
+        c = []
+        for h in sorted(set(alturas), reverse=True):
+            c.append(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
+                      '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4',
+                      f'FINAL_{h}p.mp4.parcial'])
+            c.append([PY, '-c', f'import os; os.replace("FINAL_{h}p.mp4.parcial", "FINAL_{h}p.mp4")'])
+        return c
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
         return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--mb', f'{mb:g}']]
