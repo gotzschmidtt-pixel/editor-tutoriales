@@ -15,10 +15,12 @@ etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo":
                o "t": segundo exacto en el video, en vez de buscar la frase
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 """
-import argparse, json, os, shutil, subprocess, tempfile, unicodedata
+import argparse, json, os, shutil, subprocess, sys, tempfile, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 FPS = 25
 
 
@@ -106,7 +108,7 @@ def main():
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
         print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']))
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ultimo}]', '-map', '0:a?',
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida],
                    check=True)

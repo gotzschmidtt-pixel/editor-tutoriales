@@ -12,6 +12,8 @@ import argparse, json, os, shutil, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
 
 
@@ -57,7 +59,7 @@ def avance(partes, tmp, destino, voces=()):
 
 
 def run(args):
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
 
 def main():
@@ -138,7 +140,10 @@ def main():
     with open(lista, 'w', encoding='utf-8') as fh:
         for p in partes:
             fh.write(f"file '{p}'\n")
-    run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
+    if len(codificar.USADOS) > 1:  # la tarjeta falló a mitad: tramos de dos codificadores, se igualan en vez de pegarlos tal cual
+        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf, a.salida])
+    else:
+        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
     shutil.rmtree(tmp)
     try:
         os.remove(os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))

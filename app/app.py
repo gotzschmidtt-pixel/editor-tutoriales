@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402  todo lo que se descarga queda en descargas_app/
 sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402  informes locales cuando una IA o un paso no completa su trabajo
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  codifica con la tarjeta NVIDIA si la hay, si no con el procesador
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
@@ -247,7 +249,7 @@ def unir_videos(destino, n):
                        **SIN_VENTANA) if iguales else None
     modo = 'pegados tal cual'
     if not iguales or r.returncode != 0 or abs(dur(tmp) - suma) > max(2.0, suma * 0.01):  # formatos distintos: se igualan
-        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
+        r = codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
                            ['-filter_complex', ''.join(f'[{k}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1,'
                                                        f'fps=30,setsar=1[v{k}];' + (f'[{k}:a]aresample=48000,aformat=channel_layouts=stereo[a{k}];' if 'audio' in formato(x)
                                                        else f'aevalsrc=0|0:s=48000:d={dur(x):.3f}[a{k}];')  # sin sonido: silencio
@@ -372,7 +374,7 @@ def comandos(paso, d, op):
         # se escribe con otro nombre y se renombra al final: así nadie descarga un archivo a medio hacer (no se abriría)
         c = []
         for h in sorted(set(alturas), reverse=True):
-            c.append(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
+            c.append([PY, m('codificar', 'codificar.py'), 'ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
                       '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4',
                       f'FINAL_{h}p.mp4.parcial'])
             c.append([PY, '-c', f'import os; os.replace("FINAL_{h}p.mp4.parcial", "FINAL_{h}p.mp4")'])
@@ -557,7 +559,7 @@ def registro(d):
 
 
 RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
-NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'descargas_app', '.git', 'node_modules', 'trabajo'}  # lo tuyo: nunca se reemplaza
+NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
 
 

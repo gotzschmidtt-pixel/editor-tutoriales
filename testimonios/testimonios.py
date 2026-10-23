@@ -17,7 +17,11 @@ Uso:
 testimonios.json: {"TESTIMONIOS": [{"archivo": "x.mp4", "momento": "auto", "desde": "0:05", "hasta": "0:40", "texto": "Mira esta reseña de un cliente..."}]}
 Deja también 8_testimonios.srt con los subtítulos corridos (para el tráiler y el video final).
 """
-import argparse, base64, json, os, re, subprocess, time, urllib.error, urllib.request
+import argparse, base64, json, os, re, subprocess, sys, time, urllib.error, urllib.request
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 
 DISPARA = r'testimon|client|opini|confian|rese[ñn]a|satisfech|contentos'
 CIERRE = r'eso fue todo|gracias por (acompa|ver)|nos vemos|hasta (la|el) pr[oó]xim'
@@ -230,7 +234,7 @@ def main():
                    f"[0:a]atrim={previo},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a{n}]")
         partes.append(n)
     fil.append(''.join(f'[v{n}][a{n}]' for n in partes) + f'concat=n={len(partes)}:v=1:a=1[v][a]')
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y'] + ins +
                    ['-filter_complex', ';'.join(fil), '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium',
                     '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', a.salida], check=True)
     if subs:

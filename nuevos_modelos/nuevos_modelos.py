@@ -17,6 +17,8 @@ import argparse, base64, glob, hashlib, json, os, re, subprocess, sys, urllib.er
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for sub in ('testimonios', 'voz', 'ia'):
     sys.path.insert(0, os.path.join(RAIZ, sub))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 import testimonios as te  # noqa: E402
 
 DISPARA = r'modelo|compatible|sirve (para|en|con)|funciona (para|en|con)|equipos|serie|versi[oó]n|android'
@@ -204,7 +206,7 @@ def main():
            f"aformat=channel_layouts=stereo[a0]", clip_v, voz_a,
            f"[0:v]trim={en},setpts=PTS-STARTPTS,{ajuste}[v2];[0:a]atrim={en},asetpts=PTS-STARTPTS,aresample=48000,"
            f"aformat=channel_layouts=stereo[a2]", '[v0][a0][vm][am][v2][a2]concat=n=3:v=1:a=1[v][a]']
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', a.video, '-i', clip, '-i', mp3,
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', a.video, '-i', clip, '-i', mp3,
                     '-filter_complex', ';'.join(fil), '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium',
                     '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', a.salida], check=True)
     if subs or al:

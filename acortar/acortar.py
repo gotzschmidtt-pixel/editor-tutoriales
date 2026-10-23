@@ -27,6 +27,8 @@ import argparse, json, os, re, subprocess, sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar  # noqa: E402
 
 SIN_VOZ_MIN = 1.5   # un silencio más corto es respirar: no se toca
@@ -250,7 +252,7 @@ def armar(video, tramos, salida):
     open(script, 'w', encoding='utf-8').write(';\n'.join(fil))
     print(f'Armando el video acortado ({len(partes)} partes)…', flush=True)
     try:
-        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video, '-filter_complex_script', script,
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video, '-filter_complex_script', script,
                         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac',
                         '-b:a', '160k', '-movflags', '+faststart', salida], check=True)
     finally:

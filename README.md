@@ -45,6 +45,12 @@ se rehacen sobre ese video sin repetir la voz ni el montaje.
 
 ## La app con botones
 
+**Tarjeta NVIDIA.** Si la PC tiene una NVIDIA que codifica video (NVENC), todos los pasos que arman video la usan en vez del
+procesador; si la tarjeta falla en un tramo, ese tramo y el resto del paso se hacen con el procesador (`codificar/`). Si tu
+ffmpeg es más nuevo que lo que acepta el driver de tu tarjeta, pon un ffmpeg compatible en la carpeta `ffmpeg_nvidia/` (al
+actualizar la app no se toca): la tarjeta codifica con ese y todo lo demás sigue con el de siempre. Se apaga con
+`"nvidia": false` en `app/ajustes.json`.
+
 **🎚 Editor por pistas** (botón al lado de «Hacer todo»): el video con sus pistas debajo (video, voz por bloque, música,
 subtítulos, etiquetas y flechas). Se arrastran etiquetas y flechas en el tiempo, se hace clic en el video para que una flecha
 apunte ahí, se cambia el texto de un bloque de voz o de un subtítulo, el volumen de la música, y se borra o agrega lo que

@@ -35,6 +35,8 @@ RAIZ = os.path.dirname(AQUI)
 REMOTION = os.path.join(RAIZ, 'remotion')
 PUB = os.path.join(REMOTION, 'public', 'trailer')
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
 
 VOZ_ID = '94zOad0g7T7K4oa7zhDq'  # Mauricio
@@ -42,7 +44,7 @@ CIERRE = 2.4
 
 
 def ff(args):
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
 
 def duracion(f):

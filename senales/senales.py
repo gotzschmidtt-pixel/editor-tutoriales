@@ -24,6 +24,8 @@ import numpy as np
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from etiquetas import buscar  # noqa: E402
 
 FPS = 25
@@ -136,7 +138,7 @@ def main():
         ins += ['-i', c['archivo']]
         filtros.append(f"[{k}:v]setpts=PTS+{c['t']}/TB[s{k}];[{ultimo}][s{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ultimo}]', '-map', '0:a?',
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida], check=True)
     shutil.rmtree(tmp)
