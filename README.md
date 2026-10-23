@@ -39,7 +39,30 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
 7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
 
+En la app, «▶ Hacer todo» llega hasta el paso 4 y deja un FINAL.mp4 para ver si el guion gusta. Los extras (etiquetas,
+flechas, comentarios, testimonios, nuevos modelos y tráiler) se ponen después con «✨ Agregar extras», eligiendo cuáles;
+se rehacen sobre ese video sin repetir la voz ni el montaje.
+
 ## La app con botones
+
+**Tarjeta NVIDIA o gráfica Intel.** Si la PC tiene una NVIDIA que codifica video (NVENC), o si no una gráfica Intel con Quick
+Sync, todos los pasos que arman video la usan en vez del procesador; si la tarjeta falla en un tramo, ese tramo y el resto del paso se hacen con el procesador (`codificar/`). Si tu
+ffmpeg es más nuevo que lo que acepta el driver de tu tarjeta, pon un ffmpeg compatible en la carpeta `ffmpeg_nvidia/` (al
+actualizar la app no se toca): la tarjeta codifica con ese y todo lo demás sigue con el de siempre. Se apaga con
+`"nvidia": false` en `app/ajustes.json`.
+
+**🎚 Editor por pistas** (botón al lado de «Hacer todo»): el video con sus pistas debajo (video, voz por bloque, música,
+subtítulos, etiquetas y flechas). Se arrastran etiquetas y flechas en el tiempo, se hace clic en el video para que una flecha
+apunte ahí, se cambia el texto de un bloque de voz o de un subtítulo, el volumen de la música, y se borra o agrega lo que
+quieras. «Armar el video» vuelve a poner tus extras tal cual (la IA no los rehace) y, si cambiaste voz o música, rehace solo
+eso antes. Lo movido a mano queda anclado a su bloque (`"bloque"` + `"en"`, segundos desde que empieza el bloque) en
+etiquetas.json y senales.json, así sigue a su bloque si el video se alarga o se acorta.
+
+La pista **📝 Guion** muestra cada bloque en su tramo del video, con su miniatura. Al elegir un bloque ves de qué parte de tu
+grabación sale, la velocidad, la pausa y cuánto dura su voz; puedes cambiar el texto (la app estima cuánto se alargará o
+acortará el video), pedir «✨ Reescribir con IA» solo ese bloque, dividirlo, unirlo con el siguiente, borrarlo y deshacer.
+Al «Armar el video» se genera la voz solo de los bloques cambiados y el video se alarga o acorta solo. Cada vez que se
+guarda el guion, la versión anterior queda en `historial_guion/` (las últimas 40).
 
 Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutoriales** en tu navegador, en http://localhost:8765.
 Creas un proyecto, subes el video grabado (y si quieres el material extra, la imagen y la música), pegas el guion y aprietas
@@ -70,6 +93,41 @@ momentos como referencia; son orientativos, no cortes exactos.
 **Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
 segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
+## Guion con 3 IAs a la vez (GPT, Claude y Gemini)
+
+En «⚙ Ajustes IA» marca «✍️ Guion con 3 IAs a la vez» y pon el modelo y la clave de cada una («🔍 Comprobar y ver
+modelos» lista los modelos que tu cuenta puede usar, sin gastar). El video se analiza una sola vez y las tres escriben su
+guion al mismo tiempo: tarda lo que la más lenta, pero se paga un guion a cada una. Cada versión pasa por los mismos
+controles (largo, humor, tiempos) y queda en `guion_gpt.json`, `guion_claude.json` y `guion_gemini.json`. En la revisión del
+guion eliges la que prefieras o pulsas «🧩 Combinar» para que tu IA principal arme una con lo mejor de cada una (un pedido
+más, sin volver a mirar el video). Si una IA falla o rechaza el pedido, las otras siguen y el diagnóstico lo anota; no se
+reintenta un rechazo.
+
+## Diagnóstico cuando la IA (o un paso) no completa su trabajo
+
+Cada llamada a una IA queda anotada en `mis_proyectos/<proyecto>/diagnosticos/llamadas_<ejecución>.jsonl` (proveedor,
+modelo, operación, código HTTP, mensaje original de la API, id de solicitud, motivo de fin, intento, duración y un hash
+del pedido; nunca claves, guion, imágenes ni audio). Si un paso falla, o si alguna llamada falló aunque el paso siguió,
+se escribe `diagnostico_<fecha>_<id>.txt` y `.json` con la etapa (1 a 9), la clase de error (A rechazo por políticas ·
+B cuenta deshabilitada · C autenticación o permisos · D créditos · E límites · F formato · G programa · H red o servicio ·
+I desconocida), si la causa está confirmada por la API o no, qué falta saber y qué hacer. La app abre la ventana «LA IA
+NO PUDO COMPLETAR ESTA OPERACIÓN» con Ver diagnóstico, Exportar TXT/JSON y Reintentar (solo si reintentar tiene sentido:
+nunca tras un rechazo explícito, permisos o facturación). Con `"diagnostico_guardar_respuesta": true` en
+`app/ajustes.json` se guarda además un extracto redactado de lo que contestó la IA.
+
+- **Modelo pedido y modelo que respondió:** cada llamada anota los dos, según el campo `model` de la respuesta. Con
+  Claude también se leen los bloques `fallback` y `usage.iterations`: si el servidor pasó el pedido a otro modelo
+  (solo lo hace tras un rechazo por políticas) se anota de cuál a cuál y por qué. Si la API no da el modelo, se dice
+  «no confirmado».
+- **Tipo de respuesta:** distingue un rechazo con HTTP 200 (`stop_reason: refusal`, `refusal`, `content_filter`) de un
+  JSON inválido, una respuesta vacía, una cortada por largo y un error HTTP.
+- **Resultado de cada ejecución:** completado correctamente, completado con incidencias (el paso o el video salió pero
+  alguna solicitud falló o fue rechazada, o un opcional se saltó) o interrumpido. Queda en
+  `diagnosticos/resumen_<fecha>_<id>.txt` y `.json`, con los modelos usados.
+- **Reintentar sin pagar dos veces:** mientras un paso no termina bien, las respuestas de la IA se guardan en
+  `cache_ia/<paso>/`. «Reintentar» sigue desde el paso que falló y reutiliza esas respuestas en vez de volver a
+  pedirlas; la que hizo fallar el paso no se reutiliza. Al terminar bien el paso, se borran.
+
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.
@@ -94,6 +152,12 @@ Sin clave funciona todo menos voz, música y transcripción en línea.
 
 Estudio.exe es un lanzador (`lanzador/estudio.py` con PyInstaller): usa el Python, ffmpeg, Node y Remotion que instaló `instalar.bat`
 y abre la app con Edge o Chrome en modo aplicación. No los lleva dentro, por eso pesa poco y se actualiza con solo cambiar el código.
+
+### Actualizar sin perder nada
+
+Pulsa **«⬇ Actualizar la app»** (arriba). Baja la versión nueva de GitHub y la copia encima de **esta misma carpeta**:
+`mis_proyectos`, `mis_estilos` y `app/ajustes.json` (tus claves) no se tocan, y cada archivo que se reemplaza
+queda antes guardado en `descargas_app/respaldo_app_<fecha>.zip`. La app se reinicia sola al terminar.
 
 ## Requisitos
 

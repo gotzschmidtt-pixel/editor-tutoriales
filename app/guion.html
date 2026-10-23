@@ -144,6 +144,8 @@ function prepararGpt() {
     `Cada bloque va sobre una parte del video que ya está cortada; el texto de cada bloque debe durar más o menos lo mismo al leerlo ` +
     `(unas ${PALABRAS_POR_S * 60 | 0} palabras por minuto; el tiempo de cada bloque está en su encabezado).\n` +
     `Mejora la redacción, corrige errores y hazlo más claro y entretenido. NO inventes datos (pines, precios, nombres de archivo) que no estén.\n` +
+    `Humor medido: como mucho un remate corto (una frase) cada 6 a 8 bloques, nunca dos bloques seguidos, sin repetir tema, nunca en los pasos exactos (códigos, keys, pines, botones, copiar, borrar), ` +
+    `y que la invitación a comentar del inicio lleve un chiste.\n` +
     `Devuélveme TODOS los bloques en el MISMO formato: cada uno con su línea "### Lxx · …" igual, y debajo solo el texto nuevo. Nada más.\n\n` + comoTexto();
   $('#msgCopia').textContent = '';
 }

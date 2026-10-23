@@ -11,12 +11,16 @@ Uso:
 guion.json: {"bloques": [{"id": "L15", "inicio_min": 296.7, ...}]}  (cuándo arranca cada bloque de voz)
 etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí",
                   "texto": "gsmprime.co", "color": null, "dur": 3.5}]
+               con "en": segundos desde que empieza su bloque (lo pone el editor por pistas; sigue al bloque si se mueve)
+               o "t": segundo exacto en el video, en vez de buscar la frase
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 """
-import argparse, json, os, shutil, subprocess, tempfile, unicodedata
+import argparse, json, os, shutil, subprocess, sys, tempfile, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 FPS = 25
 
 
@@ -59,14 +63,20 @@ def main():
     ap.add_argument('--desfase', type=float, default=0.3, help='retraso con que se colocó cada bloque de voz')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
+    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
     items = []
-    for e in json.load(open(a.etiquetas)):
+    for e in json.load(open(a.etiquetas, encoding='utf-8')):
+        if e.get('t') is not None:  # con su segundo exacto en el video
+            items.append({**e, 't': round(float(e['t']), 2), 'dur': e.get('dur', 3.5)})
+            continue
+        if e.get('en') is not None and e.get('bloque') in inicio:  # puesta a mano en el editor: segundos desde que empieza su bloque
+            items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + float(e['en']), 2), 'dur': e.get('dur', 3.5)})
+            continue
         f_al = os.path.join(a.voz, str(e.get('bloque')) + '.align.json')
         if e.get('bloque') not in inicio or not os.path.exists(f_al):
             print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
             continue
-        al = json.load(open(f_al))
+        al = json.load(open(f_al, encoding='utf-8'))
         t = buscar(al, e['frase'])
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
@@ -78,7 +88,7 @@ def main():
         print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '
               'Pulsa «Escribir con IA» en etiquetas para hacerlas de nuevo con este guion.')
         shutil.copyfile(a.video, a.salida)
-        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'))
+        json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'))
         return
     tmp = tempfile.mkdtemp(prefix='etiquetas_')
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
@@ -98,12 +108,12 @@ def main():
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
         print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']))
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ultimo}]', '-map', '0:a?',
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida],
                    check=True)
     shutil.rmtree(tmp)
-    json.dump(items, open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w'), ensure_ascii=False, indent=1)
+    json.dump(items, open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':

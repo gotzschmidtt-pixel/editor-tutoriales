@@ -26,6 +26,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from etiquetas import buscar  # noqa: E402
 from nitidez import analizar, mejor  # noqa: E402
 
@@ -77,12 +79,12 @@ def main():
     ap.add_argument('--prueba')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion))['bloques']}
+    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
     alin = {}
 
     def momento(bloque, frase):
         if bloque not in alin:
-            alin[bloque] = json.load(open(os.path.join(a.voz, bloque + '.align.json')))
+            alin[bloque] = json.load(open(os.path.join(a.voz, bloque + '.align.json'), encoding='utf-8'))
         t = buscar(alin[bloque], frase)
         if t is None:
             raise SystemExit(f"no encontré «{frase}» en {bloque}")
@@ -90,7 +92,7 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix='insertos_')
     analisis, colocados = {}, []
-    for k, s in enumerate(json.load(open(a.insertos)), 1):
+    for k, s in enumerate(json.load(open(a.insertos, encoding='utf-8')), 1):
         t0 = s['t'] if 't' in s else momento(s['bloque'], s['frase'])
         t1 = momento(s['bloque'], s['hasta']) + s.get('extra', 0) if 'hasta' in s else t0 + s['dur']
         n = int(round((t1 - t0) * FPS))
@@ -124,7 +126,7 @@ def main():
         ins += ['-i', c['archivo']]
         filtros.append(f"[{k}:v]setpts=PTS+{c['t']}/TB[i{k}];[{ultimo}][i{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ultimo}]', '-map', '0:a?',
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida], check=True)
     shutil.rmtree(tmp)

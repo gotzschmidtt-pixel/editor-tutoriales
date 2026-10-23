@@ -20,8 +20,9 @@
   input[type=number] { color: var(--texto); -moz-appearance: textfield; }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; filter: invert(0.8); }
   input::placeholder, textarea::placeholder { color: var(--suave); opacity: 1; }
-  button, label.boton { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
-  button:hover, label.boton:hover { border-color: var(--azul); }
+  a.boton { display: inline-block; text-decoration: none; color: var(--texto); }
+  button, label.boton, a.boton { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover, label.boton:hover, a.boton:hover { border-color: var(--azul); }
   .preguntas { border: 1px solid #f0c36d; border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .pregunta { margin: 10px 0; }
   button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
   button.principal:hover { filter: brightness(1.1); }
@@ -84,7 +85,18 @@
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
   #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarModelo, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
-  section.panel { scroll-margin-top: 80px; }
+  section.panel { scroll-margin-top: 130px; }
+  .pestanas { display: flex; gap: 6px; padding: 12px 22px 0; max-width: 1500px; margin: 0 auto; border-bottom: 1px solid var(--borde); }
+  .pestanas button { font-size: 15px; padding: 9px 20px; border-radius: 12px 12px 0 0; border-bottom: 0; }
+  .pestanas button.activo { border-color: var(--rosa); background: #ff2bd626; }
+  body.tab-extra main > div:first-child > section.panel:not(.extra) { display: none; }
+  body:not(.tab-extra) section.panel.extra { display: none; }
+  .mapa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  @media (max-width: 700px) { .mapa { grid-template-columns: 1fr 1fr; } }
+  .mapa > div { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px; min-height: 5em; font-size: 13px; }
+  .mapa h4 { margin: 0 0 6px; font-size: 13px; color: var(--suave); }
+  .mapa .item { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 4px 8px; font-size: 12px; font-weight: 500; }
+  select.donde { min-width: 0; }
   #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
   .bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
   .bloque .cab { font-size: 13px; color: var(--suave, #9aa3c0); margin-bottom: 4px; }
@@ -119,16 +131,12 @@
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
-  <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
-  <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
-  <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
-  <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
   <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
-  <button onclick="irA('#panelPaginas')">🌐 Mis páginas</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
+  <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
 </header>
 
 <div id="sinProyecto" class="vacio" hidden>
@@ -137,11 +145,27 @@
   <button class="principal grande" onclick="nuevo()">+ Nuevo proyecto</button>
 </div>
 
+<nav class="pestanas" id="pestanas">
+  <button data-p="video" class="activo" onclick="pestana('video')">🎬 Video</button>
+  <button data-p="extra" onclick="pestana('extra')" title="Tráiler, testimonios, nuevos modelos, páginas, comentarios y WhatsApp">🎁 Material extra</button>
+</nav>
+
 <main id="principal" hidden>
   <div>
+    <section class="panel extra" id="panelExtra">
+      <h2>🎁 Material extra</h2>
+      <p class="aviso">Primero arma el video con «▶ Hacer todo» (pestaña 🎬 Video). Cuando el guion te guste, aquí preparas cada
+      módulo y eliges dónde va: al inicio, en el medio, al final o donde la voz lo nombra. La app lo mete en el video ya hecho,
+      sin rehacer el guion, la voz ni el montaje. Así queda:</p>
+      <div class="mapa" id="mapa"></div>
+      <div class="fila"><button class="principal grande" onclick="insertarExtras()">✨ Insertar el material extra en el video</button>
+        <span class="msg" id="msgMapa"></span></div>
+    </section>
+
     <section class="panel">
       <h2>1 · Archivos</h2>
       <div class="subidas" id="subidas"></div>
+      <div id="musicaFija" class="aviso" style="margin-top:6px"></div>
       <p class="aviso">Arrastra un archivo encima o haz clic. Se guardan en la carpeta del proyecto. Para mandarme el proyecto
       partido en trozos de 300 o 400 MB, pulsa «☁ Hacer en la nube con Claude» (en «2 · Pasos»): ahí eliges el tamaño.</p>
     </section>
@@ -150,7 +174,9 @@
       <h2>2 · Pasos</h2>
       <div id="pasos"></div>
       <div class="fila">
-        <button class="principal grande" id="todo">▶ Hacer todo</button>
+        <button class="principal grande" id="todo" title="Arma el video: voz, cortes, subtítulos y música. Los extras se agregan después, cuando el guion te guste.">▶ Hacer todo</button>
+        <button onclick="abrirExtras()" title="Etiquetas, flechas, tarjetas, testimonios, nuevos modelos y tráiler, sobre el video ya hecho">✨ Agregar extras</button>
+        <button onclick="window.open('/pistas?p=' + q(P))" title="Cada pieza en su pista: video, voz por bloque, música, subtítulos, etiquetas y flechas. Mueve, cambia o borra y vuelve a armar">🎚 Editor por pistas</button>
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
@@ -163,8 +189,9 @@
       </div>
     </section>
 
-    <section class="panel" id="panelTrailer">
+    <section class="panel extra" id="panelTrailer">
       <h2>🎞️ Tráiler · pistas para la IA</h2>
+      <div class="fila" style="margin-top:0; align-items:center"><b>¿Dónde va el tráiler?</b> <span id="trailerDonde"></span></div>
       <div class="tabs" id="fases"></div>
       <p class="aviso" id="ayudaFase"></p>
       <div id="listaPistas"></div>
@@ -213,7 +240,7 @@
       «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
-    <section class="panel" id="panelTarjetas">
+    <section class="panel extra" id="panelTarjetas">
       <h2>💬 Comentarios y WhatsApp</h2>
       <div class="tabs" id="grupos"></div>
       <p class="aviso" id="ayudaGrupo"></p>
@@ -221,14 +248,14 @@
       <label class="subida" id="soltarTarjeta"><div class="t">➕ Imagen</div>
         <div class="e">Arrastra aquí tus imágenes (PNG con fondo transparente se ve mejor), o haz clic</div><input type="file" multiple accept="image/*"></label>
       <div class="fila">
-        <button class="principal" id="btnTarjetas" onclick="ejecutar('tarjetas')">▶ Poner tarjetas en el video</button>
+        <button class="principal" id="btnTarjetas" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
-      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
-      (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. En «¿Dónde?» eliges
+      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
     </section>
 
-    <section class="panel" id="panelTestimonios">
+    <section class="panel extra" id="panelTestimonios">
       <h2>🎥 Testimonios de clientes</h2>
       <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte: el tutorial se pausa,
       se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase. Por defecto suena el audio del propio clip;
@@ -237,15 +264,15 @@
       <label class="subida" id="soltarTestimonio"><div class="t">➕ Video de testimonio</div>
         <div class="e">Arrastra aquí tus videos (mp4, mov, webm…), o haz clic</div><input type="file" multiple accept="video/*"></label>
       <div class="fila">
-        <button class="principal" id="btnTestimonios" onclick="ejecutar('testimonios')">▶ Poner testimonios en el video</button>
+        <button class="principal" id="btnTestimonios" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
-      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. También puedes escribir un segundo (4:30)
-      o «inicio», «mitad», «final». «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
+      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. En «¿Dónde?» eliges
+      también inicio, medio, final o un segundo exacto. «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
       testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
     </section>
 
-    <section class="panel" id="panelModelos">
+    <section class="panel extra" id="panelModelos">
       <h2>📱 Nuevos modelos</h2>
       <p class="aviso">Sube un video corto con los modelos más recientes: las cajas, los celulares o la lista de equipos. La voz
       dice que este método también sirve para ellos mientras se ve tu video, con su subtítulo.</p>
@@ -253,12 +280,12 @@
       <label class="subida" id="soltarModelo"><div class="t">➕ Video de nuevos modelos</div>
         <div class="e">Arrastra aquí un video corto (mp4, mov…), o haz clic</div><input type="file" accept="video/*"></label>
       <div class="fila">
-        <button class="principal" id="btnModelos" onclick="ejecutar('nuevos_modelos')">▶ Poner nuevos modelos en el video</button>
+        <button class="principal" id="btnModelos" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">«Modelos»: si los escribes (por ejemplo «Honor 600, Honor 8 Lite»), se dicen esos. Si lo dejas vacío, la IA
       los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
-      introducción. También «inicio», «mitad», «final» o un segundo (1:10). Si el video es más largo que la frase se acelera;
+      introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
       si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
@@ -282,7 +309,7 @@
       duración y salta los mismos tramos. Desmarca un tramo para dejarlo como estaba y pulsa «Rehacer».</p>
     </section>
 
-    <section class="panel" id="panelPaginas">
+    <section class="panel extra" id="panelPaginas">
       <h2>🌐 Mis páginas</h2>
       <p class="aviso">Tus webs, tu canal de WhatsApp, tus redes. Sirven para todos tus videos: la voz las nombra donde ayudan
       (comprar la key, pedir el servicio, ver testimonios, el cierre) y cuando las nombra aparece su etiqueta con la dirección.</p>
@@ -293,6 +320,7 @@
       </div>
       <div class="fila">
         <input type="text" id="pgPara" placeholder="Para qué sirve (ej.: comprar keys, canal de WhatsApp con testimonios)" style="flex:1;min-width:12em">
+        <select id="pgDonde" title="En qué parte del video la nombra la voz"><option value="auto">🤖 Donde ayude (la IA elige)</option><option value="inicio">⏮ Al inicio</option><option value="mitad">⏸ En el medio</option><option value="final">⏭ Al final</option></select>
         <button onclick="agregarPagina()">+ Agregar</button>
       </div>
       <p class="aviso">Se usan cuando la IA escribe el guion y elige las etiquetas. Si ya tienes guion, vuelve a escribirlo con IA
@@ -331,11 +359,11 @@
       <h2>3 · Ver resultado</h2>
       <video id="video" controls preload="metadata"></video>
       <div class="salidas" id="salidas"></div>
-      <div class="fila" id="exportar" hidden>
-        <span class="aviso">Bajar el video final a</span>
-        <select id="altura"><option value="720">720p</option><option value="480" selected>480p</option><option value="360">360p</option></select>
-        <button onclick="exportar()">Exportar</button>
-        <span class="aviso">(pesa menos, para WhatsApp o subirlo rápido)</span>
+      <div id="exportar" hidden>
+        <div class="fila" style="align-items:center"><b>⬇ Descargar en:</b> <span id="calidades"></span></div>
+        <div class="fila" style="align-items:center"><span class="aviso">Marca varias y pulsa:</span>
+          <button onclick="exportar()">⬇ Preparar las marcadas</button>
+          <span class="aviso">(las que no están hechas se preparan y se descargan solas al terminar; 480p y 360p pesan menos, para WhatsApp)</span></div>
       </div>
     </section>
 
@@ -417,11 +445,40 @@
     <button onclick="bajarGuion('txt')">⬇ Descargar</button>
     <label class="boton"><input type="file" accept=".txt,.md,.json,text/plain,application/json" hidden onchange="dlgGuion.close(); importarGuion(this)">⬆ Importar editado</label>
   </div>
+  <div id="versionesGuion"></div>
   <div id="preguntasGuion"></div>
   <div id="mejorasGuion"></div>
   <div id="bloquesGuion"></div>
   <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
-    <button onclick="guardarGuion(false)">Guardar</button><button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
+    <button onclick="guardarGuion(false)">Guardar</button>
+    <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
+    <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas. Solo cambian esos bloques.">🎚 Ajustar humor</button>
+    <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
+</dialog>
+
+<dialog id="dlgDonde">
+  <h3 id="dondeTitulo">¿Dónde lo ponemos?</h3>
+  <p class="aviso">Lo puedes cambiar después en «¿Dónde?».</p>
+  <div class="fila" id="dondeOpciones"></div>
+</dialog>
+
+<dialog id="dlgExtras">
+  <h3>✨ Agregar extras al video</h3>
+  <p class="aviso">Se ponen sobre el video que ya hiciste con «▶ Hacer todo». Si los vuelves a agregar, se rehacen desde ese video
+  (no se repite la voz ni el montaje).</p>
+  <div id="listaExtras"></div>
+  <div class="fila"><button class="principal" onclick="agregarExtras()">✨ Agregar los marcados</button><button onclick="dlgExtras.close()">Cancelar</button>
+    <span class="msg" id="msgExtras"></span></div>
+</dialog>
+
+<dialog id="dlgDiag">
+  <h3 id="diagTitulo">⚠ LA IA NO PUDO COMPLETAR ESTA OPERACIÓN</h3>
+  <div id="diagResumen"></div>
+  <pre id="diagTexto" style="display:none; max-height:50vh; overflow:auto; white-space:pre-wrap; font-size:12px"></pre>
+  <div class="fila"><button class="principal" onclick="verDiagnostico()">📄 Ver diagnóstico</button>
+    <a class="boton" id="diagTxt" download>⬇ Exportar TXT</a><a class="boton" id="diagJson" download>⬇ Exportar JSON</a>
+    <button id="diagReintentar" onclick="reintentar()">↻ Reintentar</button>
+    <button onclick="dlgDiag.close()">Cerrar</button><span class="msg" id="msgDiag"></span></div>
 </dialog>
 
 <dialog id="dlgEleven">
@@ -447,8 +504,15 @@
   <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarClave()">🔍 Comprobar clave</button><span id="ajPrueba" class="aviso" style="align-self:center"></span></div>
   <label class="aviso"><input type="checkbox" id="ajImg"> Este modelo ve imágenes (manda las capturas)</label>
   <label>Capturas del video <input type="number" id="ajCaps" min="4" max="60" step="1" style="width:6em"></label>
+  <label>Humor del guion <select id="ajHumor"><option value="0">Sin humor</option><option value="1">Poco: 1 chiste cada 7 u 8 bloques</option>
+    <option value="2">Normal: 1 cada 4 o 5 bloques</option><option value="3">Mucho: 1 cada 3 bloques</option></select></label>
+  <p class="aviso">La app cuenta los bloques con chiste. Si la IA se pasa, se queda con los mejores (nunca dos seguidos, nunca en pasos delicados, sin repetir tema) y quita el resto.</p>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
+  <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con 3 IAs a la vez</b> (GPT, Claude y Gemini): las tres escriben el guion
+    al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
+    Después eliges la versión que más te guste o pides que se combinen.</label>
+  <div id="ajTresIAs" class="aviso"></div>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
@@ -481,10 +545,13 @@ async function cargarProyectos(sel) {
   $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;
-  P = sel || localStorage.getItem('proyecto') || lista[0];
+  if (!sel) {  // al abrir la app: siempre el último proyecto TRABAJADO (mirar otro no cuenta)
+    try { sel = (await api('/api/ultimo_proyecto')).nombre; } catch (e) {}
+  }
+  P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
-  $('#proyecto').value = P; localStorage.setItem('proyecto', P);
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  $('#proyecto').value = P;
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -509,6 +576,22 @@ function pintarSubidas(arch) {
     el.ondragleave = () => el.style.borderColor = '';
     el.ondrop = e => { e.preventDefault(); e.dataTransfer.files.length && subirVarios(tipo, [...e.dataTransfer.files], el); };
   });
+}
+let MUSICA_FIJA_VISTA = null;
+function pintarMusicaFija(e) {  // una sola pista para todos los videos
+  const clave = e.musica_fija + '|' + !!e.archivos['musica.mp3'];
+  if (clave === MUSICA_FIJA_VISTA) return;  // no repinta el reproductor mientras suena
+  MUSICA_FIJA_VISTA = clave;
+  $('#musicaFija').innerHTML = e.musica_fija
+    ? `📌 <b>Música fija:</b> todos los videos usan ${esc(e.musica_fija)} (no se genera otra).
+       <audio controls preload="none" src="/api/musica_fija" style="height:28px; vertical-align:middle"></audio>
+       <button onclick="musicaFija(true)">Quitar</button>`
+    : e.archivos['musica.mp3'] ? `<button onclick="musicaFija(false)">📌 Usar la música de este proyecto en todos los videos</button>` : '';
+}
+async function musicaFija(quitar) {
+  if (!quitar && !confirm('¿Usar la música de este proyecto (musica.mp3) en todos los videos desde ahora? No se generará música nueva.')) return;
+  try { await api(quitar ? '/api/musica_fija?quitar=1' : `/api/musica_fija?p=${q(P)}`, {method: 'POST'}); } catch (x) { alert(x.message); }
+  MUSICA_FIJA_VISTA = null; refrescar();
 }
 function subir(tipo, file, el, parte = 1, de = 1) {
   return new Promise((listo, fallo) => {
@@ -568,7 +651,8 @@ async function ejecutar(paso) {
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
-  if (paso === 'musica' && !(await api(`/api/estado?p=${q(P)}`)).archivos['musica.mp3']) {
+  const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
+  if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
@@ -586,16 +670,36 @@ function pintarSalidas(arch) {
   if (nuevo && (!ultimo || arch[nuevo].fecha !== ultimo.fecha || nuevo !== ultimo.f)) {
     ultimo = {f: nuevo, fecha: arch[nuevo].fecha}; ver(nuevo);
   }
+  // sin FINAL.mp4 (por ejemplo, si falló el último paso), se baja el video más avanzado que haya
+  const armado = AVANCE.slice(1).reverse().find(v => hay.includes(v)) || null;
   const extras = ['3_voz.srt', 'transcripcion.txt', 'transcripcion.srt', 'revision_guion.txt'].filter(f => arch[f]);
   $('#salidas').innerHTML = hay.map(v => `<button onclick="ver('${v}')">▶ ${v}</button>`).join('') +
-    extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('') +
-    (arch['FINAL.mp4'] ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp4" download><button class="principal">⬇ Descargar FINAL.mp4</button></a>` : '') +
-    ['720', '480', '360'].filter(h => arch[`FINAL_${h}p.mp4`]).map(h =>
-      `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button>⬇ FINAL ${h}p</button></a>`).join('');
-  $('#exportar').hidden = !arch['FINAL.mp4'];
+    extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('');
+  $('#exportar').hidden = !armado;
+  if (armado) {  // cada calidad: lista si su archivo es más nuevo que el video del que sale
+    const fuente = arch['FINAL.mp4'] ? 'FINAL.mp4' : armado;
+    const lista = h => arch[`FINAL_${h}p.mp4`] && !arch[`FINAL_${h}p.mp4`].en_proceso && arch[`FINAL_${h}p.mp4`].fecha >= arch[fuente].fecha;
+    const marcadas = new Set([...document.querySelectorAll('#calidades input:checked')].map(i => i.value));
+    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
+      ['1080', '720', '480', '360'].map(h => lista(h)
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button class="principal">⬇ ${h}p</button></a>`
+        : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ');
+    if ($('#calidades').dataset.html !== html) {  // solo se repinta si cambió: así no se pierde un clic en las casillas
+      $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
+      $('#calidades').querySelectorAll('input').forEach(i => i.checked = marcadas.has(i.value));
+    }
+    for (const h of [...PEND_DESCARGA]) if (lista(h)) {  // terminó de prepararse: se descarga sola
+      PEND_DESCARGA.delete(h);
+      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=FINAL_${h}p.mp4`; a.download = `FINAL_${h}p.mp4`; a.click();
+    }
+  }
 }
+const PEND_DESCARGA = new Set();
 async function exportar() {
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({altura: $('#altura').value})}); } catch (e) { alert(e.message); }
+  const alturas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
+  if (!alturas.length) return alert('Marca al menos una calidad (las que ya están listas se descargan con su botón).');
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas})}); } catch (e) { alert(e.message); return; }
+  alturas.forEach(h => PEND_DESCARGA.add(h));
   refrescar();
 }
 function ver(f, seguir) {
@@ -986,18 +1090,20 @@ function pintarTarjetas() {
   $('#listaTarjetas').innerHTML = TARJ[grupo].map((c, i) => `<div class="pista">
       <div class="vista"><img src="/archivo?p=${q(P)}&sub=tarjetas&f=${q(c.archivo)}"></div>
       <div class="datos" style="grid-template-columns: 1fr 4.5em 1fr">
-        <input type="text" placeholder="Momento: auto" title="auto, 1:25, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTarjeta(${i}, 'momento', this.value)">
+        ${selDonde('tarj', i, c.momento)}
         <input type="text" placeholder="6 s" title="Segundos en pantalla" value="${esc(c.dur)}" onchange="cambiarTarjeta(${i}, 'dur', this.value)">
         <select onchange="cambiarTarjeta(${i}, 'posicion', this.value)">${Object.entries(POS).map(([k, v]) => `<option value="${k}" ${(c.posicion || 'abajo-derecha') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <button title="Quitar" onclick="TARJ[grupo].splice(${i}, 1); guardarTarjetas()">✕</button></div>`).join('') || '<p class="aviso">Sin tarjetas en este grupo.</p>';
+  pintarMapa();
 }
 function cambiarTarjeta(i, k, v) { TARJ[grupo][i][k] = v.trim(); guardarTarjetas(); }
 async function agregarTarjetas(files) {
+  const donde = await preguntarDonde(files.length > 1 ? 'estas tarjetas' : 'esta tarjeta');
   try {
     for (const f of files) {
       if (!f.type.startsWith('image/')) { alert(`${f.name}: solo imágenes`); continue; }
       const r = await api(`/api/pista_archivo?g=tarjetas&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-      TARJ[grupo].push({archivo: r.archivo, momento: 'auto', dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
+      TARJ[grupo].push({archivo: r.archivo, momento: donde, dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
     }
   } catch (e) { alert(e.message); }
   guardarTarjetas();
@@ -1020,19 +1126,21 @@ function pintarTestimonios() {
   $('#listaTestimonios').innerHTML = TESTI.TESTIMONIOS.map((c, i) => `<div class="pista">
       <div class="vista"><video src="/archivo?p=${q(P)}&sub=testimonios&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
       <div class="datos" style="grid-template-columns: 1fr 5em 5em">
-        <input type="text" placeholder="Momento: auto" title="auto, 4:30, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTestimonio(${i}, 'momento', this.value)">
+        ${selDonde('testi', i, c.momento)}
         <input type="text" placeholder="Desde" title="Desde qué segundo del testimonio (vacío = el comienzo), por ejemplo 0:05" value="${esc(c.desde)}" onchange="cambiarTestimonio(${i}, 'desde', this.value)">
         <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)">
         <textarea rows="2" style="grid-column:1/-1; margin-top:6px; resize:vertical" placeholder="Narración con tu voz (opcional): lo que dice el narrador sobre este testimonio. Si lo llenas, habla tu voz principal y se silencia el audio del cliente." title="Déjalo vacío para que suene el audio propio del testimonio. Si escribes algo, lo dice tu voz principal (ElevenLabs) encima del clip en silencio." onchange="cambiarTestimonio(${i}, 'texto', this.value)">${esc(c.texto || '')}</textarea></div>
       <button title="Quitar" onclick="TESTI.TESTIMONIOS.splice(${i}, 1); guardarTestimonios()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste testimonios.</p>';
+  pintarMapa();
 }
 function cambiarTestimonio(i, k, v) { TESTI.TESTIMONIOS[i][k] = v.trim(); guardarTestimonios(); }
 async function agregarTestimonios(files) {
+  const donde = await preguntarDonde(files.length > 1 ? 'estos testimonios' : 'este testimonio');
   try {
     for (const f of files) {
       if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) { alert(`${f.name}: solo videos`); continue; }
       const r = await api(`/api/pista_archivo?g=testimonios&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: '', texto: ''});
+      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: donde, desde: '', hasta: '', texto: ''});
     }
   } catch (e) { alert(e.message); }
   guardarTestimonios();
@@ -1054,20 +1162,22 @@ async function guardarModelos() {
 function pintarModelos() {
   $('#listaModelos').innerHTML = MODS.MODELOS.map((c, i) => `<div class="pista">
       <div class="vista"><video src="/archivo?p=${q(P)}&sub=nuevos_modelos&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
-      <div class="datos" style="grid-template-columns: 7em 1fr">
-        <input type="text" placeholder="Momento: auto" title="auto, 1:10, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarModelo(${i}, 'momento', this.value)">
+      <div class="datos" style="grid-template-columns: 11em 1fr">
+        ${selDonde('modelo', i, c.momento)}
         <input type="text" placeholder="Modelos (vacío = la IA los lee del video)" title="Separados por coma, por ejemplo: Honor 600, Honor 8 Lite" value="${esc(c.modelos)}" onchange="cambiarModelo(${i}, 'modelos', this.value)">
         <input type="text" style="grid-column: 1 / -1" placeholder="Frase de la voz (vacío = la IA la escribe con tu estilo)" value="${esc(c.frase)}" onchange="cambiarModelo(${i}, 'frase', this.value)"></div>
       <button title="Quitar" onclick="MODS.MODELOS.splice(${i}, 1); guardarModelos()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste el video de nuevos modelos.</p>';
+  pintarMapa();
   $('#soltarModelo').style.display = MODS.MODELOS.length ? 'none' : '';  // un video por tutorial
 }
 function cambiarModelo(i, k, v) { MODS.MODELOS[i][k] = v.trim(); guardarModelos(); }
 async function agregarModelo(files) {
   const f = files[0];
   if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) return alert(`${f.name}: solo videos`);
+  const donde = await preguntarDonde('el video de nuevos modelos');
   try {
     const r = await api(`/api/pista_archivo?g=modelos&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-    MODS.MODELOS = [{archivo: r.archivo, momento: 'auto', modelos: '', frase: ''}];
+    MODS.MODELOS = [{archivo: r.archivo, momento: donde, modelos: '', frase: ''}];
   } catch (e) { alert(e.message); }
   guardarModelos();
 }
@@ -1131,13 +1241,15 @@ function pintarPaginas() {
   $('#listaPaginas').innerHTML = PAGINAS.map((x, i) => `<div class="pista"><div class="vista">🌐</div>
     <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"><b>${esc(x.nombre || x.url)}</b> · ${esc(x.url)}
       <div class="aviso">${esc(x.para || '')}</div></div>
+    ${selDonde('pagina', i, x.donde, DONDE_PAGINA)}
     <button title="Quitar" onclick="quitarPagina(${i})">✕</button></div>`).join('') || '<p class="aviso">Todavía no agregaste páginas.</p>';
+  pintarMapa();
 }
 async function guardarPaginas() { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({paginas: PAGINAS})}); pintarPaginas(); }
 async function agregarPagina() {
   const url = $('#pgUrl').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
   if (!url) return alert('Pon el link de la página.');
-  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim()});
+  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim(), donde: $('#pgDonde').value});
   $('#pgNombre').value = $('#pgUrl').value = $('#pgPara').value = '';
   await guardarPaginas();
 }
@@ -1187,18 +1299,53 @@ async function verPerfil() {
 }
 
 let PROV = {};
-function irA(s) { $(s).scrollIntoView({behavior: 'smooth', block: 'start'}); }
+function irA(s) {
+  const extra = $(s).classList.contains('extra');
+  if (extra !== document.body.classList.contains('tab-extra')) pestana(extra ? 'extra' : 'video');
+  $(s).scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
-  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia;
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
+  $('#ajTres').checked = !!a.tres_ia;
+  const ias = a.ias_guion || {};
+  $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
+    <b>${nombre}</b>
+    <div class="fila" style="margin:4px 0; align-items:center">
+      <input type="text" id="ajTC_${id}" placeholder="1. pega aquí la clave API (${ayuda})" value="${esc((ias[id] || {}).clave || '')}" style="flex:1; min-width:14em" autocomplete="off">
+      <button type="button" onclick="verModelos('${id}')">2. 🔍 Comprobar clave y traer modelos</button></div>
+    <div class="fila" style="margin:4px 0; align-items:center">
+      <select id="ajTS_${id}" style="display:none; flex:1" onchange="if (this.value) $('#ajTM_${id}').value = this.value"></select>
+      <input type="text" id="ajTM_${id}" placeholder="3. modelo (se llena al elegir de la lista)" value="${esc((ias[id] || {}).modelo || '')}" style="flex:1; min-width:12em"></div>
+    <div id="ajTP_${id}"></div></div>`).join('') +
+    '<p class="aviso">Si la de tu IA principal queda vacía, se usa la clave de arriba. Las claves se guardan solo en tu PC.</p>';
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
   $('#ajModelo').oninput = () => { if (VISION.test($('#ajModelo').value)) $('#ajImg').checked = true; };
   dlgAjustes.showModal();
+}
+// «3 IAs a la vez»: [id, nombre, url, tipo, dónde se saca la clave]
+const TRES_IAS = [['gpt', 'GPT', 'https://api.openai.com/v1', '', 'platform.openai.com'],
+  ['claude', 'Claude', 'https://api.anthropic.com', 'claude', 'console.anthropic.com'],
+  ['gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '', 'aistudio.google.com']];
+async function verModelos(id) {  // comprueba la clave y trae los modelos que esa cuenta puede usar (no gasta tokens)
+  const [, , url, tipo] = TRES_IAS.find(x => x[0] === id), e = $('#ajTP_' + id);
+  e.style.color = ''; e.textContent = 'Comprobando…';
+  try {
+    const r = await api('/api/probar_ia', {method: 'POST', body: JSON.stringify({ia: id, url, tipo, proveedor: tipo ? 'Claude' : '',
+      clave: $('#ajTC_' + id).value.trim()})});
+    // solo los que escriben texto (fuera los de imágenes, audio, embeddings…)
+    const ms = (r.modelos || []).filter(m => !/embed|tts|audio|whisper|dall-e|image|imagen|veo|moderation|realtime|transcribe|search|aqa|babbage|davinci/i.test(m));
+    const sel = $('#ajTS_' + id), actual = $('#ajTM_' + id).value.trim();
+    sel.innerHTML = `<option value="">— elige el modelo (${ms.length} disponibles) —</option>` + ms.map(m => `<option${m === actual ? ' selected' : ''}>${esc(m)}</option>`).join('');
+    sel.style.display = r.ok && ms.length ? '' : 'none';
+    e.style.color = r.ok ? 'var(--verde)' : 'var(--rojo)';
+    e.textContent = r.ok ? (ms.length ? '✓ La clave funciona. Elige el modelo en la lista de arriba.' : '✓ La clave funciona, pero el proveedor no mandó la lista: escribe el modelo a mano.') : '✗ ' + r.mensaje;
+  } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = ' ✗ No se pudo comprobar.'; }
 }
 async function comprobarClave() {
   const e = $('#ajPrueba'); e.style.color = ''; e.textContent = 'Comprobando…';
@@ -1215,7 +1362,10 @@ async function guardarAjustes() {
     return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked})});
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
+    tres_ia: $('#ajTres').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
+  const listas = TRES_IAS.filter(([id]) => $('#ajTM_' + id).value.trim()).length;
+  if ($('#ajTres').checked && listas < 2) alert('Para el guion con varias IAs pon el modelo (y la clave) de al menos dos. Mientras tanto se usa solo tu IA principal.');
   dlgAjustes.close(); quienIA();
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
@@ -1238,7 +1388,7 @@ verEleven().then(k => { if (!k) dlgEleven.showModal(); });  // sin clave, la pid
 const reloj = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 // al abrir la pestaña no se repite un resultado viejo: solo los de esta visita (o de hace un par de minutos)
 const CARGA = Date.now() / 1000;
-let barraCerrada = null;
+let barraCerrada = null, verUltimas = true;
 try { barraCerrada = +localStorage.getItem('barraCerrada') || null; } catch (e) {}
 const reciente = r => r && r.cuando >= CARGA - 120 && r.cuando !== barraCerrada;
 function pintarBarra(t, r, arch) {
@@ -1250,14 +1400,22 @@ function pintarBarra(t, r, arch) {
   b.hidden = false; document.body.classList.add('con-barra');
   if (corre) {
     const avance = seguirAvance(t, arch);
-    const n = t.plan.length, pct = Math.round(100 * (t.i + 0.5) / n);
+    // % real: lo que el paso dice que lleva («[N%]» en el registro); si el paso no lo dice, se estima por el tiempo que
+    // tardó la vez anterior, y si no hay vez anterior, se cuenta solo por pasos
+    const n = t.plan.length;
+    let dentro = t.pct_paso, estimado = false;
+    if (dentro == null && t.antes_s) { dentro = Math.min(95, 100 * t.segundos / t.antes_s); estimado = true; }
+    const pct = Math.round(100 * (t.i + (dentro == null ? 0.5 : dentro / 100)) / n);
+    const falta = t.antes_s && t.segundos < t.antes_s ? ` · la vez anterior tardó ${reloj(t.antes_s)}` : '';
     b.className = 'trabaja';
-    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
-      <span class="cuanto">este paso ${reloj(t.segundos)} · total ${reloj(t.total_s)}</span>
+    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${dentro == null ? '' : `${pct}%${estimado ? ' (estimado)' : ''} · `}${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
+      <span class="cuanto">este paso ${reloj(t.segundos)}${falta} · total ${reloj(t.total_s)}</span>
       ${n > 1 ? `<span class="chips">${t.plan.map((x, k) => `<span class="chip ${k < t.i ? 'hecho' : k === t.i ? 'ahora' : ''}">${k < t.i ? '✓' : k === t.i ? '⏳' : '○'} ${esc(x)}</span>`).join('')}</span>` : ''}
-      ${avance}<button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
+      ${avance}<button onclick="verUltimas = !verUltimas; refrescar()">${verUltimas ? '▾ Ocultar registro' : '▸ Ver registro'}</button>
+      <button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>
       <div class="riel"><div class="lleno" style="width:${pct}%"></div></div>
-      <div class="detalle">${esc(t.linea || 'empezando…')}</div>`;
+      ${verUltimas && (t.ultimas || []).length ? `<pre class="detalle" style="white-space:pre-wrap; margin:4px 0; max-height:9em; overflow:auto">${esc(t.ultimas.join('\n'))}</pre>`
+        : `<div class="detalle">${esc(t.linea || 'empezando…')}</div>`}`;
     return;
   }
   const cerrar = `<button onclick="cerrarBarra(${r.cuando})">✕</button>`;
@@ -1266,7 +1424,9 @@ function pintarBarra(t, r, arch) {
     b.innerHTML = `<div class="arriba"><span class="que">✓ Guion listo: revísalo antes de seguir</span>
       <span class="cuanto">la IA lo escribió desde tu video en ${reloj(r.segundos)}</span>
       <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
-      <button onclick="seguirTodo()">▶ Seguir con todo</button>${cerrar}</span></div>
+      <button onclick="seguirTodo()">▶ Seguir con todo</button>
+      <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
+      <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas.">🎚 Ajustar humor</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
     return;
@@ -1274,17 +1434,62 @@ function pintarBarra(t, r, arch) {
   if (r.ok) {
     b.className = 'ok';
     const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
-    b.innerHTML = `<div class="arriba"><span class="que">✓ Todo salió bien</span>
+    const inc = r.resultado === 'completado_con_incidencias';
+    const botonInc = (r.incidencias || []).length ? `<button onclick="abrirIncidencias()">⚠ Incidencias (${r.incidencias.length})</button>` : '';
+    INCID = r;
+    b.innerHTML = `<div class="arriba"><span class="que">${inc ? '✓ Terminado con incidencias' : '✓ Todo salió bien'}</span>
       <span class="cuanto">${r.hechos.length} ${r.hechos.length === 1 ? 'paso hecho' : 'pasos hechos'} en ${reloj(r.segundos)}${r.saltados.length ? ` · salté ${r.saltados.length} opcional${r.saltados.length > 1 ? 'es' : ''} (${esc(r.saltados.join(', '))})` : ''}</span>
-      <span class="chips">${final}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+      <span class="chips">${final}${arch['4_musica.mp4'] ? '<button onclick="abrirExtras()">✨ Agregar extras</button>' : ''}${botonInc}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
   } else {
+    mostrarDiag(r);
     b.className = 'mal';
     b.innerHTML = `<div class="arriba"><span class="que">✗ Falló: ${esc(r.paso || 'un paso')}</span>
       <span class="cuanto">${r.hechos.length ? `antes salieron bien ${r.hechos.length} de ${r.total}` : ''}</span>
-      <span class="chips"><button onclick="irA('#log')">Ver registro</button>${cerrar}</span></div>
+      <span class="chips">${r.diagnostico ? `<button class="principal" onclick="abrirDiag()">⚠ Diagnóstico</button>` : ''}<button onclick="irA('#log')">Ver registro</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:${Math.round(100 * (r.hechos.length + r.saltados.length) / r.total)}%"></div></div>
       <div class="detalle">${esc(r.msg)}</div>`;
   }
+}
+
+let DIAG = null, avisoDiag = null, INCID = null;
+function mostrarDiag(r) {  // un fallo con diagnóstico: la ventana se abre sola una vez
+  DIAG = r.diagnostico;
+  if (DIAG && avisoDiag !== r.cuando) { avisoDiag = r.cuando; abrirDiag(); }
+}
+function abrirIncidencias() {  // el video salió, pero alguna solicitud falló o fue rechazada: se informa sin llamarlo fracaso
+  const lista = (INCID && INCID.incidencias) || [];
+  if (!lista.length) return;
+  DIAG = lista[0];
+  abrirDiag();
+  $('#diagTitulo').textContent = '⚠ PROCESO COMPLETADO CON INCIDENCIAS';
+  $('#diagResumen').innerHTML = `<p>El proceso terminó. Estas solicitudes fallaron o fueron rechazadas, pero no frenaron el proyecto:</p><ul>${
+    lista.map(x => `<li><b>${esc(x.etapa)}</b> · ${esc(x.ia)} · ${esc(x.tipo)}<br>${esc(x.resultado_paso || '')} ${esc(x.explicacion)}</li>`).join('')}</ul>
+    ${INCID.resumen ? `<p><a href="/archivo?p=${q(P)}&sub=diagnosticos&f=${q(INCID.resumen.archivo + '.txt')}" target="_blank">📄 Resumen de la ejecución (modelos usados)</a></p>` : ''}
+    <p class="aviso">Los informes quedan en la carpeta <code>diagnosticos</code> del proyecto, sin claves ni el guion.</p>`;
+  $('#diagReintentar').style.display = 'none'; $('#msgDiag').textContent = '';
+}
+function abrirDiag() {
+  if (!DIAG) return;
+  const base = `/archivo?p=${q(P)}&sub=diagnosticos&f=`;
+  $('#diagTitulo').textContent = '⚠ LA IA NO PUDO COMPLETAR ESTA OPERACIÓN';
+  $('#diagResumen').innerHTML = `<p><b>Etapa donde falló:</b> ${esc(DIAG.etapa)}</p><p><b>IA o servicio:</b> ${esc(DIAG.ia)}</p>
+    <p><b>Tipo de error:</b> ${esc(DIAG.tipo)}</p><p><b>En pocas palabras:</b> ${esc(DIAG.explicacion)}</p>
+    <p class="aviso">El informe queda en la carpeta <code>diagnosticos</code> del proyecto. No lleva claves, ni el guion, ni imágenes: puedes compartirlo con ChatGPT para investigar.</p>`;
+  $('#diagTxt').href = base + q(DIAG.archivo + '.txt'); $('#diagTxt').setAttribute('download', DIAG.archivo + '.txt');
+  $('#diagJson').href = base + q(DIAG.archivo + '.json'); $('#diagJson').setAttribute('download', DIAG.archivo + '.json');
+  $('#diagReintentar').style.display = DIAG.reintentable ? '' : 'none';
+  $('#msgDiag').textContent = DIAG.reintentable ? '' : 'Reintentar igual no sirve para este tipo de error: corrige primero lo que dice el diagnóstico.';
+  $('#diagTexto').style.display = 'none';
+  dlgDiag.showModal();
+}
+async function verDiagnostico() {
+  try { $('#diagTexto').textContent = await (await fetch(`/archivo?p=${q(P)}&sub=diagnosticos&f=${q(DIAG.archivo + '.txt')}`)).text(); }
+  catch (e) { $('#diagTexto').textContent = 'No pude abrir el informe: ' + e.message; }
+  $('#diagTexto').style.display = '';
+}
+async function reintentar() {
+  try { await api(`/api/reintentar?p=${q(P)}`, {method: 'POST'}); dlgDiag.close(); } catch (e) { $('#msgDiag').textContent = e.message; }
+  refrescar();
 }
 
 let avisoGuion = null, GUION = null;
@@ -1297,23 +1502,50 @@ async function verGuion() {
   const lista = rv.mejoras;
   $('#mejorasGuion').innerHTML = (lista.length ? `<b>Lo que la app corrigió o te avisa:</b><ul>${lista.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
     : '<b>✓ La app lo revisó:</b> tiempos y orden bien, no tuvo que corregir nada.');
+  verVersiones(rv.versiones || []);
   await verPreguntas();
   $('#bloquesGuion').innerHTML = GUION.bloques.map((b, k) => {
     const mo = b.montaje || {}, tramo = mo.src_inicio != null ? `video ${mmss(mo.src_inicio)}${mo.src_fin != null ? '–' + mmss(mo.src_fin) : ''}` : 'imagen';
     return `<div class="bloque"><div class="cab"><b>${esc(b.id)}</b> · ${tramo}${b.ancla ? ' · ' + esc(b.ancla) : ''}</div>
       <textarea data-k="${k}">${esc(b.texto)}</textarea></div>`;
   }).join('');
-  $('#msgGuion').textContent = ''; dlgGuion.showModal();
+  $('#msgGuion').textContent = ''; if (!dlgGuion.open) dlgGuion.showModal();
+}
+function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus números, para elegirla o combinarlas
+  const buenas = vs.filter(v => v.archivo);
+  if (!vs.length) { $('#versionesGuion').innerHTML = ''; return; }
+  $('#versionesGuion').innerHTML = `<div class="preguntas"><b>✍️ Versiones de cada IA</b>
+    <p class="aviso">Ves la marcada con ✓. Cambiar de versión guarda la actual como guion.json.anterior.</p>
+    ${vs.map(v => `<div class="fila" style="margin:4px 0; align-items:center">${v.archivo
+      ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirVersion('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
+         <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
+      : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>`}</div>`).join('')}
+    ${buenas.length > 1 ? `<div class="fila"><button onclick="combinarVersiones()" title="Tu IA principal arma un guion con lo mejor de cada versión. No vuelve a mirar el video: es un pedido más.">🧩 Combinar lo mejor de las ${buenas.length}</button><span class="msg" id="msgVers"></span></div>` : ''}</div>`;
+}
+async function elegirVersion(id) {
+  if (!confirm('¿Usar esta versión como tu guion? Lo que cambiaste en la actual sin guardar se pierde (la actual queda como guion.json.anterior).')) return;
+  try { await api(`/api/elegir_version?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  verGuion();
+}
+async function combinarVersiones() {
+  if (!confirm('Tu IA principal va a armar un guion con lo mejor de cada versión (un pedido más, sin volver a mirar el video). ¿Seguir?')) return;
+  dlgGuion.close();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({combinar: true})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 let PREGUNTAS = [];
 async function verPreguntas() {
   try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`)) || []; } catch (e) { PREGUNTAS = []; }
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
-  $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA tiene ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre datos que no vio claros</b>
-    <p class="aviso">Contéstalas para que el guion diga lo correcto. Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías quedan como están.</p>
-    ${pend.map(([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
+  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
       <div class="fila" style="margin:4px 0">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
-      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`).join('')}
+      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`;
+  const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre tu guion</b>
+    <p class="aviso">Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías no cambian nada.
+    Solo se rehacen los bloques que tocan tus respuestas (el resto conserva su voz).</p>
+    ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
+    ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
     <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button><span class="msg" id="msgPreg"></span></div></div>`;
 }
 async function responderPreguntas() {
@@ -1334,6 +1566,138 @@ async function guardarGuion(seguir) {
   if (archivo === 'guion.json' && !editado) abrir('guion.json');
   if (!seguir) { $('#msgGuion').textContent = '✓ Guardado'; $('#msgGuion').className = 'msg ok'; return; }
   dlgGuion.close(); seguirTodo();
+}
+async function ajustarHumor() {  // mide el humor del guion actual y quita los chistes que sobran (sin rehacerlo)
+  const a = (await api('/api/ajustes')).ajustes;
+  const n = prompt('Nivel de humor: 0 = sin humor · 1 = poco (1 chiste cada 7 u 8 bloques) · 2 = normal (1 cada 4 o 5) · 3 = mucho (1 cada 3)\n\n' +
+    'La app cuenta los chistes y quita los que sobran, los de pasos delicados, los seguidos y los temas repetidos. Solo cambian esos ' +
+    'bloques; el resto conserva su voz. El guion actual queda como guion.json.anterior.', String(a.humor ?? 1));
+  if (n === null) return;
+  const nivel = Math.max(0, Math.min(3, parseInt(n) || 0));
+  if (dlgGuion.open) { document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
+    await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)}); dlgGuion.close(); }
+  try {
+    await api('/api/ajustes', {method: 'POST', body: JSON.stringify({humor: nivel})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({ajustar_humor: true})});
+  } catch (e) { alert(e.message); }
+  refrescar();
+}
+async function otroGuion() {  // otro guion sin repetir el análisis del video (queda guardado en mapa_video.json)
+  const pedido = prompt('¿Qué quieres distinto en el nuevo guion? (opcional: «otro inicio», «más corto», «más humor»…)\n' +
+    'El análisis del video ya está hecho: solo se vuelve a escribir el guion. El actual queda como guion.json.anterior.', '');
+  if (pedido === null) return;
+  if (dlgGuion.open) dlgGuion.close();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({otro: true, pedido: pedido.trim().slice(0, 1000)})}); }
+  catch (e) { alert(e.message); }
+  refrescar();
+}
+// [id del paso, nombre, qué falta si no se puede, lo prepara la IA sola]
+const EXTRAS = [['etiquetas', '🏷 Etiquetas animadas', '', true], ['senales', '🎯 Flechas y círculos', '', true],
+  ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'],
+  ['testimonios', '⭐ Testimonios', 'agrega testimonios en su panel'], ['nuevos_modelos', '📱 Nuevos modelos', 'graba el video de nuevos modelos en su panel'],
+  ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', '', true]];
+// ---------- pestaña «Material extra»: cada módulo y dónde va ----------
+const DONDE = [['auto', '🤖 Donde la voz lo nombra'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final'], ['segundo', '🕒 En un segundo exacto…']];
+const DONDE_PAGINA = [['auto', '🤖 Donde ayude (la IA elige)'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final']];
+const DONDE_TRAILER = [['inicio', '⏮ Al inicio (abre el video)'], ['final', '⏭ Al final (cierra el video)']];
+let TRAILER_DONDE = 'inicio';
+function pestana(cual) {
+  document.body.classList.toggle('tab-extra', cual === 'extra');
+  document.querySelectorAll('#pestanas button').forEach(b => b.classList.toggle('activo', b.dataset.p === cual));
+  try { localStorage.setItem('pestana', cual); } catch (e) {}
+  if (cual === 'extra') pintarMapa();
+}
+try { if (localStorage.getItem('pestana') === 'extra') pestana('extra'); } catch (e) {}
+function selDonde(mod, i, v, opciones = DONDE) {
+  v = String(v || opciones[0][0]).trim().toLowerCase();
+  const exacto = !opciones.some(([k]) => k === v);  // un segundo escrito (1:25)
+  return `<select class="donde" data-mod="${mod}" data-i="${i}" title="¿Dónde lo ponemos en el video?">${opciones.map(([k, t]) =>
+    `<option value="${k}" ${k === v || (exacto && k === 'segundo') ? 'selected' : ''}>${k === 'segundo' && exacto ? '🕒 En el ' + esc(v) : t}</option>`).join('')}</select>`;
+}
+document.addEventListener('change', async e => {
+  const s = e.target.closest && e.target.closest('select.donde'); if (!s) return;
+  let v = s.value;
+  if (v === 'segundo') {
+    v = (prompt('¿En qué segundo del video? Por ejemplo 1:25', '') || '').trim();
+    if (!/^\d+(:\d{1,2}){0,2}(\.\d+)?$/.test(v)) { if (v) alert('Escríbelo como 1:25 o 85.'); pintarTarjetas(); pintarTestimonios(); pintarModelos(); return; }
+  }
+  const i = +s.dataset.i;
+  if (s.dataset.mod === 'tarj') { TARJ[grupo][i].momento = v; await guardarTarjetas(); }
+  else if (s.dataset.mod === 'testi') { TESTI.TESTIMONIOS[i].momento = v; await guardarTestimonios(); }
+  else if (s.dataset.mod === 'modelo') { MODS.MODELOS[i].momento = v; await guardarModelos(); }
+  else if (s.dataset.mod === 'pagina') { PAGINAS[i].donde = v; await guardarPaginas(); }
+  else if (s.dataset.mod === 'trailer') {
+    TRAILER_DONDE = v;
+    try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_donde: v})}); } catch (x) { alert(x.message); }
+  }
+  pintarMapa();
+});
+function preguntarDonde(que) {  // al subir algo nuevo: ¿inicio, medio, final o donde la voz lo nombra?
+  return new Promise(listo => {
+    $('#dondeTitulo').textContent = `¿Dónde ponemos ${que}?`;
+    $('#dondeOpciones').innerHTML = DONDE.filter(([k]) => k !== 'segundo').map(([k, t]) => `<button data-k="${k}">${t}</button>`).join('');
+    $('#dondeOpciones').querySelectorAll('button').forEach(b => b.onclick = () => { listo(b.dataset.k); dlgDonde.close(); });
+    dlgDonde.onclose = () => listo('auto');  // cerrado sin elegir: donde la voz lo nombra
+    dlgDonde.showModal();
+  });
+}
+async function cargarTrailerDonde() {
+  try { TRAILER_DONDE = (await api(`/api/edicion?p=${q(P)}`)).trailer_donde || 'inicio'; } catch (e) { TRAILER_DONDE = 'inicio'; }
+  $('#trailerDonde').innerHTML = selDonde('trailer', 0, TRAILER_DONDE, DONDE_TRAILER);
+  pintarMapa();
+}
+function pintarMapa() {  // cómo queda el video: cada pieza en su parte
+  const m = $('#mapa'); if (!m) return;
+  const col = {inicio: [], mitad: [], final: [], auto: []};
+  const poner = (donde, txt, panel) => (col[String(donde || 'auto').toLowerCase()] || col.auto)
+    .push(`<button class="item" onclick="irA('#${panel}')">${txt}${col[String(donde || 'auto').toLowerCase()] ? '' : ' <span class="aviso">(' + esc(donde) + ')</span>'}</button>`);
+  poner(TRAILER_DONDE, '🎞️ Tráiler', 'panelTrailer');
+  TESTI.TESTIMONIOS.forEach((c, i) => poner(c.momento, `🎥 Testimonio ${i + 1}`, 'panelTestimonios'));
+  MODS.MODELOS.forEach(c => poner(c.momento, '📱 Nuevos modelos', 'panelModelos'));
+  Object.entries(TARJ).forEach(([g, l]) => l.forEach((c, i) => poner(c.momento, `${g === 'WHATSAPP' ? '📲 WhatsApp' : '💬 Comentarios'} ${i + 1}`, 'panelTarjetas')));
+  PAGINAS.forEach(x => poner(x.donde, `🌐 ${esc(x.nombre || x.url)}`, 'panelPaginas'));
+  m.innerHTML = [['inicio', '⏮ Inicio'], ['mitad', '⏸ Medio'], ['final', '⏭ Final'], ['auto', '🤖 Donde la voz lo nombra o en un segundo']]
+    .map(([k, t]) => `<div><h4>${t}</h4>${col[k].join('') || '<span class="aviso">—</span>'}</div>`).join('');
+}
+async function insertarExtras() {  // todo el material extra sobre el video ya hecho, cada pieza en su lugar
+  const e = await api(`/api/estado?p=${q(P)}`);
+  if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo» (pestaña 🎬 Video). Cuando el guion te guste, le metes el material extra.');
+  const solo = [];
+  if (e.archivos['5_etiquetas.mp4']) solo.push('etiquetas');  // lo que ya tenía el video se conserva
+  if (e.archivos['6_senales.mp4']) solo.push('senales');
+  if (Object.values(TARJ).some(l => l.length)) solo.push('tarjetas');
+  if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
+  if (MODS.MODELOS.length) solo.push('nuevos_modelos');
+  const aj = (await api('/api/ajustes')).ajustes;
+  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede || (aj.modelo && aj.url)) solo.push('trailer');  // sin plan propio, lo arma la IA
+  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o configura una IA para el tráiler.');
+  const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
+  if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  catch (x) { $('#msgMapa').textContent = '✗ ' + x.message; $('#msgMapa').className = 'msg err'; return; }
+  $('#msgMapa').textContent = '⏳ Insertando… mira el avance abajo.'; $('#msgMapa').className = 'msg ok';
+  refrescar();
+}
+async function abrirExtras() {
+  const e = await api(`/api/estado?p=${q(P)}`);
+  if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo». Cuando el guion te guste, le agregas los extras.');
+  const aj = (await api('/api/ajustes')).ajustes, conIA = !!(aj.modelo && aj.url);
+  const listo = id => (e.pasos.find(p => p.id === id) || {}).puede;
+  $('#listaExtras').innerHTML = EXTRAS.map(([id, nombre, falta, ia]) => {
+    const puede = listo(id) || (ia && conIA);
+    return `<label class="aviso" style="display:block; margin:6px 0"><input type="checkbox" data-extra="${id}" ${puede ? 'checked' : 'disabled'}> ${nombre}
+      ${puede ? (ia && !listo(id) ? '<span class="aviso">(lo prepara la IA)</span>' : '') : `<span class="aviso">— para usarlo, ${falta || 'configura una IA en ⚙ Ajustes IA'}</span>`}</label>`;
+  }).join('');
+  $('#msgExtras').textContent = ''; dlgExtras.showModal();
+}
+async function agregarExtras() {
+  const solo = [...document.querySelectorAll('#listaExtras input[data-extra]:checked')].map(i => i.dataset.extra);
+  if (!solo.length) { $('#msgExtras').textContent = 'Marca al menos uno'; $('#msgExtras').className = 'msg err'; return; }
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  catch (x) { $('#msgExtras').textContent = x.message; $('#msgExtras').className = 'msg err'; return; }
+  dlgExtras.close(); refrescar();
 }
 async function seguirTodo() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
@@ -1359,6 +1723,13 @@ async function borrarTodo() {
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
 }
+async function actualizarApp() {
+  if (!confirm('Bajo la versión nueva de la app y la pongo en esta misma carpeta.\n\nTus proyectos, estilos y claves no se tocan, ' +
+               'y lo que se reemplace queda en un respaldo (descargas_app). Si cambió la app, se reinicia sola.')) return;
+  try { const r = await api('/api/actualizar_app', {method: 'POST'}); alert(r.mensaje + (r.respaldo ? `\nRespaldo: ${r.respaldo}` : '')); }
+  catch (e) { alert(e.message); }
+  refrescar();
+}
 async function reiniciarApp() {
   if (reiniciando) return; reiniciando = true;
   try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
@@ -1369,7 +1740,7 @@ async function reiniciarApp() {
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  pintarSubidas(e.archivos); pintarMusicaFija(e); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
   if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
   if (PAGINA === null) PAGINA = e.pagina;

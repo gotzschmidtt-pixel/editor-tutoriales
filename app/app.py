@@ -22,8 +22,13 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402  todo lo que se descarga queda en descargas_app/
+sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
+import diagnostico  # noqa: E402  informes locales cuando una IA o un paso no completa su trabajo
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  codifica con la tarjeta NVIDIA si la hay, si no con el procesador
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
 ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
 PY = sys.executable
@@ -83,6 +88,15 @@ def existe(d, f):
 LARGO_VERSION = 2  # sube cuando cambia el margen de duración: los guiones revisados con el margen viejo se vuelven a medir
 
 
+def edicion(d):
+    """edicion.json del proyecto: volumen de la música, dónde va el tráiler…"""
+    try:
+        e = json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8'))
+        return e if isinstance(e, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def guion_fuera_de_largo(d):
     """Un guion hecho antes del control de duración que deja el video muy lejos del largo de la grabación
     (o de «que dure unos N minutos» en la idea)."""
@@ -117,9 +131,9 @@ def borrar_seguro(f, intentos=10):
 _DURACIONES = {}
 
 
-def duracion_original(d):
-    """Lo que dura tu grabación (en caché mientras el archivo no cambie)."""
-    f = os.path.join(d, 'original.mp4')
+def duracion_original(d, nombre='original.mp4'):
+    """Lo que dura tu grabación (u otro video del proyecto), en caché mientras el archivo no cambie."""
+    f = os.path.join(d, nombre)
     if not os.path.exists(f):
         return 0
     clave = (f, os.path.getmtime(f))
@@ -132,6 +146,73 @@ def duracion_original(d):
     return _DURACIONES[clave]
 
 
+DESFASE_VOZ = 0.3  # cada bloque de voz suena 0,3 s después de su inicio_min (igual que mezclar_voz, etiquetas y señales)
+
+
+def leer_srt(f):
+    crudo = open(f, 'rb').read()
+    try:
+        texto = crudo.decode('utf-8')
+    except UnicodeDecodeError:
+        texto = crudo.decode('cp1252', errors='replace')
+    seg = lambda x: (lambda h, m, s: int(h) * 3600 + int(m) * 60 + float(s.replace(',', '.')))(*x.strip().split(':'))
+    subs = []
+    for trozo in re.split(r'\n\s*\n', texto.replace('\r', '')):
+        lineas = [x for x in trozo.strip().split('\n') if x.strip()]
+        k = next((i for i, x in enumerate(lineas) if '-->' in x), None)
+        if k is None:
+            continue
+        a, b = lineas[k].split('-->')
+        subs.append({'ini': round(seg(a), 2), 'fin': round(seg(b), 2), 'texto': ' '.join(lineas[k + 1:])})
+    return subs
+
+
+def escribir_srt(f, subs):
+    ts = lambda x: f'{int(x // 3600):02d}:{int(x % 3600 // 60):02d}:{int(x % 60):02d},{int(round(x % 1 * 1000)) % 1000:03d}'
+    open(f, 'w', encoding='utf-8').write('\n'.join(f"{k}\n{ts(float(x['ini']))} --> {ts(float(x['fin']))}\n{str(x['texto']).strip()}\n"
+                                                  for k, x in enumerate(subs, 1)))
+
+
+def linea_tiempo(d):
+    """Todo lo del proyecto en segundos del video con voz (antes de testimonios y nuevos modelos, que meten cortes):
+    para el editor por pistas."""
+    if m('etiquetas') not in sys.path:
+        sys.path.insert(0, m('etiquetas'))
+    from etiquetas import buscar
+    leer = lambda f, defecto: json.load(open(os.path.join(d, f), encoding='utf-8')) if existe(d, f) else defecto
+    guion = leer('guion.json', {'bloques': []})
+    bloques, inicio, alin = [], {}, {}
+    for b in guion.get('bloques', []):
+        if b.get('inicio_min') is None:
+            continue
+        inicio[b['id']] = b['inicio_min']
+        f_al = os.path.join(d, 'voz', f"{b['id']}.align.json")
+        al = json.load(open(f_al, encoding='utf-8')) if os.path.exists(f_al) else None
+        alin[b['id']] = al
+        dur = (al['character_end_times_seconds'][-1] if al and al.get('character_end_times_seconds') else b.get('voz_real_s')) or 0
+        bloques.append({'id': b['id'], 'texto': b.get('texto', ''), 'ini': round(b['inicio_min'] + DESFASE_VOZ, 2), 'dur': round(dur, 2),
+                        'voz': existe(d, os.path.join('voz', f"{b['id']}.mp3")), 'desde': b['inicio_min'],
+                        'hasta': b.get('fin_max', b['inicio_min']), 'ancla': b.get('ancla', ''), 'montaje': b.get('montaje') or {}})
+
+    def cuando(x, retraso=0):
+        if x.get('t') is not None:
+            return round(float(x['t']) + retraso, 2)
+        if x.get('en') is not None and x.get('bloque') in inicio:
+            return round(inicio[x['bloque']] + DESFASE_VOZ + float(x['en']) + retraso, 2)
+        al = alin.get(x.get('bloque'))
+        t = buscar(al, x.get('frase', '')) if al else None
+        return None if t is None else round(inicio[x['bloque']] + DESFASE_VOZ + t + retraso, 2)
+    etiquetas = [{**e, '_t': cuando(e)} for e in leer('etiquetas.json', [])]
+    senales = [{**x, '_t': cuando(x, x.get('retraso', 0))} for x in leer('senales.json', [])]
+    base = next((v for v in ('4_musica.mp4', '3_voz.mp4', '1_montaje.mp4') if existe(d, v)), None)
+    edicion = leer('edicion.json', {})
+    return {'base': base, 'duracion': duracion_original(d, base) if base else 0, 'bloques': bloques,
+            'etiquetas': etiquetas, 'senales': senales, 'subtitulos': leer_srt(os.path.join(d, '3_voz.srt')) if existe(d, '3_voz.srt') else [],
+            'musica': {'volumen': edicion.get('musica_volumen', 0.22), 'fija': os.path.exists(MUSICA_FIJA), 'propia': existe(d, 'musica.mp3')},
+            'extras': [p['id'] for p in PASOS if p['id'] in EXTRAS and existe(d, p['produce']) and p['produce'] != 'FINAL.mp4']
+            + (['trailer'] if existe(d, 'trailer.mp4') else [])}
+
+
 def etiquetas_viejas(d):
     """Si etiquetas.json es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
     import unicodedata
@@ -141,7 +222,9 @@ def etiquetas_viejas(d):
         lista = json.load(open(os.path.join(d, 'etiquetas.json'), encoding='utf-8'))
     except (OSError, ValueError, KeyError, TypeError):
         return False
-    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista)
+    # las que pusiste o moviste a mano en el editor por pistas (traen su segundo «t») no cuentan: son tuyas
+    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista
+                               if e.get('t') is None and e.get('en') is None)
 
 
 def marcas_nuevas(d):
@@ -175,7 +258,7 @@ def unir_videos(destino, n):
                        **SIN_VENTANA) if iguales else None
     modo = 'pegados tal cual'
     if not iguales or r.returncode != 0 or abs(dur(tmp) - suma) > max(2.0, suma * 0.01):  # formatos distintos: se igualan
-        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
+        r = codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + sum((['-i', os.path.basename(x)] for x in partes), []) +
                            ['-filter_complex', ''.join(f'[{k}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1,'
                                                        f'fps=30,setsar=1[v{k}];' + (f'[{k}:a]aresample=48000,aformat=channel_layouts=stereo[a{k}];' if 'audio' in formato(x)
                                                        else f'aevalsrc=0|0:s=48000:d={dur(x):.3f}[a{k}];')  # sin sonido: silencio
@@ -240,7 +323,13 @@ def comandos(paso, d, op):
         return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
     if paso == 'musica':
         c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
-        c += ['--pista', 'musica.mp3'] if existe(d, 'musica.mp3') else ['--guardar_pista', 'musica.mp3']
+        vol = (json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')) if existe(d, 'edicion.json') else {}).get('musica_volumen')
+        if vol is not None:  # el volumen que elegiste en el editor por pistas
+            c += ['--volumen', f'{min(max(float(vol), 0), 1):g}']
+        if os.path.exists(MUSICA_FIJA):  # la música fija manda sobre la del proyecto (no se genera otra)
+            c += ['--pista', MUSICA_FIJA]
+        else:
+            c += ['--pista', 'musica.mp3'] if existe(d, 'musica.mp3') else ['--guardar_pista', 'musica.mp3']
         if op.get('prompt'):
             c += ['--prompt', op['prompt']]
         return [c]
@@ -262,7 +351,7 @@ def comandos(paso, d, op):
         unir = ultimo_video(d, None)  # testimonios y nuevos modelos corren los subtítulos: se usan los suyos
         srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
-                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
+                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
     if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'etiquetas_ia':
@@ -272,7 +361,11 @@ def comandos(paso, d, op):
                  '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
-                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])]
+                + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
+                + (['--ajustar-humor'] if op.get('ajustar_humor') else []) + (['--combinar'] if op.get('combinar') else [])
+                + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])]
+    if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
@@ -280,12 +373,21 @@ def comandos(paso, d, op):
         return [c]
     if paso == 'alimentar':
         return [[PY, m('alimentacion', 'alimentacion.py'), '--estilo', carpeta_estilo(op.get('estilo')), '--ajustes', AJUSTES]]
-    if paso == 'exportar':
-        h = int(op.get('altura', 480))
-        if h not in (720, 480, 360):
+    if paso == 'exportar':  # una o varias calidades a la vez (cada una queda como FINAL_<altura>p.mp4)
+        alturas = [int(x) for x in (op.get('alturas') or [op.get('altura', 480)])]
+        if not alturas or any(h not in (1080, 720, 480, 360) for h in alturas):
             raise ValueError('calidad no válida')
-        return [['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', 'FINAL.mp4', '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
-                 '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', f'FINAL_{h}p.mp4']]
+        fuente = 'FINAL.mp4' if existe(d, 'FINAL.mp4') else ultimo_video(d, None)  # sin FINAL, el video más avanzado que haya
+        if not fuente:
+            raise RuntimeError('Todavía no hay video armado para exportar. Pulsa «▶ Hacer todo».')
+        # se escribe con otro nombre y se renombra al final: así nadie descarga un archivo a medio hacer (no se abriría)
+        c = []
+        for h in sorted(set(alturas), reverse=True):
+            c.append([PY, m('codificar', 'codificar.py'), 'ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vf', f'scale=-2:{h}', '-c:v', 'libx264',
+                      '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4',
+                      f'FINAL_{h}p.mp4.parcial'])
+            c.append([PY, '-c', f'import os; os.replace("FINAL_{h}p.mp4.parcial", "FINAL_{h}p.mp4")'])
+        return c
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
         return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--mb', f'{mb:g}']]
@@ -314,8 +416,9 @@ PASOS = [
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
-    {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': ['FINAL.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': [], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
+    {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
@@ -325,6 +428,12 @@ PASOS = [
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+# «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
+# así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
+EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+PREPARA_EXTRA = {'etiquetas_ia': 'etiquetas', 'senales_ia': 'senales', 'trailer_ia': 'trailer'}
+VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
+                 '9_modelos.srt', 'trailer.mp4']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
@@ -370,8 +479,12 @@ def probar_clave(aj):
     req = urllib.request.Request(destino, headers=cab)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
-            r.read(1)
-        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.'}
+            cuerpo = r.read(2_000_000)
+        try:  # los modelos que esa clave puede usar, tal como los lista el proveedor
+            modelos = sorted({re.sub(r'^models/', '', str(x.get('id', ''))) for x in json.loads(cuerpo).get('data', []) if x.get('id')})
+        except (ValueError, AttributeError):
+            modelos = []
+        return {'ok': True, 'mensaje': 'La clave funciona. Conexión correcta con el proveedor.', 'modelos': modelos}
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             return {'ok': False, 'mensaje': 'La clave no es válida o no tiene permisos (el proveedor la rechazó).'}
@@ -386,6 +499,15 @@ def probar_clave(aj):
         return {'ok': False, 'mensaje': 'No se pudo conectar con el proveedor. Revisa el internet o la dirección (URL).'}
     except Exception:
         return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
+
+
+def revision_imagen_pendiente(d):
+    """¿El guion quedó sin revisar contra sus imágenes? (se deja para después de que lo apruebas)"""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    return isinstance(g, dict) and bool(g.get('revision_imagen_pendiente'))
 
 
 USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
@@ -445,8 +567,105 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
+NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
+NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
+
+
+def actualizar_app():
+    """«⬇ Actualizar la app»: baja la versión nueva de GitHub y la copia ENCIMA de esta misma carpeta. Tus proyectos,
+    estilos y claves no se tocan, y lo que se reemplaza queda antes en un respaldo (descargas_app/respaldo_app_*.zip)."""
+    import io, zipfile
+    if os.path.isdir(os.path.join(RAIZ, '.git')):
+        raise RuntimeError('Esta carpeta es un clon de git: actualízala con «git pull».')
+    rama = leer_ajustes().get('rama_app') or RAMA_APP
+    url = f'https://codeload.github.com/gotzschmidtt-pixel/editor-tutoriales/zip/refs/heads/{urllib.parse.quote(rama)}'
+    try:
+        datos = urllib.request.urlopen(url, timeout=120).read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'GitHub no encontró la versión nueva (error {e.code} en la rama «{rama}»).')
+    except urllib.error.URLError as e:
+        raise RuntimeError(f'No pude bajar la versión nueva: revisa tu internet ({e.reason}).')
+    zf = zipfile.ZipFile(io.BytesIO(datos))
+    nuevos = {}
+    for n in zf.namelist():
+        rel = n.split('/', 1)[1] if '/' in n else ''
+        if not rel or n.endswith('/') or '..' in rel.split('/') or rel.startswith('/') or ':' in rel \
+                or rel.split('/')[0] in NO_TOCAR or rel in NO_TOCAR_ARCHIVOS:
+            continue
+        nuevos[rel] = n
+    if 'app/app.py' not in nuevos:
+        raise RuntimeError('El ZIP bajado no parece ser esta app; no cambié nada.')
+    cambian = []
+    for rel, n in nuevos.items():
+        destino = os.path.join(RAIZ, *rel.split('/'))
+        contenido = zf.read(n)
+        if not os.path.exists(destino) or open(destino, 'rb').read() != contenido:
+            cambian.append((rel, destino, contenido))
+    if not cambian:
+        return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+    carpeta_resp = os.path.join(RAIZ, 'descargas_app')
+    os.makedirs(carpeta_resp, exist_ok=True)
+    respaldo = os.path.join(carpeta_resp, f"respaldo_app_{time.strftime('%Y%m%d_%H%M%S')}.zip")
+    with zipfile.ZipFile(respaldo, 'w', zipfile.ZIP_DEFLATED) as r:
+        for rel, destino, _ in cambian:
+            if os.path.exists(destino):
+                r.write(destino, rel)
+    for rel, destino, contenido in cambian:  # app.py al final: al cambiar, la página reinicia la app sola
+        if rel != 'app/app.py':
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            escribir_bytes(destino, contenido)
+    for rel, destino, contenido in cambian:
+        if rel == 'app/app.py':
+            escribir_bytes(destino, contenido)
+    return {'ok': True, 'cambiados': len(cambian), 'respaldo': os.path.relpath(respaldo, RAIZ),
+            'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta. Tus proyectos y claves siguen igual.'}
+
+
+def ultimo_proyecto():
+    """{'nombre', 'cuando'} del proyecto con actividad más reciente (un paso, una subida, un guardado), o {} si no hay."""
+    mejor = {}
+    for x in os.listdir(PROYECTOS) if os.path.isdir(PROYECTOS) else []:
+        d = os.path.join(PROYECTOS, x)
+        if not os.path.isdir(d):
+            continue
+        try:
+            cuando = max([os.path.getmtime(d)] + [os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)])
+        except OSError:
+            continue
+        if cuando > mejor.get('cuando', 0):
+            mejor = {'nombre': x, 'cuando': cuando}
+    return mejor
+
+
+def escribir_bytes(destino, contenido):
+    tmp = destino + '.nuevo'
+    with open(tmp, 'wb') as f:
+        f.write(contenido)
+    os.replace(tmp, destino)
+
+
+def informe_paso(d, proyecto, paso, info, ejec, estado, log):
+    """El diagnóstico de un paso (ver diagnostico/diagnostico.py). Nunca frena la app: si algo falla aquí, se sigue."""
+    try:
+        log.flush()
+        texto = open(registro(d), encoding='utf-8', errors='replace').read().split('\n▶')[-1]
+        aj = leer_ajustes()
+        r = diagnostico.informe(os.path.join(d, 'diagnosticos'), proyecto, paso, info['nombre'], ejec, texto, estado,
+                                proveedor=aj.get('proveedor') or '', modelo=aj.get('modelo') or '')
+        if r:
+            log.write(f"· diagnóstico guardado en diagnosticos/{r['archivo']}.txt ({r['tipo']})\n"); log.flush()
+        return r
+    except Exception as e:
+        try:
+            log.write(f'· no pude escribir el diagnóstico ({type(e).__name__}: {e})\n'); log.flush()
+        except Exception:
+            pass
+        return None
+
+
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 
@@ -509,12 +728,17 @@ def correr(proyecto, pasos, opciones):
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
         return
-    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     if clave_eleven():
         env['ELEVENLABS_API_KEY'] = clave_eleven()
     paso = pasos[0]
     nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
-    saltados, hechos = [], []
+    ejec = time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6]  # para el diagnóstico: qué llamadas son de esta ejecución
+    env.update(DIAG_DIR=os.path.join(d, 'diagnosticos'), DIAG_RUN=ejec)
+    # «Reintentar»: las respuestas que la IA ya dio en el paso que falló se reutilizan (no se vuelven a pedir ni a cobrar)
+    env['REANUDAR_IA'] = '1' if opciones.get('_reanudar') else ''
+    diag = None
+    saltados, hechos, informes = [], [], []
     with CANDADO:
         TRABAJO.update(plan=nombres, i=0, inicio_total=time.time(), detenido=False)
     RESULTADO.pop(proyecto, None)
@@ -527,6 +751,11 @@ def correr(proyecto, pasos, opciones):
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
             for viejo in VIDEOS_GENERADOS:
+                if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
+                    log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
+        if opciones.get('_limpiar_extras'):
+            # los extras se vuelven a poner sobre el video base: uno viejo no debe quedar en el final
+            for viejo in VIDEOS_EXTRAS + ['FINAL.mp4']:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
         for k, paso in enumerate(pasos):
@@ -556,6 +785,10 @@ def correr(proyecto, pasos, opciones):
             asegurar_node(paso, log, env)
             log.write(f'\n▶ {info["nombre"]}  ({time.strftime("%H:%M:%S")})\n'); log.flush()
             blando = False
+            env['DIAG_PASO'] = paso
+            env['CACHE_IA'] = os.path.join(d, 'cache_ia', paso)
+            if not env['REANUDAR_IA']:
+                shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
             for c in comandos(paso, d, opciones):
                 proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
                 with CANDADO:
@@ -563,11 +796,18 @@ def correr(proyecto, pasos, opciones):
                 if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
                     # un extra de la IA que no salió no frena el video: se sigue sin eso
                     log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
+                    informes.append(informe_paso(d, proyecto, paso, info, ejec, 'saltado', log))
+                    shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
                     blando = True
                     break
                 if proc.returncode != 0:
+                    if TRABAJO.get('detenido'):
+                        log.write(f'✗ {info["nombre"]}: lo detuviste.\n'); log.flush()
+                        FALLOS[proyecto] = {'paso': paso, 'msg': 'detenido por ti'}
+                        return
                     log.write(f'✗ {info["nombre"]} falló (código {proc.returncode}). Revisa el mensaje de arriba.\n'); log.flush()
                     FALLOS[proyecto] = {'paso': paso, 'msg': causa(d)}
+                    diag = informe_paso(d, proyecto, paso, info, ejec, 'fallo', log)
                     return
             if blando:
                 saltados.append(info['nombre'])
@@ -577,6 +817,8 @@ def correr(proyecto, pasos, opciones):
                         TRABAJO['plan'] = TRABAJO['plan'] + [next(x['nombre'] for x in PASOS if x['id'] == 'final_sin_trailer')]
                 continue
             log.write(f'✓ {info["nombre"]} listo en {int(time.time() - TRABAJO["inicio"])} s\n'); log.flush()
+            informes.append(informe_paso(d, proyecto, paso, info, ejec, 'ok', log))  # solo si hubo llamadas fallidas o rechazadas
+            shutil.rmtree(env['CACHE_IA'], ignore_errors=True)  # el paso terminó: sus respuestas guardadas ya no hacen falta
             hechos.append(info['nombre'])
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
@@ -586,13 +828,27 @@ def correr(proyecto, pasos, opciones):
             msg = f'Windows no encontró un programa que hace falta ({e}). Corre instalar.bat y reinicia la PC.'
         log.write(f'\nERROR: {msg}\n{traceback.format_exc()}\n✗ falló\n'); log.flush()
         FALLOS[proyecto] = {'paso': paso, 'msg': msg}
+        diag = informe_paso(d, proyecto, paso, next((x for x in PASOS if x['id'] == paso), {'nombre': paso}), ejec, 'fallo', log)
     finally:
-        log.close()
         f = FALLOS.get(proyecto)
-        RESULTADO[proyecto] = {'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
+        informes = [x for x in informes + [diag] if x]
+        resultado = 'interrumpido' if f else 'completado_con_incidencias' if informes or saltados else 'completado'
+        resumen = None
+        try:
+            resumen = diagnostico.resumen_ejecucion(os.path.join(d, 'diagnosticos'), proyecto, ejec, resultado, hechos, saltados,
+                                                    next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), ''), informes,
+                                                    motivo='lo detuviste' if f and f.get('msg') == 'detenido por ti' else '')
+            if resumen:
+                log.write(f"· {resumen['texto']} Resumen en diagnosticos/{resumen['archivo']}.txt\n")
+        except Exception as e:
+            log.write(f'· no pude escribir el resumen de la ejecución ({type(e).__name__}: {e})\n')
+        log.close()
+        RESULTADO[proyecto] = {'resultado': resultado, 'incidencias': informes if not f else [], 'resumen': resumen,'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
                                'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
-                               'pausa': None if f else opciones.get('_pausa')}
+                               'pausa': None if f else opciones.get('_pausa'), 'diagnostico': diag if f else None,
+                               'repetir': {'pasos': pasos[pasos.index(f['paso']):] if f and f['paso'] in pasos else [],
+                                           'opciones': opciones} if f and diag and diag.get('reintentable') else None}
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
 
@@ -605,6 +861,18 @@ def ultima_linea(log):
             m = re.search(r'time=(\d+:\d\d:\d\d)', l)
             return f'procesando el video… va en {m.group(1)}' if m and l.startswith('frame=') else l[:200]
     return ''
+
+
+def avance_paso(completo, paso):
+    """Lo que la barra muestra del paso en curso: su % real (las líneas «[N%]» que escriben los pasos), las últimas
+    líneas del registro y cuánto tardó este mismo paso la última vez que salió bien (para estimar lo que falta)."""
+    nombre = next((x['nombre'] for x in PASOS if x['id'] == paso), paso or '')
+    seccion = completo[completo.rfind('\n▶'):] if '\n▶' in completo else completo[-6000:]
+    pcts = re.findall(r'\[(\d{1,3})%\]', seccion)
+    lineas = [l.strip() for l in re.split(r'[\r\n]+', seccion[-6000:]) if l.strip() and not l.startswith('frame=')][-8:]
+    antes = re.findall(r'✓ ' + re.escape(nombre) + r' listo en (\d+) s', completo) if nombre else []
+    return {'pct_paso': min(100, int(pcts[-1])) if pcts else None, 'ultimas': lineas,
+            'antes_s': int(antes[-1]) if antes else None}
 
 
 def causa(d):
@@ -630,7 +898,8 @@ def estado(proyecto):
         if p.get('oculto'):
             continue
         pasos.append({**p, 'listo': existe(d, p['produce']), 'puede': all(existe(d, n) for n in p['necesita'])})
-    log = open(registro(d), encoding='utf-8', errors='replace').read()[-12000:] if existe(d, 'registro.txt') else ''
+    completo = open(registro(d), encoding='utf-8', errors='replace').read() if existe(d, 'registro.txt') else ''
+    log = completo[-12000:]
     with CANDADO:
         t = dict(proyecto=TRABAJO['proyecto'], paso=TRABAJO['paso'],
                  segundos=int(time.time() - TRABAJO['inicio']) if TRABAJO['inicio'] else 0,
@@ -638,6 +907,7 @@ def estado(proyecto):
                  total_s=int(time.time() - TRABAJO['inicio_total']) if TRABAJO['inicio_total'] else 0)
     if t['proyecto'] == proyecto:
         t['linea'] = ultima_linea(log)
+        t.update(avance_paso(completo, t['paso']))
         # el video que el paso está escribiendo todavía no se puede ver (está a medias): la página no lo abre
         prod = {x['produce'] for x in PASOS if x['id'] == t['paso'] or x['nombre'] == t['paso']}
         if t['paso'] in ('trailer', 'final_sin_trailer') or prod & {'trailer.mp4'}:
@@ -648,6 +918,7 @@ def estado(proyecto):
                 info['en_proceso'] = True
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
+            'musica_fija': (leer_ajustes().get('musica_fija_de') or 'una pista guardada') if os.path.exists(MUSICA_FIJA) else '',
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,
             'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
             'duracion_original': duracion_original(d)}
@@ -680,6 +951,12 @@ class Manejador(BaseHTTPRequestHandler):
         try:
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/pistas':  # el editor por pistas, en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'pistas.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/linea':
+                return self.responder(linea_tiempo(carpeta(q['p'])))
+            if ruta == '/api/edicion':
+                return self.responder(edicion(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
@@ -696,13 +973,19 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/proyectos':
                 return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
+            if ruta == '/api/ultimo_proyecto':  # el último proyecto trabajado: el que tiene el archivo más reciente
+                return self.responder(ultimo_proyecto())
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
                 d = carpeta(q['p'])
                 leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
+                try:  # «3 IAs a la vez»: las versiones que hay para elegir o combinar
+                    versiones = [v for v in json.loads(leer('versiones_guion.json') or '[]') if not v.get('archivo') or existe(d, v['archivo'])]
+                except ValueError:
+                    versiones = []
                 return self.responder({'mejoras': [x for x in leer('mejoras_guion.txt').splitlines() if x.strip()],
-                                       'orden': leer('revision_guion.txt').strip()})
+                                       'orden': leer('revision_guion.txt').strip(), 'versiones': versiones})
             if ruta == '/api/json':
                 f = q['f']
                 if f not in EDITABLES:
@@ -717,8 +1000,10 @@ class Manejador(BaseHTTPRequestHandler):
                     txt = re.sub(r'"material": "[^"]*"', '"material": "material.mp4"', txt)
                     txt = re.sub(r'"pista": "[^"]*"', '"pista": "musica.mp3"', txt)
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
+            if ruta == '/api/musica_fija':  # para escucharla desde la app
+                return self.servir(MUSICA_FIJA)
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ['ia_capturas'] + [g[0] for g in GRUPOS.values()] else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
@@ -740,6 +1025,9 @@ class Manejador(BaseHTTPRequestHandler):
                 for k in ('clave', 'elevenlabs'):
                     if aj.get(k):
                         aj[k] = '••••' + aj[k][-4:]
+                for x in (aj.get('ias_guion') or {}).values():  # «3 IAs a la vez»: sus claves tampoco salen de tu PC
+                    if isinstance(x, dict) and x.get('clave'):
+                        x['clave'] = '••••' + x['clave'][-4:]
                 k = clave_eleven()
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 aj['ruta'] = AJUSTES
@@ -792,6 +1080,14 @@ class Manejador(BaseHTTPRequestHandler):
                 subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
                                  **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
                 return self.responder({'ok': True})
+            if ruta == '/api/actualizar_app':
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error('Hay un paso trabajando. Espera a que termine o detenlo antes de actualizar.')
+                try:
+                    return self.responder(actualizar_app())
+                except (RuntimeError, OSError, ValueError) as e:
+                    return self.error(str(e))
             if ruta == '/api/salir':
                 with CANDADO:
                     if TRABAJO['proyecto']:
@@ -833,11 +1129,25 @@ class Manejador(BaseHTTPRequestHandler):
                     except json.JSONDecodeError as e:
                         return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}. '
                                           'Si pegaste la respuesta de una IA, usa «Revisar respuesta pegada».')
+                if f == 'guion.json' and existe(carpeta(q['p']), f):  # cada versión del guion queda guardada para volver atrás
+                    h = os.path.join(carpeta(q['p']), 'historial_guion')
+                    os.makedirs(h, exist_ok=True)
+                    shutil.copy(os.path.join(carpeta(q['p']), f), os.path.join(h, time.strftime('guion_%Y%m%d_%H%M%S.json')))
+                    for viejo in sorted(os.listdir(h))[:-40]:
+                        os.remove(os.path.join(h, viejo))
                 open(os.path.join(carpeta(q['p']), f), 'w', encoding='utf-8').write(txt)
                 return self.responder({'ok': True})
             if ruta == '/api/ejecutar':
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 pasos = [q['paso']]
+                extras = q['paso'] == 'extras'
+                if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos
+                    if not existe(carpeta(q['p']), '4_musica.mp4'):
+                        return self.error('Primero haz el video con «▶ Hacer todo». Después le agregas los extras.')
+                    elegidos = [x for x in (datos.get('solo') or EXTRAS) if x in EXTRAS]
+                    if not elegidos:
+                        return self.error('Elige al menos un extra.')
+                    q['paso'] = 'todo'
                 if q['paso'] == 'todo':
                     pasos = list(TODO) if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']  # copia: se le agregan pasos
                 aj = leer_ajustes()
@@ -852,7 +1162,7 @@ class Manejador(BaseHTTPRequestHandler):
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
-                if q['paso'] == 'todo' and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
+                if q['paso'] == 'todo' and not extras and not datos.get('sin_ia') and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
                     # guion revisado con un margen viejo y muy corto o muy largo: la IA lo alarga o acorta (los bloques
                     # que no cambian conservan su voz) y te lo muestro antes de seguir
                     pasos = ['guion_ia']
@@ -860,6 +1170,29 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'
                 if q['paso'] == 'guion_ia' and datos.get('respuestas'):
                     datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
+                if q['paso'] == 'ia' and datos.get('tarea') == 'guion' and datos.get('modo') == 'api':
+                    datos['_pausa'] = 'guion'  # «✨ Escribir / rehacer con IA»: se abre la revisión con las preguntas de la IA
+                if q['paso'] == 'guion_ia' and datos.get('ajustar_humor'):
+                    datos['_pausa'] = 'guion'  # «🎚 Ajustar el humor»: te muestro el guion con lo que cambió
+                if q['paso'] == 'guion_ia' and datos.get('combinar'):
+                    datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
+                if q['paso'] == 'guion_ia' and datos.get('otro'):
+                    datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
+                if datos.get('sin_ia'):  # el editor por pistas: tus etiquetas y flechas tal cual, la IA no las rehace
+                    pasos = [x for x in pasos if x not in PREPARA_EXTRA or x == 'trailer_ia' and not existe(carpeta(q['p']), 'trailer.json')]
+                if extras:
+                    pasos = [x for x in pasos if x in elegidos or PREPARA_EXTRA.get(x) in elegidos]
+                    if 'trailer' not in pasos:
+                        pasos.append('final_sin_trailer')
+                    datos['_limpiar_extras'] = True
+                elif q['paso'] == 'todo' and 'musica' in pasos:  # solo el video; los extras van después
+                    luego = set(datos.get('luego_extras') or [])  # el editor por pistas: rehace el video y vuelve a poner sus extras
+                    sigue = [x for x in pasos if x in luego or PREPARA_EXTRA.get(x) in luego]
+                    pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + sigue
+                    if 'trailer' not in sigue:
+                        pasos.append('final_sin_trailer')
+                if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
+                    pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
                     if not existe(carpeta(q['p']), 'original.mp4'):
@@ -885,19 +1218,108 @@ class Manejador(BaseHTTPRequestHandler):
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
                 return self.responder({'ok': True})
+            if ruta == '/api/reescribir_bloque':  # «✨ Reescribir con IA» un bloque: devuelve el texto, no guarda nada
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                if not (leer_ajustes().get('modelo') and leer_ajustes().get('url')):
+                    return self.error('Elige una IA en «⚙ Ajustes IA» para reescribir con IA.')
+                env = dict(os.environ, PYTHONIOENCODING='utf-8', DIAG_DIR=os.path.join(d, 'diagnosticos'), DIAG_PASO='reescribir_bloque',
+                           DIAG_RUN=time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6])
+                r = subprocess.run([PY, m('ia', 'ia.py'), '--proyecto', d, '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES,
+                                    '--bloque', str(datos.get('bloque', '')), '--pedido', str(datos.get('pedido') or '')[:1000]],
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', env=env, timeout=900, **SIN_VENTANA)
+                linea = next((x for x in reversed(r.stdout.splitlines()) if x.startswith('BLOQUE_NUEVO ')), None)
+                if r.returncode != 0 or not linea:
+                    return self.error(' '.join((r.stderr or r.stdout).split())[-500:] or 'la IA no respondió')
+                return self.responder(json.loads(linea[len('BLOQUE_NUEVO '):]))
+            if ruta == '/api/subtitulos':  # el texto de los subtítulos corregido en el editor (los tiempos no cambian)
+                subs = json.loads(self.rfile.read(largo))
+                d = carpeta(q['p'])
+                if not isinstance(subs, list) or not all(isinstance(x, dict) and {'ini', 'fin', 'texto'} <= set(x) for x in subs):
+                    return self.error('subtítulos con formato raro')
+                if existe(d, '3_voz.srt'):
+                    shutil.copy(os.path.join(d, '3_voz.srt'), os.path.join(d, '3_voz.srt.anterior'))
+                escribir_srt(os.path.join(d, '3_voz.srt'), subs)
+                return self.responder({'ok': True})
+            if ruta == '/api/edicion':  # ajustes del editor por pistas para este proyecto (volumen de la música)
+                nuevo = json.loads(self.rfile.read(largo))
+                d = carpeta(q['p'])
+                f = os.path.join(d, 'edicion.json')
+                viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
+                if 'musica_volumen' in nuevo:
+                    viejo['musica_volumen'] = min(max(float(nuevo['musica_volumen']), 0), 1)
+                if nuevo.get('trailer_donde') in ('inicio', 'final'):  # «Material extra»: el tráiler abre o cierra el video
+                    viejo['trailer_donde'] = nuevo['trailer_donde']
+                json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/musica_fija':  # la música de este proyecto pasa a usarse en todos los videos (o se quita)
+                if q.get('quitar'):
+                    if os.path.exists(MUSICA_FIJA):
+                        os.remove(MUSICA_FIJA)
+                    return self.responder({'ok': True})
+                d = carpeta(q['p'])
+                if not existe(d, 'musica.mp3'):
+                    return self.error('Este proyecto todavía no tiene música (musica.mp3).')
+                os.makedirs(os.path.dirname(MUSICA_FIJA), exist_ok=True)
+                shutil.copy(os.path.join(d, 'musica.mp3'), MUSICA_FIJA + '.nueva')
+                os.replace(MUSICA_FIJA + '.nueva', MUSICA_FIJA)
+                aj = leer_ajustes()
+                aj['musica_fija_de'] = f"la música del proyecto «{q['p']}»"
+                json.dump(aj, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/elegir_version':  # «3 IAs a la vez»: esa versión pasa a ser tu guion (el actual queda de respaldo)
+                d = carpeta(q['p'])
+                if not existe(d, 'versiones_guion.json'):
+                    return self.error('este proyecto no tiene versiones del guion de varias IAs')
+                versiones = json.load(open(os.path.join(d, 'versiones_guion.json'), encoding='utf-8'))
+                v = next((x for x in versiones if x.get('id') == q.get('v') and x.get('archivo')), None)
+                if not v or not existe(d, v['archivo']):
+                    return self.error('esa versión del guion ya no está')
+                nuevo = json.load(open(os.path.join(d, v['archivo']), encoding='utf-8'))
+                if existe(d, 'guion.json'):
+                    actual = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+                    if isinstance(actual, dict) and isinstance(nuevo, dict) and actual.get('revision_imagen_pendiente'):
+                        nuevo['revision_imagen_pendiente'] = actual['revision_imagen_pendiente']
+                    os.replace(os.path.join(d, 'guion.json'), os.path.join(d, 'guion.json.anterior'))
+                json.dump(nuevo, open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                json.dump(v.get('preguntas') or [], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in v.get('avisos') or []))
+                for x in versiones:
+                    x['elegida'] = x is v
+                json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/reintentar':  # «Reintentar» del diagnóstico: desde el paso que falló, solo si tiene sentido
+                rep = (RESULTADO.get(q['p']) or {}).get('repetir')
+                if not rep or not rep.get('pasos'):
+                    return self.error('Este fallo no se reintenta solo: hay que corregir antes lo que dice el diagnóstico.')
+                with CANDADO:
+                    if TRABAJO['proyecto']:
+                        return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
+                    TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
+                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}), daemon=True).start()
+                return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
                 viejo = leer_ajustes()
                 for k in ('clave', 'elevenlabs'):  # una clave enmascarada o vacía no reemplaza la guardada
                     if k in nuevo and (not nuevo[k] or nuevo[k].startswith('••••')):
                         del nuevo[k]
+                if isinstance(nuevo.get('ias_guion'), dict):
+                    antes = viejo.get('ias_guion') or {}
+                    for ide, x in nuevo['ias_guion'].items():
+                        if isinstance(x, dict) and (not x.get('clave') or str(x['clave']).startswith('••••')):
+                            x['clave'] = (antes.get(ide) or {}).get('clave', '')
                 viejo.update(nuevo)
                 json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
-                    datos['clave'] = leer_ajustes().get('clave', '')  # si no mandan clave nueva, prueba la guardada
+                    aj = leer_ajustes()
+                    guardada = ((aj.get('ias_guion') or {}).get(datos.get('ia')) or {}).get('clave') if datos.get('ia') else ''
+                    # la clave principal solo sirve para el mismo proveedor (la de OpenAI no abre Gemini)
+                    mismo = not datos.get('ia') or (aj.get('url') or '').rstrip('/') == (datos.get('url') or '').rstrip('/')
+                    datos['clave'] = guardada or (aj.get('clave', '') if mismo else '')  # si no mandan clave nueva, prueba la guardada
                 return self.responder(probar_clave(datos))
             if ruta == '/api/pista_archivo':
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]

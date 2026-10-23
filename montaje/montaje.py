@@ -12,6 +12,8 @@ import argparse, json, os, shutil, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
 
 
@@ -37,7 +39,7 @@ def avance(partes, tmp, destino, voces=()):
     (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
     se intenta en el bloque siguiente."""
     lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
-    with open(lista, 'w') as fh:
+    with open(lista, 'w', encoding='utf-8') as fh:
         fh.writelines(f"file '{p}'\n" for p in partes)
     voces = [(t, f) for t, f in voces if os.path.exists(f)]
     try:
@@ -57,7 +59,7 @@ def avance(partes, tmp, destino, voces=()):
 
 
 def run(args):
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
 
 def main():
@@ -135,10 +137,13 @@ def main():
             voces.append((b['inicio_min'] + 0.3, os.path.join(carpeta_voz, f'{i}.mp3')))  # el mismo desfase que «Poner la voz»
         avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
     lista = os.path.join(tmp, 'lista.txt')
-    with open(lista, 'w') as fh:
+    with open(lista, 'w', encoding='utf-8') as fh:
         for p in partes:
             fh.write(f"file '{p}'\n")
-    run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
+    if len(codificar.USADOS) > 1:  # la tarjeta falló a mitad: tramos de dos codificadores, se igualan en vez de pegarlos tal cual
+        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf, a.salida])
+    else:
+        run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
     shutil.rmtree(tmp)
     try:
         os.remove(os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))

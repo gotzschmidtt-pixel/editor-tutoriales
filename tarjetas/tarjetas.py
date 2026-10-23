@@ -14,7 +14,11 @@ Uso:
 tarjetas.json: {"COMENTARIOS": [{"archivo": "x.png", "momento": "auto" | "1:25" | "inicio" | "mitad" | "final",
                  "dur": 6, "posicion": "abajo-derecha"}], "WHATSAPP": [...]}
 """
-import argparse, json, os, re, subprocess
+import argparse, json, os, re, subprocess, sys
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 
 GRUPOS = ['COMENTARIOS', 'WHATSAPP']
 # lo que dice la voz cuando invita a comentar o a escribir por WhatsApp
@@ -130,7 +134,7 @@ def main():
         filtros.append(f"[{ult}][t{k}]overlay=x='{x}':y='{y}+{desliza}':eof_action=pass:enable='between(t,{t},{t + dur:.2f})'[v{k}]")
         ult = f'v{k}'
         print(f'{g:11s} {t:7.1f}s  {dur:.0f} s  {pos:16s} {c["archivo"]}  ({por})', flush=True)
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ult}]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium',
                     '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', a.salida], check=True)
     print(f'{len(plan)} tarjetas puestas -> {a.salida}')

@@ -35,6 +35,8 @@ RAIZ = os.path.dirname(AQUI)
 REMOTION = os.path.join(RAIZ, 'remotion')
 PUB = os.path.join(REMOTION, 'public', 'trailer')
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
 
 VOZ_ID = '94zOad0g7T7K4oa7zhDq'  # Mauricio
@@ -42,7 +44,7 @@ CIERRE = 2.4
 
 
 def ff(args):
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
 
 def duracion(f):
@@ -62,7 +64,12 @@ def correr_srt(srt, seg, destino):
         h, mi, s, ms = map(int, m.groups())
         t = h * 3600 + mi * 60 + s + ms / 1000 + seg
         return f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}"
-    open(destino, 'w').write(re.sub(r'(\d\d):(\d\d):(\d\d),(\d\d\d)', mover, open(srt).read()))
+    crudo = open(srt, 'rb').read()
+    try:
+        texto = crudo.decode('utf-8')
+    except UnicodeDecodeError:  # subtítulos hechos antes en Windows con su codificación vieja
+        texto = crudo.decode('cp1252', errors='replace')
+    open(destino, 'w', encoding='utf-8').write(re.sub(r'(\d\d):(\d\d):(\d\d),(\d\d\d)', mover, texto))
 
 
 def main():
@@ -73,8 +80,9 @@ def main():
     ap.add_argument('--unir')
     ap.add_argument('--final')
     ap.add_argument('--srt')
+    ap.add_argument('--donde', choices=['inicio', 'final'], default='inicio', help='el tráiler abre el video o lo cierra')
     a = ap.parse_args()
-    plan = json.load(open(a.plan))
+    plan = json.load(open(a.plan, encoding='utf-8'))
     shutil.rmtree(PUB, ignore_errors=True); os.makedirs(PUB)
     nt = analizar(a.video, os.path.join(PUB, 'original.nitidez.npz'))
 
@@ -101,9 +109,9 @@ def main():
     if plan.get('voz'):
         # la voz se guarda junto a la salida y se reutiliza mientras el texto no cambie
         vf = os.path.splitext(a.salida)[0] + '.voz.mp3'
-        previo = open(vf + '.txt').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
+        previo = open(vf + '.txt', encoding='utf-8').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
         if previo != plan['voz']:
-            voz(plan['voz'], vf); open(vf + '.txt', 'w').write(plan['voz'])
+            voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(plan['voz'])
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")
         if mus:
@@ -128,14 +136,15 @@ def main():
 
     if a.unir and a.final:
         n = duracion(a.salida)
-        ff(['-i', a.salida, '-i', a.unir, '-filter_complex',
+        primero, segundo = (a.salida, a.unir) if a.donde == 'inicio' else (a.unir, a.salida)
+        ff(['-i', primero, '-i', segundo, '-filter_complex',
             '[0:v]fps=25,format=yuv420p,setsar=1[v0];[1:v]fps=25,format=yuv420p,setsar=1[v1];'
             '[0:a]aresample=48000[a0];[1:a]aresample=48000[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]',
             '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
             '-c:a', 'aac', '-b:a', '192k', a.final])
-        if a.srt:
-            correr_srt(a.srt, n, os.path.splitext(a.final)[0] + '.srt')
-        print(f'tráiler {n:.1f}s pegado delante: {a.final}')
+        if a.srt:  # al inicio, los subtítulos se corren lo que dura el tráiler; al final quedan igual
+            correr_srt(a.srt, n if a.donde == 'inicio' else 0, os.path.splitext(a.final)[0] + '.srt')
+        print(f"tráiler {n:.1f}s pegado {'delante' if a.donde == 'inicio' else 'al final'}: {a.final}")
 
 
 if __name__ == '__main__':
