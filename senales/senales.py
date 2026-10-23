@@ -92,6 +92,8 @@ def main():
         s.setdefault('frase', s.get('texto') or 'tu captura')
         if s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
             t = round(float(s['t']) + s.get('retraso', 0), 2)
+        elif s.get('en') is not None and s.get('bloque') in inicio:  # puesta a mano en el editor por pistas: desde que empieza su bloque
+            t = round(inicio[s['bloque']] + a.desfase + float(s['en']) + s.get('retraso', 0), 2)
         else:
             al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json'), encoding='utf-8'))
             t = buscar(al, s['frase'])

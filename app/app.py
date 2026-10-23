@@ -180,11 +180,14 @@ def linea_tiempo(d):
         alin[b['id']] = al
         dur = (al['character_end_times_seconds'][-1] if al and al.get('character_end_times_seconds') else b.get('voz_real_s')) or 0
         bloques.append({'id': b['id'], 'texto': b.get('texto', ''), 'ini': round(b['inicio_min'] + DESFASE_VOZ, 2), 'dur': round(dur, 2),
-                        'voz': existe(d, os.path.join('voz', f"{b['id']}.mp3"))})
+                        'voz': existe(d, os.path.join('voz', f"{b['id']}.mp3")), 'desde': b['inicio_min'],
+                        'hasta': b.get('fin_max', b['inicio_min']), 'ancla': b.get('ancla', ''), 'montaje': b.get('montaje') or {}})
 
     def cuando(x, retraso=0):
         if x.get('t') is not None:
             return round(float(x['t']) + retraso, 2)
+        if x.get('en') is not None and x.get('bloque') in inicio:
+            return round(inicio[x['bloque']] + DESFASE_VOZ + float(x['en']) + retraso, 2)
         al = alin.get(x.get('bloque'))
         t = buscar(al, x.get('frase', '')) if al else None
         return None if t is None else round(inicio[x['bloque']] + DESFASE_VOZ + t + retraso, 2)
@@ -209,7 +212,8 @@ def etiquetas_viejas(d):
     except (OSError, ValueError, KeyError, TypeError):
         return False
     # las que pusiste o moviste a mano en el editor por pistas (traen su segundo «t») no cuentan: son tuyas
-    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista if e.get('t') is None)
+    return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista
+                               if e.get('t') is None and e.get('en') is None)
 
 
 def marcas_nuevas(d):
@@ -1112,6 +1116,12 @@ class Manejador(BaseHTTPRequestHandler):
                     except json.JSONDecodeError as e:
                         return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}. '
                                           'Si pegaste la respuesta de una IA, usa «Revisar respuesta pegada».')
+                if f == 'guion.json' and existe(carpeta(q['p']), f):  # cada versión del guion queda guardada para volver atrás
+                    h = os.path.join(carpeta(q['p']), 'historial_guion')
+                    os.makedirs(h, exist_ok=True)
+                    shutil.copy(os.path.join(carpeta(q['p']), f), os.path.join(h, time.strftime('guion_%Y%m%d_%H%M%S.json')))
+                    for viejo in sorted(os.listdir(h))[:-40]:
+                        os.remove(os.path.join(h, viejo))
                 open(os.path.join(carpeta(q['p']), f), 'w', encoding='utf-8').write(txt)
                 return self.responder({'ok': True})
             if ruta == '/api/ejecutar':
@@ -1139,7 +1149,7 @@ class Manejador(BaseHTTPRequestHandler):
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
-                if q['paso'] == 'todo' and not extras and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
+                if q['paso'] == 'todo' and not extras and not datos.get('sin_ia') and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
                     # guion revisado con un margen viejo y muy corto o muy largo: la IA lo alarga o acorta (los bloques
                     # que no cambian conservan su voz) y te lo muestro antes de seguir
                     pasos = ['guion_ia']
@@ -1195,6 +1205,20 @@ class Manejador(BaseHTTPRequestHandler):
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
                 threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
                 return self.responder({'ok': True})
+            if ruta == '/api/reescribir_bloque':  # «✨ Reescribir con IA» un bloque: devuelve el texto, no guarda nada
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                if not (leer_ajustes().get('modelo') and leer_ajustes().get('url')):
+                    return self.error('Elige una IA en «⚙ Ajustes IA» para reescribir con IA.')
+                env = dict(os.environ, PYTHONIOENCODING='utf-8', DIAG_DIR=os.path.join(d, 'diagnosticos'), DIAG_PASO='reescribir_bloque',
+                           DIAG_RUN=time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6])
+                r = subprocess.run([PY, m('ia', 'ia.py'), '--proyecto', d, '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES,
+                                    '--bloque', str(datos.get('bloque', '')), '--pedido', str(datos.get('pedido') or '')[:1000]],
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', env=env, timeout=900, **SIN_VENTANA)
+                linea = next((x for x in reversed(r.stdout.splitlines()) if x.startswith('BLOQUE_NUEVO ')), None)
+                if r.returncode != 0 or not linea:
+                    return self.error(' '.join((r.stderr or r.stdout).split())[-500:] or 'la IA no respondió')
+                return self.responder(json.loads(linea[len('BLOQUE_NUEVO '):]))
             if ruta == '/api/subtitulos':  # el texto de los subtítulos corregido en el editor (los tiempos no cambian)
                 subs = json.loads(self.rfile.read(largo))
                 d = carpeta(q['p'])

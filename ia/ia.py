@@ -2239,6 +2239,33 @@ def guion_varias(d, ajustes, ias, texto, caps, todo_ia):
     return res[elegida['id']]['datos'], avisos
 
 
+def reescribir_bloque(d, ajustes, bid, pedido):
+    """El editor por pistas: la IA reescribe UN bloque con lo que pide el autor, sin tocar los demás ni ver otra vez el video.
+    Devuelve el texto nuevo; no guarda nada (el autor lo revisa y decide)."""
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    bl = g['bloques']
+    k = next((i for i, b in enumerate(bl) if b.get('id') == bid), None)
+    if k is None:
+        raise SystemExit(f'ERROR: el bloque {bid} ya no está en el guion.')
+    b, mo = bl[k], bl[k].get('montaje') or {}
+    vecino = lambda i: f"{bl[i]['id']}: {bl[i].get('texto', '')}" if 0 <= i < len(bl) else '(no hay)'
+    largo = (b.get('fin_max') or 0) - (b.get('inicio_min') or 0)
+    texto = (ESTILO + '\n\nReescribe SOLO el bloque ' + bid + ' de un guion de tutorial. Lo que pide el autor: '
+             + (pedido.strip() or 'mejóralo: más claro y natural, mismo contenido') + '\n\n'
+             f"Lo que se ve en ese tramo: {b.get('ancla') or '(sin descripción)'}"
+             + (f" (video original {mo.get('src_inicio')}–{mo.get('src_fin')} s)" if mo.get('src_inicio') is not None else '') + '\n'
+             f"Ahora dura unos {largo:.0f} s. Si no te piden alargar o acortar, mantén un largo parecido (unas "
+             f"{len(str(b.get('texto', '')).split())} palabras): si se alarga, el video se estira para que quepa.\n"
+             f"Bloque anterior — {vecino(k - 1)}\nBLOQUE A REESCRIBIR — {bid}: {b.get('texto', '')}\nBloque siguiente — {vecino(k + 1)}\n\n"
+             'No inventes datos (webs, precios, versiones, pines) que no estén en el texto o en lo que se ve. Sin chistes en pasos '
+             'delicados (borrar, formatear, conectar). Responde solo JSON: {"texto": "el bloque nuevo"}')
+    datos = extraer_json(llamar(ajustes, texto, []))
+    nuevo = str((datos or {}).get('texto') or '').strip() if isinstance(datos, dict) else ''
+    if not nuevo:
+        raise SystemExit('ERROR: la IA no devolvió el texto del bloque. Prueba otra vez o escríbelo a mano.')
+    return nuevo
+
+
 def combinar_versiones(d, ajustes):
     """«🧩 Combinar»: tu IA principal arma un guion final con lo mejor de cada versión, sin ver otra vez el video."""
     f = os.path.join(d, 'versiones_guion.json')
@@ -2463,6 +2490,7 @@ def main():
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
     ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
+    ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
     ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
@@ -2508,6 +2536,10 @@ def main():
             print('·', x)
         open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos_humor + avisos))
         print('Guardado guion.json con el humor ajustado (el anterior quedó como guion.json.anterior)')
+        return
+    if a.tarea == 'guion' and a.bloque:  # «✨ Reescribir con IA» de un bloque, desde el editor por pistas
+        nuevo = reescribir_bloque(d, json.load(open(a.ajustes, encoding='utf-8')), a.bloque, a.pedido[:1000])
+        print('BLOQUE_NUEVO ' + json.dumps({'texto': nuevo}, ensure_ascii=False), flush=True)
         return
     if a.tarea == 'guion' and a.combinar:  # «🧩 Combinar»: lo mejor de cada versión, sin volver a mirar el video
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))

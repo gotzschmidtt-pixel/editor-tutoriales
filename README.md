@@ -49,7 +49,14 @@ se rehacen sobre ese video sin repetir la voz ni el montaje.
 subtítulos, etiquetas y flechas). Se arrastran etiquetas y flechas en el tiempo, se hace clic en el video para que una flecha
 apunte ahí, se cambia el texto de un bloque de voz o de un subtítulo, el volumen de la música, y se borra o agrega lo que
 quieras. «Armar el video» vuelve a poner tus extras tal cual (la IA no los rehace) y, si cambiaste voz o música, rehace solo
-eso antes. Lo movido a mano queda con su segundo exacto (`"t"`) en etiquetas.json y senales.json.
+eso antes. Lo movido a mano queda anclado a su bloque (`"bloque"` + `"en"`, segundos desde que empieza el bloque) en
+etiquetas.json y senales.json, así sigue a su bloque si el video se alarga o se acorta.
+
+La pista **📝 Guion** muestra cada bloque en su tramo del video, con su miniatura. Al elegir un bloque ves de qué parte de tu
+grabación sale, la velocidad, la pausa y cuánto dura su voz; puedes cambiar el texto (la app estima cuánto se alargará o
+acortará el video), pedir «✨ Reescribir con IA» solo ese bloque, dividirlo, unirlo con el siguiente, borrarlo y deshacer.
+Al «Armar el video» se genera la voz solo de los bloques cambiados y el video se alarga o acorta solo. Cada vez que se
+guarda el guion, la versión anterior queda en `historial_guion/` (las últimas 40).
 
 Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutoriales** en tu navegador, en http://localhost:8765.
 Creas un proyecto, subes el video grabado (y si quieres el material extra, la imagen y la música), pegas el guion y aprietas
