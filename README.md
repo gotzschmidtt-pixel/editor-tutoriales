@@ -39,6 +39,10 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
 7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
 
+En la app, «▶ Hacer todo» llega hasta el paso 4 y deja un FINAL.mp4 para ver si el guion gusta. Los extras (etiquetas,
+flechas, comentarios, testimonios, nuevos modelos y tráiler) se ponen después con «✨ Agregar extras», eligiendo cuáles;
+se rehacen sobre ese video sin repetir la voz ni el montaje.
+
 ## La app con botones
 
 Doble clic en `iniciar.bat` (o `python app/app.py`): se abre **Estudio de tutoriales** en tu navegador, en http://localhost:8765.

@@ -152,7 +152,8 @@
       <h2>2 · Pasos</h2>
       <div id="pasos"></div>
       <div class="fila">
-        <button class="principal grande" id="todo">▶ Hacer todo</button>
+        <button class="principal grande" id="todo" title="Arma el video: voz, cortes, subtítulos y música. Los extras se agregan después, cuando el guion te guste.">▶ Hacer todo</button>
+        <button onclick="abrirExtras()" title="Etiquetas, flechas, tarjetas, testimonios, nuevos modelos y tráiler, sobre el video ya hecho">✨ Agregar extras</button>
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
@@ -428,6 +429,15 @@
     <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
     <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas. Solo cambian esos bloques.">🎚 Ajustar humor</button>
     <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
+</dialog>
+
+<dialog id="dlgExtras">
+  <h3>✨ Agregar extras al video</h3>
+  <p class="aviso">Se ponen sobre el video que ya hiciste con «▶ Hacer todo». Si los vuelves a agregar, se rehacen desde ese video
+  (no se repite la voz ni el montaje).</p>
+  <div id="listaExtras"></div>
+  <div class="fila"><button class="principal" onclick="agregarExtras()">✨ Agregar los marcados</button><button onclick="dlgExtras.close()">Cancelar</button>
+    <span class="msg" id="msgExtras"></span></div>
 </dialog>
 
 <dialog id="dlgDiag">
@@ -1349,7 +1359,7 @@ function pintarBarra(t, r, arch) {
     INCID = r;
     b.innerHTML = `<div class="arriba"><span class="que">${inc ? '✓ Terminado con incidencias' : '✓ Todo salió bien'}</span>
       <span class="cuanto">${r.hechos.length} ${r.hechos.length === 1 ? 'paso hecho' : 'pasos hechos'} en ${reloj(r.segundos)}${r.saltados.length ? ` · salté ${r.saltados.length} opcional${r.saltados.length > 1 ? 'es' : ''} (${esc(r.saltados.join(', '))})` : ''}</span>
-      <span class="chips">${final}${botonInc}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+      <span class="chips">${final}${arch['4_musica.mp4'] ? '<button onclick="abrirExtras()">✨ Agregar extras</button>' : ''}${botonInc}${cerrar}</span></div><div class="riel"><div class="lleno" style="width:100%"></div></div>`;
   } else {
     mostrarDiag(r);
     b.className = 'mal';
@@ -1500,6 +1510,31 @@ async function otroGuion() {  // otro guion sin repetir el análisis del video (
   try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({otro: true, pedido: pedido.trim().slice(0, 1000)})}); }
   catch (e) { alert(e.message); }
   refrescar();
+}
+// [id del paso, nombre, qué falta si no se puede, lo prepara la IA sola]
+const EXTRAS = [['etiquetas', '🏷 Etiquetas animadas', '', true], ['senales', '🎯 Flechas y círculos', '', true],
+  ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'],
+  ['testimonios', '⭐ Testimonios', 'agrega testimonios en su panel'], ['nuevos_modelos', '📱 Nuevos modelos', 'graba el video de nuevos modelos en su panel'],
+  ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', '', true]];
+async function abrirExtras() {
+  const e = await api(`/api/estado?p=${q(P)}`);
+  if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo». Cuando el guion te guste, le agregas los extras.');
+  const aj = (await api('/api/ajustes')).ajustes, conIA = !!(aj.modelo && aj.url);
+  const listo = id => (e.pasos.find(p => p.id === id) || {}).puede;
+  $('#listaExtras').innerHTML = EXTRAS.map(([id, nombre, falta, ia]) => {
+    const puede = listo(id) || (ia && conIA);
+    return `<label class="aviso" style="display:block; margin:6px 0"><input type="checkbox" data-extra="${id}" ${puede ? 'checked' : 'disabled'}> ${nombre}
+      ${puede ? (ia && !listo(id) ? '<span class="aviso">(lo prepara la IA)</span>' : '') : `<span class="aviso">— para usarlo, ${falta || 'configura una IA en ⚙ Ajustes IA'}</span>`}</label>`;
+  }).join('');
+  $('#msgExtras').textContent = ''; dlgExtras.showModal();
+}
+async function agregarExtras() {
+  const solo = [...document.querySelectorAll('#listaExtras input[data-extra]:checked')].map(i => i.dataset.extra);
+  if (!solo.length) { $('#msgExtras').textContent = 'Marca al menos uno'; $('#msgExtras').className = 'msg err'; return; }
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  catch (x) { $('#msgExtras').textContent = x.message; $('#msgExtras').className = 'msg err'; return; }
+  dlgExtras.close(); refrescar();
 }
 async function seguirTodo() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }

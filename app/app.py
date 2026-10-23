@@ -332,6 +332,12 @@ PASOS = [
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ]
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+# «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
+# así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
+EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+PREPARA_EXTRA = {'etiquetas_ia': 'etiquetas', 'senales_ia': 'senales', 'trailer_ia': 'trailer'}
+VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
+                 '9_modelos.srt', 'trailer.mp4']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
@@ -649,6 +655,11 @@ def correr(proyecto, pasos, opciones):
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
             for viejo in VIDEOS_GENERADOS:
+                if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
+                    log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
+        if opciones.get('_limpiar_extras'):
+            # los extras se vuelven a poner sobre el video base: uno viejo no debe quedar en el final
+            for viejo in VIDEOS_EXTRAS + ['FINAL.mp4']:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
         for k, paso in enumerate(pasos):
@@ -1018,6 +1029,14 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/ejecutar':
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 pasos = [q['paso']]
+                extras = q['paso'] == 'extras'
+                if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos
+                    if not existe(carpeta(q['p']), '4_musica.mp4'):
+                        return self.error('Primero haz el video con «▶ Hacer todo». Después le agregas los extras.')
+                    elegidos = [x for x in (datos.get('solo') or EXTRAS) if x in EXTRAS]
+                    if not elegidos:
+                        return self.error('Elige al menos un extra.')
+                    q['paso'] = 'todo'
                 if q['paso'] == 'todo':
                     pasos = list(TODO) if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']  # copia: se le agregan pasos
                 aj = leer_ajustes()
@@ -1032,7 +1051,7 @@ class Manejador(BaseHTTPRequestHandler):
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
-                if q['paso'] == 'todo' and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
+                if q['paso'] == 'todo' and not extras and guion_fuera_de_largo(carpeta(q['p'])) and aj.get('modelo') and aj.get('url'):
                     # guion revisado con un margen viejo y muy corto o muy largo: la IA lo alarga o acorta (los bloques
                     # que no cambian conservan su voz) y te lo muestro antes de seguir
                     pasos = ['guion_ia']
@@ -1048,7 +1067,14 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
-                if q['paso'] == 'todo' and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
+                if extras:
+                    pasos = [x for x in pasos if x in elegidos or PREPARA_EXTRA.get(x) in elegidos]
+                    if 'trailer' not in pasos:
+                        pasos.append('final_sin_trailer')
+                    datos['_limpiar_extras'] = True
+                elif q['paso'] == 'todo' and 'musica' in pasos:  # solo el video; los extras van después
+                    pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + ['final_sin_trailer']
+                if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
                     pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)
@@ -1104,7 +1130,7 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
-                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True}), daemon=True).start()
+                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
