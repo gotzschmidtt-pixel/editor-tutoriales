@@ -88,6 +88,15 @@ def existe(d, f):
 LARGO_VERSION = 2  # sube cuando cambia el margen de duración: los guiones revisados con el margen viejo se vuelven a medir
 
 
+def edicion(d):
+    """edicion.json del proyecto: volumen de la música, dónde va el tráiler…"""
+    try:
+        e = json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8'))
+        return e if isinstance(e, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def guion_fuera_de_largo(d):
     """Un guion hecho antes del control de duración que deja el video muy lejos del largo de la grabación
     (o de «que dure unos N minutos» en la idea)."""
@@ -342,7 +351,7 @@ def comandos(paso, d, op):
         unir = ultimo_video(d, None)  # testimonios y nuevos modelos corren los subtítulos: se usan los suyos
         srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
-                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt]]
+                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
     if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'etiquetas_ia':
@@ -946,6 +955,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'pistas.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/linea':
                 return self.responder(linea_tiempo(carpeta(q['p'])))
+            if ruta == '/api/edicion':
+                return self.responder(edicion(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
@@ -1237,6 +1248,8 @@ class Manejador(BaseHTTPRequestHandler):
                 viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
                 if 'musica_volumen' in nuevo:
                     viejo['musica_volumen'] = min(max(float(nuevo['musica_volumen']), 0), 1)
+                if nuevo.get('trailer_donde') in ('inicio', 'final'):  # «Material extra»: el tráiler abre o cierra el video
+                    viejo['trailer_donde'] = nuevo['trailer_donde']
                 json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/musica_fija':  # la música de este proyecto pasa a usarse en todos los videos (o se quita)

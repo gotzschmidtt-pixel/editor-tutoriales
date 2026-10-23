@@ -390,8 +390,12 @@ def mis_paginas():
     return [x for x in r if isinstance(x, dict) and (x.get('url') or '').strip()]
 
 
+DONDE_PAGINA = {'inicio': 'nómbrala al inicio del video', 'mitad': 'nómbrala en la mitad del video', 'final': 'nómbrala en la parte final, antes de la despedida'}
+
+
 def texto_paginas(pag):
-    return '\n'.join(f"- {x.get('nombre') or x['url']}: {x['url']}" + (f" (para: {x['para']})" if x.get('para') else '') for x in pag)
+    return '\n'.join(f"- {x.get('nombre') or x['url']}: {x['url']}" + (f" (para: {x['para']})" if x.get('para') else '')
+                     + (f" [{DONDE_PAGINA[x['donde']]}]" if x.get('donde') in DONDE_PAGINA else '') for x in pag)
 
 
 def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):

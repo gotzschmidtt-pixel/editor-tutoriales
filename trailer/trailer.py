@@ -80,6 +80,7 @@ def main():
     ap.add_argument('--unir')
     ap.add_argument('--final')
     ap.add_argument('--srt')
+    ap.add_argument('--donde', choices=['inicio', 'final'], default='inicio', help='el tráiler abre el video o lo cierra')
     a = ap.parse_args()
     plan = json.load(open(a.plan, encoding='utf-8'))
     shutil.rmtree(PUB, ignore_errors=True); os.makedirs(PUB)
@@ -135,14 +136,15 @@ def main():
 
     if a.unir and a.final:
         n = duracion(a.salida)
-        ff(['-i', a.salida, '-i', a.unir, '-filter_complex',
+        primero, segundo = (a.salida, a.unir) if a.donde == 'inicio' else (a.unir, a.salida)
+        ff(['-i', primero, '-i', segundo, '-filter_complex',
             '[0:v]fps=25,format=yuv420p,setsar=1[v0];[1:v]fps=25,format=yuv420p,setsar=1[v1];'
             '[0:a]aresample=48000[a0];[1:a]aresample=48000[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]',
             '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
             '-c:a', 'aac', '-b:a', '192k', a.final])
-        if a.srt:
-            correr_srt(a.srt, n, os.path.splitext(a.final)[0] + '.srt')
-        print(f'tráiler {n:.1f}s pegado delante: {a.final}')
+        if a.srt:  # al inicio, los subtítulos se corren lo que dura el tráiler; al final quedan igual
+            correr_srt(a.srt, n if a.donde == 'inicio' else 0, os.path.splitext(a.final)[0] + '.srt')
+        print(f"tráiler {n:.1f}s pegado {'delante' if a.donde == 'inicio' else 'al final'}: {a.final}")
 
 
 if __name__ == '__main__':

@@ -85,7 +85,18 @@
   #fases button .cuenta, #grupos button .cuenta { font-size: 11px; color: var(--suave); margin-left: 4px; }
   #soltarPista, #soltarTarjeta, #soltarTestimonio, #soltarModelo, #soltarEstilo { display: block; margin-top: 4px; }
   #btnGrabar.grabando, #btnGrabarMarca.grabando { border-color: var(--rojo); color: var(--rojo); }
-  section.panel { scroll-margin-top: 80px; }
+  section.panel { scroll-margin-top: 130px; }
+  .pestanas { display: flex; gap: 6px; padding: 12px 22px 0; max-width: 1500px; margin: 0 auto; border-bottom: 1px solid var(--borde); }
+  .pestanas button { font-size: 15px; padding: 9px 20px; border-radius: 12px 12px 0 0; border-bottom: 0; }
+  .pestanas button.activo { border-color: var(--rosa); background: #ff2bd626; }
+  body.tab-extra main > div:first-child > section.panel:not(.extra) { display: none; }
+  body:not(.tab-extra) section.panel.extra { display: none; }
+  .mapa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  @media (max-width: 700px) { .mapa { grid-template-columns: 1fr 1fr; } }
+  .mapa > div { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px; min-height: 5em; font-size: 13px; }
+  .mapa h4 { margin: 0 0 6px; font-size: 13px; color: var(--suave); }
+  .mapa .item { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 4px 8px; font-size: 12px; font-weight: 500; }
+  select.donde { min-width: 0; }
   #bloquesGuion { max-height: 56vh; overflow: auto; display: grid; gap: 10px; margin: 10px 0; }
   .bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
   .bloque .cab { font-size: 13px; color: var(--suave, #9aa3c0); margin-bottom: 4px; }
@@ -120,13 +131,8 @@
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
-  <button onclick="irA('#panelTrailer')">🎞️ Tráiler</button>
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
-  <button onclick="irA('#panelTarjetas')">💬 Comentarios y WhatsApp</button>
-  <button onclick="irA('#panelTestimonios')">🎥 Testimonios</button>
-  <button onclick="irA('#panelModelos')">📱 Nuevos modelos</button>
   <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
-  <button onclick="irA('#panelPaginas')">🌐 Mis páginas</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
@@ -139,8 +145,23 @@
   <button class="principal grande" onclick="nuevo()">+ Nuevo proyecto</button>
 </div>
 
+<nav class="pestanas" id="pestanas">
+  <button data-p="video" class="activo" onclick="pestana('video')">🎬 Video</button>
+  <button data-p="extra" onclick="pestana('extra')" title="Tráiler, testimonios, nuevos modelos, páginas, comentarios y WhatsApp">🎁 Material extra</button>
+</nav>
+
 <main id="principal" hidden>
   <div>
+    <section class="panel extra" id="panelExtra">
+      <h2>🎁 Material extra</h2>
+      <p class="aviso">Primero arma el video con «▶ Hacer todo» (pestaña 🎬 Video). Cuando el guion te guste, aquí preparas cada
+      módulo y eliges dónde va: al inicio, en el medio, al final o donde la voz lo nombra. La app lo mete en el video ya hecho,
+      sin rehacer el guion, la voz ni el montaje. Así queda:</p>
+      <div class="mapa" id="mapa"></div>
+      <div class="fila"><button class="principal grande" onclick="insertarExtras()">✨ Insertar el material extra en el video</button>
+        <span class="msg" id="msgMapa"></span></div>
+    </section>
+
     <section class="panel">
       <h2>1 · Archivos</h2>
       <div class="subidas" id="subidas"></div>
@@ -168,8 +189,9 @@
       </div>
     </section>
 
-    <section class="panel" id="panelTrailer">
+    <section class="panel extra" id="panelTrailer">
       <h2>🎞️ Tráiler · pistas para la IA</h2>
+      <div class="fila" style="margin-top:0; align-items:center"><b>¿Dónde va el tráiler?</b> <span id="trailerDonde"></span></div>
       <div class="tabs" id="fases"></div>
       <p class="aviso" id="ayudaFase"></p>
       <div id="listaPistas"></div>
@@ -218,7 +240,7 @@
       «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
-    <section class="panel" id="panelTarjetas">
+    <section class="panel extra" id="panelTarjetas">
       <h2>💬 Comentarios y WhatsApp</h2>
       <div class="tabs" id="grupos"></div>
       <p class="aviso" id="ayudaGrupo"></p>
@@ -226,14 +248,14 @@
       <label class="subida" id="soltarTarjeta"><div class="t">➕ Imagen</div>
         <div class="e">Arrastra aquí tus imágenes (PNG con fondo transparente se ve mejor), o haz clic</div><input type="file" multiple accept="image/*"></label>
       <div class="fila">
-        <button class="principal" id="btnTarjetas" onclick="ejecutar('tarjetas')">▶ Poner tarjetas en el video</button>
+        <button class="principal" id="btnTarjetas" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
-      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. También puedes escribir un segundo
-      (1:25) o «inicio», «mitad», «final». Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+      si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. En «¿Dónde?» eliges
+      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
     </section>
 
-    <section class="panel" id="panelTestimonios">
+    <section class="panel extra" id="panelTestimonios">
       <h2>🎥 Testimonios de clientes</h2>
       <p class="aviso">Sube videos de clientes reales contando cómo les fue. Cada uno entra como un corte: el tutorial se pausa,
       se ve el testimonio y sigue donde iba. Nunca corta tu voz a mitad de frase. Por defecto suena el audio del propio clip;
@@ -242,15 +264,15 @@
       <label class="subida" id="soltarTestimonio"><div class="t">➕ Video de testimonio</div>
         <div class="e">Arrastra aquí tus videos (mp4, mov, webm…), o haz clic</div><input type="file" multiple accept="video/*"></label>
       <div class="fila">
-        <button class="principal" id="btnTestimonios" onclick="ejecutar('testimonios')">▶ Poner testimonios en el video</button>
+        <button class="principal" id="btnTestimonios" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
-      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. También puedes escribir un segundo (4:30)
-      o «inicio», «mitad», «final». «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
+      testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. En «¿Dónde?» eliges
+      también inicio, medio, final o un segundo exacto. «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
       testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
     </section>
 
-    <section class="panel" id="panelModelos">
+    <section class="panel extra" id="panelModelos">
       <h2>📱 Nuevos modelos</h2>
       <p class="aviso">Sube un video corto con los modelos más recientes: las cajas, los celulares o la lista de equipos. La voz
       dice que este método también sirve para ellos mientras se ve tu video, con su subtítulo.</p>
@@ -258,12 +280,12 @@
       <label class="subida" id="soltarModelo"><div class="t">➕ Video de nuevos modelos</div>
         <div class="e">Arrastra aquí un video corto (mp4, mov…), o haz clic</div><input type="file" accept="video/*"></label>
       <div class="fila">
-        <button class="principal" id="btnModelos" onclick="ejecutar('nuevos_modelos')">▶ Poner nuevos modelos en el video</button>
+        <button class="principal" id="btnModelos" onclick="insertarExtras()">✨ Insertar en el video</button>
       </div>
       <p class="aviso">«Modelos»: si los escribes (por ejemplo «Honor 600, Honor 8 Lite»), se dicen esos. Si lo dejas vacío, la IA
       los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
-      introducción. También «inicio», «mitad», «final» o un segundo (1:10). Si el video es más largo que la frase se acelera;
+      introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
       si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
@@ -287,7 +309,7 @@
       duración y salta los mismos tramos. Desmarca un tramo para dejarlo como estaba y pulsa «Rehacer».</p>
     </section>
 
-    <section class="panel" id="panelPaginas">
+    <section class="panel extra" id="panelPaginas">
       <h2>🌐 Mis páginas</h2>
       <p class="aviso">Tus webs, tu canal de WhatsApp, tus redes. Sirven para todos tus videos: la voz las nombra donde ayudan
       (comprar la key, pedir el servicio, ver testimonios, el cierre) y cuando las nombra aparece su etiqueta con la dirección.</p>
@@ -298,6 +320,7 @@
       </div>
       <div class="fila">
         <input type="text" id="pgPara" placeholder="Para qué sirve (ej.: comprar keys, canal de WhatsApp con testimonios)" style="flex:1;min-width:12em">
+        <select id="pgDonde" title="En qué parte del video la nombra la voz"><option value="auto">🤖 Donde ayude (la IA elige)</option><option value="inicio">⏮ Al inicio</option><option value="mitad">⏸ En el medio</option><option value="final">⏭ Al final</option></select>
         <button onclick="agregarPagina()">+ Agregar</button>
       </div>
       <p class="aviso">Se usan cuando la IA escribe el guion y elige las etiquetas. Si ya tienes guion, vuelve a escribirlo con IA
@@ -433,6 +456,12 @@
     <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
 </dialog>
 
+<dialog id="dlgDonde">
+  <h3 id="dondeTitulo">¿Dónde lo ponemos?</h3>
+  <p class="aviso">Lo puedes cambiar después en «¿Dónde?».</p>
+  <div class="fila" id="dondeOpciones"></div>
+</dialog>
+
 <dialog id="dlgExtras">
   <h3>✨ Agregar extras al video</h3>
   <p class="aviso">Se ponen sobre el video que ya hiciste con «▶ Hacer todo». Si los vuelves a agregar, se rehacen desde ese video
@@ -522,7 +551,7 @@ async function cargarProyectos(sel) {
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1061,18 +1090,20 @@ function pintarTarjetas() {
   $('#listaTarjetas').innerHTML = TARJ[grupo].map((c, i) => `<div class="pista">
       <div class="vista"><img src="/archivo?p=${q(P)}&sub=tarjetas&f=${q(c.archivo)}"></div>
       <div class="datos" style="grid-template-columns: 1fr 4.5em 1fr">
-        <input type="text" placeholder="Momento: auto" title="auto, 1:25, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTarjeta(${i}, 'momento', this.value)">
+        ${selDonde('tarj', i, c.momento)}
         <input type="text" placeholder="6 s" title="Segundos en pantalla" value="${esc(c.dur)}" onchange="cambiarTarjeta(${i}, 'dur', this.value)">
         <select onchange="cambiarTarjeta(${i}, 'posicion', this.value)">${Object.entries(POS).map(([k, v]) => `<option value="${k}" ${(c.posicion || 'abajo-derecha') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <button title="Quitar" onclick="TARJ[grupo].splice(${i}, 1); guardarTarjetas()">✕</button></div>`).join('') || '<p class="aviso">Sin tarjetas en este grupo.</p>';
+  pintarMapa();
 }
 function cambiarTarjeta(i, k, v) { TARJ[grupo][i][k] = v.trim(); guardarTarjetas(); }
 async function agregarTarjetas(files) {
+  const donde = await preguntarDonde(files.length > 1 ? 'estas tarjetas' : 'esta tarjeta');
   try {
     for (const f of files) {
       if (!f.type.startsWith('image/')) { alert(`${f.name}: solo imágenes`); continue; }
       const r = await api(`/api/pista_archivo?g=tarjetas&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-      TARJ[grupo].push({archivo: r.archivo, momento: 'auto', dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
+      TARJ[grupo].push({archivo: r.archivo, momento: donde, dur: '6', posicion: grupo === 'WHATSAPP' ? 'abajo-izquierda' : 'abajo-derecha'});
     }
   } catch (e) { alert(e.message); }
   guardarTarjetas();
@@ -1095,19 +1126,21 @@ function pintarTestimonios() {
   $('#listaTestimonios').innerHTML = TESTI.TESTIMONIOS.map((c, i) => `<div class="pista">
       <div class="vista"><video src="/archivo?p=${q(P)}&sub=testimonios&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
       <div class="datos" style="grid-template-columns: 1fr 5em 5em">
-        <input type="text" placeholder="Momento: auto" title="auto, 4:30, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarTestimonio(${i}, 'momento', this.value)">
+        ${selDonde('testi', i, c.momento)}
         <input type="text" placeholder="Desde" title="Desde qué segundo del testimonio (vacío = el comienzo), por ejemplo 0:05" value="${esc(c.desde)}" onchange="cambiarTestimonio(${i}, 'desde', this.value)">
         <input type="text" placeholder="Hasta" title="Hasta qué segundo del testimonio (vacío = el final), por ejemplo 0:40" value="${esc(c.hasta)}" onchange="cambiarTestimonio(${i}, 'hasta', this.value)">
         <textarea rows="2" style="grid-column:1/-1; margin-top:6px; resize:vertical" placeholder="Narración con tu voz (opcional): lo que dice el narrador sobre este testimonio. Si lo llenas, habla tu voz principal y se silencia el audio del cliente." title="Déjalo vacío para que suene el audio propio del testimonio. Si escribes algo, lo dice tu voz principal (ElevenLabs) encima del clip en silencio." onchange="cambiarTestimonio(${i}, 'texto', this.value)">${esc(c.texto || '')}</textarea></div>
       <button title="Quitar" onclick="TESTI.TESTIMONIOS.splice(${i}, 1); guardarTestimonios()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste testimonios.</p>';
+  pintarMapa();
 }
 function cambiarTestimonio(i, k, v) { TESTI.TESTIMONIOS[i][k] = v.trim(); guardarTestimonios(); }
 async function agregarTestimonios(files) {
+  const donde = await preguntarDonde(files.length > 1 ? 'estos testimonios' : 'este testimonio');
   try {
     for (const f of files) {
       if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) { alert(`${f.name}: solo videos`); continue; }
       const r = await api(`/api/pista_archivo?g=testimonios&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: 'auto', desde: '', hasta: '', texto: ''});
+      TESTI.TESTIMONIOS.push({archivo: r.archivo, momento: donde, desde: '', hasta: '', texto: ''});
     }
   } catch (e) { alert(e.message); }
   guardarTestimonios();
@@ -1129,20 +1162,22 @@ async function guardarModelos() {
 function pintarModelos() {
   $('#listaModelos').innerHTML = MODS.MODELOS.map((c, i) => `<div class="pista">
       <div class="vista"><video src="/archivo?p=${q(P)}&sub=nuevos_modelos&f=${q(c.archivo)}#t=0.5" preload="metadata" title="Clic para verlo o pausarlo" onclick="this.paused ? this.play() : this.pause()"></video></div>
-      <div class="datos" style="grid-template-columns: 7em 1fr">
-        <input type="text" placeholder="Momento: auto" title="auto, 1:10, inicio, mitad o final" value="${esc(c.momento)}" onchange="cambiarModelo(${i}, 'momento', this.value)">
+      <div class="datos" style="grid-template-columns: 11em 1fr">
+        ${selDonde('modelo', i, c.momento)}
         <input type="text" placeholder="Modelos (vacío = la IA los lee del video)" title="Separados por coma, por ejemplo: Honor 600, Honor 8 Lite" value="${esc(c.modelos)}" onchange="cambiarModelo(${i}, 'modelos', this.value)">
         <input type="text" style="grid-column: 1 / -1" placeholder="Frase de la voz (vacío = la IA la escribe con tu estilo)" value="${esc(c.frase)}" onchange="cambiarModelo(${i}, 'frase', this.value)"></div>
       <button title="Quitar" onclick="MODS.MODELOS.splice(${i}, 1); guardarModelos()">✕</button></div>`).join('') || '<p class="aviso">Todavía no subiste el video de nuevos modelos.</p>';
+  pintarMapa();
   $('#soltarModelo').style.display = MODS.MODELOS.length ? 'none' : '';  // un video por tutorial
 }
 function cambiarModelo(i, k, v) { MODS.MODELOS[i][k] = v.trim(); guardarModelos(); }
 async function agregarModelo(files) {
   const f = files[0];
   if (!f.type.startsWith('video/') && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name)) return alert(`${f.name}: solo videos`);
+  const donde = await preguntarDonde('el video de nuevos modelos');
   try {
     const r = await api(`/api/pista_archivo?g=modelos&p=${q(P)}&nombre=${q(f.name)}`, {method: 'POST', body: f});
-    MODS.MODELOS = [{archivo: r.archivo, momento: 'auto', modelos: '', frase: ''}];
+    MODS.MODELOS = [{archivo: r.archivo, momento: donde, modelos: '', frase: ''}];
   } catch (e) { alert(e.message); }
   guardarModelos();
 }
@@ -1206,13 +1241,15 @@ function pintarPaginas() {
   $('#listaPaginas').innerHTML = PAGINAS.map((x, i) => `<div class="pista"><div class="vista">🌐</div>
     <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"><b>${esc(x.nombre || x.url)}</b> · ${esc(x.url)}
       <div class="aviso">${esc(x.para || '')}</div></div>
+    ${selDonde('pagina', i, x.donde, DONDE_PAGINA)}
     <button title="Quitar" onclick="quitarPagina(${i})">✕</button></div>`).join('') || '<p class="aviso">Todavía no agregaste páginas.</p>';
+  pintarMapa();
 }
 async function guardarPaginas() { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({paginas: PAGINAS})}); pintarPaginas(); }
 async function agregarPagina() {
   const url = $('#pgUrl').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
   if (!url) return alert('Pon el link de la página.');
-  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim()});
+  PAGINAS.push({nombre: $('#pgNombre').value.trim(), url, para: $('#pgPara').value.trim(), donde: $('#pgDonde').value});
   $('#pgNombre').value = $('#pgUrl').value = $('#pgPara').value = '';
   await guardarPaginas();
 }
@@ -1262,7 +1299,11 @@ async function verPerfil() {
 }
 
 let PROV = {};
-function irA(s) { $(s).scrollIntoView({behavior: 'smooth', block: 'start'}); }
+function irA(s) {
+  const extra = $(s).classList.contains('extra');
+  if (extra !== document.body.classList.contains('tab-extra')) pestana(extra ? 'extra' : 'video');
+  $(s).scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 const VISION = /(vl|vision|gpt-4o|gpt-4\.1|gpt-5|gemini|gemma3|llava|claude|pixtral|llama-?4)/i;
 async function ajustesIA() {
   const r = await api('/api/ajustes'); PROV = r.proveedores; const a = r.ajustes;
@@ -1555,6 +1596,89 @@ const EXTRAS = [['etiquetas', '🏷 Etiquetas animadas', '', true], ['senales', 
   ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'],
   ['testimonios', '⭐ Testimonios', 'agrega testimonios en su panel'], ['nuevos_modelos', '📱 Nuevos modelos', 'graba el video de nuevos modelos en su panel'],
   ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', '', true]];
+// ---------- pestaña «Material extra»: cada módulo y dónde va ----------
+const DONDE = [['auto', '🤖 Donde la voz lo nombra'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final'], ['segundo', '🕒 En un segundo exacto…']];
+const DONDE_PAGINA = [['auto', '🤖 Donde ayude (la IA elige)'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final']];
+const DONDE_TRAILER = [['inicio', '⏮ Al inicio (abre el video)'], ['final', '⏭ Al final (cierra el video)']];
+let TRAILER_DONDE = 'inicio';
+function pestana(cual) {
+  document.body.classList.toggle('tab-extra', cual === 'extra');
+  document.querySelectorAll('#pestanas button').forEach(b => b.classList.toggle('activo', b.dataset.p === cual));
+  try { localStorage.setItem('pestana', cual); } catch (e) {}
+  if (cual === 'extra') pintarMapa();
+}
+try { if (localStorage.getItem('pestana') === 'extra') pestana('extra'); } catch (e) {}
+function selDonde(mod, i, v, opciones = DONDE) {
+  v = String(v || opciones[0][0]).trim().toLowerCase();
+  const exacto = !opciones.some(([k]) => k === v);  // un segundo escrito (1:25)
+  return `<select class="donde" data-mod="${mod}" data-i="${i}" title="¿Dónde lo ponemos en el video?">${opciones.map(([k, t]) =>
+    `<option value="${k}" ${k === v || (exacto && k === 'segundo') ? 'selected' : ''}>${k === 'segundo' && exacto ? '🕒 En el ' + esc(v) : t}</option>`).join('')}</select>`;
+}
+document.addEventListener('change', async e => {
+  const s = e.target.closest && e.target.closest('select.donde'); if (!s) return;
+  let v = s.value;
+  if (v === 'segundo') {
+    v = (prompt('¿En qué segundo del video? Por ejemplo 1:25', '') || '').trim();
+    if (!/^\d+(:\d{1,2}){0,2}(\.\d+)?$/.test(v)) { if (v) alert('Escríbelo como 1:25 o 85.'); pintarTarjetas(); pintarTestimonios(); pintarModelos(); return; }
+  }
+  const i = +s.dataset.i;
+  if (s.dataset.mod === 'tarj') { TARJ[grupo][i].momento = v; await guardarTarjetas(); }
+  else if (s.dataset.mod === 'testi') { TESTI.TESTIMONIOS[i].momento = v; await guardarTestimonios(); }
+  else if (s.dataset.mod === 'modelo') { MODS.MODELOS[i].momento = v; await guardarModelos(); }
+  else if (s.dataset.mod === 'pagina') { PAGINAS[i].donde = v; await guardarPaginas(); }
+  else if (s.dataset.mod === 'trailer') {
+    TRAILER_DONDE = v;
+    try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_donde: v})}); } catch (x) { alert(x.message); }
+  }
+  pintarMapa();
+});
+function preguntarDonde(que) {  // al subir algo nuevo: ¿inicio, medio, final o donde la voz lo nombra?
+  return new Promise(listo => {
+    $('#dondeTitulo').textContent = `¿Dónde ponemos ${que}?`;
+    $('#dondeOpciones').innerHTML = DONDE.filter(([k]) => k !== 'segundo').map(([k, t]) => `<button data-k="${k}">${t}</button>`).join('');
+    $('#dondeOpciones').querySelectorAll('button').forEach(b => b.onclick = () => { listo(b.dataset.k); dlgDonde.close(); });
+    dlgDonde.onclose = () => listo('auto');  // cerrado sin elegir: donde la voz lo nombra
+    dlgDonde.showModal();
+  });
+}
+async function cargarTrailerDonde() {
+  try { TRAILER_DONDE = (await api(`/api/edicion?p=${q(P)}`)).trailer_donde || 'inicio'; } catch (e) { TRAILER_DONDE = 'inicio'; }
+  $('#trailerDonde').innerHTML = selDonde('trailer', 0, TRAILER_DONDE, DONDE_TRAILER);
+  pintarMapa();
+}
+function pintarMapa() {  // cómo queda el video: cada pieza en su parte
+  const m = $('#mapa'); if (!m) return;
+  const col = {inicio: [], mitad: [], final: [], auto: []};
+  const poner = (donde, txt, panel) => (col[String(donde || 'auto').toLowerCase()] || col.auto)
+    .push(`<button class="item" onclick="irA('#${panel}')">${txt}${col[String(donde || 'auto').toLowerCase()] ? '' : ' <span class="aviso">(' + esc(donde) + ')</span>'}</button>`);
+  poner(TRAILER_DONDE, '🎞️ Tráiler', 'panelTrailer');
+  TESTI.TESTIMONIOS.forEach((c, i) => poner(c.momento, `🎥 Testimonio ${i + 1}`, 'panelTestimonios'));
+  MODS.MODELOS.forEach(c => poner(c.momento, '📱 Nuevos modelos', 'panelModelos'));
+  Object.entries(TARJ).forEach(([g, l]) => l.forEach((c, i) => poner(c.momento, `${g === 'WHATSAPP' ? '📲 WhatsApp' : '💬 Comentarios'} ${i + 1}`, 'panelTarjetas')));
+  PAGINAS.forEach(x => poner(x.donde, `🌐 ${esc(x.nombre || x.url)}`, 'panelPaginas'));
+  m.innerHTML = [['inicio', '⏮ Inicio'], ['mitad', '⏸ Medio'], ['final', '⏭ Final'], ['auto', '🤖 Donde la voz lo nombra o en un segundo']]
+    .map(([k, t]) => `<div><h4>${t}</h4>${col[k].join('') || '<span class="aviso">—</span>'}</div>`).join('');
+}
+async function insertarExtras() {  // todo el material extra sobre el video ya hecho, cada pieza en su lugar
+  const e = await api(`/api/estado?p=${q(P)}`);
+  if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo» (pestaña 🎬 Video). Cuando el guion te guste, le metes el material extra.');
+  const solo = [];
+  if (e.archivos['5_etiquetas.mp4']) solo.push('etiquetas');  // lo que ya tenía el video se conserva
+  if (e.archivos['6_senales.mp4']) solo.push('senales');
+  if (Object.values(TARJ).some(l => l.length)) solo.push('tarjetas');
+  if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
+  if (MODS.MODELOS.length) solo.push('nuevos_modelos');
+  const aj = (await api('/api/ajustes')).ajustes;
+  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede || (aj.modelo && aj.url)) solo.push('trailer');  // sin plan propio, lo arma la IA
+  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o configura una IA para el tráiler.');
+  const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
+  if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  catch (x) { $('#msgMapa').textContent = '✗ ' + x.message; $('#msgMapa').className = 'msg err'; return; }
+  $('#msgMapa').textContent = '⏳ Insertando… mira el avance abajo.'; $('#msgMapa').className = 'msg ok';
+  refrescar();
+}
 async function abrirExtras() {
   const e = await api(`/api/estado?p=${q(P)}`);
   if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo». Cuando el guion te guste, le agregas los extras.');
