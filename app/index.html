@@ -1223,12 +1223,15 @@ async function ajustesIA() {
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
   $('#ajTres').checked = !!a.tres_ia;
   const ias = a.ias_guion || {};
-  $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div class="fila" style="margin:4px 0; align-items:center">
-    <b style="width:4.5em">${nombre}</b>
-    <input type="text" id="ajTM_${id}" list="ajTL_${id}" placeholder="modelo (pulsa 🔍 para ver los tuyos)" value="${esc((ias[id] || {}).modelo || '')}" style="width:14em">
-    <datalist id="ajTL_${id}"></datalist>
-    <input type="text" id="ajTC_${id}" placeholder="clave API (${ayuda})" value="${esc((ias[id] || {}).clave || '')}" style="width:14em" autocomplete="off">
-    <button type="button" onclick="verModelos('${id}')">🔍 Comprobar y ver modelos</button><span id="ajTP_${id}"></span></div>`).join('') +
+  $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
+    <b>${nombre}</b>
+    <div class="fila" style="margin:4px 0; align-items:center">
+      <input type="text" id="ajTC_${id}" placeholder="1. pega aquí la clave API (${ayuda})" value="${esc((ias[id] || {}).clave || '')}" style="flex:1; min-width:14em" autocomplete="off">
+      <button type="button" onclick="verModelos('${id}')">2. 🔍 Comprobar clave y traer modelos</button></div>
+    <div class="fila" style="margin:4px 0; align-items:center">
+      <select id="ajTS_${id}" style="display:none; flex:1" onchange="if (this.value) $('#ajTM_${id}').value = this.value"></select>
+      <input type="text" id="ajTM_${id}" placeholder="3. modelo (se llena al elegir de la lista)" value="${esc((ias[id] || {}).modelo || '')}" style="flex:1; min-width:12em"></div>
+    <div id="ajTP_${id}"></div></div>`).join('') +
     '<p class="aviso">Si la de tu IA principal queda vacía, se usa la clave de arriba. Las claves se guardan solo en tu PC.</p>';
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
@@ -1241,13 +1244,17 @@ const TRES_IAS = [['gpt', 'GPT', 'https://api.openai.com/v1', '', 'platform.open
   ['gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '', 'aistudio.google.com']];
 async function verModelos(id) {  // comprueba la clave y trae los modelos que esa cuenta puede usar (no gasta tokens)
   const [, , url, tipo] = TRES_IAS.find(x => x[0] === id), e = $('#ajTP_' + id);
-  e.style.color = ''; e.textContent = ' Comprobando…';
+  e.style.color = ''; e.textContent = 'Comprobando…';
   try {
     const r = await api('/api/probar_ia', {method: 'POST', body: JSON.stringify({ia: id, url, tipo, proveedor: tipo ? 'Claude' : '',
       clave: $('#ajTC_' + id).value.trim()})});
-    $('#ajTL_' + id).innerHTML = (r.modelos || []).map(m => `<option value="${esc(m)}">`).join('');
+    // solo los que escriben texto (fuera los de imágenes, audio, embeddings…)
+    const ms = (r.modelos || []).filter(m => !/embed|tts|audio|whisper|dall-e|image|imagen|veo|moderation|realtime|transcribe|search|aqa|babbage|davinci/i.test(m));
+    const sel = $('#ajTS_' + id), actual = $('#ajTM_' + id).value.trim();
+    sel.innerHTML = `<option value="">— elige el modelo (${ms.length} disponibles) —</option>` + ms.map(m => `<option${m === actual ? ' selected' : ''}>${esc(m)}</option>`).join('');
+    sel.style.display = r.ok && ms.length ? '' : 'none';
     e.style.color = r.ok ? 'var(--verde)' : 'var(--rojo)';
-    e.textContent = r.ok ? ` ✓ ${(r.modelos || []).length} modelos: haz clic en «modelo» para elegir` : ' ✗ ' + r.mensaje;
+    e.textContent = r.ok ? (ms.length ? '✓ La clave funciona. Elige el modelo en la lista de arriba.' : '✓ La clave funciona, pero el proveedor no mandó la lista: escribe el modelo a mano.') : '✗ ' + r.mensaje;
   } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = ' ✗ No se pudo comprobar.'; }
 }
 async function comprobarClave() {

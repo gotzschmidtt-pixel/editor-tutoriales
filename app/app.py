@@ -1125,7 +1125,9 @@ class Manejador(BaseHTTPRequestHandler):
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
                     aj = leer_ajustes()
                     guardada = ((aj.get('ias_guion') or {}).get(datos.get('ia')) or {}).get('clave') if datos.get('ia') else ''
-                    datos['clave'] = guardada or aj.get('clave', '')  # si no mandan clave nueva, prueba la guardada
+                    # la clave principal solo sirve para el mismo proveedor (la de OpenAI no abre Gemini)
+                    mismo = not datos.get('ia') or (aj.get('url') or '').rstrip('/') == (datos.get('url') or '').rstrip('/')
+                    datos['clave'] = guardada or (aj.get('clave', '') if mismo else '')  # si no mandan clave nueva, prueba la guardada
                 return self.responder(probar_clave(datos))
             if ruta == '/api/pista_archivo':
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
