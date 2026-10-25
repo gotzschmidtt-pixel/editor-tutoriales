@@ -93,6 +93,13 @@ momentos como referencia; son orientativos, no cortes exactos.
 **Comentarios y WhatsApp:** en el panel *💬* subes tus imágenes en cada grupo, eliges momento (auto, 1:25, inicio, mitad, final),
 segundos y esquina, y *▶ Poner tarjetas en el video* saca `7_tarjetas.mp4`. *Hacer todo* las pone antes del tráiler si subiste alguna.
 
+## Con una IA de chat que corre comandos (DeepSeek, Claude, etc.)
+
+`AGENTS.md` le explica a la IA el procedimiento y `deepseek/video.py` maneja la app paso a paso: `preparar` (sube el video,
+transcribe con Whisper y deja el encargo del guion con capturas, mapa y hojas de un cuadro cada 2 s), `entregar` (la app
+corrige y guarda lo que escribió la IA), `armar` y `extras` (piden `--confirmo-creditos` porque la voz gasta ElevenLabs) y
+`exportar`. La IA escribe los JSON; el video lo hace la app con sus mismos parámetros.
+
 ## Guion con 3 IAs a la vez (GPT, Claude y Gemini)
 
 En «⚙ Ajustes IA» marca «✍️ Guion con 3 IAs a la vez» y pon el modelo y la clave de cada una («🔍 Comprobar y ver
