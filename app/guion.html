@@ -369,7 +369,7 @@ async function guardar() {
     await esperar();
     let mej = ''; try { mej = await api(`/archivo?p=${q(P)}&f=mejoras_guion.txt&v=${Date.now()}`); } catch (e) {}
     sucio = false; await cargar();
-    msg.className = 'msg ok'; msg.textContent = '✓ Guardado en la app. ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
+    msg.className = 'msg ok'; msg.textContent = '✓ Guardado en el guion. El video todavía no cambia: para verlo, pulsa «▶ Guardar y seguir con todo». ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
   } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
   b.disabled = false;
   return true;
