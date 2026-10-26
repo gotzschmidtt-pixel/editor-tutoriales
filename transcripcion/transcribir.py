@@ -46,7 +46,7 @@ def scribe(f, idioma):
               open(f, 'rb').read(), f'\r\n--{lim}--\r\n'.encode()]
     req = urllib.request.Request('https://api.elevenlabs.io/v1/speech-to-text', data=b''.join(partes),
                                  headers={'Content-Type': f'multipart/form-data; boundary={lim}', **CLAVE})
-    print(f'Clave de ElevenLabs: ••••{_K[-4:]} (de {FUENTE_CLAVE})' if _K else 'Clave de ElevenLabs: ninguna', flush=True)
+    print('Clave de ElevenLabs: guardada' if _K else 'Clave de ElevenLabs: ninguna', flush=True)
     print('Enviando el audio a ElevenLabs Scribe…', flush=True)
     try:
         r = json.loads(urllib.request.urlopen(req, timeout=1800).read())

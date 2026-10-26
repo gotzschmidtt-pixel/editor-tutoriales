@@ -77,7 +77,7 @@ def lista_es(xs, articulo=''):
 
 def escribir_frase(modelos, ajustes, idea):
     """Una o dos frases con el estilo del canal: el método sirve para los modelos más recientes."""
-    fija = (f'Y ojo, que este método también sirve para los modelos más recientes, como {lista_es(modelos, 'el ')}. '
+    fija = (f'Y ojo, que este método también sirve para los modelos más recientes, como {lista_es(modelos, "el ")}. '
             'Así que no importa si tu equipo es nuevito: aquí también entra.') if modelos else \
            'Y ojo, que este método también sirve para los modelos más recientes, así que no importa si tu equipo es nuevito.'
     if not (ajustes.get('modelo') and ajustes.get('url')):

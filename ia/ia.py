@@ -207,6 +207,8 @@ Responde SOLO con JSON {{"bloques": [{{"id": "...", "texto": "..."}}, ...]}} con
         nuevos = {str(x.get('id')): x.get('texto') for x in (r.get('bloques') if isinstance(r, dict) else r) or []
                   if isinstance(x, dict) and str(x.get('texto') or '').strip()}
     except (SystemExit, ValueError) as e:
+        if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+            raise
         avisos.append(texto_medida(m) + f'. No pude bajarlo ({str(e)[:120]}); bájalo a mano o elige un nivel menor en «⚙ Ajustes IA»')
         return datos
     cambiados = []
@@ -722,6 +724,10 @@ def desfases(d, bloques):
                 out.append(f"ningún bloque muestra {mmss(hasta)}–{mmss(ini)} (antes de {bid}) y ahí explicas «"
                            f"{' '.join(dicho_[:18])}…»: si es un paso, agrégale un bloque con ese tramo")
         hasta = max(hasta, fin)
+    resto = [w['texto'] for w in palabras if w['inicio'] >= hasta + 1]
+    if tramos and len(resto) >= 20 and palabras[-1]['inicio'] - hasta >= 8:
+        out.append(f"ningún bloque muestra el final de tu grabación, desde {mmss(hasta)}, y ahí explicas «"
+                   f"{' '.join(resto[:18])}…»: si es un paso, agrégale un bloque con ese tramo")
     return out
 
 
@@ -732,9 +738,10 @@ def verificar_orden(d, bloques):
     palabras = pistas.palabras_video(d)
     if palabras:
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
-        for b in bloques:
+        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen']
+        for k, b in enumerate(con_tramo):
             mo = b['montaje']
-            if mo.get('src_inicio') is None or mo['modo'] == 'imagen' or mo.get('visto'):
+            if mo.get('visto'):
                 continue
             raices = {w[:5] for w in pistas.palabras_clave(b['texto'])}
             if len(raices) < 3:
@@ -746,6 +753,13 @@ def verificar_orden(d, bloques):
                 # se corrige: el tramo (con su mismo largo) se mueve a donde de verdad dices eso en tu grabación
                 largo_t = fin - ini
                 nuevo = max(0.0, otro[0][0] - min(2.0, largo_t / 3))
+                # dónde lo DICES no siempre es dónde lo HACES: si moverlo lo saca de entre sus vecinos, solo se avisa
+                antes = con_tramo[k - 1]['montaje'] if k else None
+                despues = con_tramo[k + 1]['montaje'] if k + 1 < len(con_tramo) else None
+                if (antes and nuevo < (antes.get('src_fin') or antes['src_inicio']) - 3) or (despues and nuevo + largo_t > despues['src_inicio'] + 3):
+                    avisos.append(f"{b['id']}: lo que narra parece ir en {mmss(otro[0][0])} (ahí lo dices), no en su tramo "
+                                  f"{mmss(ini)}–{mmss(fin)}; no lo moví porque quedaría fuera de orden: revísalo")
+                    continue
                 mo['src_inicio'] = round(nuevo, 2)
                 if mo.get('src_fin') is not None:
                     mo['src_fin'] = round(nuevo + largo_t, 2)
@@ -767,15 +781,22 @@ def extraer_json(txt):
     m = re.search(r'```(?:json)?\s*(.*?)```', txt, re.S)
     if m:
         txt = m.group(1)
-    i = min([p for p in (txt.find('{'), txt.find('[')) if p >= 0], default=0)
-    try:
-        return json.loads(txt[i:])
-    except json.JSONDecodeError:
-        _olvidar_respuesta()
-        _anotar_respuesta('respuesta_ilegible', txt)
-        raise ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
-                      'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
-                      'Lo que devolvió la IA:\n' + txt[:600], 'F')
+    dec = json.JSONDecoder()
+    mejor = None  # admite texto antes o después del JSON («Aquí va: {…} Espero que sirva»); gana el JSON más largo
+    for i in [k for k, c in enumerate(txt) if c in '{['][:200]:
+        try:
+            obj, fin = dec.raw_decode(txt[i:])
+        except json.JSONDecodeError:
+            continue
+        if mejor is None or fin > mejor[1]:
+            mejor = (obj, fin)
+    if mejor:
+        return mejor[0]
+    _olvidar_respuesta()
+    _anotar_respuesta('respuesta_ilegible', txt)
+    raise ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
+                  'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
+                  'Lo que devolvió la IA:\n' + txt[:600], 'F')
 
 
 def leer_idea(d):
@@ -2206,6 +2227,8 @@ def autorrevision(d, ajustes, texto, datos):
             return nuevo
         print('· la IA devolvió la revisión sin bloques; sigo con el guion anterior', flush=True)
     except (SystemExit, ValueError) as e:
+        if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+            raise
         print(f'· no pude hacer la autorrevisión ({str(e)[:160]}); sigo con el guion anterior', flush=True)
     return datos
 
@@ -2319,7 +2342,7 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
                 continue
             mo = b['montaje']
             ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-            if abs(s - (ini + fin) / 2) < 4:
+            if abs(s - (ini + fin) / 2) < 4 or ini <= s <= fin:  # el segundo que indica ya está dentro de su tramo
                 continue
             largo_t = max(0.0, fin - ini)
             nuevo = round(min(max(0.0, s - min(2.0, largo_t / 3)), max(0.0, dur - 0.2 - largo_t)), 2)
@@ -2677,6 +2700,8 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
             if not (nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo):
                 break
         except (SystemExit, ValueError) as e:
+            if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+                raise
             print(f'· no pude corregir el largo con la IA ({e}); sigo con lo que hay', flush=True)
             break
         respuesta, (pal, t, lista) = r, medir(nuevo)

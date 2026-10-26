@@ -134,6 +134,9 @@ def clasificar(ev):
     if ev.get('incidencia') == 'rechazo_recuperado':
         return 'A', True, ('HTTP 200: la API marcó un rechazo del modelo pedido y el servidor pasó el pedido a otro modelo, que sí '
                            f"respondió ({ev.get('motivo_cambio') or 'cambio de modelo'}). Esa solicitud siguió adelante.")
+    if 400 <= st < 500 and re.search(r'content_policy|content exists risk|content_filter|safety|moderation|flagged|'
+                                     r'violat\w* (our|the) (usage )?polic', msg):
+        return 'A', True, (f'HTTP {st}: la API rechazó el pedido por sus políticas de contenido. No se reintenta.')
     if ev.get('rechazo_explicito') or sr in ('refusal', 'content_filter'):
         cat = ev.get('categoria_rechazo')
         return 'A', True, ('HTTP 200 (la solicitud se completó), pero la API marcó la respuesta como rechazo del modelo ('

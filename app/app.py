@@ -808,6 +808,10 @@ def correr(proyecto, pasos, opciones):
             if eleven and sys.platform == 'win32' and not env.get('ELEVENLABS_API_KEY'):
                 raise RuntimeError('Falta tu clave de ElevenLabs. Pulsa el botón «🔑 Clave ElevenLabs» arriba a la derecha, '
                                    'pégala y guarda. (Para transcribir sin clave usa Whisper: «Cancelar» al preguntar.)')
+            if TRABAJO.get('detenido'):  # «■ Detener» entre dos pasos: no arranca el siguiente (podía ser la voz, que gasta)
+                FALLOS[proyecto] = {'paso': paso, 'msg': 'detenido por ti'}
+                log.write(f'\n■ Detenido antes de «{info["nombre"]}»\n'); log.flush()
+                return
             with CANDADO:
                 TRABAJO.update(paso=paso, inicio=time.time())
             FALLOS.pop(proyecto, None)
@@ -1100,6 +1104,11 @@ class Manejador(BaseHTTPRequestHandler):
 
     def do_POST(self):
         ruta, q = self.q()
+        origen = self.headers.get('Origin') or ''
+        host = (self.headers.get('Host') or '').split(':')[0]
+        if host not in ('localhost', '127.0.0.1', '[::1]', '') or origen and urllib.parse.urlparse(origen).hostname not in ('localhost', '127.0.0.1', '::1'):
+            # otra página abierta en el navegador no puede borrar, detener ni cambiar tus claves
+            return self.error('pedido rechazado: solo la propia app puede cambiar cosas', 403)
         LATIDO[0] = time.time()
         largo = int(self.headers.get('Content-Length', 0))
         try:
@@ -1142,6 +1151,9 @@ class Manejador(BaseHTTPRequestHandler):
                             break
                         fh.write(trozo)
                         resto -= len(trozo)
+                if resto > 0:  # la subida se cortó: no se reemplaza tu video por uno a medias
+                    os.remove(destino + '.parcial')
+                    return self.error('La subida se cortó antes de terminar. Vuelve a subir el archivo.')
                 os.replace(destino + '.parcial', destino)
                 if de > 1 and parte == de:
                     try:
@@ -1356,8 +1368,12 @@ class Manejador(BaseHTTPRequestHandler):
                     for ide, x in nuevo['ias_guion'].items():
                         if isinstance(x, dict) and (not x.get('clave') or str(x['clave']).startswith('••••')):
                             x['clave'] = (antes.get(ide) or {}).get('clave', '')
+                if 'url' in nuevo and 'clave' not in nuevo and (nuevo['url'] or '').rstrip('/') != (viejo.get('url') or '').rstrip('/'):
+                    nuevo['clave'] = ''  # cambiaste de proveedor sin pegar clave: la del anterior no se le manda al nuevo
                 viejo.update(nuevo)
-                json.dump(viejo, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                tmp = AJUSTES + '.tmp'  # se escribe aparte y se cambia de una vez: un corte no deja ajustes.json roto
+                json.dump(viejo, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                os.replace(tmp, AJUSTES)
                 return self.responder({'ok': True})
             if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
                 datos = json.loads(self.rfile.read(largo) or b'{}')
@@ -1484,8 +1500,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/detener':
                 with CANDADO:
-                    if TRABAJO['proc']:
+                    if TRABAJO['proyecto']:  # entre dos pasos no hay proceso vivo, pero el siguiente ya no arranca
                         TRABAJO['detenido'] = True
+                    if TRABAJO['proc']:
                         TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
             if ruta == '/api/actualizar':  # «Actualizar»: quita videos y fallas viejas; voces, guion y transcripción quedan
@@ -1518,6 +1535,8 @@ class Manejador(BaseHTTPRequestHandler):
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
                 return self.responder({'ok': True, 'borrados': borrados})
             if ruta == '/api/borrar':
+                if os.path.basename(q['f']) in ('', '.', '..'):  # «.» borraba el proyecto entero
+                    return self.error('nombre de archivo no válido')
                 f = os.path.join(carpeta(q['p']), os.path.basename(q['f']))
                 if os.path.isdir(f):
                     shutil.rmtree(f)
