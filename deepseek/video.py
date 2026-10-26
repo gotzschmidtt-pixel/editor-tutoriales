@@ -157,7 +157,7 @@ def texto_preguntas(d):
     except ValueError:
         lista = []
     if not lista:
-        return 'Sin preguntas guardadas (ponlas en "preguntas" de respuesta_guion.json, hasta 15).'
+        return 'Sin preguntas guardadas (ponlas en "preguntas" de respuesta_guion.json: hasta 15 de datos y hasta 10 ideas para mejorar).'
     out = [f'Preguntas al autor ({len(lista)}):']
     for k, x in enumerate(lista, 1):
         r = str(x.get('respuesta') or '').strip()

@@ -40,7 +40,8 @@ PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|ver
 ESPERA = re.compile(r'esper|carg|reinici|instal|descarg|tarda|progreso', re.I)
 # el «ok» suelto al comienzo («Ok, ahora…») o al final («…listo, ok.»); «pulsa OK» no se toca porque no va tras una pausa
 MULETILLA = re.compile(r'^\s*(ok|okey|okay)\s*[,.!…]+\s*|(?<=[.,!?…])\s*(ok|okey|okay)\s*[.!…]*\s*$', re.I)
-PREGUNTAS_MAX = 15  # preguntas al autor por guion, contando las de mejora (máximo 4)
+PREGUNTAS_MAX = 15  # preguntas al autor por guion sobre datos que no se ven claros
+MEJORAS_MAX = 10  # y, aparte, ideas para mejorar el guion
 SIN_VOZ_MAX = 0.15  # parte del video que puede quedar sin voz; más que eso y al guion le faltan palabras
 
 # HUMOR: el nivel se elige en «⚙ Ajustes IA» (ajustes «humor»: 0 sin, 1 poco, 2 normal, 3 mucho). Cada bloque con chiste
@@ -501,8 +502,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 - PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
   es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
   paso se hace o se salta), escribe la frase con lo más probable y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
-  Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX - 4}).
-- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y 4; con las de datos, {PREGUNTAS_MAX} como máximo): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
+  Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX}).
+- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y {MEJORAS_MAX}): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
   al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
   (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
   dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
@@ -2103,8 +2104,8 @@ def autorrevision(d, ajustes, texto, datos):
               "en dos bloques, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
               "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
               "marcados con \"humor\", repartidos a lo largo del video) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
-              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a 4 "
-              "preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
+              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a "
+              f"{MEJORAS_MAX} preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
     try:
         nuevo = extraer_json(llamar(ajustes, pedido, []))
@@ -2254,8 +2255,7 @@ def normalizar_preguntas(lista):
             out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
                         'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
-    mejoras = [x for x in out if x['tipo'] == 'mejora'][:4]
-    return [x for x in out if x['tipo'] == 'dato'][:PREGUNTAS_MAX - len(mejoras)] + mejoras
+    return [x for x in out if x['tipo'] == 'dato'][:PREGUNTAS_MAX] + [x for x in out if x['tipo'] == 'mejora'][:MEJORAS_MAX]
 
 
 # «✍️ Guion con 3 IAs a la vez»: el mismo encargo (mismo mapa, mismas capturas) a GPT, Claude y Gemini en paralelo.

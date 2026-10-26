@@ -31,7 +31,7 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 Si no contesta algo, usa el valor por defecto y díselo.
 
 **Después de mirar el video (A3 paso 2) vuelve a preguntar:** todo lo que no te quede claro, **hasta 15 preguntas**
-numeradas y con opciones (qué pieza o cable es, qué botón, qué versión, en qué momento pasa algo, si un paso se salta,
+(y aparte hasta 10 ideas para mejorar el video) numeradas y con opciones (qué pieza o cable es, qué botón, qué versión, en qué momento pasa algo, si un paso se salta,
 qué decir de una web). Mejor preguntar que adivinar. Escríbelas también en `"preguntas"` de `respuesta_guion.json`
 (`{"tipo": "dato" | "mejora", "bloque": "L07", "pregunta": "¿…?", "opciones": ["…", "…"]}`): así el autor las ve y las
 contesta en la app, junto al guion.
@@ -157,7 +157,7 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
   - `imagen`: muestra una imagen del proyecto (un mapa, por ejemplo) durante `congelar_s`.
 - Los tramos van en orden y dentro de la duración del original. Se salta lo que no aporta (esperas largas, errores, repeticiones).
 - Cada tramo tiene que MOSTRAR lo que dice su texto (si la voz dice «pega la key», el tramo es donde se ve la key puesta).
-- `preguntas`: hasta 6 de tipo «dato» (lo que no se ve ni se dice claro) y siempre 2 a 4 de tipo «mejora».
+- `preguntas`: hasta 15 de tipo «dato» (lo que no se ve ni se dice claro) y siempre de 2 a 10 de tipo «mejora».
 - Responde SOLO con el JSON, sin texto alrededor.
 
 ## B3. Duración y ritmo (`ia/ia.py`, `voz/voz.py`)
