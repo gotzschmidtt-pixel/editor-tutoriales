@@ -132,9 +132,17 @@ def main():
                  f"[0]split[a][b];[a]scale={res[0]}:{res[1]},boxblur=20[bg];[b]scale=-1:{res[1] - 20}[fg];[bg][fg]overlay=(W-w)/2:10,fps=25,format=yuv420p{lab}"]
                 + enc + [f])
             partes.append(f)
-        print(i, 'ok', flush=True)
-        if b.get('inicio_min') is not None and voz_al_dia(carpeta_voz, i, b.get('texto', '')):
-            voces.append((b['inicio_min'] + 0.3, os.path.join(carpeta_voz, f'{i}.mp3')))  # el mismo desfase que «Poner la voz»
+        mp3 = os.path.join(carpeta_voz, f'{i}.mp3')
+        if not (b.get('texto') or '').strip():
+            print(i, 'ok', flush=True)  # bloque sin voz a propósito
+        elif b.get('inicio_min') is not None and voz_al_dia(carpeta_voz, i, b.get('texto', '')):
+            print(i, 'ok', flush=True)
+            voces.append((b['inicio_min'] + 0.3, mp3))  # el mismo desfase que «Poner la voz»
+        else:  # en la vista en vivo este bloque va callado: se dice por qué, para no confundirlo con un fallo del audio
+            print(i, 'ok · en la vista en vivo va sin voz: ' + (
+                'todavía no tiene voz' if not os.path.exists(mp3) else
+                'su voz es de otro texto (el guion que se monta no es el mismo con el que se hizo la voz)'
+                if b.get('inicio_min') is not None else 'el guion no trae sus tiempos de voz (falta «Generar voz»)'), flush=True)
         avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
     lista = os.path.join(tmp, 'lista.txt')
     with open(lista, 'w', encoding='utf-8') as fh:
