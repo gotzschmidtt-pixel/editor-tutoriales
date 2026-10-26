@@ -506,7 +506,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
 - PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
   es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
-  paso se hace o se salta), escribe la frase con lo más probable y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
+  paso se hace o se salta), NO lo inventes: escribe la frase sin ese dato (por ejemplo «sigue la secuencia de botones que
+  se ve en pantalla») y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
   Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX}).
 - PREGUNTAS PARA MEJORARLO (siempre, entre 2 y {MEJORAS_MAX}): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
   al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil

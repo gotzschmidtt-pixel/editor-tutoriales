@@ -145,8 +145,8 @@ def main():
     def rotulo(txt):
         if final or not fuente:
             return ''
-        txt = txt.replace(':', '\\:').replace("'", '')
-        return f",drawtext=fontfile='{fuente.replace(':', chr(92) + ':')}':text='{txt}':x=24:y=h-52:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10"
+        txt = txt.replace('\\', '').replace(':', '\\:').replace("'", '')  # «batería al 100%» rompía drawtext: va con expansion=none
+        return f",drawtext=fontfile='{fuente.replace(':', chr(92) + ':')}':expansion=none:text='{txt}':x=24:y=h-52:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10"
 
     dur_original = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', a.original],
                                         capture_output=True, text=True, check=True).stdout)

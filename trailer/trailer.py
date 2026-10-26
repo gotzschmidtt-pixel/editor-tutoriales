@@ -63,7 +63,7 @@ def correr_srt(srt, seg, destino):
     def mover(m):
         h, mi, s, ms = map(int, m.groups())
         t = h * 3600 + mi * 60 + s + ms / 1000 + seg
-        return f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}"
+        return f"{int(round(t * 1000)) // 3600000:02d}:{int(round(t * 1000)) // 60000 % 60:02d}:{int(round(t * 1000)) // 1000 % 60:02d},{int(round(t * 1000)) % 1000:03d}"
     crudo = open(srt, 'rb').read()
     try:
         texto = crudo.decode('utf-8')

@@ -1504,7 +1504,10 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:  # entre dos pasos no hay proceso vivo, pero el siguiente ya no arranca
                         TRABAJO['detenido'] = True
                     if TRABAJO['proc']:
-                        TRABAJO['proc'].terminate()
+                        if sys.platform == 'win32':  # terminate() deja vivo el ffmpeg hijo: bloquea archivos y sigue gastando
+                            subprocess.run(['taskkill', '/T', '/F', '/PID', str(TRABAJO['proc'].pid)], capture_output=True, **SIN_VENTANA)
+                        else:
+                            TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
             if ruta == '/api/actualizar':  # «Actualizar»: quita videos y fallas viejas; voces, guion y transcripción quedan
                 d = carpeta(q['p'])

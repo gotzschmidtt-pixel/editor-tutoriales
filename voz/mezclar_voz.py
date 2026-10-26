@@ -12,8 +12,8 @@ total = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format
 
 
 def ts(x):
-    h, m, s = int(x // 3600), int(x % 3600 // 60), x % 60
-    return f"{h:02d}:{m:02d}:{int(s):02d},{int(round((s - int(s)) * 1000)):03d}"
+    ms = int(round(x * 1000))  # redondeado una sola vez: 61,9996 s da 00:01:02,000 y no «,1000»
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
 
 
 ins, flt, labs, srt = ['-i', video], [], [], []

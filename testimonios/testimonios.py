@@ -154,7 +154,7 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
 def mover_srt(subs, cortes, destino):
     """Los subtítulos después de cada testimonio se corren lo que dura el testimonio."""
     def hms(t):
-        return f'{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}'
+        return f'{int(round(t * 1000)) // 3600000:02d}:{int(round(t * 1000)) // 60000 % 60:02d}:{int(round(t * 1000)) // 1000 % 60:02d},{int(round(t * 1000)) % 1000:03d}'
     with open(destino, 'w', encoding='utf-8') as f:
         for k, (a, b, x) in enumerate(subs, 1):
             corre = sum(d for t, d in cortes if a >= t - 0.01)
