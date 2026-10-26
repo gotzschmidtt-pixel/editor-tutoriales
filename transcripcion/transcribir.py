@@ -5,7 +5,7 @@ Motores:
   whisper  faster-whisper en tu PC, gratis y sin internet (pip install faster-whisper).
 
 Uso:
-  python3 transcribir.py --video "Mi video.mp4" --salida mi_video [--motor scribe|whisper] [--modelo small]
+  python3 transcribir.py --video "Mi video.mp4" --salida mi_video [--motor scribe|whisper] [--modelo large-v3-turbo]
 Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabras con inicio y fin).
 """
 import argparse, json, os, subprocess, tempfile, urllib.error, urllib.request, uuid
@@ -67,7 +67,7 @@ def whisper(f, idioma, modelo):
     except ImportError:
         raise SystemExit('ERROR: Whisper no está instalado. Abre una terminal en la carpeta de la app y escribe:\n'
                          '    python -m pip install faster-whisper\nLuego vuelve a darle a Transcribir.')
-    print(f'Cargando Whisper «{modelo}» (la primera vez descarga el modelo, unos cientos de MB)…', flush=True)
+    print(f'Cargando Whisper «{modelo}» (la primera vez descarga el modelo, hasta ~1,6 GB)…', flush=True)
     # el modelo queda en descargas_app/modelos (para no bajarlo otra vez y llevarlo a otra PC)
     guardar = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'descargas_app', 'modelos', 'whisper')
     os.makedirs(guardar, exist_ok=True)
@@ -100,7 +100,7 @@ def main():
     ap.add_argument('--video', required=True)
     ap.add_argument('--salida', required=True)
     ap.add_argument('--motor', choices=['scribe', 'whisper'], default='scribe')
-    ap.add_argument('--modelo', default='small', help='solo whisper: tiny, base, small, medium, large-v3')
+    ap.add_argument('--modelo', default='large-v3-turbo', help='solo whisper: tiny, base, small, medium, large-v3, large-v3-turbo (por defecto; la primera vez baja ~1,6 GB)')
     ap.add_argument('--idioma', default='es')
     a = ap.parse_args()
     f = audio(a.video)
