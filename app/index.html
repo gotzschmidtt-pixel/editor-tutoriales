@@ -178,7 +178,8 @@
         <button onclick="abrirExtras()" title="Etiquetas, flechas, tarjetas, testimonios, nuevos modelos y tráiler, sobre el video ya hecho">✨ Agregar extras</button>
         <button onclick="window.open('/pistas?p=' + q(P))" title="Cada pieza en su pista: video, voz por bloque, música, subtítulos, etiquetas y flechas. Mueve, cambia o borra y vuelve a armar">🎚 Editor por pistas</button>
         <button id="detener">■ Detener</button>
-        <button id="verGuion" onclick="verGuion()">📝 Ver guion</button>
+        <button id="verGuion" onclick="verGuion()" title="Abre el editor de guion en otra pestaña: cada bloque con su imagen, los avisos de la app y las preguntas de la IA">📝 Ver guion</button>
+        <button onclick="verGuionAqui()" title="La revisión rápida en esta misma página (con las versiones de cada IA si pediste varias)">🗂 Vista rápida</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
         <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
@@ -810,7 +811,7 @@ function abrirEditorGuion() { editorAbierto = true; window.open('/guion?p=' + q(
 window.addEventListener('focus', async () => {
   if (!editorAbierto) return;
   editorAbierto = false;
-  if (dlgGuion.open) verGuion();
+  if (dlgGuion.open) verGuionAqui();
   if (archivo === 'guion.json' && !editado) abrir('guion.json');
 });
 
@@ -1428,7 +1429,7 @@ function pintarBarra(t, r, arch) {
       <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
       <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas.">🎚 Ajustar humor</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
-    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(); }
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
     return;
   }
   if (r.ok) {
@@ -1494,7 +1495,12 @@ async function reintentar() {
 
 let avisoGuion = null, GUION = null;
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-async function verGuion() {
+function verGuion(solo) {  // el editor completo en otra pestaña (si el navegador no deja abrirla sola, queda el botón de la barra)
+  editorAbierto = true;
+  const w = window.open('/guion?p=' + q(P), 'guion_' + P);
+  if (!w) { editorAbierto = false; if (!solo) alert('El navegador bloqueó la pestaña nueva: permite las ventanas emergentes de localhost:8765.'); }
+}
+async function verGuionAqui() {
   let txt;
   try { txt = await api(`/api/json?p=${q(P)}&f=guion.json`); GUION = JSON.parse(txt); } catch (e) { GUION = null; }
   if (!GUION || !(GUION.bloques || []).length) { alert('Todavía no hay guion. Pulsa «▶ Hacer todo» y la IA lo escribe desde tu video.'); return; }
@@ -1525,7 +1531,7 @@ function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus númer
 async function elegirVersion(id) {
   if (!confirm('¿Usar esta versión como tu guion? Lo que cambiaste en la actual sin guardar se pierde (la actual queda como guion.json.anterior).')) return;
   try { await api(`/api/elegir_version?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  verGuion();
+  verGuionAqui();
 }
 async function combinarVersiones() {
   if (!confirm('Tu IA principal va a armar un guion con lo mejor de cada versión (un pedido más, sin volver a mirar el video). ¿Seguir?')) return;

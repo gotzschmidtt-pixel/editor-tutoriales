@@ -1181,6 +1181,8 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
+                if datos.get('editor'):  # guardado desde el editor de guion: ya lo estás viendo allá, no se abre otra revisión
+                    datos.pop('_pausa', None)
                 if datos.get('sin_ia'):  # el editor por pistas: tus etiquetas y flechas tal cual, la IA no las rehace
                     pasos = [x for x in pasos if x not in PREPARA_EXTRA or x == 'trailer_ia' and not existe(carpeta(q['p']), 'trailer.json')]
                 if extras:

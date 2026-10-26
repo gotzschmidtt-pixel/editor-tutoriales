@@ -44,6 +44,12 @@
   dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
   dialog textarea { min-height: 300px; font-size: 13.5px; }
   .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
+  .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; }
+  .panel.preg { border-color: #f0c36d; }
+  .panel summary { cursor: pointer; font-weight: 600; }
+  .panel ul { margin: 6px 0; padding-left: 20px; font-size: 13.5px; color: var(--suave); }
+  .pregunta { margin: 10px 0; } .pregunta input { width: 100%; background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; } .opciones button { padding: 3px 10px; font-size: 13px; font-weight: 500; }
   @media (max-width: 700px) { .bloque { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
 </style>
 </head>
@@ -54,13 +60,16 @@
   <span class="espacio"></span>
   <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
   <button onclick="bajarWord()">⬇ Word</button>
-  <button class="principal" id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
+  <button id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
+  <button class="principal" id="btnSeguir" onclick="seguir()" title="Guarda lo que cambiaste y arma el video: voz con ElevenLabs (gasta créditos, solo en los bloques nuevos o cambiados), montaje, subtítulos y música">▶ Guardar y seguir con todo</button>
 </header>
 <main>
   <p class="ayuda">Corrige lo que dice la voz en cada bloque. La imagen es el momento de tu grabación donde arranca el bloque.
     El aviso de cada bloque compara lo que tarda la voz en decir el texto con lo que dura su imagen. Al guardar, la app revisa el
     guion (duración y orden) y guarda el anterior como <code>guion.json.anterior</code>. Solo los bloques que cambiaste gastan voz nueva.</p>
   <p class="msg" id="msg"></p>
+  <div id="preguntas"></div>
+  <div id="mejoras"></div>
   <div id="bloques"></div>
 </main>
 
@@ -101,6 +110,61 @@ async function cargar() {
   ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
   try { DUR = (await api(`/api/estado?p=${q(P)}`)).duracion_original || 0; } catch (e) {}
   pintar();
+  verMejoras(); verPreguntas();
+}
+async function verMejoras() {  // lo que la app corrigió o avisa al revisar el guion (mejoras_guion.txt)
+  let rv = {mejoras: []};
+  try { rv = await api(`/api/revision_guion?p=${q(P)}`); } catch (e) {}
+  const l = rv.mejoras || [];
+  $('#mejoras').innerHTML = `<details class="panel"${l.length && l.length <= 8 ? ' open' : ''}><summary>${l.length ? `🔎 Lo que la app corrigió o te avisa (${l.length})` : '✓ La app revisó el guion: no tuvo que corregir nada'}</summary>
+    ${l.length ? `<ul>${l.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`;
+}
+let PREGUNTAS = [];
+async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json): datos que no vio claros e ideas para mejorar
+  try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
+  const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
+  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
+    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
+    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
+  const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntas').innerHTML = !pend.length ? '' : `<div class="panel preg"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''}</b>
+    <p class="msg">Elige una opción o escribe la respuesta (para dictar en Windows: ⊞ Win + H). Las que dejes vacías no cambian nada.</p>
+    ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
+    ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
+    <div class="acciones"><button class="principal" onclick="responder()" title="La IA de la app corrige solo los bloques que tocan tus respuestas (gasta un pedido a la IA)">✓ Responder y corregir con la IA de la app</button>
+    <button onclick="responder(true)" title="Guarda tus respuestas sin gastar la IA de la app: las aplica la IA de chat que hace el video (DeepSeek, Claude…)">💾 Solo guardar respuestas (las aplica DeepSeek)</button>
+    <span class="msg" id="msgPreg"></span></div></div>`;
+}
+async function esperar() {  // hasta que la app termine el paso que se pidió
+  for (let k = 0; k < 900; k++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const e = await api(`/api/estado?p=${q(P)}`);
+    if (e.trabajo.proyecto) continue;
+    if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
+    return;
+  }
+}
+async function responder(soloGuardar) {
+  document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
+  const m = $('#msgPreg');
+  if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { m.textContent = 'Escribe o elige al menos una respuesta'; m.className = 'msg err'; return; }
+  try {
+    if (sucio) await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)});
+    await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    sucio = false;
+    if (soloGuardar) { m.textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» para que corrija el guion con tus respuestas.'; m.className = 'msg ok'; return; }
+    m.className = 'msg'; m.textContent = 'La IA corrige el guion con tus respuestas…';
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true, editor: true})});
+    await esperar(); await cargar();
+    $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Guion corregido con tus respuestas. Revísalo.';
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function seguir() {
+  if (!confirm('Armo el video: voz con ElevenLabs (gasta créditos solo en los bloques nuevos o cambiados), montaje, subtítulos y música. ¿Seguir?')) return;
+  if (sucio && !await guardar()) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({})}); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
+  $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
 }
 function pintar() {
   $('#bloques').innerHTML = G.bloques.map((b, i) => {
@@ -177,19 +241,14 @@ async function guardar() {
   b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
   try {
     await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
-    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar'})});
-    for (let k = 0; k < 120; k++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const e = await api(`/api/estado?p=${q(P)}`);
-      if (e.trabajo.proyecto) continue;
-      if (e.fallo) throw new Error(e.fallo.msg || 'la revisión falló; mira el registro en la app');
-      break;
-    }
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar', editor: true})});
+    await esperar();
     let mej = ''; try { mej = await api(`/archivo?p=${q(P)}&f=mejoras_guion.txt&v=${Date.now()}`); } catch (e) {}
     sucio = false; await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Guardado en la app. ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
-  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; }
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
   b.disabled = false;
+  return true;
 }
 addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
 cargar();
