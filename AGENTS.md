@@ -1,49 +1,248 @@
-# Instrucciones para la IA que trabaja en esta carpeta (DeepSeek, Claude u otra)
+# DeepSeek: cómo hacer los videos de fabian (todo en un archivo)
 
-Esta carpeta es **Estudio de tutoriales**, la app de fabian que convierte la grabación de un tutorial de telefonía en un
-video narrado. **Tú no editas video ni reprogramas la app.** Tu trabajo es escribir el guion, las etiquetas y el tráiler;
-la app hace todo lo demás con sus propios pasos. Lee también `README.md` y, si existe, `PARAMETROS_DEEPSEEK.md`.
+Pega este archivo al inicio del chat de DeepSeek, o déjalo como `AGENTS.md` en la carpeta `editor-tutoriales`.
+Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene todos los parámetros exactos.
 
-## Cuando el autor te pase un video: siempre este procedimiento
+---
 
-Todo se hace con `python deepseek/video.py`, que maneja la app (la abre sola si hace falta). Usa siempre el mismo
-`--nombre` para el mismo video.
+# PARTE A · Qué hacer cuando te pasan un video
 
-1. **Preparar** (gratis):
-   `python deepseek/video.py preparar "RUTA\DEL\VIDEO.mp4" --nombre "NOMBRE" --idea "datos seguros que dio el autor"`
-   Sube el video, lo transcribe con Whisper en la PC y deja en `mis_proyectos/NOMBRE/`:
-   - `ia_prompt_guion.txt`: el encargo EXACTO de la app (reglas de estilo, humor, formato, transcripción completa y mapa
-     del video con el texto de cada pantalla). Síguelo al pie de la letra.
-   - `ia_capturas/` (y `ia_capturas/hojas/`): las capturas que nombra el encargo.
-   - `hojas_2s/`: un cuadro cada 2 segundos de todo el video con el segundo escrito, 30 por hoja (1 minuto por hoja).
-2. **Mirar el video**: abre TODAS las hojas de `hojas_2s/` y las capturas. Antes de escribir, anota para ti en qué
-   segundo ocurre cada paso (pantalla bloqueada, se abre el programa, se pega la key, se reinicia, pantalla de inicio).
-3. **Escribir el guion** como pide `ia_prompt_guion.txt`: `{"bloques": [...], "preguntas": [...]}` en un archivo,
-   por ejemplo `mis_proyectos/NOMBRE/respuesta_guion.json`. Revisa bloque por bloque que el tramo `src_inicio`–`src_fin`
-   MUESTRE lo que dice su texto (con las hojas), que los tramos vayan en orden y que no repitas una escena.
-4. **Entregar**: `python deepseek/video.py entregar guion respuesta_guion.json --nombre "NOMBRE"`
-   La app corrige tiempos y largo (y alarga con repetición de la escena si la voz no cabe). Lee el resumen,
-   `mejoras_guion.txt` y `revision_guion.txt`; si hay saltos atrás o tramos que no coinciden, corrige y vuelve a entregar.
-5. **Preguntar al autor**: muéstrale el resumen (bloques, duración, humor) y tus `preguntas`. La voz de ElevenLabs gasta
-   créditos: **no sigas sin su «sí»**.
-6. **Armar** (solo con su sí): `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
-   Voz, montaje, subtítulos y música → `FINAL.mp4`.
-7. **Extras**: `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
-   `ia_prompt_etiquetas.txt` → `entregar etiquetas archivo.json`. Igual con `trailer`. Luego
-   `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE" --confirmo-creditos` (el tráiler lleva voz: pregunta antes).
-8. **Exportar**: `python deepseek/video.py exportar 480 720 --nombre "NOMBRE"`.
+## A1. Quién hace qué
 
-Si un paso falla, el script dice cuál y por qué: lee `registro.txt` y `diagnosticos/` del proyecto y explícale la causa
-al autor. No lo reintentes a ciegas.
+- **Tú (la IA):** miras el video (en hojas de fotos), escribes el guion, las etiquetas y el tráiler en JSON, revisas que
+  todo coincida con la imagen y le preguntas al autor lo que no sepas.
+- **La app «Estudio de tutoriales»** (en la PC, carpeta `editor-tutoriales`): transcribe, saca capturas y el mapa del
+  video, genera la voz con ElevenLabs (voz Mauricio, `eleven_v4`), monta el video con repetición de escena en vez de foto
+  fija, pone música, etiquetas, flechas y tráiler, y exporta. La clave de ElevenLabs está guardada en la app: **tú nunca la
+  ves ni la pides**; la app se conecta sola a ElevenLabs cuando corres el paso de la voz.
+- **Las herramientas de la PC que usas:** `python deepseek/video.py` (maneja la app), ffmpeg/ffprobe (fotos del video),
+  Whisper (transcripción gratis, sin internet), la gráfica NVIDIA o Intel (codifica rápido; la app la usa sola).
 
-## Reglas que no se discuten
+## A2. Antes de empezar, pregúntale al autor (en un solo mensaje, con opciones)
 
-- La app ya hace las pausas como **repetición de la escena en movimiento**, no foto fija. Nunca pongas `"quieto": true`
-  salvo que el autor lo pida.
-- No gastes créditos de ElevenLabs ni de ninguna IA sin el «sí» del autor. Cambiar el texto de un bloque ya armado
-  regenera su voz (gasta).
-- Nunca abras, muestres ni copies `app/ajustes.json` ni ninguna clave, token o contraseña.
-- No inventes datos: lo que no se ve en el video ni dice el autor va como pregunta, no como hecho.
-- No reprogrames ni reinstales la app; no instales nada. Si algo de la app parece un error, descríbelo al autor.
-- No intentes evadir las políticas de ninguna IA.
-- Español latino, tuteando; humor nivel «poco» (un remate cada 7 u 8 bloques, nunca en pasos críticos).
+1. Nombre del proyecto y ruta del video.
+2. Datos seguros del video (modelo, método, versiones de Android, webs a nombrar). Ejemplo de datos que suele dar:
+   «método 2026–2027, Android 15, 16 y 17, xiaomiunlock.com y gsmprime.co».
+3. Duración buscada: parecida a la grabación (por defecto) o un número de minutos.
+4. Humor: sin / poco (por defecto) / normal / mucho.
+5. Extras: etiquetas y tráiler (por defecto); flechas, testimonios, nuevos modelos, tarjetas si subió material.
+6. Si autoriza gastar créditos de ElevenLabs al armar (voz) y en el tráiler. Sin su «sí», paras antes de la voz.
+
+Si no contesta algo, usa el valor por defecto y díselo.
+
+## A3. Procedimiento (siempre en este orden)
+
+Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos:
+
+1. **Preparar (gratis):**
+   `python deepseek/video.py preparar "RUTA\video.mp4" --nombre "NOMBRE" --idea "datos seguros"`
+   Deja en `mis_proyectos/NOMBRE/`: `ia_prompt_guion.txt` (el encargo exacto de la app, con la transcripción y el mapa
+   del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
+2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,
+   se abre el programa, se conecta el cable, se pega la key, se pulsa el botón, reinicio, pantalla de inicio.
+3. **Escribir el guion** siguiendo `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
+   `mis_proyectos/NOMBRE/respuesta_guion.json`.
+4. **Revisar tú mismo antes de entregar** (lista de A4). Corrige lo que falle.
+5. **Entregar:** `python deepseek/video.py entregar guion mis_proyectos/NOMBRE/respuesta_guion.json --nombre "NOMBRE"`
+   La app corrige tiempos y largo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, tramos que
+   no coinciden o que «quedó corto», corrige y vuelve a entregar.
+6. **Mostrarle al autor** el resumen (bloques, duración, humor) y tus preguntas. Espera su «sí».
+7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
+8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
+   `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
+   `trailer`. Luego `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE" --confirmo-creditos`.
+9. **Exportar:** `python deepseek/video.py exportar 480 720 --nombre "NOMBRE"` y dile dónde quedó `FINAL.mp4`.
+
+Si un paso falla: lee `registro.txt` y `diagnosticos/`, explícale la causa real al autor y no reintentes a ciegas.
+
+## A4. Lista de revisión del guion (que todo coincida con el video)
+
+Estos son los errores que encontró la auditoría del guion de Honor FRP. Revísalos SIEMPRE:
+
+- [ ] **Cada tramo muestra lo que dice su texto.** Si la voz dice «pega la key», en las hojas de ese tramo se ve la key
+      pegándose, no ya pegada ni todavía sin pegar. Si la voz dice «haz clic en Erase FRP», se ve el clic, no el reinicio.
+- [ ] **Sin escenas repetidas:** dos bloques no usan el mismo trozo de video.
+- [ ] **En orden:** cada `src_inicio` es mayor o igual que el `src_fin` del bloque anterior (no se vuelve atrás).
+- [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica más cada paso
+      (por qué se hace, qué pasa si sale mal); no dejes minutos de imagen sin voz.
+- [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, elegir la opción exacta) con `"tipo": "critico"` y
+      velocidad 1 (máx. 1.5).
+- [ ] **Humor:** el número del nivel, repartido a lo largo del video (no todo al inicio), nunca en pasos críticos.
+- [ ] **Sin `"quieto": true`** (la pausa es repetición en movimiento) salvo que el autor lo pida.
+- [ ] **Números y años escritos como se dicen** («dos mil veintiséis»), sin palabras sueltas como «ok» que la voz leería.
+- [ ] **Nada inventado:** lo dudoso va en `preguntas`.
+
+## A5. Sobre «hacerlo en la nube» y la velocidad
+
+- DeepSeek Harness corre los comandos en la PC del autor (modo Workspace Write = su carpeta). El modelo piensa en los
+  servidores de DeepSeek, pero ffmpeg, la voz y el montaje se hacen en la PC. No hay una nube de DeepSeek que arme el
+  video; no intentes subir el video ni la clave de ElevenLabs a otro servicio.
+- La velocidad depende de la PC. Medido con Honor FRP (etiquetas + flechas + testimonios): PC1 con NVIDIA 17 min 47 s;
+  **PC2 (Core Ultra 7, gráfica Intel) 5 min 43 s, con batería**. La nube de Claude armó la Raspberry en 7 min.
+  Usa la **PC2 enchufada al cargador** para que sea igual de rápido.
+
+---
+
+# PARTE B · Parámetros exactos
+
+## B2. Formato del guion (`guion.json`)
+
+```json
+{"bloques": [
+  {"id": "L01", "ancla": "Portada: ELIMINAR CUENTA HONOR",
+   "texto": "¿Has visto cientos de videos en YouTube para quitar la cuenta...?",
+   "humor": false,
+   "montaje": {"modo": "lento", "src_inicio": 0.0, "src_fin": 12.0, "velocidad": 1.0}},
+  {"id": "L09", "tipo": "critico", "ancla": "Campo de la key con la key puesta", "texto": "...", "humor": false,
+   "montaje": {"modo": "lento+congelar", "src_inicio": 301.0, "src_fin": 309.0, "velocidad": 1.0, "congelar_s": 3}}
+ ],
+ "preguntas": [{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}]}
+```
+
+- `id`: L01, L02… `ancla`: qué se ve en pantalla (corto). `texto`: lo que dice la voz.
+- `montaje.modo`:
+  - `lento`: tramo del original a una `velocidad` de 0.6 a 6 (1 = normal; más de 1 para esperas, cargas, instalaciones;
+    menos de 1 solo para un detalle rápido).
+  - `congelar`: pausa en ese momento (`src_inicio`, `congelar_s`). Ver punto 6: NO es una foto quieta.
+  - `lento+congelar`: el tramo y luego una pausa al final.
+  - `imagen`: muestra una imagen del proyecto (un mapa, por ejemplo) durante `congelar_s`.
+- Los tramos van en orden y dentro de la duración del original. Se salta lo que no aporta (esperas largas, errores, repeticiones).
+- Cada tramo tiene que MOSTRAR lo que dice su texto (si la voz dice «pega la key», el tramo es donde se ve la key puesta).
+- `preguntas`: hasta 6 de tipo «dato» (lo que no se ve ni se dice claro) y siempre 2 a 4 de tipo «mejora».
+- Responde SOLO con el JSON, sin texto alrededor.
+
+## B3. Duración y ritmo (`ia/ia.py`, `voz/voz.py`)
+
+| Parámetro | Valor | Qué significa |
+|---|---|---|
+| Palabras por segundo | **2.6** (`PALABRAS_POR_S`) | Es la velocidad de la voz. Para que el video no tenga imagen sin voz, total de palabras ≈ minutos de video × 60 × 2.6. |
+| Imagen sin voz por bloque | **1.5 s** máx. (`RELLENO`) | Nada de minutos sin voz. |
+| Velocidad máxima | **6×** (`VEL_MAX`) | Para esperas y cargas. |
+| Velocidad en pasos clave | **1, máx. 1.5** (`VEL_CRITICO`) | Poner key, escribir código/PIN/contraseña, IMEI, serial, usuario: tiene que leerse. Marcar `"tipo": "critico"`. |
+| Duración buscada | Parecida al original, o lo que pida la idea del autor | Si el guion queda corto, el video queda corto: explica con calma. |
+| Desfase de la voz | **0.3 s** después del inicio de cada bloque | |
+
+Referencia real (Honor FRP, versión final en la PC): 56 bloques, unas 2.65 palabras por segundo, 22 pausas hechas como
+repetición en movimiento (ninguna foto fija), 4 remates de humor y 8 etiquetas. Ojo: tiene 1678 palabras para 14:21 de
+video, así que queda un 26 % de imagen sin voz; no lo tomes como meta de largo: la regla de arriba manda. El borrador hecho a mano en la nube
+(`guion_honor.md`) tenía 38 bloques de unas 29 palabras cada uno.
+
+## B4. Humor (`HUMOR_NIVELES` en `ia/ia.py`)
+
+| Nivel | Nombre | Máximo |
+|---|---|---|
+| 0 | sin humor | ningún chiste; solo invitación sencilla a comentar |
+| **1** (por defecto) | poco | UN remate cada 7 u 8 bloques |
+| 2 | normal | un remate cada 4 o 5 bloques |
+| 3 | mucho | un remate cada 3 bloques |
+
+Reglas del humor:
+- Nunca en dos bloques seguidos. Cada remate es UNA frase corta (máx. 12 palabras), dicha de pasada, sin exagerar.
+- Picante ligero, doble sentido suave, nada grosero.
+- Solo en bloques que NO son críticos: esperas, cargas, el antes y el después, el cierre.
+- En pasos críticos (pines, códigos, keys, archivos, valores, copiar/pegar, borrar, conectar): nada de chistes.
+- Cada remate con un TEMA distinto (no repetir ex, suegra, vecina…). Marcar `"humor": true` y `"humor_tema"`.
+- Al inicio, invitación a comentar las dudas con un toque de humor (cuenta como un remate). Ejemplo real: «déjala en
+  los comentarios, que aquí no mordemos… bueno, solo un poquito».
+
+## B5. Estilo de la narración
+
+- Español latino, tuteando, entretenido y fácil de entender.
+- Botones, menús y archivos escritos tal cual aparecen en pantalla.
+- **No inventar datos**: precios, pines, webs, archivos, versiones solo si están en la transcripción, las capturas o la
+  idea del autor. Si falta, la frase va sin el dato y se pregunta.
+- Estructura que funciona (guion Honor): gancho con el problema del espectador → ANTES y DESPUÉS → a qué modelos sirve →
+  «es fácil» → lo que NO hay que hacer (entregar el teléfono, test point) → invitación a comentar → pasos numerados
+  («Paso uno: …») → cierre con webs y WhatsApp.
+- Números y años escritos como se dicen («dos mil veintiséis», «Android quince») para que la voz los lea bien.
+- Las webs del autor (xiaomiunlock.com, gsmprime.co) se dicen por su nombre y llevan etiqueta «web».
+- Cerca del cierre, en un bloque propio: en el canal de WhatsApp y en la página hay capturas de conversaciones reales con clientes.
+- Si se usa el estilo del canal «Psicótico»: leer `perfil_estilo.md` (tono de verdad incómoda, autoridad del técnico).
+- Datos a recordar del autor: método 2026–2027, Android 15, 16 y 17, últimos Honor (Honor 600, Honor 8 Lite).
+
+## B6. Pausas: repetición en movimiento, no congelado (`montaje/montaje.py`)
+
+Lo que fabian prefiere ya es lo que hace la app: **una «pausa» no es una foto quieta**, es la escena repitiéndose.
+
+- `VENTANA = 2.4 s`: se toman 2.4 s de escena alrededor del cuadro más nítido del momento.
+- Se reproducen **ida y vuelta** (adelante y en reversa) a **0.7×** (`LENTO_ESCENA`), en bucle, con un **zoom suave del
+  6 %** que alterna acercar/alejar entre bloques.
+- Después de un tramo (`lento+congelar`), la repetición arranca hacia atrás desde el último cuadro: el empalme no salta.
+- Solo con `"quieto": true` en el montaje vuelve a ser un cuadro fijo (con zoom del 10 %). **No uses `quieto` salvo que
+  el autor lo pida.**
+- Cuando la voz de un bloque no cabe en su tramo (el guion se alargó), la app alarga ese bloque con esta pausa en
+  movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si es el video entero
+  el que queda corto, primero baja la velocidad de los tramos acelerados. Si queda largo, acelera tramos y quita pausas
+  sin voz.
+
+## B7. Voz ElevenLabs (`voz/voz.py`)
+
+| Parámetro | Valor |
+|---|---|
+| Voz | «Mauricio», id `94zOad0g7T7K4oa7zhDq` |
+| Modelo | **`eleven_v4`** |
+| Idioma | `es` |
+| Estabilidad | **0.5** (`voice_settings.stability`) |
+| Endpoint | `text-to-speech/{voz}/with-timestamps`, salida `mp3_44100_128` |
+| Por bloque | un `L01.mp3` + `L01.align.json` (tiempos por carácter) |
+
+La voz de todo el video se normaliza a **−16 LUFS** (`loudnorm=I=-16:TP=-1.5`; el tráiler a −15).
+
+Solo se regeneran los bloques cuyo texto cambió (cada cambio gasta créditos). Las etiquetas usan los tiempos por
+carácter para aparecer justo cuando la voz dice la frase.
+
+## B8. Música (`musica/musica.py`)
+
+Volumen base **0.22** (≈ 10 dB bajo la voz). Baja sola cuando habla la voz: `sidechaincompress` con threshold 0.03,
+ratio 6, attack 20 ms, release 400 ms.
+
+## B9. Etiquetas y tráiler
+
+**Etiquetas** (`etiquetas.json`): `bloque`, `frase` (2 a 4 palabras COPIADAS TAL CUAL del texto del bloque), `tipo`
+(web | archivo | dato | precio | pin | consejo), `titulo` (1 a 3 palabras), `texto` (el dato, corto), `dur` (3 a 6 s);
+`color` hex solo para `pin`. Ejemplo: `{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5}`.
+En Honor FRP fueron 8 etiquetas de 4 s.
+
+**Tráiler** (`trailer.json`), unos 10 s: `titulo` (máx. 5 palabras), `subtitulo` (frase con gancho), `voz` (máx. 15
+palabras), `clips` con `fase` ANTES (teléfono bloqueado) · DURANTE (cuando se pone la key y avanza) · DESPUÉS (pantalla
+de inicio, ya libre), cada uno con `ventana` [desde, hasta] y `dur` de 1.2 a 2.6 s. Nada de pantallas negras ni manos tapando.
+
+## B10. Qué ve la IA del video (capturas)
+
+**Cómo trabajó Claude en la nube** (el método de los guiones hechos a mano, como Honor FRP):
+- Transcripción completa con tiempos por palabra (nunca cortada).
+- **Un cuadro cada 2 segundos** de TODO el video, a 320 px de ancho, con el segundo escrito en amarillo, en hojas de
+  **6 × 5 = 30 cuadros (1 minuto por hoja)**. Un video de 10 min son 10 hojas y 300 cuadros.
+- Con eso se escribe bloque por bloque, revisando contra las hojas que cada tramo muestra lo que dice la voz.
+- Comando usado (por minuto):
+  `ffmpeg -ss INICIO -t 60 -i original.mp4 -vf "fps=1/2,scale=320:-1,drawtext=text='%{eif\:t+INICIO\:d}s':x=5:y=5:fontsize=22:fontcolor=yellow:box=1:boxcolor=black,tile=6x5" -frames:v 1 hoja.jpg`
+
+**Lo que manda la app a la IA:**
+- **14 capturas** por defecto (ajuste `capturas`, de 4 a 60), repartidas por todo el video, el cuadro más nítido de
+  cada tramo más los momentos de más movimiento, a 768 px.
+- **Mapa**: un cuadro nítido en cada cambio de pantalla de todo el video, y al menos uno cada 15 s aunque no cambie
+  nada (máx. 150).
+- **«Todo con IA»**: hasta **240 cuadros** (`IA_CUADROS`), uno cada 2 s, o más espaciados en videos largos.
+- **Hojas de contacto** del mapa: 4 × 4 = 16 miniaturas por hoja, 384 px, con minuto:segundo.
+
+**DeepSeek y las imágenes:** la app tiene DeepSeek marcado «sin imágenes» (`deepseek-chat`), así que solo recibe la
+transcripción y los segundos. Si tu versión de DeepSeek no ve imágenes, pide al autor una descripción breve de qué se ve
+en cada minuto, o trabaja con la transcripción y marca en `preguntas` lo que no puedas confirmar.
+
+## B11. Algoritmos de la app (no hay que reprogramarlos)
+
+- **Nitidez** (`nitidez/`): mide nitidez y movimiento de cada cuadro; congelados, capturas y miniaturas caen siempre en
+  el cuadro más quieto y enfocado.
+- **Ajuste de largo** (`ia.py` `ajustar_largo`, `voz.py`): con la duración real de cada voz, estira o acorta cada bloque
+  y recalcula sus tiempos.
+- **Revisión del guion** (`revision_guion.txt`): avisa si un tramo vuelve atrás o si lo narrado ocurre en otro momento.
+- **Flechas y círculos** (`senales/`): se dibujan cuando la voz nombra la pieza y la siguen si la cámara se mueve (OpenCV).
+- **Codificación**: NVIDIA (NVENC) → Intel Quick Sync → procesador, solo lo que haya en la PC.
+
+## B12. Reglas del dueño (obligatorias)
+
+- No mostrar ni pedir claves de API, tokens ni contraseñas.
+- No presentar suposiciones como hechos.
+- No gastar créditos de ElevenLabs ni de IA sin preguntar.
+- No reconstruir la app; cambios pequeños sobre lo que existe.
+- No intentar evadir las políticas de ninguna IA.
