@@ -40,6 +40,7 @@ PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|ver
 ESPERA = re.compile(r'esper|carg|reinici|instal|descarg|tarda|progreso', re.I)
 # el «ok» suelto al comienzo («Ok, ahora…») o al final («…listo, ok.»); «pulsa OK» no se toca porque no va tras una pausa
 MULETILLA = re.compile(r'^\s*(ok|okey|okay)\s*[,.!…]+\s*|(?<=[.,!?…])\s*(ok|okey|okay)\s*[.!…]*\s*$', re.I)
+PREGUNTAS_MAX = 15  # preguntas al autor por guion, contando las de mejora (máximo 4)
 SIN_VOZ_MAX = 0.15  # parte del video que puede quedar sin voz; más que eso y al guion le faltan palabras
 
 # HUMOR: el nivel se elige en «⚙ Ajustes IA» (ajustes «humor»: 0 sin, 1 poco, 2 normal, 3 mucho). Cada bloque con chiste
@@ -497,11 +498,11 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
-- PREGUNTAS AL AUTOR: un buen editor no adivina. Si un dato clave NO se ve claro ni se dice en la grabación (qué cable o
-  pieza es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor), escribe la frase con lo más
-  probable y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
-  Solo datos que importan para que el tutorial sea correcto (máximo 6).
-- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y 4): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
+- PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
+  es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
+  paso se hace o se salta), escribe la frase con lo más probable y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
+  Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX - 4}).
+- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y 4; con las de datos, {PREGUNTAS_MAX} como máximo): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
   al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
   (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
   dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
@@ -2253,7 +2254,8 @@ def normalizar_preguntas(lista):
             out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
                         'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
-    return [x for x in out if x['tipo'] == 'dato'][:6] + [x for x in out if x['tipo'] == 'mejora'][:4]
+    mejoras = [x for x in out if x['tipo'] == 'mejora'][:4]
+    return [x for x in out if x['tipo'] == 'dato'][:PREGUNTAS_MAX - len(mejoras)] + mejoras
 
 
 # «✍️ Guion con 3 IAs a la vez»: el mismo encargo (mismo mapa, mismas capturas) a GPT, Claude y Gemini en paralelo.
@@ -2677,6 +2679,8 @@ def main():
         return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
+        if a.tarea == 'guion' and isinstance(datos, dict) and datos.get('preguntas'):
+            guardar_preguntas(d, datos['preguntas'])  # las preguntas de una IA de chat se contestan en la revisión del guion
     else:
         try:
             n = int(json.load(open(a.ajustes, encoding='utf-8')).get('capturas', 14))

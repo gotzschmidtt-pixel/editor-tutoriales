@@ -1546,15 +1546,21 @@ async function verPreguntas() {
     Solo se rehacen los bloques que tocan tus respuestas (el resto conserva su voz).</p>
     ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
     ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
-    <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button><span class="msg" id="msgPreg"></span></div></div>`;
+    <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button>
+    <button onclick="responderPreguntas(true)" title="Guarda tus respuestas en preguntas_guion.json sin gastar la IA de la app: las aplica la IA de chat que hace el video (DeepSeek, Claude…)">💾 Solo guardar respuestas (las aplica DeepSeek)</button>
+    <span class="msg" id="msgPreg"></span></div></div>`;
 }
-async function responderPreguntas() {
+async function responderPreguntas(soloGuardar) {
   document.querySelectorAll('#preguntasGuion input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
   if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { $('#msgPreg').textContent = 'Escribe o elige al menos una respuesta'; $('#msgPreg').className = 'msg err'; return; }
   document.querySelectorAll('#bloquesGuion textarea').forEach(t => GUION.bloques[+t.dataset.k].texto = t.value.trim());
   try {
     await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)});
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    if (soloGuardar) {
+      $('#msgPreg').textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» y corrige el guion con tus respuestas.'; $('#msgPreg').className = 'msg ok';
+      return;
+    }
     await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true})});
   } catch (e) { $('#msgPreg').textContent = e.message; $('#msgPreg').className = 'msg err'; return; }
   dlgGuion.close(); refrescar();

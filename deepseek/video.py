@@ -10,6 +10,8 @@ Uso (desde la carpeta editor-tutoriales):
       ia_prompt_guion.txt, ia_capturas/ (capturas, mapa y hojas) y hojas_2s/ (un cuadro cada 2 s, 30 por hoja)
   python deepseek/video.py entregar guion respuesta.json --nombre "Mi video"
       la app corrige el guion (tiempos, largo, orden) y lo guarda en guion.json; muestra el resumen y los avisos
+  python deepseek/video.py preguntas --nombre "Mi video"
+      tus preguntas del guion con lo que el autor contestó en la app
   python deepseek/video.py armar --nombre "Mi video" --confirmo-creditos
       voz (ElevenLabs, GASTA créditos), montaje, subtítulos y música → FINAL.mp4 sin extras
   python deepseek/video.py encargo etiquetas|trailer --nombre "Mi video"
@@ -148,9 +150,25 @@ def resumen_guion(d):
     return '\n'.join(out)
 
 
+def texto_preguntas(d):
+    """Las preguntas del guion (preguntas_guion.json) con lo que contestó el autor en la app."""
+    try:
+        lista = json.loads(leer(d, 'preguntas_guion.json') or '[]')
+    except ValueError:
+        lista = []
+    if not lista:
+        return 'Sin preguntas guardadas (ponlas en "preguntas" de respuesta_guion.json, hasta 15).'
+    out = [f'Preguntas al autor ({len(lista)}):']
+    for k, x in enumerate(lista, 1):
+        r = str(x.get('respuesta') or '').strip()
+        out.append(f"{k}. [{x.get('tipo')} · {x.get('bloque') or '-'}] {x.get('pregunta')}"
+                   + (f'\n   RESPUESTA: {r}' if r else '\n   (sin responder)'))
+    return '\n'.join(out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('accion', choices=['preparar', 'entregar', 'armar', 'encargo', 'extras', 'exportar', 'estado'])
+    ap.add_argument('accion', choices=['preparar', 'entregar', 'preguntas', 'armar', 'encargo', 'extras', 'exportar', 'estado'])
     ap.add_argument('args', nargs='*')
     ap.add_argument('--nombre', required=True, help='nombre del proyecto (carpeta en mis_proyectos)')
     ap.add_argument('--idea', help='datos seguros del video para la IA (se guardan en idea.txt)')
@@ -198,7 +216,14 @@ def main():
             for f in ('mejoras_guion.txt', 'revision_guion.txt'):
                 if leer(d, f).strip():
                     print(f'\n--- {f} ---\n' + leer(d, f).strip()[:4000])
-            print('\nAhora muéstrale al autor el resumen y pregúntale si arma el video (la voz gasta créditos de ElevenLabs).')
+            print(texto_preguntas(d))
+            print(f'\nAhora dile al autor que el guion ya está en la app: proyecto «{p}» → «📝 Ver y editar guion». Ahí lo lee, '
+                  'lo edita y contesta tus preguntas (o te las contesta en el chat). Cuando diga que respondió: '
+                  f'python deepseek/video.py preguntas --nombre "{p}", corrige y vuelve a entregar. '
+                  'No armes hasta que diga que sí (la voz gasta créditos de ElevenLabs).')
+
+    elif a.accion == 'preguntas':
+        print(texto_preguntas(d))
 
     elif a.accion == 'armar':
         if not a.confirmo_creditos:

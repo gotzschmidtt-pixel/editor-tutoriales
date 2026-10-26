@@ -1171,8 +1171,10 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'
                 if q['paso'] == 'guion_ia' and datos.get('respuestas'):
                     datos['_pausa'] = 'guion'  # corregido con tus respuestas: te lo muestro otra vez antes de seguir
-                if q['paso'] == 'ia' and datos.get('tarea') == 'guion' and datos.get('modo') == 'api':
-                    datos['_pausa'] = 'guion'  # «✨ Escribir / rehacer con IA»: se abre la revisión con las preguntas de la IA
+                if q['paso'] == 'ia' and datos.get('tarea') == 'guion' and datos.get('modo') in ('api', 'revisar'):
+                    # «✨ Escribir / rehacer con IA» o el guion de una IA de chat (pegado o entregado por DeepSeek): se abre la
+                    # revisión con las preguntas de la IA, para que lo veas y lo edites antes de la voz
+                    datos['_pausa'] = 'guion'
                 if q['paso'] == 'guion_ia' and datos.get('ajustar_humor'):
                     datos['_pausa'] = 'guion'  # «🎚 Ajustar el humor»: te muestro el guion con lo que cambió
                 if q['paso'] == 'guion_ia' and datos.get('combinar'):

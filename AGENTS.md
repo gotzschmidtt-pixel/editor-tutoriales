@@ -30,6 +30,12 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 
 Si no contesta algo, usa el valor por defecto y díselo.
 
+**Después de mirar el video (A3 paso 2) vuelve a preguntar:** todo lo que no te quede claro, **hasta 15 preguntas**
+numeradas y con opciones (qué pieza o cable es, qué botón, qué versión, en qué momento pasa algo, si un paso se salta,
+qué decir de una web). Mejor preguntar que adivinar. Escríbelas también en `"preguntas"` de `respuesta_guion.json`
+(`{"tipo": "dato" | "mejora", "bloque": "L07", "pregunta": "¿…?", "opciones": ["…", "…"]}`): así el autor las ve y las
+contesta en la app, junto al guion.
+
 ## A3. Procedimiento recomendado: con la app (`deepseek/video.py`)
 
 Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos:
@@ -48,7 +54,11 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    configuración a ×2 como máximo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, «muestra la
    misma escena que», «faltan palabras», humor sin repartir, tramos que no coinciden o «quedó corto», corrige y vuelve a
    entregar.
-6. **Mostrarle al autor** el resumen (bloques, duración, humor) y tus preguntas. Espera su «sí».
+6. **Que el autor revise y edite el guion ANTES de la voz.** Dile: «el guion está en la app: elige el proyecto NOMBRE y
+   pulsa 📝 Ver y editar guion». Ahí lee cada bloque con su tramo, lo edita y contesta tus preguntas
+   («💾 Solo guardar respuestas»). Cuando diga que respondió: `python deepseek/video.py preguntas --nombre "NOMBRE"`
+   muestra sus respuestas; corrige `respuesta_guion.json` con ellas **y con lo que él editó** (léelo de
+   `mis_proyectos/NOMBRE/guion.json`, que ya tiene sus cambios), y vuelve a entregar. Repite hasta que diga «sí».
 7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
 8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
    `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
