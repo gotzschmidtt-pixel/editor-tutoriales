@@ -86,6 +86,8 @@
   <p class="msg" id="qAviso"></p>
   <div class="acciones" style="flex-direction:column; align-items:stretch; gap:8px">
     <button class="principal" id="qVoz" onclick="quitarSoloVoz()">🔇 Quitar solo lo que dice: la imagen del paso se queda, unida al bloque anterior y más rápida</button>
+    <div style="display:flex; gap:6px; align-items:center"><button style="flex:1" onclick="quitarAcelerado()">⏩ Quitar lo que dice y dejar su tramo acelerado, sin voz (con música)</button>
+      <select id="qVel" title="Velocidad del tramo"><option value="2">×2</option><option value="4" selected>×4</option><option value="8">×8</option><option value="16">×16</option></select></div>
     <button onclick="quitarTodo()">✕ Quitar lo que dice y su parte del video</button>
     <button onclick="dlgQuitar.close()">Cancelar</button>
   </div>
@@ -193,7 +195,7 @@ function pintar() {
         ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}</div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span></div>
-        <textarea data-i="${i}" spellcheck="true" lang="es">${esc(b.texto)}</textarea>
+        <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardar()" hidden>💾 Guardar cambios</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
@@ -205,13 +207,14 @@ function pintar() {
 function avisos() {
   let total = 0;
   G.bloques.forEach((b, i) => {
-    const v = vozS(b.texto), l = largo(b.montaje || {}), el = $('#aviso' + i);
+    const v = b.texto.trim() ? vozS(b.texto) : 0, l = largo(b.montaje || {}), el = $('#aviso' + i);
     total += Math.max(v, l);
     const cambio = b.texto !== ORIGINAL[b.id];
     $('#b' + i).classList.toggle('cambiado', cambio);
     const g = $('#b' + i + ' .guardarAqui'); if (g) g.hidden = !cambio;
     if (!el) return;
     const pal = b.texto.trim().split(/\s+/).filter(Boolean).length;
+    if (!pal) { el.className = 'chip'; el.textContent = `sin voz · ${l.toFixed(0)} s de imagen`; return; }
     if (v > l + 1.5) { el.className = 'chip mal'; el.textContent = `${pal} palabras · la voz (~${v.toFixed(0)} s) alarga el bloque ${(v - l).toFixed(0)} s`; }
     else if (l > v + 6) { el.className = 'chip mal'; el.textContent = `${pal} palabras · sobran ~${(l - v).toFixed(0)} s de imagen sin voz`; }
     else { el.className = 'chip ok'; el.textContent = `${pal} palabras · ~${v.toFixed(0)} s de voz`; }
@@ -310,6 +313,13 @@ function quitarSoloVoz() {
   n.unido = true;  // la app no recorta este tramo al revisar: trae la imagen del paso que quitaste
   G.bloques.splice(i, 1); sucio = true; dlgQuitar.close(); pintar();
   $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ Quité lo que decía; su imagen quedó en el bloque de al lado. Pulsa «Guardar cambios».`;
+}
+function quitarAcelerado() {
+  const b = G.bloques[QUITAR], m = b.montaje || {};
+  if (m.src_inicio == null || !(m.modo || '').startsWith('lento')) { alert('Este bloque no muestra un tramo de tu grabación (es una imagen): usa otra opción.'); return; }
+  b.texto = ''; m.modo = 'lento'; m.congelar_s = null; m.velocidad = +$('#qVel').value; m.sin_voz = true;
+  sucio = true; dlgQuitar.close(); pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ ${b.id} queda sin voz, con su tramo a ×${m.velocidad}. Pulsa «Guardar cambios». Si después le escribes texto, vuelve a tener voz.`;
 }
 function quitarTodo() {
   G.bloques.splice(QUITAR, 1); sucio = true; dlgQuitar.close(); pintar();

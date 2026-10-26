@@ -79,6 +79,11 @@ def ajustar_guion(guion, carpeta):
     avisos, t = [], 0.0
     for b in g['bloques']:
         mo = b['montaje']
+        if not str(b.get('texto') or '').strip():  # tramo sin voz: dura lo que dura su imagen, a tu velocidad
+            b['voz_real_s'] = 0
+            b['inicio_min'], b['fin_max'] = round(t, 2), round(t + largo_bloque(mo), 2)
+            t += largo_bloque(mo)
+            continue
         real = round(duracion_voz(carpeta, b['id']), 2)
         b['voz_real_s'] = real
         falta = round(real + DESFASE + MARGEN - largo_bloque(mo), 2)
@@ -125,6 +130,8 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.salida, exist_ok=True)
     for b in json.load(open(a.guion, encoding='utf-8'))['bloques']:
+        if not str(b.get('texto') or '').strip():
+            continue  # tramo sin voz (quitaste su texto y lo dejaste acelerado): no gasta ElevenLabs
         mp3 = os.path.join(a.salida, f"{b['id']}.mp3")
         if vigente(a.salida, b, a):
             continue

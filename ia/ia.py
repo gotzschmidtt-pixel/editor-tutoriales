@@ -34,6 +34,7 @@ CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|p
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 PALABRAS_POR_S = 2.6
+VEL_SIN_VOZ = 16.0  # un tramo sin voz (quitaste su texto) puede ir más rápido: se ve pasar, sin explicación
 VEL_PASO = 2.0  # pasos de configuración o comprobación (seleccionar, activar, verificar): se aceleran poco, que se vea qué se toca
 PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|confirma|configura|'
                   r'entra (en|a) (los )?ajustes)', re.I)
@@ -648,6 +649,7 @@ def problemas(bloques, total, con_saltos=True):
     out = saltos_atras(bloques) if con_saltos else []
     out += escenas_repetidas(bloques)
     palabras = sum(len(str(b.get('texto', '')).split()) for b in bloques)
+    total -= sum(largo_bloque(b['montaje']) for b in bloques if b['montaje'].get('sin_voz'))  # los tramos sin voz son a propósito
     if total > 0 and palabras / PALABRAS_POR_S < total * (1 - SIN_VOZ_MAX):
         sin_voz = 1 - palabras / PALABRAS_POR_S / total
         out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
@@ -753,7 +755,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
         margen = []
         for b, voz in zip(bloques, voces):
             mo = b['montaje']
-            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1:
+            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1 or mo.get('sin_voz'):
                 margen.append(0); continue
             tramo = mo['src_fin'] - mo['src_inicio']
             margen.append(max(0, min(tramo, voz + RELLENO + 6) - tramo / mo['velocidad']))
@@ -774,6 +776,8 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             if sobra <= 0:
                 break
             mo = b['montaje']
+            if mo.get('sin_voz'):
+                continue
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
@@ -824,6 +828,15 @@ def revisar(d, tarea, datos):
             for c in ('src_inicio', 'src_fin'):
                 if mo.get(c) is not None:
                     mo[c] = round(min(max(float(mo[c]), 0), dur - 0.1), 2)
+            if not b['texto'].strip() and mo['modo'].startswith('lento'):
+                # tramo sin voz: quitaste lo que decía y lo dejaste acelerado; va tal cual, a la velocidad que elegiste
+                mo['sin_voz'] = True
+                mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
+                largo = largo_bloque(mo)
+                b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = 0
+                t += largo
+                continue
+            mo.pop('sin_voz', None)
             if mo['modo'].startswith('lento'):
                 mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.5), VEL_MAX)
                 if mo['src_fin'] <= mo['src_inicio']:

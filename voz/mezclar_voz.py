@@ -25,7 +25,11 @@ for b, sig in zip(bl, bl[1:]):  # una voz que se mete en el bloque siguiente
     real = b.get('voz_real_s')
     if real and b['inicio_min'] + desfase + real > sig['inicio_min'] + desfase - 0.05:
         print(f"AVISO: la voz de {b['id']} se pisa con la de {sig['id']}. Vuelve a «Generar voz» para que se ajuste el guion.", flush=True)
-for k, b in enumerate(d['bloques'], 1):
+k = 0
+for b in d['bloques']:
+    if not str(b.get('texto') or '').strip():
+        continue  # tramo sin voz
+    k += 1
     st = b['inicio_min'] + desfase
     ins += ['-i', f"{voz}/{b['id']}.mp3"]
     flt.append(f"[{k}:a]aresample=44100,adelay={int(st * 1000)}:all=1[a{k}]")
