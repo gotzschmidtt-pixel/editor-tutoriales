@@ -14,9 +14,9 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 - **La app «Estudio de tutoriales»** (en la PC, carpeta `editor-tutoriales`): transcribe, saca capturas y el mapa del
   video, genera la voz con ElevenLabs (voz Mauricio, `eleven_v4`), monta el video con repetición de escena en vez de foto
   fija, pone música, etiquetas, flechas y tráiler, y exporta. La clave de ElevenLabs está guardada en la app: **tú nunca la
-  ves ni la pides**; la app se conecta sola a ElevenLabs cuando corres el paso de la voz.
-- **Las herramientas de la PC que usas:** `python deepseek/video.py` (maneja la app), ffmpeg/ffprobe (fotos del video),
-  Whisper (transcripción gratis, sin internet), la gráfica NVIDIA o Intel (codifica rápido; la app la usa sola).
+  ves ni la pides**; las herramientas de voz y música la leen solas.
+- **Las herramientas de la PC que usas:** las de la app una por una (transcribir, capturas y mapa, voz, montaje, música,
+  etiquetas, tráiler; ver A3), ffmpeg/ffprobe y la gráfica NVIDIA o Intel (las herramientas la usan solas).
 
 ## A2. Antes de empezar, pregúntale al autor (en un solo mensaje, con opciones)
 
@@ -30,30 +30,39 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 
 Si no contesta algo, usa el valor por defecto y díselo.
 
-## A3. Procedimiento (siempre en este orden)
+## A3. Procedimiento (modo directo: tú armas el video con las herramientas de la app)
 
-Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos:
+No hace falta abrir la app. Usas sus herramientas una por una, como lo hizo Claude en su nube con los videos de Honor y
+Raspberry. `R` es la carpeta de la app (`editor-tutoriales`). Antes de todo, en la terminal: `set PYTHONUTF8=1`.
 
-1. **Preparar (gratis):**
-   `python deepseek/video.py preparar "RUTA\video.mp4" --nombre "NOMBRE" --idea "datos seguros"`
-   Deja en `mis_proyectos/NOMBRE/`: `ia_prompt_guion.txt` (el encargo exacto de la app, con la transcripción y el mapa
-   del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
-2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,
-   se abre el programa, se conecta el cable, se pega la key, se pulsa el botón, reinicio, pantalla de inicio.
-3. **Escribir el guion** siguiendo `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
-   `mis_proyectos/NOMBRE/respuesta_guion.json`.
-4. **Revisar tú mismo antes de entregar** (lista de A4). Corrige lo que falle.
-5. **Entregar:** `python deepseek/video.py entregar guion mis_proyectos/NOMBRE/respuesta_guion.json --nombre "NOMBRE"`
-   La app corrige tiempos y largo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, tramos que
-   no coinciden o que «quedó corto», corrige y vuelve a entregar.
-6. **Mostrarle al autor** el resumen (bloques, duración, humor) y tus preguntas. Espera su «sí».
-7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
-8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
-   `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
-   `trailer`. Luego `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE" --confirmo-creditos`.
-9. **Exportar:** `python deepseek/video.py exportar 480 720 --nombre "NOMBRE"` y dile dónde quedó `FINAL.mp4`.
+**Preparar la carpeta del video:** crea `R\mis_proyectos\NOMBRE\`, copia ahí el video como `original.mp4`, guarda los
+datos del autor en `idea.txt` y trabaja SIEMPRE dentro de esa carpeta (todos los comandos van desde ahí).
 
-Si un paso falla: lee `registro.txt` y `diagnosticos/`, explícale la causa real al autor y no reintentes a ciegas.
+| # | Qué | Comando | ¿Gasta? |
+|---|---|---|---|
+| 1 | Transcribir (texto con tiempos por palabra) | `python R\transcripcion\transcribir.py --video original.mp4 --salida transcripcion --motor whisper` | No (Whisper, en la PC) |
+| 2 | Capturas nítidas, mapa del video (OCR de cada pantalla) y el encargo exacto del guion | `python R\ia\ia.py --proyecto . --tarea guion --modo prompt --ajustes R\app\ajustes.json` → `ia_prompt_guion.txt`, `ia_capturas\`, `mapa_video.json` | No |
+| 3 | Hojas de un cuadro cada 2 s (método Claude) | el comando ffmpeg de B10, una hoja por minuto, en `hojas_2s\` | No |
+| 4 | **Tú:** mirar todo y escribir el guion | lees `ia_prompt_guion.txt`, todas las hojas y capturas; escribes `respuesta_guion.json` y repasas la lista A4 | Tus tokens |
+| 5 | La app corrige tiempos, largo y orden | `python R\ia\ia.py --proyecto . --tarea guion --modo revisar --ajustes R\app\ajustes.json --entrada respuesta_guion.json` → `guion.json`, `mejoras_guion.txt`, `revision_guion.txt` | No |
+| 6 | **Preguntar al autor** con el resumen | bloques, duración, humor, preguntas. Espera su «sí» | — |
+| 7 | Voz de Mauricio, ElevenLabs v4 | `python R\voz\voz.py --guion guion.json --salida voz` | **Sí (ElevenLabs)** |
+| 8 | Montaje 1080p (pausas = repetición de escena) | `python R\montaje\montaje.py --original original.mp4 --guion guion.json --salida 1_montaje.mp4` | No |
+| 9 | Voz y subtítulos sobre el video | `python R\voz\mezclar_voz.py 1_montaje.mp4 guion.json voz 3_voz.mp4` | No |
+| 10 | Música que baja sola bajo la voz | `python R\musica\musica.py --video 3_voz.mp4 --salida 4_musica.mp4 --pista R\mis_musica\musica_fija.mp3` (si no existe esa pista: `--guardar_pista musica.mp3`, que **gasta** ElevenLabs Music) | Según pista |
+| 11 | Etiquetas: escribe `etiquetas.json` (formato B9) y ponlas | `python R\etiquetas\etiquetas.py --guion guion.json --voz voz --etiquetas etiquetas.json --video 4_musica.mp4 --salida 5_etiquetas.mp4` | No |
+| 12 | Tráiler: escribe `trailer.json` (formato B9) y únelo | `python R\trailer\trailer.py --video original.mp4 --plan trailer.json --salida trailer.mp4 --unir 5_etiquetas.mp4 --final FINAL.mp4 --srt 3_voz.srt --donde inicio` | **Sí (voz del tráiler)** |
+| 13 | Sin tráiler | `ffmpeg -y -i 5_etiquetas.mp4 -c copy FINAL.mp4` | No |
+| 14 | Exportar 480p | `python R\codificar\codificar.py ffmpeg -y -i FINAL.mp4 -vf scale=-2:480 -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 128k FINAL_480p.mp4` | No |
+
+Notas:
+- Las herramientas de voz y música leen la clave de ElevenLabs por su cuenta (de la app). **Tú no la abres, no la
+  pides y no la escribes en ningún comando.**
+- Todo lo que codifica video usa sola la gráfica NVIDIA o Intel si la hay.
+- Para el paso 2 y el 5 se pasa la ruta de `ajustes.json` a la herramienta: eso es todo; no lo abras ni lo muestres.
+- Si cambias el texto de un bloque después de la voz, repite 5 → 7 (solo regenera los bloques cambiados) → 8 → 9…
+- Si un paso falla, lee el error, explícale la causa real al autor y no lo reintentes a ciegas.
+- Alternativa con la app abierta: `python R\deepseek\video.py` hace lo mismo con menos comandos (ver `README.md`).
 
 ## A4. Lista de revisión del guion (que todo coincida con el video)
 
