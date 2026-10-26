@@ -17,7 +17,7 @@ senales.json: [{"bloque": "L08", "frase": "450", "tipo": "circulo", "x": 1440, "
   retraso: segundos después de la frase (cuando el objeto aparece un poco más tarde).
 --prueba guarda un cuadro por señal con la marca dibujada, para revisar posiciones sin renderizar todo.
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, shutil, subprocess, sys
 import cv2
 import numpy as np
 
@@ -88,7 +88,7 @@ def main():
     a = ap.parse_args()
 
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
-    tmp = tempfile.mkdtemp(prefix='senales_')
+    tmp = codificar.temporal('senales')
     trabajos, colocadas = [], []
     for k, s in enumerate(json.load(open(a.senales, encoding='utf-8')), 1):
         s.setdefault('frase', s.get('texto') or 'tu captura')

@@ -9,7 +9,7 @@ alrededor del cuadro más nítido del momento pedido. Con "quieto": true en el m
 --calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
 --estabilizar: quita el temblor de la cámara en mano de cada tramo (vid.stab si ffmpeg lo trae; si no, deshake).
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, shutil, subprocess, sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
@@ -139,11 +139,11 @@ def main():
         if final or not fuente:
             return ''
         txt = txt.replace(':', '\\:').replace("'", '')
-        return f",drawtext=fontfile='{fuente}':text='{txt}':x=24:y=h-52:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10"
+        return f",drawtext=fontfile='{fuente.replace(':', chr(92) + ':')}':text='{txt}':x=24:y=h-52:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10"
 
     dur_original = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', a.original],
                                         capture_output=True, text=True, check=True).stdout)
-    tmp = tempfile.mkdtemp(prefix='montaje_')
+    tmp = codificar.temporal('montaje')
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')

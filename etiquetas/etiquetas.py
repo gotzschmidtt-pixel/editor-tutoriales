@@ -15,7 +15,7 @@ etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo":
                o "t": segundo exacto en el video, en vez de buscar la frase
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile, unicodedata
+import argparse, json, os, shutil, subprocess, sys, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -90,7 +90,7 @@ def main():
         shutil.copyfile(a.video, a.salida)
         json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'))
         return
-    tmp = tempfile.mkdtemp(prefix='etiquetas_')
+    tmp = codificar.temporal('etiquetas')
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, g in enumerate(grupos, 1):
         total = round(g['fin'] - g['ini'], 2)

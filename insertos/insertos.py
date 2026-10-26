@@ -18,7 +18,7 @@ insertos.json: [{"material": "pantalla.mp4", "src_t": 2.6,
   claves: encuadre en fracciones del material (centro cx, cy y ancho w; el alto sale de 16:9).
   Cada clave va en "t" (segundos desde el inicio del inserto) o en el momento de una "frase".
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, shutil, subprocess, sys
 import cv2
 import numpy as np
 
@@ -90,7 +90,7 @@ def main():
             raise SystemExit(f"no encontré «{frase}» en {bloque}")
         return round(inicio[bloque] + a.desfase + t, 2)
 
-    tmp = tempfile.mkdtemp(prefix='insertos_')
+    tmp = codificar.temporal('insertos')
     analisis, colocados = {}, []
     for k, s in enumerate(json.load(open(a.insertos, encoding='utf-8')), 1):
         t0 = s['t'] if 't' in s else momento(s['bloque'], s['frase'])

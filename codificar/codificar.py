@@ -161,3 +161,12 @@ def run(cmd, **kw):
 
 if __name__ == '__main__':  # la app lo usa como envoltorio: python codificar.py ffmpeg ...
     sys.exit(run(sys.argv[1:]).returncode)
+
+
+def temporal(prefijo):
+    """Carpeta para los tramos de un paso, dentro del proyecto (la carpeta actual) y no en %TEMP%: el ffmpeg de NVIDIA no
+    puede escribir en %TEMP% en algunas PC («Permission denied») y todo el paso caía al procesador. Borra restos de antes."""
+    import glob, shutil, tempfile
+    for viejo in glob.glob(os.path.join(os.getcwd(), f'.{prefijo}_tmp_*')):
+        shutil.rmtree(viejo, ignore_errors=True)
+    return tempfile.mkdtemp(prefix=f'.{prefijo}_tmp_', dir=os.getcwd())
