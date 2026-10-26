@@ -23,7 +23,7 @@ Uso (desde la carpeta editor-tutoriales):
 
 No usa claves: la app las lee de app/ajustes.json, que este script nunca abre ni muestra.
 """
-import argparse, json, os, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+import argparse, hashlib, json, os, shutil, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = f"http://localhost:{os.environ.get('PUERTO', 8765)}"
@@ -150,6 +150,35 @@ def resumen_guion(d):
     return '\n'.join(out)
 
 
+def huella(d):
+    """Hash de los bloques del guion.json actual (ids y textos): la voz y el montaje cambian tiempos, no textos, así que
+    solo cambia si alguien editó lo que dice la voz o quitó o agregó bloques."""
+    try:
+        g = json.loads(leer(d, 'guion.json') or 'null')
+    except ValueError:
+        return None
+    b = g.get('bloques') if isinstance(g, dict) else g
+    if not b:
+        return None
+    return hashlib.sha256(json.dumps([[x.get('id'), x.get('texto')] for x in b], ensure_ascii=False).encode()).hexdigest()
+
+
+MARCA = '.deepseek_entrega.json'  # los textos del guion tal como quedaron en la última entrega de la IA
+
+
+def cambio_del_autor(d, archivo=None):
+    """True si los textos del guion.json cambiaron desde la última entrega de la IA (el autor lo editó en la app).
+    Sin marca (entregas de antes de este cambio): si guion.json es más nuevo que el archivo que se quiere entregar."""
+    try:
+        marca = json.loads(leer(d, MARCA) or '{}').get('guion')
+    except ValueError:
+        marca = None
+    if marca:
+        return marca != huella(d)
+    g = os.path.join(d, 'guion.json')
+    return bool(archivo and os.path.exists(g) and os.path.getmtime(g) > os.path.getmtime(archivo) + 2)
+
+
 def texto_preguntas(d):
     """Las preguntas del guion (preguntas_guion.json) con lo que contestó el autor en la app."""
     try:
@@ -172,6 +201,8 @@ def main():
     ap.add_argument('args', nargs='*')
     ap.add_argument('--nombre', required=True, help='nombre del proyecto (carpeta en mis_proyectos)')
     ap.add_argument('--idea', help='datos seguros del video para la IA (se guardan en idea.txt)')
+    ap.add_argument('--parti-del-guion-actual', action='store_true',
+                    help='entregar guion: tu archivo ya incluye lo que el autor editó en la app (guion_editado_por_autor.json)')
     ap.add_argument('--confirmo-creditos', action='store_true', help='el autor aprobó gastar créditos de ElevenLabs')
     a = ap.parse_args()
     abrir_app()
@@ -207,9 +238,18 @@ def main():
         if len(a.args) != 2 or a.args[0] not in ('guion', 'etiquetas', 'trailer'):
             raise SystemExit('Uso: entregar guion|etiquetas|trailer archivo.json --nombre "..."')
         tarea, archivo = a.args
+        if tarea == 'guion' and cambio_del_autor(d, archivo) and not a.parti_del_guion_actual:
+            copia = os.path.join(d, 'guion_editado_por_autor.json')
+            shutil.copyfile(os.path.join(d, 'guion.json'), copia)
+            raise SystemExit('NO ENTREGADO: el autor editó el guion en la app después de tu última entrega, y entregar tu archivo '
+                             f'borraría sus cambios. Su versión está en {copia}: parte de ella (sus textos mandan), aplica '
+                             'solo lo que falte (sus respuestas: python deepseek/video.py preguntas --nombre "..."), guárdala '
+                             'como tu respuesta y entrega con --parti-del-guion-actual.')
         txt = open(archivo, encoding='utf-8').read()
         api('/api/pegar', cuerpo=txt.encode('utf-8'), p=p)
         correr(p, 'ia', {'tarea': tarea, 'modo': 'revisar'})
+        if tarea == 'guion':
+            open(os.path.join(d, MARCA), 'w', encoding='utf-8').write(json.dumps({'guion': huella(d)}))
         print(f'Guardado {tarea}.json (corregido por la app).')
         if tarea == 'guion':
             print(resumen_guion(d))
@@ -224,6 +264,8 @@ def main():
 
     elif a.accion == 'preguntas':
         print(texto_preguntas(d))
+        if cambio_del_autor(d):
+            print('\nOJO: el autor también editó el guion en la app. Parte de mis_proyectos/<nombre>/guion.json, no de tu archivo viejo.')
 
     elif a.accion == 'armar':
         if not a.confirmo_creditos:

@@ -59,6 +59,9 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    («💾 Solo guardar respuestas»). Cuando diga que respondió: `python deepseek/video.py preguntas --nombre "NOMBRE"`
    muestra sus respuestas; corrige `respuesta_guion.json` con ellas **y con lo que él editó** (léelo de
    `mis_proyectos/NOMBRE/guion.json`, que ya tiene sus cambios), y vuelve a entregar. Repite hasta que diga «sí».
+   **Sus cambios mandan:** si el autor editó el guion en la app después de tu última entrega, `entregar` se niega y deja
+   su versión en `guion_editado_por_autor.json`. Parte de ese archivo (no de tu respuesta vieja), aplica solo lo que
+   falte y entrega con `--parti-del-guion-actual`. Si no tienes nada que cambiar, no entregues: arma con su guion.
 7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
 8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
    `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
