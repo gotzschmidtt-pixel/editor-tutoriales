@@ -109,7 +109,8 @@ def main():
                 png = os.path.join(tmp, f'{i}.png')
                 run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
                 z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
-                run(['-i', png, '-vf', f"scale=3840:2160,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
+                # zoompan mueve el recorte de a 1 píxel entero: sobre una imagen 4 veces más grande el zoom sale suave, sin temblar
+                run(['-i', png, '-vf', f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
                      '-frames:v', str(nfr)] + enc + [f])
             else:
                 # la escena se repite en movimiento (ida y vuelta, un poco lenta) en vez de una foto quieta:
@@ -121,8 +122,9 @@ def main():
                 orden = '[rv][f]' if tras_tramo else '[f][rv]'
                 run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex',
                      f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]", '-map', '[o]'] + enc + [ida])
-                z = f'1+0.06*on/{nfr}' if len(partes) % 2 == 0 else f'1.06-0.06*on/{nfr}'
-                run(['-stream_loop', '-1', '-i', ida, '-vf', f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
+                # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen
+                # tiembla (y ampliarla 4 veces cuadro a cuadro sería muy lento); el movimiento de la escena ya la mantiene viva
+                run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps=25,format=yuv420p{lab}",
                      '-frames:v', str(nfr)] + enc + [f])
             partes.append(f)
         if m['modo'] == 'imagen':
