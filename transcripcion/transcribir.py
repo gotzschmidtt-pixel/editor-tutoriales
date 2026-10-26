@@ -71,7 +71,11 @@ def whisper(f, idioma, modelo):
     # el modelo queda en descargas_app/modelos (para no bajarlo otra vez y llevarlo a otra PC)
     guardar = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'descargas_app', 'modelos', 'whisper')
     os.makedirs(guardar, exist_ok=True)
-    segs, _ = WhisperModel(modelo, compute_type='int8', download_root=guardar).transcribe(f, language=idioma, word_timestamps=True)
+    # palabras técnicas de tus tutoriales: sin esto Whisper escribe «modo de feo» por DFU y «3d tools» por 3uTools
+    glosario = ('Tutorial de reparación de celulares: modo DFU, modo Recovery, Exit Recovery, 3uTools, iTunes, ECID, Ramdisk, '
+                'bypass, Hello Screen, iCloud, FRP, payload, SSH, iPhone, Xiaomi, Honor, Raspberry Pi Pico, UnlockTool.')
+    segs, _ = WhisperModel(modelo, compute_type='int8', download_root=guardar).transcribe(f, language=idioma, word_timestamps=True,
+                                                                                         initial_prompt=glosario)
     return [{'texto': w.word.strip(), 'inicio': w.start, 'fin': w.end} for s in segs for w in s.words]
 
 

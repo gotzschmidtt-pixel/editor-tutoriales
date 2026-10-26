@@ -767,8 +767,14 @@ def verificar_orden(d, bloques):
                 avisos.append(f"{b['id']}: lo que narra no iba con su imagen ({mmss(ini)}–{mmss(fin)}); lo moví a "
                               f"{mmss(nuevo)}, donde dices eso en tu grabación")
     avisos += desfases(d, bloques)
-    open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(
-        '\n'.join(avisos) + '\n' if avisos else 'Sin problemas de orden: los tramos siguen el video y cada bloque va con lo que dices.\n')
+    if avisos:
+        txt = '\n'.join(avisos) + '\n'
+    elif palabras:
+        txt = ('Sin avisos al comparar con lo que dices en tu grabación. Ojo: esto solo compara palabras; un tramo corrido donde casi '
+               'no hablas no se ve aquí. Para eso usa «🔎 Revisar con imágenes».\n')
+    else:  # nunca «sin problemas» si no se pudo revisar nada
+        txt = 'No pude revisar el orden: falta la transcripción de tu grabación (transcripcion.json).\n'
+    open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(txt)
     return avisos
 
 
