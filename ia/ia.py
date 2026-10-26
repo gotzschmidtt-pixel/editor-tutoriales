@@ -691,6 +691,52 @@ def momento_dicho(d, texto, ini, fin):
     return (ini + fin) / 2
 
 
+def _corrido_un_bloque(palabras, bloques, ya):
+    """El desfase típico: la IA pone cada texto un bloque antes o después de su imagen y lo cuenta con sus propias
+    palabras, así que casi nunca coincide la mitad. Aquí se compara cada bloque solo con sus vecinos: si lo que dices
+    en el tramo del bloque de al lado se parece claramente más a su texto que lo que dices en su propio tramo, avisa.
+    Las palabras que repites todo el rato («vamos», «ahora», «bueno») casi no cuentan; las raras (ECID, DFU) sí."""
+    norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
+    veces = {}
+    for _, r in norm:
+        veces[r] = veces.get(r, 0) + 1
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+
+    def tramo(b):
+        mo = b['montaje']
+        return mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+
+    def parecido(raices, ini, fin):
+        dichas = {r for t, r in norm if ini - 2 <= t <= fin + 2}
+        total = sum(1 / veces[r] for r in raices)
+        return sum(1 / veces[r] for r in raices & dichas) / total, len(raices & dichas)
+
+    out = []
+    for k, b in enumerate(con_tramo):
+        if b['id'] in ya or b['montaje'].get('visto'):
+            continue
+        raices = {w[:5] for w in pistas.palabras_clave(b.get('texto', ''))} & set(veces)
+        if len(raices) < 3:
+            continue
+        ini, fin = tramo(b)
+        aqui, n_aqui = parecido(raices, ini, fin)
+        mejor = None
+        for j in (k - 1, k + 1):
+            if 0 <= j < len(con_tramo):
+                a, f = tramo(con_tramo[j])
+                # lo que dices justo al borde suele anunciar el paso siguiente: en tramos largos no cuenta
+                ca, cf = (a, f - 6) if j < k and f - a > 12 else (a + 6, f) if j > k and f - a > 12 else (a, f)
+                v, n = parecido(raices, ca, cf)
+                if v >= 0.35 and v >= aqui + 0.25 and n >= n_aqui + 2 and (not mejor or v > mejor[0]):
+                    mejor = (v, j, a, f)
+        if mejor:
+            _, j, a, f = mejor
+            out.append(f"{b['id']}: su texto se parece más a lo que dices en el tramo de {con_tramo[j]['id']} "
+                       f"({mmss(a)}–{mmss(f)}) que en el suyo ({mmss(ini)}–{mmss(fin)}): la voz parece ir "
+                       f"{'atrasada' if j < k else 'adelantada'} un bloque; revisa si texto e imagen coinciden")
+    return out
+
+
 def desfases(d, bloques):
     """Lo que la revisión del orden no ve: bloques cuya voz narra lo que dices en OTRO momento de tu grabación (la voz va
     atrasada o adelantada, aunque comparta alguna palabra con su tramo) y tramos donde explicas algo y ningún bloque los
@@ -711,11 +757,12 @@ def desfases(d, bloques):
             continue
         aqui = len({r for t, r in norm if ini - 3 <= t <= fin + 3 and r in raices}) / len(raices)
         for x, v in pistas.dicho(palabras, b['texto'], top=2, ventana=20):  # una explicación hablada dura más de 12 s
-            if not ini - 3 <= x <= fin + 3 and v >= 0.5 and v >= aqui + 0.25:
+            if not ini - 8 <= x <= fin + 8 and v >= 0.5 and v >= aqui + 0.25:
                 out.append(f"{b['id']}: su texto narra lo que dices en tu grabación en {mmss(x)}, no lo de su tramo "
                            f"{mmss(ini)}–{mmss(fin)} (la voz va {'atrasada' if x < ini else 'adelantada'}): "
                            f"pon el texto con el tramo donde se hace")
                 break
+    out += _corrido_un_bloque(palabras, bloques, {x.split(':')[0] for x in out})
     tramos.sort()
     hasta = 0.0
     for ini, fin, bid in tramos:
