@@ -59,6 +59,23 @@ def avance(partes, tmp, destino, voces=()):
         pass
 
 
+def cuadros_por_segundo(f):
+    """Los cuadros por segundo del video armado, según la grabación: 30 para teléfonos (30 o 60), 24 para cine, 25 si no.
+    Con 60 → 25 se pierden cuadros de forma despareja y el pulso de la mano se ve a saltos (el temblor se duplica);
+    60 → 30 toma uno de cada dos, parejo."""
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=avg_frame_rate',
+                            '-of', 'csv=p=0', f], capture_output=True, text=True, check=True).stdout.strip()
+        n, d = r.split('/') if '/' in r else (r, 1)
+        x = float(n) / float(d)
+    except (OSError, ValueError, ZeroDivisionError, subprocess.CalledProcessError):
+        return 25
+    for base in (30, 24, 25):
+        if any(abs(x - base * k) < 0.6 for k in (1, 2, 4)):
+            return base
+    return 25
+
+
 def run(args):
     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
@@ -112,9 +129,10 @@ def main():
     final = alto == 1080
     res = (alto * 16 // 9 // 2 * 2, alto)
     crf = '20' if final else '26'
-    # framerate (no fps): al pasar a 25 cuadros por segundo un video de 30 o 60, o un tramo acelerado o lento, fps se salta
-    # cuadros de forma despareja (2, 2, 3, 2…) y el movimiento tiembla; framerate arma cada cuadro en su momento exacto
-    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps=25,format=yuv420p"
+    FPS = cuadros_por_segundo(a.original)
+    # framerate (no fps): en un tramo acelerado o lento, fps se salta cuadros de forma despareja (2, 2, 3, 2…) y el
+    # movimiento tiembla; framerate arma cada cuadro en su momento exacto
+    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps={FPS},format=yuv420p"
     fuente = next((f for f in ('C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if os.path.exists(f)), None)
 
     def rotulo(txt):
@@ -144,13 +162,13 @@ def main():
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
             t = m.get('cuadro', mejor(*nt, *v))
             f = os.path.join(tmp, f'{i}_b.mp4')
-            nfr = int(round(m['congelar_s'] * 25))
+            nfr = int(round(m['congelar_s'] * FPS))
             if m.get('quieto'):  # cuadro fijo con zoom lento (como antes)
                 png = os.path.join(tmp, f'{i}.png')
                 run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
                 z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
                 # zoompan mueve el recorte de a 1 píxel entero: sobre una imagen 4 veces más grande el zoom sale suave, sin temblar
-                run(['-i', png, '-vf', f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps=25,format=yuv420p{lab}",
+                run(['-i', png, '-vf', f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps={FPS},format=yuv420p{lab}",
                      '-frames:v', str(nfr)] + enc + [f])
             else:
                 # la escena se repite en movimiento (ida y vuelta, un poco lenta) en vez de una foto quieta:
@@ -166,14 +184,14 @@ def main():
                     estabilizar(ida, enc)
                 # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen
                 # tiembla (y ampliarla 4 veces cuadro a cuadro sería muy lento); el movimiento de la escena ya la mantiene viva
-                run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps=25,format=yuv420p{lab}",
+                run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps={FPS},format=yuv420p{lab}",
                      '-frames:v', str(nfr)] + enc + [f])
             partes.append(f)
         if m['modo'] == 'imagen':
             img = m.get('imagen') or a.imagen
             f = os.path.join(tmp, f'{i}_b.mp4')
             run(['-loop', '1', '-t', str(m['congelar_s']), '-i', img, '-filter_complex',
-                 f"[0]split[a][b];[a]scale={res[0]}:{res[1]},boxblur=20[bg];[b]scale=-1:{res[1] - 20}[fg];[bg][fg]overlay=(W-w)/2:10,fps=25,format=yuv420p{lab}"]
+                 f"[0]split[a][b];[a]scale={res[0]}:{res[1]},boxblur=20[bg];[b]scale=-1:{res[1] - 20}[fg];[bg][fg]overlay=(W-w)/2:10,fps={FPS},format=yuv420p{lab}"]
                 + enc + [f])
             partes.append(f)
         mp3 = os.path.join(carpeta_voz, f'{i}.mp3')

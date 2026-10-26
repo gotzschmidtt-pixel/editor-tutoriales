@@ -189,7 +189,7 @@
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
-        <label class="aviso" title="Quita el temblor de la cámara en mano en cada tramo (recorta un 4 % del borde). El montaje tarda unas 3 veces más. Para que se note, rehaz «Montar video»"><input type="checkbox" id="estabilizar" onchange="guardarEstabilizar()"> Estabilizar</label>
+        <label class="aviso" title="Quita el temblor de la cámara en mano en cada tramo (recorta un 4 % del borde). El montaje tarda unas 3 veces más. Para que se note, rehaz «Montar video»"><input type="checkbox" id="estabilizar" checked onchange="guardarEstabilizar()"> Estabilizar</label>
       </div>
     </section>
 
@@ -1515,7 +1515,7 @@ async function guardarEstabilizar() {
   try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({estabilizar: $('#estabilizar').checked})}); } catch (x) { alert(x.message); }
 }
 async function leerEstabilizar() {
-  try { $('#estabilizar').checked = (await api(`/api/edicion?p=${q(P)}`)).estabilizar === true; } catch (e) {}
+  try { $('#estabilizar').checked = (await api(`/api/edicion?p=${q(P)}`)).estabilizar !== false; } catch (e) {}
 }
 function verTrailer() {  // el módulo del tráiler en otra pestaña
   if (!P) return alert('Elige un proyecto primero.');
