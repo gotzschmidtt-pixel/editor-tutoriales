@@ -81,6 +81,16 @@
   <div id="bloques"></div>
 </main>
 
+<dialog id="dlgQuitar">
+  <h3 style="margin-top:0">Quitar el bloque <span id="qId"></span></h3>
+  <p class="msg" id="qAviso"></p>
+  <div class="acciones" style="flex-direction:column; align-items:stretch; gap:8px">
+    <button class="principal" id="qVoz" onclick="quitarSoloVoz()">🔇 Quitar solo lo que dice: la imagen del paso se queda, unida al bloque anterior y más rápida</button>
+    <button onclick="quitarTodo()">✕ Quitar lo que dice y su parte del video</button>
+    <button onclick="dlgQuitar.close()">Cancelar</button>
+  </div>
+</dialog>
+
 <dialog id="dlgGpt">
   <h3 style="margin-top:0">🤖 Mejorar con otra IA</h3>
   <p class="msg">1. Copia esto y pégalo en ChatGPT, Gemini o Claude. 2. Copia lo que te responda y pégalo abajo. 3. «Aplicar».</p>
@@ -271,9 +281,38 @@ function aplicarTildes() {
   }
   $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Tildes aplicadas (bloques resaltados). Revisa el resto y pulsa «Guardar cambios».';
 }
+// Quitar un bloque: si es un paso, conviene que su imagen siga en el video (unida al bloque de al lado y más rápida),
+// así el espectador no pierde lo que se hace aunque la voz ya no lo explique
+let QUITAR = -1;
+const PASO_RE = /\b(paso|selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|configura|copia|pega|key|clave|c[oó]digo|instala|descarga|conecta)/i;
+function vecino(i) {  // el bloque al que se une la imagen: el anterior si el tramo sigue justo después; si no, el siguiente
+  const m = G.bloques[i].montaje || {}, ok = n => n && (n.montaje || {}).modo?.startsWith('lento') && m.modo?.startsWith('lento');
+  const a = G.bloques[i - 1], s = G.bloques[i + 1];
+  if (ok(a) && Math.abs(a.montaje.src_fin - m.src_inicio) <= 3) return i - 1;
+  if (ok(s) && Math.abs(m.src_fin - s.montaje.src_inicio) <= 3) return i + 1;
+  return -1;
+}
 function quitar(i) {
-  if (!confirm(`¿Quitar el bloque ${G.bloques[i].id}? Su parte del video sale del montaje.`)) return;
-  G.bloques.splice(i, 1); sucio = true; pintar();
+  QUITAR = i;
+  const b = G.bloques[i], v = vecino(i);
+  $('#qId').textContent = b.id;
+  $('#qVoz').disabled = v < 0;
+  $('#qAviso').textContent = (PASO_RE.test(b.texto) ? 'Este bloque muestra un paso: si quitas también su imagen, el espectador no verá cómo se hace. ' : '') +
+    (v < 0 ? 'Su tramo no sigue justo al de un bloque vecino, así que su imagen no se puede unir a otro bloque.'
+           : `Si quitas solo lo que dice, su imagen (${mmss(b.montaje.src_inicio)}–${mmss(b.montaje.src_fin)} de tu grabación) se une a ${G.bloques[v].id} y la app la acelera para que quepa en su voz.`) +
+    ' Después revisa que la numeración de los pasos siga en orden: la app te avisa al guardar.';
+  dlgQuitar.showModal();
+}
+function quitarSoloVoz() {
+  const i = QUITAR, v = vecino(i); if (v < 0) return;
+  const m = G.bloques[i].montaje, n = G.bloques[v].montaje;
+  if (v < i) n.src_fin = m.src_fin; else n.src_inicio = m.src_inicio;
+  n.unido = true;  // la app no recorta este tramo al revisar: trae la imagen del paso que quitaste
+  G.bloques.splice(i, 1); sucio = true; dlgQuitar.close(); pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ Quité lo que decía; su imagen quedó en el bloque de al lado. Pulsa «Guardar cambios».`;
+}
+function quitarTodo() {
+  G.bloques.splice(QUITAR, 1); sucio = true; dlgQuitar.close(); pintar();
 }
 function comoTexto() {
   return G.bloques.map(b => `### ${b.id} · ${mmss(b.inicio_min)}–${mmss(b.fin_max)}${b.ancla ? ' · en pantalla: ' + b.ancla.replace(/\s+/g, ' ') : ''}\n${b.texto.trim()}`).join('\n\n');

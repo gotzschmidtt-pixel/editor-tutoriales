@@ -624,6 +624,24 @@ def huecos_humor(bloques):
     return out
 
 
+NUMEROS = {'uno': 1, 'primer': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5, 'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9,
+           'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15}
+
+
+def pasos_numerados(bloques):
+    """Que los «Paso uno, Paso dos…» de la voz vayan seguidos: si se quitó un bloque o se cambió el orden, la numeración
+    salta o se repite y el espectador cree que se perdió un paso."""
+    out, previo = [], None
+    for b in bloques:
+        for m in re.finditer(r'\bpaso\s+(n[uú]mero\s+)?(\d{1,2}|' + '|'.join(NUMEROS) + r')\b', normal(str(b.get('texto', '')))):
+            n = int(m.group(2)) if m.group(2).isdigit() else NUMEROS[m.group(2)]
+            if previo and n != previo[0] + 1:
+                out.append(f"pasos: {b['id']} dice «paso {m.group(2)}» y el anterior ({previo[1]}) era el paso {previo[0]}. "
+                           "Si quitaste un bloque, renumera los pasos o explica el que falta en el bloque de al lado")
+            previo = (n, b['id'])
+    return out
+
+
 def problemas(bloques, total, con_saltos=True):
     """Lo que el guion revisado todavía hace mal y la app no puede arreglar sola sin cambiar textos: saltos atrás, escenas
     repetidas, demasiado video sin voz y humor mal repartido. Sirve para avisarte y para pedirle a la IA que lo corrija."""
@@ -634,7 +652,7 @@ def problemas(bloques, total, con_saltos=True):
         sin_voz = 1 - palabras / PALABRAS_POR_S / total
         out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
                    f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
-    return out + huecos_humor(bloques)
+    return out + pasos_numerados(bloques) + huecos_humor(bloques)
 
 
 def momento_dicho(d, texto, ini, fin):
@@ -822,7 +840,8 @@ def revisar(d, tarea, datos):
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                if (critico or paso) and tramo / tope > voz + RELLENO:
+                if (critico or paso) and tramo / tope > voz + RELLENO and not mo.get('unido'):
+                    # (un tramo «unido» trae la imagen de un bloque que quitaste: se muestra entero, no se recorta)
                     # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
                     # parte donde se hace
                     nuevo = round((voz + RELLENO) * tope, 1)
