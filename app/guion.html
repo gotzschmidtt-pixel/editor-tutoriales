@@ -45,6 +45,12 @@
   dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
   dialog textarea { min-height: 300px; font-size: 13.5px; }
   .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
+  .orto { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 13px; }
+  .orto:empty { display: none; }
+  .sug { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #ffd23f66; border-radius: 99px; padding: 2px 4px 2px 10px; }
+  .sug s { color: var(--amarillo); text-decoration-color: var(--rojo); }
+  .sug button { padding: 1px 8px; font-size: 12.5px; font-weight: 600; border-radius: 99px; }
+  .sug button.no { background: transparent; border: 0; color: var(--suave); }
   .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; }
   .panel.preg { border-color: #f0c36d; }
   .panel summary { cursor: pointer; font-weight: 600; }
@@ -60,6 +66,7 @@
   <span class="total" id="total"></span>
   <span class="espacio"></span>
   <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
+  <button onclick="revisarOrtografia()" title="Revisa tildes y ortografía de todos los bloques con LanguageTool (gratis; manda el texto del guion a languagetool.org). Tú eliges qué cambiar">🔤 Ortografía</button>
   <button onclick="bajarWord()">⬇ Word</button>
   <button id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
   <button class="principal" id="btnSeguir" onclick="seguir()" title="Guarda lo que cambiaste y arma el video: voz con ElevenLabs (gasta créditos, solo en los bloques nuevos o cambiados), montaje, subtítulos y música">▶ Guardar y seguir con todo</button>
@@ -176,11 +183,13 @@ function pintar() {
         ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}</div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span></div>
-        <textarea data-i="${i}">${esc(b.texto)}</textarea>
+        <textarea data-i="${i}" spellcheck="true" lang="es">${esc(b.texto)}</textarea>
+        <div class="orto" id="orto${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardar()" hidden>💾 Guardar cambios</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
   }).join('');
-  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; avisos(); });
+  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos(); });
+  SUG = {};
   avisos();
 }
 function avisos() {
@@ -201,6 +210,66 @@ function avisos() {
   $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar en la app';
   const meta = DUR, ok = !DUR || (total >= meta * 0.9 && total <= meta * 1.15);
   $('#total').innerHTML = `${G.bloques.length} bloques · video de unos <b class="${ok ? 'ok' : 'mal'}">${mmss(total)}</b>` + (DUR ? ` (tu grabación: ${mmss(DUR)})` : '');
+}
+// ORTOGRAFÍA: LanguageTool marca tildes («esta» → «está», «aqui» → «aquí») y errores; tú eliges qué cambiar
+let SUG = {};
+const sinTilde = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const IGNORADAS = new Set((() => { try { return JSON.parse(localStorage.getItem('ortografia_ignorar') || '[]'); } catch (e) { return []; } })());
+const esTilde = x => x.opciones[0] && x.original !== x.opciones[0] && sinTilde(x.original) === sinTilde(x.opciones[0]);
+async function revisarOrtografia() {
+  const msg = $('#msg');
+  msg.className = 'msg'; msg.textContent = 'Revisando la ortografía…';
+  SUG = {};
+  const tandas = [[]];  // el corrector acepta unos 18 000 caracteres por pedido: se manda el guion en tandas de bloques
+  G.bloques.forEach((b, i) => { const t = tandas[tandas.length - 1]; if (t.reduce((n, k) => n + G.bloques[k].texto.length + 2, 0) + b.texto.length > 17000) tandas.push([]); tandas[tandas.length - 1].push(i); });
+  try {
+    for (const t of tandas) {
+      if (!t.length) continue;
+      const inicio = []; let txt = '';
+      for (const i of t) { inicio.push(txt.length); txt += G.bloques[i].texto + '\n\n'; }
+      const r = await api('/api/ortografia', {method: 'POST', body: JSON.stringify({texto: txt})});
+      for (const c of r.cambios) {
+        let k = t.length - 1; while (k > 0 && inicio[k] > c.desde) k--;
+        const i = t[k], desde = c.desde - inicio[k], original = G.bloques[i].texto.substr(desde, c.largo);
+        if (!original.trim() || IGNORADAS.has(original.toLowerCase())) continue;
+        (SUG[i] = SUG[i] || []).push({desde, largo: c.largo, original, opciones: c.opciones, mensaje: c.mensaje});
+      }
+      if (tandas.length > 1) await new Promise(r => setTimeout(r, 3500));  // el corrector gratis acepta pocos pedidos por minuto
+    }
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No pude revisar la ortografía: ' + e.message; return; }
+  G.bloques.forEach((b, i) => pintarOrto(i));
+  const todas = Object.values(SUG).flat(), tildes = todas.filter(esTilde).length;
+  msg.className = 'msg ok';
+  msg.innerHTML = !todas.length ? '✓ Sin errores de ortografía.' : `🔤 ${todas.length} posible${todas.length > 1 ? 's' : ''} error${todas.length > 1 ? 'es' : ''}, marcados debajo de cada bloque. ` +
+    (tildes ? `<button onclick="aplicarTildes()">Aplicar las ${tildes} tilde${tildes > 1 ? 's' : ''}</button> ` : '') +
+    'Revisa el resto uno por uno (nombres de programas como UnlockTool salen marcados: pulsa «ignorar»).';
+}
+function pintarOrto(i) {
+  const el = $('#orto' + i); if (!el) return;
+  el.innerHTML = (SUG[i] || []).map((x, k) => `<span class="sug" title="${esc(x.mensaje)}"><s>${esc(x.original)}</s>→
+    ${x.opciones.slice(0, 3).map((o, j) => `<button onclick="aplicarSug(${i}, ${k}, ${j})">${esc(o)}</button>`).join('')}
+    <button class="no" onclick="ignorarSug(${i}, ${k})" title="No es un error (por ejemplo, el nombre de un programa): no lo marques más">ignorar</button></span>`).join('');
+}
+function aplicarSug(i, k, j) {
+  const b = G.bloques[i], x = SUG[i][k], nuevo = x.opciones[j];
+  b.texto = b.texto.slice(0, x.desde) + nuevo + b.texto.slice(x.desde + x.largo);
+  const d = nuevo.length - x.largo;
+  SUG[i].splice(k, 1);
+  SUG[i].forEach(y => { if (y.desde > x.desde) y.desde += d; });
+  const t = document.querySelector(`textarea[data-i="${i}"]`); if (t) t.value = b.texto;
+  sucio = true; pintarOrto(i); avisos();
+}
+function ignorarSug(i, k) {
+  IGNORADAS.add(SUG[i][k].original.toLowerCase());
+  try { localStorage.setItem('ortografia_ignorar', JSON.stringify([...IGNORADAS])); } catch (e) {}
+  const w = SUG[i][k].original.toLowerCase();
+  for (const j in SUG) { SUG[j] = SUG[j].filter(y => y.original.toLowerCase() !== w); pintarOrto(+j); }
+}
+function aplicarTildes() {
+  for (const i in SUG) {
+    for (let k = SUG[i].length - 1; k >= 0; k--) if (esTilde(SUG[i][k])) aplicarSug(+i, k, 0);
+  }
+  $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Tildes aplicadas (bloques resaltados). Revisa el resto y pulsa «Guardar cambios».';
 }
 function quitar(i) {
   if (!confirm(`¿Quitar el bloque ${G.bloques[i].id}? Su parte del video sale del montaje.`)) return;

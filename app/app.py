@@ -1413,6 +1413,21 @@ class Manejador(BaseHTTPRequestHandler):
                         if x == clave or (base and x.startswith(base + '.')):
                             os.remove(os.path.join(c, x))
                 return self.responder({'ok': True})
+            if ruta == '/api/ortografia':  # el editor de guion: tildes y ortografía con LanguageTool (gratis, en español)
+                texto = json.loads(self.rfile.read(largo) or b'{}').get('texto', '')[:19000]
+                cuerpo = urllib.parse.urlencode({'text': texto, 'language': 'es', 'level': 'default'}).encode()
+                try:
+                    r = json.load(urllib.request.urlopen(urllib.request.Request(
+                        'https://api.languagetool.org/v2/check', data=cuerpo, headers={'Accept': 'application/json'}), timeout=60))
+                except urllib.error.HTTPError as e:
+                    return self.error(f'el corrector (languagetool.org) respondió con error {e.code}'
+                                      + (': demasiados pedidos seguidos, espera un minuto' if e.code == 429 else ''))
+                except (urllib.error.URLError, OSError, ValueError) as e:
+                    return self.error(f'no pude conectar con el corrector (languagetool.org): {e}')
+                return self.responder({'cambios': [{'desde': m['offset'], 'largo': m['length'], 'mensaje': m.get('message', ''),
+                                                    'opciones': [x['value'] for x in m.get('replacements', [])[:4]],
+                                                    'tipo': (m.get('rule') or {}).get('issueType', '')}
+                                                   for m in r.get('matches', [])]})
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
