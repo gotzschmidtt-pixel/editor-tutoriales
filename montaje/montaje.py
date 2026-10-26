@@ -7,6 +7,7 @@ Cada bloque del guion trae "montaje": {"modo": "lento" | "congelar" | "lento+con
 Las pausas («congelar») ya no son una foto: repiten la escena en movimiento (ida y vuelta, algo lenta) con zoom suave,
 alrededor del cuadro más nítido del momento pedido. Con "quieto": true en el montaje del bloque, vuelve a ser un cuadro fijo.
 --calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
+--estabilizar: quita el temblor de la cámara en mano de cada tramo (vid.stab si ffmpeg lo trae; si no, deshake).
 """
 import argparse, json, os, shutil, subprocess, sys, tempfile
 
@@ -62,6 +63,39 @@ def run(args):
     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
 
+_VIDSTAB = None
+
+
+def hay_vidstab():
+    global _VIDSTAB
+    if _VIDSTAB is None:
+        r = subprocess.run(['ffmpeg', '-hide_banner', '-filters'], capture_output=True, text=True)
+        _VIDSTAB = 'vidstabtransform' in r.stdout
+    return _VIDSTAB
+
+
+def estabilizar(f, enc):
+    """Quita el temblor de la cámara en mano de un tramo ya cortado (la acelera la app: ×2 un temblor se nota el doble).
+    vid.stab mide el movimiento y lo suaviza con un recorte de 4 %; sin vid.stab, el deshake que trae todo ffmpeg.
+    Si falla, el tramo queda como estaba."""
+    tmp, trf = f + '.est.mp4', f + '.trf'
+    try:
+        if hay_vidstab():
+            # ffmpeg en Windows no entiende «C:» dentro de un filtro: el .trf va con su nombre, desde su carpeta
+            cwd = os.path.dirname(f)
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
+                            f'vidstabdetect=shakiness=8:accuracy=9:stepsize=12:result={os.path.basename(trf)}', '-f', 'null', '-'],
+                           cwd=cwd, check=True, capture_output=True)
+            codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
+                           f'vidstabtransform=input={os.path.basename(trf)}:smoothing=20:zoom=4:interpol=linear,format=yuv420p']
+                          + enc + [os.path.basename(tmp)], check=True, cwd=cwd)
+        else:
+            run(['-i', f, '-vf', 'deshake,format=yuv420p'] + enc + [tmp])
+        os.replace(tmp, f)
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f'· no pude estabilizar {os.path.basename(f)} ({e}); queda como estaba', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--original', required=True)
@@ -70,6 +104,7 @@ def main():
     ap.add_argument('--imagen', help='imagen por defecto para los bloques en modo "imagen"')
     ap.add_argument('--borrador', action='store_true', help='igual que --calidad 720')
     ap.add_argument('--calidad', type=int, choices=[1080, 720, 480, 360], default=1080)
+    ap.add_argument('--estabilizar', action='store_true', help='quita el temblor de la cámara en mano')
     a = ap.parse_args()
     d = json.load(open(a.guion, encoding='utf-8'))
     alto = 720 if a.borrador and a.calidad == 1080 else a.calidad
@@ -99,6 +134,8 @@ def main():
             f = os.path.join(tmp, f'{i}_a.mp4')
             run(['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an',
                  '-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out}{lab}"] + enc + [f])
+            if a.estabilizar:
+                estabilizar(f, enc)
             partes.append(f)
         if m['modo'].endswith('congelar'):
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
@@ -122,6 +159,8 @@ def main():
                 orden = '[rv][f]' if tras_tramo else '[f][rv]'
                 run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex',
                      f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]", '-map', '[o]'] + enc + [ida])
+                if a.estabilizar:
+                    estabilizar(ida, enc)
                 # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen
                 # tiembla (y ampliarla 4 veces cuadro a cuadro sería muy lento); el movimiento de la escena ya la mantiene viva
                 run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps=25,format=yuv420p{lab}",

@@ -314,6 +314,8 @@ def comandos(paso, d, op):
             c += ['--imagen', 'imagen.png']
         if str(op.get('calidad', '1080')) in ('720', '480', '360'):
             c += ['--calidad', str(op['calidad'])]
+        if edicion(d).get('estabilizar', True):  # quita el temblor de la cámara en mano (se apaga junto a «Montaje»)
+            c.append('--estabilizar')
         elif op.get('borrador'):
             c.append('--borrador')
         return [c]
@@ -1256,6 +1258,8 @@ class Manejador(BaseHTTPRequestHandler):
                 viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
                 if 'musica_volumen' in nuevo:
                     viejo['musica_volumen'] = min(max(float(nuevo['musica_volumen']), 0), 1)
+                if isinstance(nuevo.get('estabilizar'), bool):  # «Estabilizar» junto a «Montaje»
+                    viejo['estabilizar'] = nuevo['estabilizar']
                 if nuevo.get('trailer_donde') in ('inicio', 'final'):  # «Material extra»: el tráiler abre o cierra el video
                     viejo['trailer_donde'] = nuevo['trailer_donde']
                 json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

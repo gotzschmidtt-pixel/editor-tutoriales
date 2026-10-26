@@ -188,6 +188,7 @@
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
+        <label class="aviso" title="Quita el temblor de la cámara en mano en cada tramo (recorta un 4 % del borde). El montaje tarda un poco más. Para que se note, rehaz «Montar video»"><input type="checkbox" id="estabilizar" checked onchange="guardarEstabilizar()"> Estabilizar</label>
       </div>
     </section>
 
@@ -555,7 +556,7 @@ async function cargarProyectos(sel) {
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1498,6 +1499,12 @@ async function reintentar() {
 
 let avisoGuion = null, GUION = null;
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+async function guardarEstabilizar() {
+  try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({estabilizar: $('#estabilizar').checked})}); } catch (x) { alert(x.message); }
+}
+async function leerEstabilizar() {
+  try { $('#estabilizar').checked = (await api(`/api/edicion?p=${q(P)}`)).estabilizar !== false; } catch (e) {}
+}
 function verTrailer() {  // el módulo del tráiler en otra pestaña
   if (!P) return alert('Elige un proyecto primero.');
   const w = window.open(`/trailer?p=${q(P)}`, 'trailer_' + P);
