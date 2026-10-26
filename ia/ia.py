@@ -688,6 +688,43 @@ def momento_dicho(d, texto, ini, fin):
     return (ini + fin) / 2
 
 
+def desfases(d, bloques):
+    """Lo que la revisión del orden no ve: bloques cuya voz narra lo que dices en OTRO momento de tu grabación (la voz va
+    atrasada o adelantada, aunque comparta alguna palabra con su tramo) y tramos donde explicas algo y ningún bloque los
+    muestra. Compara con tu transcripción; no cambia nada, devuelve los avisos."""
+    palabras = pistas.palabras_video(d)
+    if not palabras:
+        return []
+    norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
+    out, tramos = [], []
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini, fin = mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+        tramos.append((ini, fin, b['id']))
+        raices = {w[:5] for w in pistas.palabras_clave(b.get('texto', ''))}
+        if len(raices) < 4:
+            continue
+        aqui = len({r for t, r in norm if ini - 3 <= t <= fin + 3 and r in raices}) / len(raices)
+        for x, v in pistas.dicho(palabras, b['texto'], top=2, ventana=20):  # una explicación hablada dura más de 12 s
+            if not ini - 3 <= x <= fin + 3 and v >= 0.5 and v >= aqui + 0.25:
+                out.append(f"{b['id']}: su texto narra lo que dices en tu grabación en {mmss(x)}, no lo de su tramo "
+                           f"{mmss(ini)}–{mmss(fin)} (la voz va {'atrasada' if x < ini else 'adelantada'}): "
+                           f"pon el texto con el tramo donde se hace")
+                break
+    tramos.sort()
+    hasta = 0.0
+    for ini, fin, bid in tramos:
+        if ini - hasta >= 8:
+            dicho_ = [w['texto'] for w in palabras if hasta + 1 <= w['inicio'] < ini - 1]
+            if len(dicho_) >= 20:
+                out.append(f"ningún bloque muestra {mmss(hasta)}–{mmss(ini)} (antes de {bid}) y ahí explicas «"
+                           f"{' '.join(dicho_[:18])}…»: si es un paso, agrégale un bloque con ese tramo")
+        hasta = max(hasta, fin)
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
@@ -714,6 +751,7 @@ def verificar_orden(d, bloques):
                     mo['src_fin'] = round(nuevo + largo_t, 2)
                 avisos.append(f"{b['id']}: lo que narra no iba con su imagen ({mmss(ini)}–{mmss(fin)}); lo moví a "
                               f"{mmss(nuevo)}, donde dices eso en tu grabación")
+    avisos += desfases(d, bloques)
     open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(
         '\n'.join(avisos) + '\n' if avisos else 'Sin problemas de orden: los tramos siguen el video y cada bloque va con lo que dices.\n')
     return avisos
@@ -2234,6 +2272,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     bloques = [b for b in bloques if b['id'] in control]
     if not bloques:
         return []
+    palabras = pistas.palabras_video(d)  # lo que dice el autor en cada tramo: delata una voz atrasada o inventada
 
     def pedir(grupo, a):
         caps, lineas = [], []
@@ -2244,8 +2283,10 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
             nums = []
             for desc, f in imgs:
                 caps.append((desc, f)); nums.append(str(len(caps)))
+            autor = ' '.join(w['texto'] for w in palabras if ini - 1 <= w['inicio'] <= fin + 1)[:400]
             lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice: «{b['texto'][:400]}»"
-                          + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else ''))
+                          + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else '')
+                          + (f"\n  Lo que dice el autor en su grabación en ese tramo: «{autor}»" if autor else ''))
         return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda) y el FINAL (derecha)
 del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen con el detalle cada pocos segundos:
 {chr(10).join(lineas)}
@@ -2253,7 +2294,8 @@ del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen 
 Mapa de la grabación completa (lo que se ve en cada cambio de pantalla):
 {mapa_txt[:24000]}
 
-Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y el final). Si NO (por ejemplo la voz dice
+Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y el final) y va con lo que dice el autor ahí
+(si la voz narra un paso que el autor hace antes o después, o algo que no se ve ni se dice, NO está bien). Si NO (por ejemplo la voz dice
 «pega la key» y se ve otra pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
 {{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}.""", caps)
 
@@ -2595,7 +2637,7 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
         palabras = sum(len(str(b.get('texto', '')).split()) for b in bl)
         try:
             r = revisar(d, 'guion', copy.deepcopy(x))[0]
-            t, lista = r['duracion_s'], problemas(r['bloques'], r['duracion_s'])
+            t, lista = r['duracion_s'], problemas(r['bloques'], r['duracion_s']) + desfases(d, r['bloques'])
         except Exception:
             t, lista = None, []
         return palabras, t, lista
