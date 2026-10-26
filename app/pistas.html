@@ -6,11 +6,16 @@
 <title>Editor por pistas</title>
 <style>
   :root {
-    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
-    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--fondo); color: var(--texto); font: 14px/1.4 "Segoe UI", Inter, system-ui, sans-serif; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.4 "Segoe UI", Inter, system-ui, sans-serif; }
+  /* contraste: campos oscuros con texto claro (también los que no dicen type), casillas visibles y textos de ayuda legibles */
+  input:not([type]), input[type=text], input[type=number], input[type=password], select, textarea { background-color: var(--panel2); color: var(--texto); }
+  input:not([type]) { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
   header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--borde);
     background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); }
   header h1 { font-size: 17px; margin: 0 8px 0 0; }
@@ -66,7 +71,7 @@
   .c-eti { background: #ff2bd640; border-color: #ff2bd688; cursor: grab; } .c-sen { background: #ffd23f33; border-color: #ffd23f88; cursor: grab; }
   .perdida { background: repeating-linear-gradient(45deg, #ff4d6d33, #ff4d6d33 6px, transparent 6px, transparent 12px) !important; }
   #cabezal { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--rojo); pointer-events: none; z-index: 3; }
-  .aviso { color: var(--suave); font-size: 12px; }
+  .aviso { color: var(--suave); font-size: 13px; }
 </style>
 </head>
 <body>

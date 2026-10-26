@@ -6,11 +6,16 @@
 <title>Editor de guion</title>
 <style>
   :root {
-    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
-    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  /* contraste: campos oscuros con texto claro (también los que no dicen type), casillas visibles y textos de ayuda legibles */
+  input:not([type]), input[type=text], input[type=number], input[type=password], select, textarea { background-color: var(--panel2); color: var(--texto); }
+  input:not([type]) { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid var(--borde);
     background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }

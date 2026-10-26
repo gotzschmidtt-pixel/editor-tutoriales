@@ -6,11 +6,16 @@
 <title>Estudio de tutoriales</title>
 <style>
   :root {
-    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
-    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.45 "Segoe UI", Inter, system-ui, sans-serif; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.45 "Segoe UI", Inter, system-ui, sans-serif; }
+  /* contraste: campos oscuros con texto claro (también los que no dicen type), casillas visibles y textos de ayuda legibles */
+  input:not([type]), input[type=text], input[type=number], input[type=password], select, textarea { background-color: var(--panel2); color: var(--texto); }
+  input:not([type]) { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
   header { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--borde);
     background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
   header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
@@ -56,7 +61,7 @@
   textarea { width: 100%; height: 300px; background: #0a0c12; border: 1px solid var(--borde); border-radius: 12px; padding: 12px;
     font: 13px/1.5 Consolas, "Cascadia Code", monospace; resize: vertical; }
   .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-  .aviso { font-size: 13px; color: var(--suave); }
+  .aviso { font-size: 14px; color: var(--suave); }
   .msg { font-size: 13px; }
   .msg.err { color: var(--rojo); } .msg.ok { color: var(--verde); }
   pre#log { background: #07080d; border: 1px solid var(--borde); border-radius: 12px; padding: 12px; height: 230px; overflow: auto;
@@ -191,7 +196,7 @@
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
         <label class="aviso" title="Quita el temblor de la cámara en mano en cada tramo (recorta un 4 % del borde). El montaje tarda unas 3 veces más. Para que se note, rehaz «Montar video»"><input type="checkbox" id="estabilizar" checked onchange="guardarEstabilizar()"> Estabilizar</label>
         <label class="aviso" title="«▶ Hacer todo» arma solo esos bloques (voz, montaje y voz puesta) en prueba_bloques.mp4, para revisar una parte sin esperar el video entero. El guion y el video completo no cambian. Gasta ElevenLabs solo en los bloques de ese tramo cuyo texto cambió"><input type="checkbox" id="porBloques" onchange="$('#todo').textContent = this.checked ? '▶ Hacer solo esos bloques' : '▶ Hacer todo'"> Solo los bloques
-          <input id="bloqueDesde" size="4" placeholder="L23"> a <input id="bloqueHasta" size="4" placeholder="L27"></label>
+          <input type="text" id="bloqueDesde" size="4" style="width:4.5em;padding:5px 8px" placeholder="L23"> a <input type="text" id="bloqueHasta" size="4" style="width:4.5em;padding:5px 8px" placeholder="L27"></label>
       </div>
     </section>
 
