@@ -2478,6 +2478,63 @@ def combinar_versiones(d, ajustes):
     return datos
 
 
+def ideas_guion(d, ajustes):
+    """«💡 Ideas y dudas»: con el video ya hecho, la IA relee el guion final con la transcripción y el mapa de pantallas
+    y te deja dudas (lo que no le cierra) e ideas para mejorarlo. Solo texto, sin imágenes: un pedido barato.
+    Lo que ya contestaste y no se aplicó todavía se queda; lo ya aplicado, la IA lo ve para no repetirlo."""
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    bloques = [b for b in g.get('bloques', []) if isinstance(b, dict)]
+    if not bloques:
+        raise SystemExit('ERROR: todavía no hay guion. Escríbelo primero.')
+    f = os.path.join(d, 'preguntas_guion.json')
+    try:
+        viejas = json.load(open(f, encoding='utf-8'))
+    except (OSError, ValueError):
+        viejas = []
+    viejas = [x for x in viejas if isinstance(x, dict)]
+    hechas = [x for x in viejas if x.get('hecha') and str(x.get('respuesta', '')).strip()]
+    pendientes = [x for x in viejas if not x.get('hecha') and str(x.get('respuesta', '')).strip()]
+    lineas = []
+    for b in bloques:
+        mo = b.get('montaje') or {}
+        donde = f" [{mmss(mo['src_inicio'])}]" if mo.get('src_inicio') is not None else ''
+        lineas.append(f"{b.get('id')}{donde}: {b.get('texto') or '(sin voz)'}")
+    partes = ["Eres el editor de un canal de tutoriales de YouTube. El video ya está armado con este guion final "
+              "(bloque [dónde empieza en la grabación]: lo que dice la voz):\n" + '\n'.join(lineas)[:40000]]
+    idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else ''
+    if idea.strip():
+        partes.append("Lo que el autor dio como datos confirmados:\n" + idea[:6000])
+    trans = transcripcion(d, 30000)
+    if trans:
+        partes.append("Lo que dice el autor en su grabación ([minuto:segundo] texto):\n" + trans)
+    try:
+        mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8'))['cuadros']
+        partes.append("Lo que se ve en la grabación, pantalla por pantalla:\n" + texto_mapa(mapa)[:20000])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if hechas or pendientes:
+        partes.append("Ya le preguntaste esto y contestó (no lo repitas):\n" + '\n'.join(
+            f"- {x['pregunta']} → {str(x['respuesta']).strip()}" for x in hechas + pendientes))
+    partes.append(f"""Relee el guion como lo vería alguien que nunca hizo este proceso, y pregúntale al autor para dejarlo mejor:
+- DUDAS (tipo "dato", hasta {PREGUNTAS_MAX}): lo que no queda claro o no coincide con lo que se ve o se dice en la grabación
+  (un nombre, un modelo, un botón, un valor, el orden de un paso, algo que se da por sabido, un salto raro entre bloques).
+- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso, explicar el porqué
+  de un paso, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de humor, una frase que sobra).
+Cada una con el bloque que toca y 2 o 3 opciones concretas, la primera la que recomiendas. Pregunta solo lo que cambiaría
+el guion. Responde SOLO con el objeto JSON {{"preguntas": [{{"tipo": "dato" | "mejora", "bloque": "L07",
+"pregunta": "¿...?", "opciones": ["...", "..."]}}]}}.""")
+    print(f"La IA relee el guion final ({len(bloques)} bloques) y piensa en dudas e ideas…", flush=True)
+    r = llamar(ajustes, '\n\n'.join(partes), [])
+    open(os.path.join(d, 'ia_respuesta_ideas.txt'), 'w', encoding='utf-8').write(r)
+    datos = extraer_json(r)
+    nuevas = normalizar_preguntas(datos.get('preguntas') if isinstance(datos, dict) else datos)
+    ya = {normal(x['pregunta']) for x in hechas + pendientes}
+    nuevas = [x for x in nuevas if normal(x['pregunta']) not in ya]
+    json.dump(hechas + pendientes + nuevas, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    dn, mn = sum(x['tipo'] == 'dato' for x in nuevas), sum(x['tipo'] == 'mejora' for x in nuevas)
+    print(f'La IA te deja {dn} duda(s) y {mn} idea(s) para mejorar el guion: contéstalas en «📝 Ver guion».', flush=True)
+
+
 def corregir_con_respuestas(d, ajustes, datos):
     """Tus respuestas a las preguntas de la IA: se corrigen solo los bloques que tocan (el resto conserva su voz)
     y quedan en idea.txt como datos confirmados, para los próximos guiones de este video."""
@@ -2684,6 +2741,7 @@ def main():
     ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
     ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
     ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
+    ap.add_argument('--ideas', action='store_true', help='tarea guion: la IA relee el guion final y deja dudas e ideas en preguntas_guion.json')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
     ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
@@ -2712,6 +2770,9 @@ def main():
         return
     if a.tarea == 'guion' and a.revisar_imagen:
         revision_pendiente(d, a.ajustes, destino)
+        return
+    if a.tarea == 'guion' and a.ideas:
+        ideas_guion(d, json.load(open(a.ajustes, encoding='utf-8')))
         return
     mapa, todo_ia = None, False
     avisos_humor = []

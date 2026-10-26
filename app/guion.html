@@ -65,6 +65,7 @@
   <h1>📝 <b>Editor de guion</b> · <span id="nombre"></span></h1>
   <span class="total" id="total"></span>
   <span class="espacio"></span>
+  <button onclick="pedirIdeas()" title="La IA relee este guion con lo que se dice y se ve en tu grabación y te deja dudas e ideas para mejorarlo (un pedido a la IA, solo texto; no gasta ElevenLabs)">💡 Ideas y dudas</button>
   <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
   <button onclick="revisarOrtografia()" title="Revisa tildes y ortografía de todos los bloques con LanguageTool (gratis; manda el texto del guion a languagetool.org). Tú eliges qué cambiar">🔤 Ortografía</button>
   <button onclick="bajarWord()">⬇ Word</button>
@@ -178,6 +179,16 @@ async function responder(soloGuardar) {
     await esperar(); await cargar();
     $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Guion corregido con tus respuestas. Revísalo.';
   } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function pedirIdeas() {
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'La IA relee el guion y piensa en dudas e ideas…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({ideas: true, editor: true})});
+    await esperar(); await verPreguntas();
+    msg.className = 'msg ok'; msg.textContent = '✓ Listo: contesta arriba las que quieras y pulsa «Responder y corregir». Las vacías no cambian nada.';
+    $('#preguntas').scrollIntoView({behavior: 'smooth'});
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
 async function seguir() {
   if (!confirm('Armo el video: voz con ElevenLabs (gasta créditos solo en los bloques nuevos o cambiados), montaje, subtítulos y música. ¿Seguir?')) return;

@@ -366,7 +366,8 @@ def comandos(paso, d, op):
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
                 + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
                 + (['--ajustar-humor'] if op.get('ajustar_humor') else []) + (['--combinar'] if op.get('combinar') else [])
-                + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])]
+                + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])
+                + (['--ideas'] if op.get('ideas') else [])]
     if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
     if paso == 'ia':
@@ -1184,6 +1185,8 @@ class Manejador(BaseHTTPRequestHandler):
                     datos['_pausa'] = 'guion'  # «🎚 Ajustar el humor»: te muestro el guion con lo que cambió
                 if q['paso'] == 'guion_ia' and datos.get('combinar'):
                     datos['_pausa'] = 'guion'  # «🧩 Combinar»: te muestro el guion combinado antes de seguir
+                if q['paso'] == 'guion_ia' and datos.get('ideas'):
+                    datos['_pausa'] = 'guion'  # «💡 Ideas y dudas»: se abre el editor con las preguntas para contestarlas
                 if q['paso'] == 'guion_ia' and datos.get('otro'):
                     datos['_pausa'] = 'guion'  # «🔄 Otro guion»: te lo muestro apenas está, antes de seguir
                 if datos.get('editor'):  # guardado desde el editor de guion: ya lo estás viendo allá, no se abre otra revisión
