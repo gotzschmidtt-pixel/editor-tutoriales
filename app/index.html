@@ -180,6 +180,7 @@
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()" title="Abre el editor de guion en otra pestaña: cada bloque con su imagen, los avisos de la app y las preguntas de la IA">📝 Ver guion</button>
         <button onclick="verGuionAqui()" title="La revisión rápida en esta misma página (con las versiones de cada IA si pediste varias)">🗂 Vista rápida</button>
+        <button onclick="verTrailer()" title="El tráiler va aparte, después del video: la IA propone las mejores tomas ANTES · DURANTE · DESPUÉS, te pregunta lo que no vio claro y tú lo editas y lo armas">🎬 Tráiler</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
         <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
@@ -192,6 +193,8 @@
 
     <section class="panel extra" id="panelTrailer">
       <h2>🎞️ Tráiler · pistas para la IA</h2>
+      <div class="fila" style="margin-top:0"><button class="principal" onclick="verTrailer()">🎬 Abrir el módulo del tráiler</button>
+        <span class="aviso">Ahí la IA te propone las tomas, te pregunta y tú las editas antes de armarlo.</span></div>
       <div class="fila" style="margin-top:0; align-items:center"><b>¿Dónde va el tráiler?</b> <span id="trailerDonde"></span></div>
       <div class="tabs" id="fases"></div>
       <p class="aviso" id="ayudaFase"></p>
@@ -208,10 +211,10 @@
         <button id="btnGrabar" onclick="grabar()">🎙 Grabar nota de voz</button>
       </div>
       <div class="fila">
-        <button class="principal" onclick="ia('api', 'trailer')">✨ Armar tráiler con estas pistas</button>
+        <button class="principal" onclick="verTrailer()">✨ Proponer tráiler con estas pistas</button>
         <button onclick="ia('prompt', 'trailer')">📋 Prompt para copiar</button>
       </div>
-      <p class="aviso">«Hacer todo» arma el tráiler solo con la IA: elige las tomas más importantes del video y las pone al inicio. Las pistas son opcionales, para guiarla. Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
+      <p class="aviso">El tráiler va aparte: «Hacer todo» arma solo el video. Cuando el video esté listo, ábrelo en «🎬 Tráiler»: la IA propone las tomas (con estas pistas, si pusiste), te pregunta lo que no vio claro y tú lo armas. Las pistas son opcionales, para guiarla. Las pistas son orientativas: la IA busca tomas en esos segundos o en momentos parecidos, no corta exacto.
       Una captura sin segundo se compara con todo el video; un audio se transcribe y se busca lo que dice en tu grabación
       (para eso conviene «Transcribir tu voz» antes). El segundo y la nota de arriba se aplican a la próxima pista que agregues.</p>
     </section>
@@ -1495,6 +1498,11 @@ async function reintentar() {
 
 let avisoGuion = null, GUION = null;
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function verTrailer() {  // el módulo del tráiler en otra pestaña
+  if (!P) return alert('Elige un proyecto primero.');
+  const w = window.open(`/trailer?p=${q(P)}`, 'trailer_' + P);
+  if (w) w.focus();
+}
 function verGuion(solo) {  // el editor completo en otra pestaña (si el navegador no deja abrirla sola, queda el botón de la barra)
   editorAbierto = true;
   const w = window.open('/guion?p=' + q(P), 'guion_' + P);
@@ -1607,7 +1615,7 @@ async function otroGuion() {  // otro guion sin repetir el análisis del video (
 const EXTRAS = [['etiquetas', '🏷 Etiquetas animadas', '', true], ['senales', '🎯 Flechas y círculos', '', true],
   ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'],
   ['testimonios', '⭐ Testimonios', 'agrega testimonios en su panel'], ['nuevos_modelos', '📱 Nuevos modelos', 'graba el video de nuevos modelos en su panel'],
-  ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', '', true]];
+  ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', 'prepáralo primero en «🎬 Tráiler»', false, true]];
 // ---------- pestaña «Material extra»: cada módulo y dónde va ----------
 const DONDE = [['auto', '🤖 Donde la voz lo nombra'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final'], ['segundo', '🕒 En un segundo exacto…']];
 const DONDE_PAGINA = [['auto', '🤖 Donde ayude (la IA elige)'], ['inicio', '⏮ Al inicio'], ['mitad', '⏸ En el medio'], ['final', '⏭ Al final']];
@@ -1696,9 +1704,9 @@ async function abrirExtras() {
   if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo». Cuando el guion te guste, le agregas los extras.');
   const aj = (await api('/api/ajustes')).ajustes, conIA = !!(aj.modelo && aj.url);
   const listo = id => (e.pasos.find(p => p.id === id) || {}).puede;
-  $('#listaExtras').innerHTML = EXTRAS.map(([id, nombre, falta, ia]) => {
+  $('#listaExtras').innerHTML = EXTRAS.map(([id, nombre, falta, ia, aparte]) => {  // aparte: el tráiler se arma en su módulo; aquí solo se vuelve a poner
     const puede = listo(id) || (ia && conIA);
-    return `<label class="aviso" style="display:block; margin:6px 0"><input type="checkbox" data-extra="${id}" ${puede ? 'checked' : 'disabled'}> ${nombre}
+    return `<label class="aviso" style="display:block; margin:6px 0"><input type="checkbox" data-extra="${id}" ${puede ? (aparte ? '' : 'checked') : 'disabled'}> ${nombre}
       ${puede ? (ia && !listo(id) ? '<span class="aviso">(lo prepara la IA)</span>' : '') : `<span class="aviso">— para usarlo, ${falta || 'configura una IA en ⚙ Ajustes IA'}</span>`}</label>`;
   }).join('');
   $('#msgExtras').textContent = ''; dlgExtras.showModal();

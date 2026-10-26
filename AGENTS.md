@@ -25,7 +25,8 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
    «método 2026–2027, Android 15, 16 y 17, xiaomiunlock.com y gsmprime.co».
 3. Duración buscada: parecida a la grabación (por defecto) o un número de minutos.
 4. Humor: sin / poco (por defecto) / normal / mucho.
-5. Extras: etiquetas y tráiler (por defecto); flechas, testimonios, nuevos modelos, tarjetas si subió material.
+5. Extras: etiquetas (por defecto); flechas, testimonios, nuevos modelos, tarjetas si subió material. El tráiler va
+   aparte, después de que apruebe el video (paso 8b).
 6. Si autoriza gastar créditos de ElevenLabs al armar (voz) y en el tráiler. Sin su «sí», paras antes de la voz.
 
 Si no contesta algo, usa el valor por defecto y díselo.
@@ -63,9 +64,17 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    su versión en `guion_editado_por_autor.json`. Parte de ese archivo (no de tu respuesta vieja), aplica solo lo que
    falte y entrega con `--parti-del-guion-actual`. Si no tienes nada que cambiar, no entregues: arma con su guion.
 7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
-8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
-   `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
-   `trailer`. Luego `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE" --confirmo-creditos`.
+8. **Etiquetas:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
+   `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Luego
+   `python deepseek/video.py extras etiquetas --nombre "NOMBRE"`.
+8b. **Tráiler (módulo aparte, al final):** solo cuando el autor aprobó el video. `encargo trailer` → lee
+   `ia_prompt_trailer.txt` (trae el guion aprobado y las respuestas que ya dio) y las imágenes → escribe `trailer.json`
+   (B9) con las mejores tomas ANTES · DURANTE · DESPUÉS, cada una con `por_que`, y en `"preguntas"` hasta 10 dudas e
+   ideas → `entregar trailer archivo.json`. Dile al autor que lo revise en la app, «🎬 Tráiler»: ve cada toma con su
+   imagen, la cambia y contesta. Cuando diga que respondió: `python deepseek/video.py preguntas trailer --nombre "NOMBRE"`,
+   corrige y vuelve a entregar. **Sus cambios mandan** igual que en el guion (`trailer_editado_por_autor.json`,
+   `--parti-del-guion-actual`). Con su «sí»: `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE"
+   --confirmo-creditos` (la frase de voz gasta ElevenLabs), o que él pulse «▶ Armar tráiler».
 9. **Exportar:** `python deepseek/video.py exportar 480 720 --nombre "NOMBRE"` y dile dónde quedó `FINAL.mp4`.
 
 Si un paso falla: lee `registro.txt` y `diagnosticos/`, explícale la causa real al autor y no reintentes a ciegas.
@@ -257,7 +266,9 @@ En Honor FRP fueron 8 etiquetas de 4 s.
 
 **Tráiler** (`trailer.json`), unos 10 s: `titulo` (máx. 5 palabras), `subtitulo` (frase con gancho), `voz` (máx. 15
 palabras), `clips` con `fase` ANTES (teléfono bloqueado) · DURANTE (cuando se pone la key y avanza) · DESPUÉS (pantalla
-de inicio, ya libre), cada uno con `ventana` [desde, hasta] y `dur` de 1.2 a 2.6 s. Nada de pantallas negras ni manos tapando.
+de inicio, ya libre), cada uno con `ventana` [desde, hasta], `dur` de 1.2 a 2.6 s y `por_que` (nota para el autor). Nada de
+pantallas negras ni manos tapando. Aparte, `"preguntas"`: hasta 10, `{"tipo": "dato"|"mejora", "pregunta", "opciones"}`;
+la app las guarda en `preguntas_trailer.json` y el autor las contesta en «🎬 Tráiler».
 
 ## B10. Qué ve la IA del video (capturas)
 

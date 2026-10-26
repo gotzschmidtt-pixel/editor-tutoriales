@@ -37,7 +37,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 4. **Música** (`musica/musica.py`): mezcla la música con bajada automática bajo la voz.
 5. **Etiquetas** (`etiquetas/etiquetas.py`): superpone las etiquetas en el momento en que se dicen.
 6. **Señales** (`senales/senales.py`): flechas y círculos animados sobre las partes importantes.
-7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos.
+7. **Tráiler** (`trailer/trailer.py --unir`): crea el tráiler y lo pega delante del video, corriendo los subtítulos. Va aparte, en «🎬 Tráiler» (`/trailer`), cuando el video ya está hecho: la IA propone las tomas con el guion aprobado y deja hasta 10 preguntas e ideas (`preguntas_trailer.json`); el autor contesta, cambia las tomas viendo su imagen y lo arma. «Hacer todo» ya no lo arma solo.
 
 En la app, «▶ Hacer todo» llega hasta el paso 4 y deja un FINAL.mp4 para ver si el guion gusta. Los extras (etiquetas,
 flechas, comentarios, testimonios, nuevos modelos y tráiler) se ponen después con «✨ Agregar extras», eligiendo cuáles;

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tráiler</title>
+<style>
+  :root {
+    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
+    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  select, input, textarea, button { font: inherit; color: var(--texto); }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid var(--borde);
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
+  .total { color: var(--suave); font-size: 14px; }
+  .total b.ok { color: var(--verde); } .total b.mal { color: var(--amarillo); }
+  .espacio { flex: 1; }
+  button { cursor: pointer; border-radius: 10px; padding: 8px 14px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover { border-color: var(--azul); }
+  button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
+  .ayuda { color: var(--suave); font-size: 13.5px; margin: 0 0 14px; }
+  .bloque { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+  .bloque.cambiado { border-color: var(--rosa); }
+  .bloque img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
+  .meta { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
+  .meta b { color: var(--texto); }
+  .cab { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--suave); margin-bottom: 6px; flex-wrap: wrap; }
+  .cab .id { font-weight: 700; color: var(--azul); }
+  .chip { border-radius: 99px; padding: 1px 9px; background: var(--panel2); border: 1px solid var(--borde); }
+  .chip.mal { color: var(--amarillo); border-color: #ffd23f66; }
+  .chip.ok { color: var(--verde); border-color: #38f28a55; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; background: #0e111b; border: 1px solid var(--borde); border-radius: 10px;
+    padding: 10px 12px; line-height: 1.55; font-size: 15.5px; }
+  textarea:focus { outline: none; border-color: var(--azul); }
+  .acciones { display: flex; gap: 6px; margin-top: 6px; }
+  .acciones button { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  .acciones button.guardarAqui { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; font-weight: 700; }
+  dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
+  dialog textarea { min-height: 300px; font-size: 13.5px; }
+  .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
+  .orto { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 13px; }
+  .orto:empty { display: none; }
+  .sug { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #ffd23f66; border-radius: 99px; padding: 2px 4px 2px 10px; }
+  .sug s { color: var(--amarillo); text-decoration-color: var(--rojo); }
+  .sug button { padding: 1px 8px; font-size: 12.5px; font-weight: 600; border-radius: 99px; }
+  .sug button.no { background: transparent; border: 0; color: var(--suave); }
+  .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; }
+  .panel.preg { border-color: #f0c36d; }
+  .panel summary { cursor: pointer; font-weight: 600; }
+  .panel ul { margin: 6px 0; padding-left: 20px; font-size: 13.5px; color: var(--suave); }
+  .pregunta { margin: 10px 0; } .pregunta input { width: 100%; background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; } .opciones button { padding: 3px 10px; font-size: 13px; font-weight: 500; }
+  @media (max-width: 700px) { .bloque { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+</style>
+<style>
+  .campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .campos label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--suave); }
+  .campos input, .campos select, .clip input, .clip select { background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .campos .ancho { grid-column: 1 / -1; }
+  .fase { margin: 18px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+  .fase h2 { margin: 0; font-size: 17px; }
+  .fase .aviso { color: var(--suave); font-size: 13px; }
+  .clip { display: grid; grid-template-columns: 180px 180px 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 10px; margin-bottom: 10px; }
+  .clip img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; cursor: pointer; }
+  .clip .pie { font-size: 12px; color: var(--suave); text-align: center; margin-top: 3px; }
+  .clip .datos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  .clip .datos input { width: 6.5em; }
+  .clip .porque { width: 100%; margin-top: 8px; }
+  video { width: 100%; max-height: 360px; border-radius: 12px; background: #000; display: block; }
+  .vacio { color: var(--suave); font-size: 13.5px; padding: 6px 0; }
+  @media (max-width: 760px) { .clip { grid-template-columns: 1fr 1fr; } .clip > div:last-child { grid-column: 1 / -1; } .campos { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 <b>Tráiler</b> · <span id="nombre"></span></h1>
+  <span class="total" id="total"></span>
+  <span class="espacio"></span>
+  <button id="btnProponer" onclick="proponer()" title="La IA de la app (⚙ Ajustes IA) mira tu video, tu guion ya aprobado y tus respuestas, y propone las mejores tomas ANTES · DURANTE · DESPUÉS. Gasta un pedido a la IA, no ElevenLabs">✨ Proponer con la IA</button>
+  <button onclick="encargoChat()" title="Deja el encargo del tráiler (ia_prompt_trailer.txt) para DeepSeek u otra IA de chat. No gasta nada">📋 Encargo para DeepSeek u otra IA</button>
+  <button id="btnGuardar" onclick="guardar()">💾 Guardar</button>
+  <button class="principal" id="btnArmar" onclick="armar()" title="Arma el tráiler y lo une a tu video. La frase de voz se hace con ElevenLabs (gasta créditos)">▶ Armar tráiler</button>
+</header>
+<main>
+  <p class="ayuda">El tráiler va aparte del video: primero se arma el video normal con su guion; después, con todo lo que la IA ya vio,
+    te propone las mejores tomas de <b>ANTES</b> (el problema), <b>DURANTE</b> (el paso clave) y <b>DESPUÉS</b> (el resultado), y te pregunta
+    lo que no le quedó claro. Tú contestas, cambias las tomas que quieras y lo armas cuando te guste.</p>
+  <p class="msg" id="msg"></p>
+  <div id="requisitos"></div>
+  <div id="preguntas"></div>
+  <div id="mejoras"></div>
+  <div id="ver"></div>
+  <div id="plan"></div>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mmss = s => { s = Math.max(0, +s || 0); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${(Math.round(r * 10) / 10).toFixed(1).padStart(4, '0')}`; };
+const segundos = t => { t = String(t).trim().replace(',', '.'); const p = t.split(':').map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
+const FASES = [['ANTES', '😟 ANTES', 'el problema: el teléfono bloqueado, la pantalla que pide la cuenta'],
+  ['DURANTE', '⚙️ DURANTE', 'el paso clave: cuando se pone la key o el código y se ve avanzar'],
+  ['DESPUÉS', '✅ DESPUÉS', 'el resultado: ya desbloqueado, en la pantalla de inicio']];
+let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio';
+$('#nombre').textContent = P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+async function esperar() {  // hasta que la app termine el paso que se pidió
+  for (let k = 0; k < 1800; k++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const e = await api(`/api/estado?p=${q(P)}`);
+    if (e.trabajo.proyecto) { if (e.trabajo.linea) $('#msg').textContent = '… ' + e.trabajo.linea.slice(0, 160); continue; }
+    if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
+    return;
+  }
+}
+const hay = f => !!(E && E.archivos[f]);
+async function cargar() {
+  E = await api(`/api/estado?p=${q(P)}`);
+  DUR = E.duracion_original || 0;
+  try { T = JSON.parse(await api(`/api/json?p=${q(P)}&f=trailer.json`) || 'null'); } catch (e) { T = null; }
+  try { DONDE = (await api(`/api/edicion?p=${q(P)}`)).trailer_donde || 'inicio'; } catch (e) {}
+  const falta = [];
+  if (!hay('guion.json')) falta.push('el guion (escríbelo y apruébalo en la app)');
+  if (!hay('3_voz.mp4')) falta.push('el video con voz (pulsa «▶ Hacer todo» en la app)');
+  $('#requisitos').innerHTML = falta.length ? `<div class="panel preg">Primero termina el video normal: falta ${falta.join(' y ')}.
+    ${hay('guion.json') ? 'Ya puedes pedir la propuesta, pero para armarlo hace falta el video.' : ''}</div>` : '';
+  $('#btnProponer').disabled = !hay('guion.json') || !hay('original.mp4');
+  $('#btnArmar').disabled = !hay('3_voz.mp4') || !T;
+  verPreguntas(); verVideo(); pintar();
+}
+function verVideo() {
+  $('#ver').innerHTML = hay('trailer.mp4') ? `<details class="panel" open><summary>▶ Tráiler armado</summary>
+    <video controls preload="metadata" src="/archivo?p=${q(P)}&f=trailer.mp4&v=${E.archivos['trailer.mp4'].fecha}"></video></details>` : '';
+}
+let PREGUNTAS = [];
+async function verPreguntas() {  // preguntas_trailer.json: lo que la IA no vio claro y sus ideas para que enganche más
+  try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_trailer.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
+  const una = ([x, k]) => `<div class="pregunta"><div>${esc(x.pregunta)}</div>
+    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
+    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
+  const todas = PREGUNTAS.map((x, k) => [x, k]);
+  const pend = todas.filter(([x]) => !String(x.respuesta || '').trim()), hechas = todas.length - pend.length;
+  const datos = todas.filter(([x]) => x.tipo !== 'mejora'), ideas = todas.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntas').innerHTML = !todas.length ? '' : `<details class="panel preg"${pend.length ? ' open' : ''}><summary>❓ La IA te pregunta sobre el tráiler (${pend.length} sin contestar${hechas ? `, ${hechas} contestadas` : ''})</summary>
+    <p class="msg">Elige una opción o escribe la respuesta. Las vacías no cambian nada. Con «Rehacer» la IA vuelve a proponer el tráiler con tus respuestas.</p>
+    ${datos.length ? `<p><b>Lo que no le quedó claro</b></p>${datos.map(una).join('')}` : ''}
+    ${ideas.length ? `<p><b>💡 Ideas para que enganche más</b></p>${ideas.map(una).join('')}` : ''}
+    <div class="acciones"><button class="principal" onclick="responder()" title="Guarda tus respuestas y la IA de la app vuelve a proponer el tráiler con ellas (gasta un pedido a la IA)">✨ Rehacer con mis respuestas</button>
+    <button onclick="responder(true)" title="Solo guarda: las usa la próxima propuesta, o DeepSeek con «video.py preguntas»">💾 Solo guardar respuestas</button>
+    <span class="msg" id="msgPreg"></span></div></details>`;
+}
+async function responder(soloGuardar) {
+  document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
+  const m = $('#msgPreg');
+  try {
+    await api(`/api/json?p=${q(P)}&f=preguntas_trailer.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    if (soloGuardar) { m.className = 'msg ok'; m.textContent = '✓ Guardadas. Las usa la próxima propuesta (o dile a DeepSeek «ya respondí»).'; return; }
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; return; }
+  await proponer(true);
+}
+async function proponer(conRespuestas) {
+  if (sucio && !confirm('Tienes cambios sin guardar en las tomas. La IA propone un tráiler nuevo y los reemplaza (el actual queda como trailer.json.anterior). ¿Seguir?')) return;
+  if (!conRespuestas && T && !confirm('La IA propone otro tráiler (el actual queda como trailer.json.anterior). Gasta un pedido a la IA de la app, no ElevenLabs. ¿Seguir?')) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'La IA mira el video y el guion y elige las tomas…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_ia`, {method: 'POST', body: JSON.stringify({})});
+    await esperar(); sucio = false; await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Propuesta lista. Revisa las tomas y contesta sus preguntas.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function encargoChat() {
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Preparo el encargo…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'trailer', modo: 'prompt'})});
+    await esperar();
+    const t = await api(`/archivo?p=${q(P)}&f=ia_prompt_trailer.txt&v=${Date.now()}`);
+    try { await navigator.clipboard.writeText(t); msg.textContent = '✓ Encargo copiado (también quedó en ia_prompt_trailer.txt). DeepSeek lo entrega con «video.py entregar trailer».'; }
+    catch (e) { msg.textContent = '✓ El encargo quedó en ia_prompt_trailer.txt, en la carpeta del proyecto.'; }
+    msg.className = 'msg ok';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+function pintar() {
+  if (!T) { $('#plan').innerHTML = `<p class="vacio">Todavía no hay tráiler. ${hay('guion.json') ? 'Pulsa «✨ Proponer con la IA» o arma las tomas a mano:' : ''}</p>` + (hay('original.mp4') ? `<button onclick="nuevo()">+ Empezar a mano</button>` : ''); $('#total').textContent = ''; return; }
+  T.clips = T.clips || [];
+  const campo = (k, rotulo, extra = '') => `<label${extra}>${rotulo}<input data-k="${k}" value="${esc(T[k] || '')}"></label>`;
+  let h = `<div class="panel"><div class="campos">${campo('titulo', 'Título (máx. 5 palabras)')}${campo('subtitulo', 'Subtítulo (gancho corto)')}
+    <label class="ancho">Frase de la voz (ElevenLabs, ~1 crédito por letra; vacía = sin voz) <span id="largoVoz"></span><input data-k="voz" value="${esc(T.voz || '')}"></label>
+    <label>¿Dónde va?<select id="donde"><option value="inicio">⏮ Al inicio (abre el video)</option><option value="final">⏭ Al final (cierra el video)</option></select></label></div></div>`;
+  for (const [f, nombre, ayuda] of FASES) {
+    const lista = T.clips.map((c, i) => [c, i]).filter(([c]) => fase(c.fase) === f);
+    h += `<div class="fase"><h2>${nombre}</h2><span class="aviso">${ayuda}</span><span class="espacio"></span><button onclick="agregar('${f}')">+ Toma</button></div>`;
+    h += lista.length ? lista.map(([c, i]) => clip(c, i)).join('') : '<p class="vacio">Sin tomas en esta fase.</p>';
+  }
+  $('#plan').innerHTML = h;
+  $('#donde').value = DONDE;
+  $('#donde').onchange = async e => { DONDE = e.target.value; try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_donde: DONDE})}); } catch (x) { alert(x.message); } };
+  document.querySelectorAll('.campos input[data-k]').forEach(i => i.oninput = () => { T[i.dataset.k] = i.value; cambio(); });
+  document.querySelectorAll('.clip [data-c]').forEach(i => i.onchange = () => editar(+i.dataset.c, i.dataset.campo, i.value));
+  resumen();
+}
+const fase = f => ({DESPUES: 'DESPUÉS'})[String(f || '').toUpperCase()] || String(f || '').toUpperCase();
+function clip(c, i) {
+  const [a, b] = c.ventana || [0, 0];
+  const img = t => `<img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${(+t).toFixed(1)}" title="Clic: ver este momento del video" onclick="verMomento(${+t})">`;
+  const inp = (campo, v, w) => `<input data-c="${i}" data-campo="${campo}" value="${esc(v)}" style="width:${w}">`;
+  return `<div class="clip" id="c${i}">
+    <div>${img(a)}<div class="pie">desde ${mmss(a)}</div></div>
+    <div>${img(b)}<div class="pie">hasta ${mmss(b)}</div></div>
+    <div><div class="datos">Fase <select data-c="${i}" data-campo="fase">${FASES.map(([f]) => `<option${fase(c.fase) === f ? ' selected' : ''}>${f}</option>`).join('')}</select>
+      Desde ${inp('desde', mmss(a), '6.5em')} Hasta ${inp('hasta', mmss(b), '6.5em')} Dura ${inp('dur', c.dur ?? 1.6, '4.5em')} s
+      <span class="espacio"></span><button onclick="mover(${i}, -1)" title="Antes">↑</button><button onclick="mover(${i}, 1)" title="Después">↓</button><button onclick="quitar(${i})">✕</button></div>
+      <input class="porque" data-c="${i}" data-campo="por_que" value="${esc(c.por_que || '')}" placeholder="Qué se ve y por qué va (nota para ti; no sale en el video)">
+      <p class="msg">La app busca, dentro de «desde–hasta», el momento más nítido y quieto, y corta ahí «dura» segundos.</p></div></div>`;
+}
+function editar(i, campo, v) {
+  const c = T.clips[i], msg = $('#msg');
+  if (campo === 'desde' || campo === 'hasta') {
+    const s = segundos(v);
+    if (isNaN(s) || s < 0 || (DUR && s > DUR)) { msg.className = 'msg err'; msg.textContent = `«${v}» no es un momento de tu grabación (0:00 a ${mmss(DUR)}).`; pintar(); return; }
+    c.ventana = c.ventana || [0, 0]; c.ventana[campo === 'desde' ? 0 : 1] = Math.round(s * 10) / 10;
+    if (c.ventana[1] < c.ventana[0]) c.ventana.reverse();
+  } else if (campo === 'dur') {
+    const s = parseFloat(String(v).replace(',', '.'));
+    if (!(s > 0.3 && s < 8)) { msg.className = 'msg err'; msg.textContent = 'La duración de una toma va de 0,4 a 8 s.'; pintar(); return; }
+    c.dur = Math.round(s * 10) / 10;
+  } else c[campo] = v;
+  msg.textContent = ''; cambio(); pintar();
+}
+function ordenar() {  // el tráiler va en orden ANTES → DURANTE → DESPUÉS; dentro de cada fase, el orden que elegiste
+  const k = f => FASES.findIndex(([x]) => x === fase(f));
+  T.clips = T.clips.map((c, i) => [c, i]).sort((a, b) => k(a[0].fase) - k(b[0].fase) || a[1] - b[1]).map(([c]) => c);
+}
+function mover(i, d) {
+  const f = fase(T.clips[i].fase), mismos = T.clips.map((c, k) => k).filter(k => fase(T.clips[k].fase) === f), p = mismos.indexOf(i), j = mismos[p + d];
+  if (j === undefined) return;
+  [T.clips[i], T.clips[j]] = [T.clips[j], T.clips[i]]; cambio(); pintar();
+}
+function quitar(i) { T.clips.splice(i, 1); cambio(); pintar(); }
+function agregar(f) {
+  const ult = [...T.clips].reverse().find(c => fase(c.fase) === f), a = ult ? Math.min(ult.ventana[1], Math.max(0, DUR - 4)) : (f === 'ANTES' ? 0 : f === 'DESPUÉS' ? Math.max(0, DUR - 15) : DUR / 2);
+  T.clips.push({fase: f, ventana: [Math.round(a * 10) / 10, Math.round(Math.min(DUR || a + 4, a + 4) * 10) / 10], dur: 1.6});
+  ordenar(); cambio(); pintar();
+}
+function nuevo() { T = {titulo: '', subtitulo: '', voz: '', clips: []}; FASES.forEach(([f]) => agregar(f)); }
+function verMomento(t) {
+  $('#ver').innerHTML = `<div class="panel"><b>Tu grabación en ${mmss(t)}</b> <button onclick="verVideo()" style="float:right">✕</button>
+    <video controls autoplay muted src="/archivo?p=${q(P)}&f=original.mp4#t=${t}"></video></div>`;
+  $('#ver').scrollIntoView({behavior: 'smooth'});
+}
+function cambio() { sucio = true; resumen(); }
+function resumen() {
+  const n = f => T.clips.filter(c => fase(c.fase) === f).length, dura = T.clips.reduce((a, c) => a + (+c.dur || 0), 0);
+  const v = (T.voz || '').trim();
+  if ($('#largoVoz')) $('#largoVoz').textContent = v ? `· ${v.length} letras` : '· sin voz';
+  const faltan = FASES.filter(([f]) => !n(f)).map(([f]) => f);
+  $('#total').innerHTML = `${T.clips.length} tomas · unos <b class="${dura >= 6 && dura <= 16 ? 'ok' : 'mal'}">${dura.toFixed(1)} s</b>` + (faltan.length ? ` · <b class="mal">falta ${faltan.join(' y ')}</b>` : '');
+  $('#btnGuardar').classList.toggle('principal', sucio);
+  $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar';
+  $('#btnArmar').disabled = !hay('3_voz.mp4') || !T.clips.length;
+}
+async function guardar() {
+  if (!T) return true;
+  if (!T.clips.length) { $('#msg').className = 'msg err'; $('#msg').textContent = 'El tráiler necesita al menos una toma.'; return false; }
+  ordenar();
+  const b = $('#btnGuardar'), msg = $('#msg');
+  b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando las tomas…';
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(T)});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'trailer', modo: 'revisar'})});
+    await esperar(); sucio = false; await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Guardado (el anterior quedó como trailer.json.anterior).';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
+  b.disabled = false;
+  return true;
+}
+async function armar() {
+  const v = (T && T.voz || '').trim();
+  if (!confirm(`Armo el tráiler y lo uno ${DONDE === 'final' ? 'al final' : 'al inicio'} de tu video (queda en FINAL.mp4 y aparte en trailer.mp4).\n\n` +
+    (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos.` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({})});
+    await esperar(); await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Tráiler armado y unido a tu video (FINAL.mp4). Míralo arriba.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
+cargar();
+</script>
+</body>
+</html>

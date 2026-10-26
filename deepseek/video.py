@@ -10,14 +10,15 @@ Uso (desde la carpeta editor-tutoriales):
       ia_prompt_guion.txt, ia_capturas/ (capturas, mapa y hojas) y hojas_2s/ (un cuadro cada 2 s, 30 por hoja)
   python deepseek/video.py entregar guion respuesta.json --nombre "Mi video"
       la app corrige el guion (tiempos, largo, orden) y lo guarda en guion.json; muestra el resumen y los avisos
-  python deepseek/video.py preguntas --nombre "Mi video"
-      tus preguntas del guion con lo que el autor contestó en la app
+  python deepseek/video.py preguntas [trailer] --nombre "Mi video"
+      tus preguntas del guion (o del tráiler) con lo que el autor contestó en la app
   python deepseek/video.py armar --nombre "Mi video" --confirmo-creditos
       voz (ElevenLabs, GASTA créditos), montaje, subtítulos y música → FINAL.mp4 sin extras
   python deepseek/video.py encargo etiquetas|trailer --nombre "Mi video"
       deja ia_prompt_<tarea>.txt para escribir las etiquetas o el tráiler (después: entregar etiquetas|trailer archivo.json)
   python deepseek/video.py extras etiquetas trailer --nombre "Mi video" [--confirmo-creditos]
-      pone los extras sobre el video (el tráiler y nuevos_modelos gastan ElevenLabs)
+      pone los extras sobre el video (el tráiler y nuevos_modelos gastan ElevenLabs). El tráiler va aparte y al final:
+      primero el video aprobado; después encargo trailer → entregar trailer → el autor lo revisa en «🎬 Tráiler»
   python deepseek/video.py exportar 480 720 --nombre "Mi video"
   python deepseek/video.py estado --nombre "Mi video"
 
@@ -163,7 +164,37 @@ def huella(d):
     return hashlib.sha256(json.dumps([[x.get('id'), x.get('texto')] for x in b], ensure_ascii=False).encode()).hexdigest()
 
 
-MARCA = '.deepseek_entrega.json'  # los textos del guion tal como quedaron en la última entrega de la IA
+MARCA = '.deepseek_entrega.json'  # los textos del guion (y el tráiler) tal como quedaron en la última entrega de la IA
+
+
+def huella_trailer(d):
+    """Hash del trailer.json actual sin las notas: cambia si el autor movió, quitó o agregó tomas o cambió textos."""
+    try:
+        t = json.loads(leer(d, 'trailer.json') or 'null')
+    except ValueError:
+        return None
+    if not isinstance(t, dict):
+        return None
+    clips = [[c.get('fase'), c.get('ventana'), c.get('dur')] for c in t.get('clips') or [] if isinstance(c, dict)]
+    return hashlib.sha256(json.dumps([t.get('titulo'), t.get('subtitulo'), t.get('voz'), clips], ensure_ascii=False).encode()).hexdigest()
+
+
+def marcar(d, **k):
+    try:
+        m = json.loads(leer(d, MARCA) or '{}')
+    except ValueError:
+        m = {}
+    m.update(k)
+    open(os.path.join(d, MARCA), 'w', encoding='utf-8').write(json.dumps(m))
+
+
+def trailer_del_autor(d):
+    """True si el autor cambió el tráiler en la app después de la última entrega de la IA."""
+    try:
+        marca = json.loads(leer(d, MARCA) or '{}').get('trailer')
+    except ValueError:
+        marca = None
+    return bool(marca) and marca != huella_trailer(d)
 
 
 def cambio_del_autor(d, archivo=None):
@@ -179,15 +210,16 @@ def cambio_del_autor(d, archivo=None):
     return bool(archivo and os.path.exists(g) and os.path.getmtime(g) > os.path.getmtime(archivo) + 2)
 
 
-def texto_preguntas(d):
-    """Las preguntas del guion (preguntas_guion.json) con lo que contestó el autor en la app."""
+def texto_preguntas(d, tarea='guion'):
+    """Las preguntas del guion (preguntas_guion.json) o del tráiler (preguntas_trailer.json) con lo que contestó el autor."""
     try:
-        lista = json.loads(leer(d, 'preguntas_guion.json') or '[]')
+        lista = json.loads(leer(d, f'preguntas_{tarea}.json') or '[]')
     except ValueError:
         lista = []
     if not lista:
-        return 'Sin preguntas guardadas (ponlas en "preguntas" de respuesta_guion.json: hasta 15 de datos y hasta 10 ideas para mejorar).'
-    out = [f'Preguntas al autor ({len(lista)}):']
+        return ('Sin preguntas guardadas (ponlas en "preguntas" de tu respuesta: hasta 10, de datos e ideas).' if tarea == 'trailer' else
+                'Sin preguntas guardadas (ponlas en "preguntas" de respuesta_guion.json: hasta 15 de datos y hasta 10 ideas para mejorar).')
+    out = [f'Preguntas al autor sobre el {"tráiler" if tarea == "trailer" else "guion"} ({len(lista)}):']
     for k, x in enumerate(lista, 1):
         r = str(x.get('respuesta') or '').strip()
         out.append(f"{k}. [{x.get('tipo')} · {x.get('bloque') or '-'}] {x.get('pregunta')}"
@@ -245,11 +277,19 @@ def main():
                              f'borraría sus cambios. Su versión está en {copia}: parte de ella (sus textos mandan), aplica '
                              'solo lo que falte (sus respuestas: python deepseek/video.py preguntas --nombre "..."), guárdala '
                              'como tu respuesta y entrega con --parti-del-guion-actual.')
+        if tarea == 'trailer' and trailer_del_autor(d) and not a.parti_del_guion_actual:
+            copia = os.path.join(d, 'trailer_editado_por_autor.json')
+            shutil.copyfile(os.path.join(d, 'trailer.json'), copia)
+            raise SystemExit('NO ENTREGADO: el autor cambió el tráiler en «🎬 Tráiler» después de tu última entrega. Su versión está '
+                             f'en {copia}: parte de ella (sus tomas mandan), aplica solo lo que falte (sus respuestas: python '
+                             'deepseek/video.py preguntas trailer --nombre "..."), y entrega con --parti-del-guion-actual.')
         txt = open(archivo, encoding='utf-8').read()
         api('/api/pegar', cuerpo=txt.encode('utf-8'), p=p)
         correr(p, 'ia', {'tarea': tarea, 'modo': 'revisar'})
         if tarea == 'guion':
-            open(os.path.join(d, MARCA), 'w', encoding='utf-8').write(json.dumps({'guion': huella(d)}))
+            marcar(d, guion=huella(d))
+        if tarea == 'trailer':
+            marcar(d, trailer=huella_trailer(d))
         print(f'Guardado {tarea}.json (corregido por la app).')
         if tarea == 'guion':
             print(resumen_guion(d))
@@ -261,10 +301,21 @@ def main():
                   'lo edita y contesta tus preguntas (o te las contesta en el chat). Cuando diga que respondió: '
                   f'python deepseek/video.py preguntas --nombre "{p}", corrige y vuelve a entregar. '
                   'No armes hasta que diga que sí (la voz gasta créditos de ElevenLabs).')
+        if tarea == 'trailer':
+            print(texto_preguntas(d, 'trailer'))
+            print(f'\nAhora dile al autor que el tráiler está en la app: proyecto «{p}» → «🎬 Tráiler». Ahí ve cada toma con su '
+                  'imagen, la cambia y contesta tus preguntas. Cuando diga que respondió: '
+                  f'python deepseek/video.py preguntas trailer --nombre "{p}", corrige y vuelve a entregar. '
+                  'No lo armes hasta que diga que sí (la frase de voz gasta créditos de ElevenLabs).')
 
     elif a.accion == 'preguntas':
-        print(texto_preguntas(d))
-        if cambio_del_autor(d):
+        if a.args[:1] == ['trailer']:
+            print(texto_preguntas(d, 'trailer'))
+            if trailer_del_autor(d):
+                print('\nOJO: el autor también cambió el tráiler en la app. Parte de mis_proyectos/<nombre>/trailer.json, no de tu archivo viejo.')
+        else:
+            print(texto_preguntas(d))
+        if not a.args and cambio_del_autor(d):
             print('\nOJO: el autor también editó el guion en la app. Parte de mis_proyectos/<nombre>/guion.json, no de tu archivo viejo.')
 
     elif a.accion == 'armar':
@@ -283,7 +334,9 @@ def main():
               f'Después: entregar {a.args[0]} respuesta.json --nombre "{p}"')
 
     elif a.accion == 'extras':
-        solo = a.args or ['etiquetas', 'trailer']
+        solo = a.args or ['etiquetas']  # el tráiler va aparte: solo si se pide (y ya está en trailer.json)
+        if 'trailer' in solo and not leer(d, 'trailer.json').strip():
+            raise SystemExit('Todavía no hay trailer.json. Primero: encargo trailer → entregar trailer → el autor lo revisa en «🎬 Tráiler».')
         if GASTAN & set(solo) and not a.confirmo_creditos:
             raise SystemExit(f'{", ".join(sorted(GASTAN & set(solo)))} gasta créditos de ElevenLabs. Pregúntale al autor; '
                              'si dice que sí, repite con --confirmo-creditos.')

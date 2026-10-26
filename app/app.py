@@ -39,7 +39,7 @@ os.makedirs(PROYECTOS, exist_ok=True)
 os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json']
+EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json', 'preguntas_trailer.json']
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 VIDEOS = {'.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'}
@@ -960,6 +960,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(edicion(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/trailer':  # el módulo del tráiler, aparte del video: proponer, contestar, editar y armar
+                return self.responder(open(os.path.join(AQUI, 'trailer.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
                 d = carpeta(q['p'])
                 t = round(max(0.0, float(q.get('t') or 0)), 1)
@@ -1152,8 +1154,9 @@ class Manejador(BaseHTTPRequestHandler):
                 if q['paso'] == 'todo':
                     pasos = list(TODO) if existe(carpeta(q['p']), 'trailer.json') else TODO[:-1] + ['final_sin_trailer']  # copia: se le agregan pasos
                 aj = leer_ajustes()
-                if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url') and trailer_pendiente(carpeta(q['p'])):
-                    # por defecto el tráiler lo arma la IA con las tomas más importantes (con tus pistas, si pusiste)
+                if q['paso'] == 'todo' and not extras and aj.get('modelo') and aj.get('url') and trailer_pendiente(carpeta(q['p'])):
+                    # el editor por pistas puede volver a poner el tráiler; «✨ Agregar extras» usa el que armaste en «🎬 Tráiler»
+                    # (la IA no lo rehace por su cuenta encima de tus cambios)
                     pasos = TODO[:-1] + ['trailer_ia', 'trailer']
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas

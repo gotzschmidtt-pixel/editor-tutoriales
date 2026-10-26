@@ -28,6 +28,8 @@ import numpy as np  # noqa: E402
 import hashlib, inspect, threading, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
+ARCHIVO_PREGUNTAS = {'guion': 'preguntas_guion.json', 'trailer': 'preguntas_trailer.json'}
+TRAILER_PREGUNTAS_MAX = 10
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
 VEL_CRITICO = 1.5  # en los pasos clave (poner la key, escribir códigos) la imagen va casi a velocidad normal
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
@@ -538,7 +540,25 @@ Cada toma tiene que verse clara: nada de pantallas en negro, cargas o manos tapa
 Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho", "voz": "una frase de la voz en off, máximo 15 palabras",
 "clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
-Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el objeto JSON."""]
+Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS.
+Cada clip lleva además "por_que": en pocas palabras qué se ve y por qué es de lo mejor (el autor lo lee al revisar).
+PREGUNTAS AL AUTOR (hasta {TRAILER_PREGUNTAS_MAX} en total, en "preguntas"): ya viste el video y el guion; antes de dar el tráiler por bueno,
+pregunta lo que no te quede claro (tipo "dato": cuál es la pantalla del problema, en qué momento queda desbloqueado, si
+un clip muestra algo privado) y propón ideas para que enganche más (tipo "mejora": otro gancho para el título, terminar en
+el resultado, una toma que podría ir). Cada una con 2 o 3 opciones concretas, por ejemplo {{"tipo": "mejora",
+"pregunta": "¿El título habla del modelo o del problema?", "opciones": ["iPhone sin cuenta en 5 min", "Adiós al bloqueo"]}}.
+Responde SOLO con el objeto JSON, con "preguntas" dentro."""]
+        resp = respuestas_trailer(d)
+        if resp:
+            partes.append("RESPUESTAS DEL AUTOR a tus preguntas sobre el tráiler (mandan sobre lo que pensabas; no vuelvas a preguntarlas):\n" + resp)
+        try:  # el guion ya aprobado: el tráiler cuenta lo mismo en corto
+            g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+            lineas = [f"{b.get('id')} [{mmss(b['montaje']['src_inicio'])}]: {str(b.get('texto', ''))[:140]}"
+                      for b in g.get('bloques', []) if isinstance(b.get('montaje'), dict) and b['montaje'].get('src_inicio') is not None]
+            if lineas:
+                partes.append("GUION YA APROBADO del video (bloque [dónde empieza en el original]: lo que dice la voz):\n" + '\n'.join(lineas)[:9000])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
         try:  # dónde se pone la key según el guion: el DURANTE más fuerte
             g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
             clave = [b for b in g.get('bloques', []) if b.get('montaje', {}).get('src_inicio') is not None
@@ -914,6 +934,9 @@ def revisar(d, tarea, datos):
                 avisos.append(f"quité «{e.get('texto')}»: la frase «{e.get('frase')}» no está en {e.get('bloque')}")
         return buenas, avisos
     if tarea == 'trailer':
+        if not isinstance(datos, dict) or not isinstance(datos.get('clips'), list) or not datos['clips']:
+            raise SystemExit('ERROR: el tráiler no trae clips. Revisa el JSON (debe tener "clips": [...]).')
+        datos.pop('preguntas', None)  # van aparte, en preguntas_trailer.json
         for c in datos['clips']:
             a, b = (min(max(float(x), 0), dur - 0.5) for x in c['ventana'])
             if b - a < c['dur']:
@@ -2269,15 +2292,35 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
     return avisos
 
 
-def guardar_preguntas(d, lista):
-    """Lo que la IA pregunta al terminar el guion, para que el autor lo conteste en la revisión: los datos clave que no vio
-    claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»)."""
+def guardar_preguntas(d, lista, tarea='guion'):
+    """Lo que la IA pregunta al terminar el guion (o el tráiler), para que el autor lo conteste: los datos clave que no vio
+    claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»). En el tráiler, lo que ya contestaste se conserva."""
     out = normalizar_preguntas(lista)
-    json.dump(out, open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in out), sum(x['tipo'] == 'mejora' for x in out)
-    if out:
-        print(f'La IA te deja {len(out)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} para mejorar el guion): '
-              'contéstalas en la revisión del guion.', flush=True)
+    f = os.path.join(d, ARCHIVO_PREGUNTAS[tarea])
+    if tarea == 'trailer':
+        try:
+            viejas = [x for x in json.load(open(f, encoding='utf-8')) if isinstance(x, dict) and str(x.get('respuesta', '')).strip()]
+        except (OSError, ValueError, TypeError):
+            viejas = []
+        hechas = {normal(x['pregunta']) for x in viejas}
+        out = viejas + [x for x in out if normal(x['pregunta']) not in hechas][:TRAILER_PREGUNTAS_MAX]
+    json.dump(out, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    nuevas = [x for x in out if not str(x.get('respuesta', '')).strip()]
+    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in nuevas), sum(x['tipo'] == 'mejora' for x in nuevas)
+    if nuevas:
+        donde = 'en la página del tráiler' if tarea == 'trailer' else 'en la revisión del guion'
+        print(f'La IA te deja {len(nuevas)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} '
+              f'{"ideas para el tráiler" if tarea == "trailer" else "para mejorar el guion"}): contéstalas {donde}.', flush=True)
+
+
+def respuestas_trailer(d):
+    """Lo que el autor ya contestó sobre el tráiler, para la próxima propuesta."""
+    try:
+        lista = json.load(open(os.path.join(d, ARCHIVO_PREGUNTAS['trailer']), encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return ''
+    hechas = [x for x in lista if isinstance(x, dict) and str(x.get('respuesta', '')).strip()]
+    return '\n'.join(f"- {x['pregunta']} → {str(x['respuesta']).strip()}" for x in hechas)
 
 
 def normalizar_preguntas(lista):
@@ -2711,8 +2754,8 @@ def main():
         return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
-        if a.tarea == 'guion' and isinstance(datos, dict) and datos.get('preguntas'):
-            guardar_preguntas(d, datos['preguntas'])  # las preguntas de una IA de chat se contestan en la revisión del guion
+        if a.tarea in ARCHIVO_PREGUNTAS and isinstance(datos, dict) and datos.get('preguntas'):
+            guardar_preguntas(d, datos['preguntas'], a.tarea)  # las preguntas de una IA de chat se contestan en la revisión
     else:
         try:
             n = int(json.load(open(a.ajustes, encoding='utf-8')).get('capturas', 14))
@@ -2840,6 +2883,8 @@ def main():
             if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
                 raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
                                  f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
+            if a.tarea == 'trailer' and isinstance(datos, dict):
+                guardar_preguntas(d, datos.get('preguntas'), 'trailer')
             tramo(65, 70)
             progreso(0, 'La IA respondió: leo el guion')
             if a.tarea == 'guion':
