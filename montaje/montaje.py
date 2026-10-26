@@ -103,9 +103,16 @@ def estabilizar(f, enc):
             subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
                             f'vidstabdetect=shakiness=8:accuracy=9:stepsize=12:result={os.path.basename(trf)}', '-f', 'null', '-'],
                            cwd=cwd, check=True, capture_output=True)
-            codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
-                           f'vidstabtransform=input={os.path.basename(trf)}:smoothing=20:zoom=4:interpol=linear,format=yuv420p']
-                          + enc + [os.path.basename(tmp)], check=True, cwd=cwd, capture_output=True)  # sus avisos no se mezclan con «Lxx ok»
+            # la transformación la hace el ffmpeg que trae vid.stab (el de NVIDIA no lee los .trf: «Cannot parse localmotion»,
+            # y su fallo pasaba todo el resto del montaje al procesador); después se codifica como los demás tramos
+            mid = f + '.est0.mkv'
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
+                            f'vidstabtransform=input={os.path.basename(trf)}:smoothing=20:zoom=4:interpol=linear,format=yuv420p',
+                            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '8', os.path.basename(mid)],
+                           check=True, cwd=cwd, capture_output=True)  # sus avisos no se mezclan con «Lxx ok»
+            codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(mid)] + enc + [os.path.basename(tmp)],
+                          check=True, cwd=cwd, capture_output=True)
+            os.remove(mid)
         else:
             run(['-i', f, '-vf', 'deshake,format=yuv420p'] + enc + [tmp])
         os.replace(tmp, f)
@@ -158,7 +165,8 @@ def main():
             if a.estabilizar:
                 estabilizar(f, enc)
             partes.append(f)
-        if m['modo'].endswith('congelar'):
+        if m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1:
+            # una pausa de menos de un cuadro daba un tramo vacío que, al unir, desarmaba los tiempos de todo lo siguiente
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
             t = m.get('cuadro', mejor(*nt, *v))
             f = os.path.join(tmp, f'{i}_b.mp4')
