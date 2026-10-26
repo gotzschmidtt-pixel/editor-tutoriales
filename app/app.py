@@ -314,7 +314,7 @@ def comandos(paso, d, op):
             c += ['--imagen', 'imagen.png']
         if str(op.get('calidad', '1080')) in ('720', '480', '360'):
             c += ['--calidad', str(op['calidad'])]
-        if edicion(d).get('estabilizar', True):  # quita el temblor de la cámara en mano (se apaga junto a «Montaje»)
+        if edicion(d).get('estabilizar', False):  # quita el temblor de la cámara en mano (casilla junto a «Montaje»; el montaje tarda bastante más)
             c.append('--estabilizar')
         elif op.get('borrador'):
             c.append('--borrador')

@@ -75,7 +75,8 @@ def main():
     # la voz del video controla el compresor de la música: cuando hay voz, la música baja
     mezcla = (f'[0:a]asplit=2[v][sc];[1:a]volume={a.volumen}[mu];'
               '[mu][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[duck];'
-              '[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89[a]')
+              '[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89,'
+              'aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]')  # loudnorm deja 96 kHz: el navegador no siempre lo suena
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', a.video, '-i', larga, '-filter_complex', mezcla,
                     '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', a.salida], check=True)
 

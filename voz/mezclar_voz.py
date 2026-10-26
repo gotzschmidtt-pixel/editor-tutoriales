@@ -54,7 +54,7 @@ for b in d['bloques']:
         i = corte
         while i < L and ch[i] == ' ':
             i += 1
-flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:TP=-1.5,apad[aout]")
+flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,apad[aout]")
 subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                ['-filter_complex', ';'.join(flt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',
                 '-c:a', 'aac', '-b:a', '160k', '-t', str(total), salida], check=True)

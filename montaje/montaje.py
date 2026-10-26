@@ -88,12 +88,13 @@ def estabilizar(f, enc):
                            cwd=cwd, check=True, capture_output=True)
             codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.basename(f), '-vf',
                            f'vidstabtransform=input={os.path.basename(trf)}:smoothing=20:zoom=4:interpol=linear,format=yuv420p']
-                          + enc + [os.path.basename(tmp)], check=True, cwd=cwd)
+                          + enc + [os.path.basename(tmp)], check=True, cwd=cwd, capture_output=True)  # sus avisos no se mezclan con «Lxx ok»
         else:
             run(['-i', f, '-vf', 'deshake,format=yuv420p'] + enc + [tmp])
         os.replace(tmp, f)
     except (OSError, subprocess.CalledProcessError) as e:
-        print(f'· no pude estabilizar {os.path.basename(f)} ({e}); queda como estaba', flush=True)
+        detalle = (getattr(e, 'stderr', b'') or b'').decode('utf-8', 'replace').strip().splitlines()[-1:]
+        print(f'· no pude estabilizar {os.path.basename(f)} ({e}{": " + detalle[0] if detalle else ""}); queda como estaba', flush=True)
 
 
 def main():

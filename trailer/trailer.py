@@ -123,7 +123,7 @@ def main():
         filtros.append('[m]anull[x]')
     props = {'clips': clips, 'titulo': plan['titulo'], 'subtitulo': plan.get('subtitulo')}
     if filtros:
-        filtros.append(f"[x]atrim=0:{total},loudnorm=I=-15:TP=-1.5[a]")
+        filtros.append(f"[x]atrim=0:{total},loudnorm=I=-15:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]")
         ff(ins + ['-filter_complex', ';'.join(filtros), '-map', '[a]', '-ar', '48000', os.path.join(PUB, 'audio.wav')])
         props['audio'] = 'trailer/audio.wav'
 
