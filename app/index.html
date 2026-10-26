@@ -708,8 +708,8 @@ async function exportar() {
   alturas.forEach(h => PEND_DESCARGA.add(h));
   refrescar();
 }
-function ver(f, seguir) {
-  const v = $('#video'), t = v.currentTime, sonando = !v.paused && !v.ended;
+function ver(f, seguir, tocar) {
+  const v = $('#video'), t = v.currentTime, sonando = tocar || (!v.paused && !v.ended);
   v.src = `/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`; viendo = f;
   if (seguir) v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); if (sonando) v.play(); }, {once: true});
 }
@@ -719,7 +719,7 @@ const AVANCE = ['montaje_en_curso.mp4', '1_montaje.mp4', '2_insertos.mp4', '3_vo
 const NOMBRE_AVANCE = {'montaje_en_curso.mp4': 'el montaje mientras se arma', '1_montaje.mp4': 'el montaje (sin voz)', '2_insertos.mp4': 'con cortes y zooms',
   '3_voz.mp4': 'con voz y subtítulos', '4_musica.mp4': 'con música', '5_etiquetas.mp4': 'con etiquetas', '6_senales.mp4': 'con flechas',
   '7_tarjetas.mp4': 'con tarjetas', '8_testimonios.mp4': 'con testimonios', '9_modelos.mp4': 'con nuevos modelos', 'FINAL.mp4': 'el video final'};
-let viendo = null, avanceVisto = '';
+let viendo = null, avanceVisto = '', enVivo = false;  // enVivo: llegaste al final de lo armado y esperas el tramo siguiente
 function masAvanzado(arch) {
   // las etapas van en orden (montaje -> insertos -> voz -> ... -> FINAL). Si rehiciste una etapa,
   // las de después quedaron viejas (son de un guion anterior): una etapa más vieja que la anterior se ignora,
@@ -740,11 +740,15 @@ function seguirAvance(t, arch) {
   const firma = f + arch[f].fecha, v = $('#video');
   const actual = new URLSearchParams(v.src.split('?')[1] || '').get('f');
   if (arch[actual]?.en_proceso) avanceVisto = '';  // lo que estabas viendo se está rehaciendo: te paso al último listo
-  if (firma !== avanceVisto && (v.paused || v.ended || !v.src || arch[actual]?.en_proceso)) { avanceVisto = firma; ver(f, !arch[actual]?.en_proceso); }
+  if (firma !== avanceVisto && (v.paused || v.ended || !v.src || arch[actual]?.en_proceso)) {
+    // si lo estabas mirando y llegaste al final, sigue solo con el tramo nuevo desde donde quedaste
+    avanceVisto = firma; ver(f, !arch[actual]?.en_proceso, enVivo && v.ended); enVivo = false;
+  }
   const nuevo = firma !== avanceVisto;
   return `<button onclick="avanceVisto='${firma}'; ver('${f}', true); irA('#video')">${nuevo ? '🔄 Ver lo nuevo' : '👁 Viendo'}: ${NOMBRE_AVANCE[f]}</button>`;
 }
-$('#video').addEventListener('ended', () => refrescar());
+$('#video').addEventListener('ended', () => { enVivo = !!viendo && AVANCE.indexOf(viendo) < AVANCE.length - 1; refrescar(); });
+$('#video').addEventListener('pause', () => { if (!$('#video').ended) enVivo = false; });
 
 $('#tabs').innerHTML = Object.keys(AYUDA).map(f => `<button data-f="${f}">${f.replace(/\.(json|txt)$/, '')}</button>`).join('');
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => abrir(b.dataset.f));
