@@ -111,7 +111,9 @@ def main():
     final = alto == 1080
     res = (alto * 16 // 9 // 2 * 2, alto)
     crf = '20' if final else '26'
-    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,fps=25,format=yuv420p"
+    # framerate (no fps): al pasar a 25 cuadros por segundo un video de 30 o 60, o un tramo acelerado o lento, fps se salta
+    # cuadros de forma despareja (2, 2, 3, 2…) y el movimiento tiembla; framerate arma cada cuadro en su momento exacto
+    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps=25,format=yuv420p"
     fuente = next((f for f in ('C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if os.path.exists(f)), None)
 
     def rotulo(txt):

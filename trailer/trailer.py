@@ -92,7 +92,7 @@ def main():
         centro = mejor(*nt, t0, t1)
         ini = min(max(t0, centro - c['dur'] / 2), max(t0, t1 - c['dur']))
         ff(['-ss', str(ini), '-t', str(c['dur'] + 0.2), '-i', a.video, '-an', '-vf',
-            'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=25,format=yuv420p',
+            'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,framerate=fps=25,format=yuv420p',
             '-c:v', 'libx264', '-crf', '16', '-preset', 'veryfast', os.path.join(PUB, f'c{k}.mp4')])
         clips.append({'src': f'trailer/c{k}.mp4', 'dur': c['dur'], 'fase': c['fase']})
         print(f"{c['fase']:8s} {ini:6.1f}s")
