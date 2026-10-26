@@ -41,6 +41,7 @@
   textarea:focus { outline: none; border-color: var(--azul); }
   .acciones { display: flex; gap: 6px; margin-top: 6px; }
   .acciones button { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  .acciones button.guardarAqui { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; font-weight: 700; }
   dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
   dialog textarea { min-height: 300px; font-size: 13.5px; }
   .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
@@ -176,7 +177,8 @@ function pintar() {
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span></div>
         <textarea data-i="${i}">${esc(b.texto)}</textarea>
-        <div class="acciones"><button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
+        <div class="acciones"><button class="guardarAqui" onclick="guardar()" hidden>💾 Guardar cambios</button>
+          <button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
   }).join('');
   document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; avisos(); });
   avisos();
@@ -186,13 +188,17 @@ function avisos() {
   G.bloques.forEach((b, i) => {
     const v = vozS(b.texto), l = largo(b.montaje || {}), el = $('#aviso' + i);
     total += Math.max(v, l);
-    $('#b' + i).classList.toggle('cambiado', b.texto !== ORIGINAL[b.id]);
+    const cambio = b.texto !== ORIGINAL[b.id];
+    $('#b' + i).classList.toggle('cambiado', cambio);
+    const g = $('#b' + i + ' .guardarAqui'); if (g) g.hidden = !cambio;
     if (!el) return;
     const pal = b.texto.trim().split(/\s+/).filter(Boolean).length;
     if (v > l + 1.5) { el.className = 'chip mal'; el.textContent = `${pal} palabras · la voz (~${v.toFixed(0)} s) alarga el bloque ${(v - l).toFixed(0)} s`; }
     else if (l > v + 6) { el.className = 'chip mal'; el.textContent = `${pal} palabras · sobran ~${(l - v).toFixed(0)} s de imagen sin voz`; }
     else { el.className = 'chip ok'; el.textContent = `${pal} palabras · ~${v.toFixed(0)} s de voz`; }
   });
+  $('#btnGuardar').classList.toggle('principal', sucio);
+  $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar en la app';
   const meta = DUR, ok = !DUR || (total >= meta * 0.9 && total <= meta * 1.15);
   $('#total').innerHTML = `${G.bloques.length} bloques · video de unos <b class="${ok ? 'ok' : 'mal'}">${mmss(total)}</b>` + (DUR ? ` (tu grabación: ${mmss(DUR)})` : '');
 }
