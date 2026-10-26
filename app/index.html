@@ -186,6 +186,7 @@
         <button id="verGuion" onclick="verGuion()" title="Abre el editor de guion en otra pestaña: cada bloque con su imagen, los avisos de la app y las preguntas de la IA">📝 Ver guion</button>
         <button onclick="verGuionAqui()" title="La revisión rápida en esta misma página (con las versiones de cada IA si pediste varias)">🗂 Vista rápida</button>
         <button onclick="ideasGuion()" title="La IA relee el guion final (con lo que se dice y se ve en tu grabación) y te deja dudas e ideas para mejorarlo. Las contestas en el editor de guion y la IA corrige solo los bloques que tocan. Gasta un pedido a la IA (solo texto), no ElevenLabs">💡 Ideas y dudas</button>
+        <button onclick="revisarImagenes()" title="La IA compara cada bloque con la imagen de su tramo (comienzo, medio y final) y corrige los tramos corridos, como un reinicio que muestra ya la pantalla de inicio. Gasta pedidos a la IA con imágenes, no ElevenLabs">🔎 Revisar con imágenes</button>
         <button onclick="verTrailer()" title="El tráiler va aparte, después del video: la IA propone las mejores tomas ANTES · DURANTE · DESPUÉS, te pregunta lo que no vio claro y tú lo editas y lo armas">🎬 Tráiler</button>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
@@ -1525,6 +1526,13 @@ async function ideasGuion() {
   if (!(aj.modelo && aj.url)) return alert('Para esto hace falta una IA configurada en «⚙ Ajustes IA».');
   if (!confirm('La IA relee el guion final y te deja dudas e ideas para mejorarlo. Gasta un pedido a la IA (solo texto), no ElevenLabs. Después las contestas en el editor de guion. ¿Seguir?')) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({ideas: true})}); } catch (e) { return alert(e.message); }
+  refrescar();
+}
+async function revisarImagenes() {
+  const aj = (await api('/api/ajustes')).ajustes;
+  if (!(aj.modelo && aj.url)) return alert('Para esto hace falta una IA que vea imágenes, configurada en «⚙ Ajustes IA».');
+  if (!confirm('La IA mira el comienzo, el medio y el final del tramo de cada bloque y dice si se ve lo que dice la voz. Si no, mueve el tramo a donde sí se ve (o te avisa si pisaría a un vecino). Gasta pedidos a la IA con imágenes, no ElevenLabs. Después vuelve a montar con «▶ Hacer todo» o «Solo los bloques». ¿Seguir?')) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=revisar_imagen`, {method: 'POST', body: JSON.stringify({forzar: true})}); } catch (e) { return alert(e.message); }
   refrescar();
 }
 async function guardarEstabilizar() {

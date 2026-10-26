@@ -369,7 +369,8 @@ def comandos(paso, d, op):
                 + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])
                 + (['--ideas'] if op.get('ideas') else [])]
     if paso == 'revisar_imagen':  # lo que quedó del guion: cada bloque contra su imagen, después de que lo aprobaste
-        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']]
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES, '--revisar-imagen']
+                + (['--forzar'] if op.get('forzar') else [])]
     if paso == 'ia':
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':

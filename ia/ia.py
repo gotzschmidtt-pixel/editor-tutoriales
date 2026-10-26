@@ -2251,12 +2251,14 @@ def control_bloque(d, b, ocr):
     out = os.path.join(d, 'ia_capturas', 'revision')
     os.makedirs(out, exist_ok=True)
     a = sacar_cuadro(orig, ini + 0.3, os.path.join(out, f"{b['id']}_a.jpg"), 640, 5)
+    c = sacar_cuadro(orig, (ini + fin) / 2, os.path.join(out, f"{b['id']}_c.jpg"), 640, 5)  # el medio: una escena de paso no engaña
     z = sacar_cuadro(orig, fin - 0.3, os.path.join(out, f"{b['id']}_z.jpg"), 640, 5)
     lado = os.path.join(out, f"{b['id']}.jpg")
-    cv2.imwrite(lado, rejilla([a, z], [f'COMIENZO {mmss(ini)}', f'FINAL {mmss(fin)}'], 2, 640), [cv2.IMWRITE_JPEG_QUALITY, 80])
-    for f in (a, z):
+    cv2.imwrite(lado, rejilla([a, c, z], [f'COMIENZO {mmss(ini)}', f'MEDIO {mmss((ini + fin) / 2)}', f'FINAL {mmss(fin)}'], 3, 640),
+                [cv2.IMWRITE_JPEG_QUALITY, 80])
+    for f in (a, c, z):
         os.remove(f)
-    imgs, zoom = [(f"bloque {b['id']}: comienzo y final del tramo", lado)], ''
+    imgs, zoom = [(f"bloque {b['id']}: comienzo, medio y final del tramo", lado)], ''
     if es_critico(b):
         n = int(min(6, max(2, (fin - ini) // 3 + 1)))
         tiempos = [ini + (fin - ini) * k / (n - 1) for k in range(n)]
@@ -2285,7 +2287,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
-    print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo y final de cada tramo, detalle en los pasos clave)…', flush=True)
+    print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo, medio y final de cada tramo, detalle en los pasos clave)…', flush=True)
     control = {}
     for b in bloques:  # un bloque cuyas imágenes no salen no frena la revisión del resto
         try:
@@ -2310,7 +2312,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
             lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice: «{b['texto'][:400]}»"
                           + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else '')
                           + (f"\n  Lo que dice el autor en su grabación en ese tramo: «{autor}»" if autor else ''))
-        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda) y el FINAL (derecha)
+        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda), el MEDIO y el FINAL (derecha)
 del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen con el detalle cada pocos segundos:
 {chr(10).join(lineas)}
 
@@ -2346,6 +2348,15 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
                 continue
             largo_t = max(0.0, fin - ini)
             nuevo = round(min(max(0.0, s - min(2.0, largo_t / 3)), max(0.0, dur - 0.2 - largo_t)), 2)
+            k = bloques.index(b)
+            antes = bloques[k - 1]['montaje'] if k else None
+            despues = bloques[k + 1]['montaje'] if k + 1 < len(bloques) else None
+            if (antes and nuevo < (antes.get('src_fin') or antes['src_inicio']) - 3) or (despues and nuevo + largo_t > despues['src_inicio'] + 3):
+                # moverlo lo pondría encima de su vecino: lo más probable es que el vecino también esté corrido
+                avisos.append(f"{b['id']}: la imagen no va con lo que dice ({mmss(ini)}–{mmss(fin)}); se ve en {mmss(s)}, pero "
+                              f"no lo moví porque pisaría a un bloque vecino: revisa los tramos de esa zona"
+                              + (f" ({str(x.get('por_que'))[:80]})" if x.get('por_que') else ''))
+                continue
             mo['src_inicio'], mo['visto'] = nuevo, True
             if mo.get('src_fin') is not None:
                 mo['src_fin'] = round(nuevo + largo_t, 2)
@@ -2767,11 +2778,16 @@ def otro_guion(d, pedido=''):
     return '\n\n' + '\n'.join(partes)
 
 
-def revision_pendiente(d, ajustes_f, destino):
+def revision_pendiente(d, ajustes_f, destino, forzar=False):
     """La revisión de cada bloque contra su imagen, que quedó para después de que aprobaste el guion
     (así ves el guion apenas la IA lo escribe). Usa el mapa del video ya guardado y tus cambios al texto."""
     datos = json.load(open(destino, encoding='utf-8'))
     modo = datos.pop('revision_imagen_pendiente', None) if isinstance(datos, dict) else None
+    if forzar and isinstance(datos, dict):  # «🔎 Revisar con imágenes»: otra vez, aunque ya se hizo (o el guion vino de un chat)
+        modo = modo or 'ocr'
+        for b in datos.get('bloques', []):
+            if isinstance(b.get('montaje'), dict):
+                b['montaje'].pop('visto', None)
     if not modo:
         print('El guion ya estaba revisado contra sus imágenes.', flush=True)
         return
@@ -2779,6 +2795,8 @@ def revision_pendiente(d, ajustes_f, destino):
         mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8'))['cuadros']
     except (OSError, ValueError, KeyError, TypeError):
         mapa = None
+    if not mapa and forzar:  # guion pegado o de DeepSeek: el mapa (texto leído en cada cambio de pantalla) se hace en tu PC
+        mapa = mapa_video(d)
     avisos = []
     if mapa:
         vistos = revisar_con_imagen(d, json.load(open(ajustes_f, encoding='utf-8')), datos, mapa, con_ocr=modo != 'ia')
@@ -2807,6 +2825,7 @@ def main():
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
     ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
     ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
+    ap.add_argument('--forzar', action='store_true', help='con --revisar-imagen: revisa otra vez cada bloque contra su imagen')
     ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
     ap.add_argument('--ideas', action='store_true', help='tarea guion: la IA relee el guion final y deja dudas e ideas en preguntas_guion.json')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
@@ -2836,7 +2855,7 @@ def main():
         print(f'Guardado senales.json con {len(datos)} señales')
         return
     if a.tarea == 'guion' and a.revisar_imagen:
-        revision_pendiente(d, a.ajustes, destino)
+        revision_pendiente(d, a.ajustes, destino, forzar=a.forzar)
         return
     if a.tarea == 'guion' and a.ideas:
         ideas_guion(d, json.load(open(a.ajustes, encoding='utf-8')))
