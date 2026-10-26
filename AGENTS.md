@@ -44,8 +44,10 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    `mis_proyectos/NOMBRE/respuesta_guion.json`.
 4. **Revisar tú mismo antes de entregar** (lista de A4). Corrige lo que falle.
 5. **Entregar:** `python deepseek/video.py entregar guion mis_proyectos/NOMBRE/respuesta_guion.json --nombre "NOMBRE"`
-   La app corrige tiempos y largo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, tramos que
-   no coinciden o que «quedó corto», corrige y vuelve a entregar.
+   La app corrige tiempos y largo, quita bloques con el texto repetido y el «ok» suelto, y frena los pasos de
+   configuración a ×2 como máximo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, «muestra la
+   misma escena que», «faltan palabras», humor sin repartir, tramos que no coinciden o «quedó corto», corrige y vuelve a
+   entregar.
 6. **Mostrarle al autor** el resumen (bloques, duración, humor) y tus preguntas. Espera su «sí».
 7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
 8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
@@ -272,7 +274,9 @@ en cada minuto, o trabaja con la transcripción y marca en `preguntas` lo que no
   el cuadro más quieto y enfocado.
 - **Ajuste de largo** (`ia.py` `ajustar_largo`, `voz.py`): con la duración real de cada voz, estira o acorta cada bloque
   y recalcula sus tiempos.
-- **Revisión del guion** (`revision_guion.txt`): avisa si un tramo vuelve atrás o si lo narrado ocurre en otro momento.
+- **Revisión del guion** (`revision_guion.txt`, `mejoras_guion.txt`): avisa si un tramo vuelve atrás, si dos bloques muestran
+  la misma escena, si más del 15 % del video queda sin voz, si el humor queda amontonado o si lo narrado ocurre en otro
+  momento. Quita bloques repetidos y el «ok» suelto; los pasos de configuración van a ×2 como máximo.
 - **Flechas y círculos** (`senales/`): se dibujan cuando la voz nombra la pieza y la siguen si la cámara se mueve (OpenCV).
 - **Codificación**: NVIDIA (NVENC) → Intel Quick Sync → procesador, solo lo que haya en la PC.
 

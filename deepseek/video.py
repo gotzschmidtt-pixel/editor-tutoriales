@@ -141,6 +141,10 @@ def resumen_guion(d):
         out.append(f'duración estimada {int(dur) // 60}:{int(dur) % 60:02d} · {palabras / dur:.2f} palabras por segundo')
     if fijas:
         out.append(f'OJO: {fijas} bloques con "quieto": true (foto fija); quítalo salvo que el autor lo pidió')
+    final, gf = os.path.join(d, 'FINAL.mp4'), os.path.join(d, 'guion.json')
+    if os.path.exists(final) and os.path.getmtime(gf) > os.path.getmtime(final):
+        out.append('OJO: el guion cambió después del último FINAL.mp4; vuelve a armar (la voz se rehace solo en los '
+                   'bloques cuyo texto cambió)')
     return '\n'.join(out)
 
 

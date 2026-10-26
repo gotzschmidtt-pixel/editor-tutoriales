@@ -77,7 +77,11 @@ cualquier chat, y *✅ Revisar respuesta pegada* corrige y guarda lo que te cont
 
 **Controles que no dependen de la IA:** la IA recibe la transcripción completa (nunca se corta: si es larga se agrupa en
 tramos) y capturas repartidas por todo el video más las de los momentos de mayor movimiento. Al revisar el guion, la app avisa
-si un tramo vuelve atrás en el video o si lo que narra un bloque se dice en otro momento de tu grabación (`revision_guion.txt`).
+si un tramo vuelve atrás en el video, si lo que narra un bloque se dice en otro momento de tu grabación (`revision_guion.txt`),
+si dos bloques muestran la misma escena, si más del 15 % del video queda sin voz (faltan palabras) o si los chistes quedan
+amontonados. Quita solo los bloques con el texto repetido y el «ok» suelto, y deja los pasos de configuración (seleccionar,
+activar, verificar) a ×2 como máximo. Cuando el guion lo escribe la IA por API, le devuelve esa lista para que lo corrija
+(hasta dos veces, junto con el largo).
 *Generar voz* solo regenera los bloques cuyo texto cambió y, con la duración real de cada voz, alarga en el guion los bloques
 donde no cabía; después vuelve a *Montar video*.
 

@@ -34,6 +34,13 @@ CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|p
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 PALABRAS_POR_S = 2.6
+VEL_PASO = 2.0  # pasos de configuración o comprobación (seleccionar, activar, verificar): se aceleran poco, que se vea qué se toca
+PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|confirma|configura|'
+                  r'entra (en|a) (los )?ajustes)', re.I)
+ESPERA = re.compile(r'esper|carg|reinici|instal|descarg|tarda|progreso', re.I)
+# el «ok» suelto al comienzo («Ok, ahora…») o al final («…listo, ok.»); «pulsa OK» no se toca porque no va tras una pausa
+MULETILLA = re.compile(r'^\s*(ok|okey|okay)\s*[,.!…]+\s*|(?<=[.,!?…])\s*(ok|okey|okay)\s*[.!…]*\s*$', re.I)
+SIN_VOZ_MAX = 0.15  # parte del video que puede quedar sin voz; más que eso y al guion le faltan palabras
 
 # HUMOR: el nivel se elige en «⚙ Ajustes IA» (ajustes «humor»: 0 sin, 1 poco, 2 normal, 3 mucho). Cada bloque con chiste
 # lleva "humor": true, así la app los cuenta y, si se pasa del máximo del nivel, le pide a la IA que quite los que sobran.
@@ -71,8 +78,9 @@ def regla_humor(nivel):
             'pasos críticos (esperas, cargas, el antes y el después, el cierre). En los pasos críticos (pines, códigos, keys, '
             'archivos, valores, copiar o pegar, borrar o conectar) nada de chistes: claro y exacto. Cada remate con un TEMA '
             'distinto (no repitas ex, suegra, vecina…). Marca con "humor": true y "humor_tema" cada bloque que lleva un '
-            'remate, y con "humor": false los demás.\n- Al inicio, una invitación a comentar las dudas con un toque de humor (cuenta '
-            'como uno de los remates).')
+            'remate, y con "humor": false los demás. Repártelos parejo a lo largo de TODO el video (inicio, mitad y final), '
+            'no todos juntos.\n- Al inicio, una invitación a comentar las dudas con un toque de humor (cuenta como uno de los '
+            'remates).')
 
 
 def configurar_humor(nivel):
@@ -473,6 +481,14 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
   Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
 - Cada tramo tiene que MOSTRAR lo que dice su texto: si la voz dice «pega la key», el tramo es donde el mapa muestra el
   campo de la key con la key puesta, no donde el autor lo comenta. Antes de responder, revisa bloque por bloque contra el mapa.
+- La voz va AL MISMO TIEMPO que la imagen: no pidas hacer algo que en ese tramo ya está hecho, ni anuncies un resultado
+  (reinicio, «listo», cuenta quitada) antes de que se vea. Los pasos se narran en el orden en que pasan en la grabación.
+- Cada tramo del original se usa en UN solo bloque: dos bloques nunca muestran la misma escena, y ningún tramo vuelve
+  atrás respecto del anterior. Si un paso necesita más explicación, alarga el texto de su bloque: cuando la voz dura más
+  que el tramo, la app repite ese tramo en movimiento.
+- Pasos de configuración o comprobación (seleccionar, activar, verificar, entrar en ajustes): velocidad 2 como máximo,
+  para que se vea qué se toca.
+- Sin muletillas sueltas como «ok» o «bueno» al comienzo o al final de un bloque.
 - PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
   tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
   para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
@@ -548,6 +564,77 @@ def es_critico(b):
     return str(b.get('tipo', '')).lower().startswith(('crit', 'clave')) or bool(CRITICO.search(b.get('texto', '')))
 
 
+def es_paso(b):
+    """Un paso de configuración o comprobación (seleccionar, activar, verificar): no es tan exacto como poner una key,
+    pero acelerado de más no se ve qué se toca. Las esperas y cargas no cuentan."""
+    t = str(b.get('texto', ''))
+    return bool(PASO.search(t)) and not ESPERA.search(t)
+
+
+def saltos_atras(bloques):
+    """Los bloques cuyo tramo empieza antes de donde terminó lo ya mostrado: la acción queda fuera de orden."""
+    out, previo = [], None
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+        if previo and ini < previo[1] - 3:
+            out.append(f"{b['id']}: vuelve atrás en el video (empieza en {mmss(ini)} y el bloque {previo[0]} terminaba en "
+                       f"{mmss(previo[1])}). Si no es a propósito, la acción queda fuera de orden")
+        previo = (b['id'], max(fin, previo[1] if previo else 0))
+    return out
+
+
+def escenas_repetidas(bloques):
+    """Dos bloques que muestran la misma escena (sus tramos se pisan en más de la mitad): el espectador ve dos veces lo
+    mismo con dos textos distintos."""
+    tramos, out = [], []
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini = mo['src_inicio']
+        fin = max(mo.get('src_fin') or ini, ini + 0.5)
+        for bid, a, z in tramos:
+            comun = min(fin, z) - max(ini, a)
+            if comun > 2 and comun > 0.5 * min(fin - ini, z - a):
+                out.append(f"{b['id']}: muestra la misma escena que {bid} ({mmss(max(ini, a))}–{mmss(min(fin, z))}). "
+                           f"Usa otro tramo o alarga el texto de {bid} en vez de repetir la escena")
+                break
+        tramos.append((b['id'], ini, fin))
+    return out
+
+
+def huecos_humor(bloques):
+    """Tramos largos del guion sin ningún remate, cuando el nivel de humor pide repartirlos."""
+    cada = HUMOR_NIVELES[HUMOR_NIVEL][1]
+    if not cada or not any(b.get('humor') is True for b in bloques):
+        return []
+    out, desde = [], 0
+    marcas = [k for k, b in enumerate(bloques) if b.get('humor') is True] + [len(bloques)]
+    for k in marcas:
+        if k - desde > 2 * cada:
+            a, z = bloques[desde]['id'], bloques[k - 1]['id']
+            out.append(f"humor: de {a} a {z} hay {k - desde} bloques seguidos sin un remate (el nivel pide uno cada {cada} "
+                       "más o menos): repártelos a lo largo del video")
+        desde = k + 1
+    return out
+
+
+def problemas(bloques, total, con_saltos=True):
+    """Lo que el guion revisado todavía hace mal y la app no puede arreglar sola sin cambiar textos: saltos atrás, escenas
+    repetidas, demasiado video sin voz y humor mal repartido. Sirve para avisarte y para pedirle a la IA que lo corrija."""
+    out = saltos_atras(bloques) if con_saltos else []
+    out += escenas_repetidas(bloques)
+    palabras = sum(len(str(b.get('texto', '')).split()) for b in bloques)
+    if total > 0 and palabras / PALABRAS_POR_S < total * (1 - SIN_VOZ_MAX):
+        sin_voz = 1 - palabras / PALABRAS_POR_S / total
+        out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
+                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
+    return out + huecos_humor(bloques)
+
+
 def momento_dicho(d, texto, ini, fin):
     """El segundo de tu grabación (dentro de ini–fin) donde dices algo parecido a texto; si no, el medio del tramo."""
     try:
@@ -562,16 +649,7 @@ def momento_dicho(d, texto, ini, fin):
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
-    avisos, previo = [], None
-    for b in bloques:
-        mo = b['montaje']
-        if mo.get('src_inicio') is None:
-            continue
-        ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-        if previo and ini < previo[1] - 3:
-            avisos.append(f"{b['id']}: vuelve atrás en el video (empieza en {mmss(ini)} y el bloque {previo[0]} terminaba en "
-                          f"{mmss(previo[1])}). Si no es a propósito, la acción queda fuera de orden")
-        previo = (b['id'], max(fin, previo[1] if previo else 0))
+    avisos = saltos_atras(bloques)
     palabras = pistas.palabras_video(d)
     if palabras:
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
@@ -679,7 +757,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = VEL_CRITICO if mo.get('critico') else VEL_MAX
+                tope = VEL_CRITICO if mo.get('critico') else VEL_PASO if mo.get('paso') else VEL_MAX
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -703,8 +781,21 @@ def revisar(d, tarea, datos):
     dur = duracion(os.path.join(d, 'original.mp4'))
     if tarea == 'guion':
         bloques = datos['bloques'] if isinstance(datos, dict) else datos
-        for b in bloques:
+        vistos, unicos = {}, []
+        for k, b in enumerate(bloques, 1):
             b['montaje'].setdefault('modo', 'lento')
+            if MULETILLA.search(b['texto']):
+                limpio = MULETILLA.sub('', b['texto']).strip().rstrip(',').strip()
+                if limpio:
+                    b['texto'] = limpio[:1].upper() + limpio[1:] + ('' if limpio[-1] in '.!?…' else '.')
+                    avisos.append(f"{b.get('id', k)}: quité el «ok» suelto del texto")
+            clave = ' '.join(normal(b['texto']).split())
+            if clave and clave in vistos:  # el mismo texto dos veces: el segundo sobra (se oiría repetido)
+                avisos.append(f"{b.get('id', k)}: quité el bloque porque dice lo mismo que {vistos[clave]}")
+                continue
+            vistos[clave] = b.get('id', k)
+            unicos.append(b)
+        bloques[:] = unicos
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
         t = 0.0
         for k, b in enumerate(bloques, 1):
@@ -720,23 +811,29 @@ def revisar(d, tarea, datos):
             mo.setdefault('congelar_s', None)
             voz = round(len(b['texto'].split()) / PALABRAS_POR_S + 1.0, 1)
             critico = es_critico(b)
+            paso = not critico and es_paso(b)
             if critico:
                 mo['critico'] = True
+            if paso:
+                mo['paso'] = True
+            tope = VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                if critico and tramo / VEL_CRITICO > voz + RELLENO:
-                    # paso clave (poner la key, escribir un código): no se acelera de más; se queda la parte donde se hace
-                    nuevo = round((voz + RELLENO) * VEL_CRITICO, 1)
+                if (critico or paso) and tramo / tope > voz + RELLENO:
+                    # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
+                    # parte donde se hace
+                    nuevo = round((voz + RELLENO) * tope, 1)
                     centro = momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin'])
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)
-                    avisos.append(f"{b['id']}: paso clave: en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}, donde se hace")
+                    avisos.append(f"{b['id']}: paso {'clave' if critico else 'de configuración'}: en vez de acelerarlo dejé "
+                                  f"solo {mmss(ini)}–{mmss(ini + nuevo)}, donde se hace")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico:
-                    mo['velocidad'] = min(mo['velocidad'], VEL_CRITICO)
+                if critico or paso:
+                    mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
-                    v = round(min(VEL_CRITICO if critico else VEL_MAX, tramo / (voz + 0.5)), 2)
+                    v = round(min(tope, tramo / (voz + 0.5)), 2)
                     if v > mo['velocidad']:
                         avisos.append(f"{b['id']}: aceleré el tramo a ×{v:g} para que no quede imagen sin voz "
                                       f"({tramo / mo['velocidad']:.0f} s → {tramo / v:.0f} s)")
@@ -769,7 +866,9 @@ def revisar(d, tarea, datos):
             avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(meta)} buscados. Falta texto de voz en el guion")
         else:
             avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
-        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'largo_revisado': 2, 'bloques': bloques}, avisos
+        avisos += problemas(bloques, t, con_saltos=False)  # los saltos atrás ya los avisó verificar_orden
+        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'duracion_original_s': round(dur, 2), 'largo_revisado': 2,
+                'bloques': bloques}, avisos
     if tarea == 'etiquetas':
         lista = datos['etiquetas'] if isinstance(datos, dict) else datos
         textos = {b['id']: normal(b['texto']) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}
@@ -1998,10 +2097,11 @@ def autorrevision(d, ajustes, texto, datos):
     print('Todo con IA: la IA revisa su guion regla por regla…', flush=True)
     pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False)[:40000] +
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
-              "dice su texto, que los pasos clave estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en "
-              "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
+              "dice su texto y en ese mismo momento (sin pedir algo ya hecho ni adelantar un resultado), que los pasos clave "
+              "estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en orden y ninguna escena se use "
+              "en dos bloques, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
               "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
-              "marcados con \"humor\") y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
+              "marcados con \"humor\", repartidos a lo largo del video) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
               "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a 4 "
               "preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
@@ -2349,8 +2449,9 @@ Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
 
 
 def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
-    """Si el guion de la IA da un video muy corto o muy largo, se lo devuelvo con los números para que lo arregle.
-    Me quedo con la versión más cercana a la duración buscada."""
+    """Si el guion de la IA da un video muy corto o muy largo, o tiene problemas que la app no arregla sola (tramos que
+    vuelven atrás, escenas repetidas, mucho video sin voz, humor amontonado), se lo devuelvo con los números y la lista
+    para que lo arregle. Me quedo con la versión con menos problemas y más cercana a la duración buscada."""
     import copy
     dur = duracion(os.path.join(d, 'original.mp4'))
     meta, minimo, maximo = meta_guion(d, dur)
@@ -2359,27 +2460,37 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
         bl = x['bloques'] if isinstance(x, dict) else x
         palabras = sum(len(str(b.get('texto', '')).split()) for b in bl)
         try:
-            t = revisar(d, 'guion', copy.deepcopy(x))[0]['duracion_s']
+            r = revisar(d, 'guion', copy.deepcopy(x))[0]
+            t, lista = r['duracion_s'], problemas(r['bloques'], r['duracion_s'])
         except Exception:
-            t = None
-        return palabras, t
+            t, lista = None, []
+        return palabras, t, lista
 
-    mejor_, (pal, t) = datos, medir(datos)
-    mejor_t = t
+    def nota(t, lista):  # menos es mejor: primero los problemas (un largo fuera de rango cuenta doble), después el largo
+        return (len(lista) + (0 if t is None or minimo <= t <= maximo else 2), abs((t or meta) - meta))
+
+    mejor_, (pal, t, lista) = datos, medir(datos)
+    mejor_nota = nota(t, lista)
     for n in range(intentos):
-        if t is None or minimo <= t <= maximo:
+        fuera = t is not None and not minimo <= t <= maximo
+        if t is None or not (fuera or lista):
             break
         quiero = round(meta * PALABRAS_POR_S * 0.9)
-        corto = t < minimo
-        print(f'El guion da {mmss(t)} y busco unos {mmss(meta)}: le pido a la IA que lo '
-              + ('alargue' if corto else 'acorte') + f' (intento {n + 1})…', flush=True)
-        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta[:30000] +
-                  f"\n\nPROBLEMA: con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
-                  f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
-                  f"y necesita unas {quiero}. " +
-                  ("Alárgalo: explica con más detalle cada paso, agrega bloques para las partes de la grabación que saltaste "
-                   "y usa tramos más largos del original. " if corto else
-                   "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ") +
+        corto = fuera and t < minimo
+        print(f'El guion da {mmss(t)} (busco unos {mmss(meta)}) y tiene {len(lista)} problema(s): le pido a la IA que lo '
+              f'corrija (intento {n + 1})…', flush=True)
+        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta[:30000] + "\n\nPROBLEMAS QUE CORREGIR:\n" +
+                  (f"- Con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
+                   f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
+                   f"y necesita unas {quiero}. " +
+                   ("Alárgalo: explica con más detalle cada paso y agrega bloques para las partes de la grabación que "
+                    "saltaste, cada uno con su propio tramo. " if corto else
+                    "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ")
+                   + "\n" if fuera else '') +
+                  ''.join(f"- {x}\n" for x in lista[:30]) +
+                  "Cada tramo del original va en UN solo bloque y en orden (nunca vuelvas atrás ni repitas una escena); "
+                  "la voz dice lo que se ve en ese momento, sin adelantar ni atrasar un paso. Para tener más voz alarga el "
+                  "texto, no repitas escenas: si la voz no cabe, la app repite el tramo en movimiento. " +
                   RECUERDA_HUMOR +
                   "Conserva TAL CUAL (mismo id y mismo texto) los bloques que no necesites cambiar: ya tienen la voz grabada. "
                   "Los bloques nuevos llevan ids nuevos (por ejemplo L12b). "
@@ -2392,10 +2503,10 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
         except (SystemExit, ValueError) as e:
             print(f'· no pude corregir el largo con la IA ({e}); sigo con lo que hay', flush=True)
             break
-        respuesta, (pal, t) = r, medir(nuevo)
+        respuesta, (pal, t, lista) = r, medir(nuevo)
         open(os.path.join(d, f'ia_respuesta_guion_largo{n + 1}.txt'), 'w', encoding='utf-8').write(r)
-        if t is not None and (mejor_t is None or abs(t - meta) < abs(mejor_t - meta)):
-            mejor_, mejor_t = nuevo, t
+        if t is not None and nota(t, lista) < mejor_nota:
+            mejor_, mejor_nota = nuevo, nota(t, lista)
     return mejor_
 
 
