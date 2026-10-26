@@ -190,6 +190,8 @@
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
           <option value="480">Prueba rápida 480p</option><option value="360">Prueba rápida 360p</option></select></label>
         <label class="aviso" title="Quita el temblor de la cámara en mano en cada tramo (recorta un 4 % del borde). El montaje tarda unas 3 veces más. Para que se note, rehaz «Montar video»"><input type="checkbox" id="estabilizar" checked onchange="guardarEstabilizar()"> Estabilizar</label>
+        <label class="aviso" title="«▶ Hacer todo» arma solo esos bloques (voz, montaje y voz puesta) en prueba_bloques.mp4, para revisar una parte sin esperar el video entero. El guion y el video completo no cambian. Gasta ElevenLabs solo en los bloques de ese tramo cuyo texto cambió"><input type="checkbox" id="porBloques" onchange="$('#todo').textContent = this.checked ? '▶ Hacer solo esos bloques' : '▶ Hacer todo'"> Solo los bloques
+          <input id="bloqueDesde" size="4" placeholder="L23"> a <input id="bloqueHasta" size="4" placeholder="L27"></label>
       </div>
     </section>
 
@@ -539,7 +541,7 @@ const AYUDA = {
   'insertos.json': 'Cortes y zooms con el material extra, sin alargar el video. El encuadre va en fracciones del material.',
   'trailer.json': 'Tu tráiler ANTES · DURANTE · DESPUÉS: título, frase de la voz y de qué parte sale cada toma.',
 };
-const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'acortado.mp4', 'original.mp4', 'material.mp4'];
+const VIDEOS = ['FINAL.mp4', '9_modelos.mp4', '8_testimonios.mp4', '7_tarjetas.mp4', '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4', '2_insertos.mp4', '1_montaje.mp4', 'trailer.mp4', 'prueba_bloques.mp4', 'acortado.mp4', 'original.mp4', 'material.mp4'];
 let P = null, archivo = 'guion.json', ultimo = null, editado = false;
 const $ = s => document.querySelector(s);
 const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
@@ -666,7 +668,16 @@ async function ejecutar(paso) {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { alert(e.message); }
   refrescar();
 }
-$('#todo').onclick = () => ejecutar('todo');
+$('#todo').onclick = () => $('#porBloques').checked ? probarBloques() : ejecutar('todo');
+let esperaPrueba = false;
+async function probarBloques() {
+  const desde = $('#bloqueDesde').value.trim(), hasta = $('#bloqueHasta').value.trim() || desde;
+  if (!desde) return alert('Escribe el primer bloque a probar (por ejemplo L23) y, si son varios, el último (L27).');
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value})}); }
+  catch (e) { return alert(e.message); }
+  esperaPrueba = true; refrescar();
+}
 $('#detener').onclick = () => api('/api/detener', {method: 'POST'});
 $('#studio').onclick = async () => { const r = await api('/api/studio', {method: 'POST'}); setTimeout(() => window.open(r.url), 4000); };
 
@@ -1795,6 +1806,7 @@ async function refrescar() {
   $('#btnTestimonios').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !TESTI.TESTIMONIOS.length;
   $('#btnModelos').disabled = !!t.proyecto || !e.archivos['3_voz.mp4'] || !MODS.MODELOS.length;
   if (esperaIA && !t.proyecto) finIA();
+  if (esperaPrueba && !t.proyecto) { esperaPrueba = false; if (e.archivos['prueba_bloques.mp4'] && !e.fallo) { ver('prueba_bloques.mp4', false, true); irA('#video'); } }
   if (esperaNube && !t.proyecto) finNube(e);
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
   if (esperaAcortar && !t.proyecto) { esperaAcortar = false; cargarAcortar(); }

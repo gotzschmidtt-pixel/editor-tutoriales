@@ -400,6 +400,11 @@ def comandos(paso, d, op):
         if op.get('rehacer'):
             return [c + ['--rehacer']]
         return [c + ['--objetivo', f"{min(max(float(op.get('minutos') or 0), 0), 600):g}"] + ([] if op.get('ia', True) else ['--sin-ia'])]
+    if paso == 'prueba':  # «Solo los bloques»: voz, montaje y voz puesta de unos pocos bloques, para revisarlos rápido
+        mo = comandos('montaje', d, op)[0]
+        mo[mo.index('guion.json')], mo[mo.index('1_montaje.mp4')] = PRUEBA_GUION, 'prueba_montaje.mp4'
+        return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'], mo,
+                [PY, m('voz', 'mezclar_voz.py'), 'prueba_montaje.mp4', PRUEBA_GUION, 'voz', 'prueba_bloques.mp4']]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
     raise ValueError(paso)
@@ -420,6 +425,7 @@ PASOS = [
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
+    {'id': 'prueba', 'nombre': 'Probar solo unos bloques', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'prueba_bloques.mp4', 'oculto': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': [], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
@@ -435,6 +441,24 @@ TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales
 # «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
 # así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
 EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+PRUEBA_GUION = 'guion_prueba.json'  # copia con solo los bloques a probar; guion.json no se toca
+
+
+def guion_de_prueba(d, desde, hasta):
+    """Escribe guion_prueba.json con los bloques de `desde` a `hasta` (ids como L23). Devuelve cuántos son."""
+    datos = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    ids = [str(b.get('id', '')).upper() for b in datos['bloques']]
+    desde, hasta = (str(x or '').strip().upper() for x in (desde, hasta))
+    hasta = hasta or desde
+    for x in (desde, hasta):
+        if x not in ids:
+            raise ValueError(f'no encuentro el bloque «{x}» en el guion (los bloques van de {ids[0]} a {ids[-1]})')
+    i, j = sorted((ids.index(desde), ids.index(hasta)))
+    datos['bloques'] = [dict(b) for b in datos['bloques'][i:j + 1]]
+    json.dump(datos, open(os.path.join(d, PRUEBA_GUION), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    return j - i + 1
+
+
 PREPARA_EXTRA = {'etiquetas_ia': 'etiquetas', 'senales_ia': 'senales', 'trailer_ia': 'trailer'}
 VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
                  '9_modelos.srt', 'trailer.mp4']
@@ -514,7 +538,7 @@ def revision_imagen_pendiente(d):
     return isinstance(g, dict) and bool(g.get('revision_imagen_pendiente'))
 
 
-USAN_ELEVEN = {'voz', 'musica', 'trailer', 'nuevos_modelos'}
+USAN_ELEVEN = {'voz', 'prueba', 'musica', 'trailer', 'nuevos_modelos'}
 
 
 def carpeta(p):
@@ -669,7 +693,8 @@ def informe_paso(d, proyecto, paso, info, ejec, estado, log):
 
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
-                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4']
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4',
+                    'prueba_montaje.mp4', 'prueba_bloques.mp4', 'prueba_bloques.srt']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 
@@ -1223,6 +1248,13 @@ class Manejador(BaseHTTPRequestHandler):
                 if q['paso'] == 'ia' and datos.get('modo') == 'paquete' and not existe(carpeta(q['p']), 'transcripcion.srt'):
                     pasos = ['transcribir', 'ia']  # el paquete lleva tu transcripción
                     datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                if q['paso'] == 'prueba' and not TRABAJO['proyecto']:  # con otro trabajo en curso no se pisa su copia
+                    if not existe(carpeta(q['p']), 'guion.json'):
+                        return self.error('Todavía no hay guion: pulsa «▶ Hacer todo» sin marcar «Solo los bloques».')
+                    try:
+                        guion_de_prueba(carpeta(q['p']), datos.get('desde'), datos.get('hasta'))
+                    except (ValueError, KeyError, IndexError) as e:
+                        return self.error(str(e))
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 with CANDADO:
