@@ -30,7 +30,36 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 
 Si no contesta algo, usa el valor por defecto y díselo.
 
-## A3. Procedimiento (modo directo: tú armas el video con las herramientas de la app)
+## A3. Procedimiento recomendado: con la app (`deepseek/video.py`)
+
+Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos:
+
+1. **Preparar (gratis):**
+   `python deepseek/video.py preparar "RUTA\video.mp4" --nombre "NOMBRE" --idea "datos seguros"`
+   Deja en `mis_proyectos/NOMBRE/`: `ia_prompt_guion.txt` (el encargo exacto de la app, con la transcripción y el mapa
+   del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
+2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,
+   se abre el programa, se conecta el cable, se pega la key, se pulsa el botón, reinicio, pantalla de inicio.
+3. **Escribir el guion** siguiendo `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
+   `mis_proyectos/NOMBRE/respuesta_guion.json`.
+4. **Revisar tú mismo antes de entregar** (lista de A4). Corrige lo que falle.
+5. **Entregar:** `python deepseek/video.py entregar guion mis_proyectos/NOMBRE/respuesta_guion.json --nombre "NOMBRE"`
+   La app corrige tiempos y largo. Lee `mejoras_guion.txt` y `revision_guion.txt`: si avisa saltos atrás, tramos que
+   no coinciden o que «quedó corto», corrige y vuelve a entregar.
+6. **Mostrarle al autor** el resumen (bloques, duración, humor) y tus preguntas. Espera su «sí».
+7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
+8. **Etiquetas y tráiler:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
+   `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Igual con
+   `trailer`. Luego `python deepseek/video.py extras etiquetas trailer --nombre "NOMBRE" --confirmo-creditos`.
+9. **Exportar:** `python deepseek/video.py exportar 480 720 --nombre "NOMBRE"` y dile dónde quedó `FINAL.mp4`.
+
+Si un paso falla: lee `registro.txt` y `diagnosticos/`, explícale la causa real al autor y no reintentes a ciegas.
+
+## A3b. Plan B: modo directo (las herramientas de la app una por una)
+
+Úsalo solo si la app no abre o si el autor te pide rehacer un solo paso. Aquí nada te frena antes de gastar: pide
+el «sí» del autor antes de los pasos 7, 10 (si genera música) y 12.
+
 
 No hace falta abrir la app. Usas sus herramientas una por una, como lo hizo Claude en su nube con los videos de Honor y
 Raspberry. `R` es la carpeta de la app (`editor-tutoriales`). Antes de todo, en la terminal: `set PYTHONUTF8=1`.
@@ -62,7 +91,6 @@ Notas:
 - Para el paso 2 y el 5 se pasa la ruta de `ajustes.json` a la herramienta: eso es todo; no lo abras ni lo muestres.
 - Si cambias el texto de un bloque después de la voz, repite 5 → 7 (solo regenera los bloques cambiados) → 8 → 9…
 - Si un paso falla, lee el error, explícale la causa real al autor y no lo reintentes a ciegas.
-- Alternativa con la app abierta: `python R\deepseek\video.py` hace lo mismo con menos comandos (ver `README.md`).
 
 ## A4. Lista de revisión del guion (que todo coincida con el video)
 
