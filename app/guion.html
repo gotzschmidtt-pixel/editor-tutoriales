@@ -130,7 +130,17 @@ async function api(url, op) {
 const vozS = txt => txt.trim().split(/\s+/).filter(Boolean).length / PALABRAS_POR_S + 1;
 const largo = m => (m.modo.startsWith('lento') ? (m.src_fin - m.src_inicio) / (m.velocidad || 1) : 0) + (m.congelar_s || 0);
 
+let VERSION = null;  // el guion tal como estaba al abrirlo: si alguien lo guarda después, no se pisa sin avisar
+const versionGuion = async () => { try { return (await api(`/api/version_guion?p=${q(P)}`)).v; } catch (e) { return null; } };
+async function sinCambiosAjenos() {
+  const v = await versionGuion();
+  if (VERSION === null || v === null || v === VERSION) return true;
+  alert('El guion cambió desde que abriste esta pestaña (lo guardó otra pestaña, la app o Claude). No guardo para no pisar ese cambio.\n\n'
+    + 'Copia lo que estabas escribiendo, pulsa F5 para ver la versión nueva y vuelve a hacer tu cambio.');
+  return false;
+}
 async function cargar() {
+  VERSION = await versionGuion();
   try { G = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null'); } catch (e) { G = null; }
   if (!G || !(G.bloques || []).length) { $('#bloques').innerHTML = '<p class="msg err">Todavía no hay guion en este proyecto. Pídelo primero a la IA en la app.</p>'; return; }
   ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
@@ -174,8 +184,9 @@ async function responder(soloGuardar) {
   document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
   const m = $('#msgPreg');
   if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { m.textContent = 'Escribe o elige al menos una respuesta'; m.className = 'msg err'; return; }
+  if (sucio && !(await sinCambiosAjenos())) return;
   try {
-    if (sucio) await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)});
+    if (sucio) { await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)}); VERSION = await versionGuion(); }
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
     sucio = false;
     if (soloGuardar) { m.textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» para que corrija el guion con tus respuestas.'; m.className = 'msg ok'; return; }
@@ -196,8 +207,11 @@ async function pedirIdeas() {
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
 async function seguir() {
-  if (!confirm('Armo el video: voz con ElevenLabs (gasta créditos solo en los bloques nuevos o cambiados), montaje, subtítulos y música. ¿Seguir?')) return;
   if (sucio && !await guardar()) return;
+  let c = null; try { c = await api(`/api/costo_voz?p=${q(P)}`); } catch (e) {}
+  const gasto = c && c.caracteres ? `voz de ${c.bloques.length} bloques en ElevenLabs (${c.caracteres.toLocaleString('es')} caracteres: ${c.bloques.join(', ')})`
+    : c ? 'sin generar voz nueva (todas se reutilizan)' : 'voz con ElevenLabs solo en los bloques nuevos o cambiados';
+  if (!confirm(`Armo el video: ${gasto}, montaje, subtítulos y música. ¿Seguir?`)) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({})}); }
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
   $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
@@ -379,6 +393,7 @@ function bajarWord() {
 }
 async function guardar() {
   const b = $('#btnGuardar'), msg = $('#msg');
+  if (!(await sinCambiosAjenos())) return false;
   b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
   try {
     await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});

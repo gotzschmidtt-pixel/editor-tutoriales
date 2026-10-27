@@ -9,13 +9,15 @@ alrededor del cuadro más nítido del momento pedido. Con "quieto": true en el m
 --calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
 --estabilizar: quita el temblor de la cámara en mano de cada tramo (vid.stab si ffmpeg lo trae; si no, deshake).
 """
-import argparse, json, os, shutil, subprocess, sys
+import argparse, glob, hashlib, json, os, shutil, subprocess, sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
+from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a ElevenLabs
 
 
 VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
@@ -23,6 +25,15 @@ LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note meno
 
 
 EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app mientras se arma
+PARTES = '.montaje_partes'  # tramos ya hechos: si el montaje se corta, o cambias un solo bloque, no se rehacen los demás
+
+
+def huella_archivo(f):
+    try:
+        st = os.stat(f)
+        return [os.path.abspath(f), st.st_size, int(st.st_mtime)]
+    except (OSError, TypeError):
+        return None
 
 
 def voz_al_dia(carpeta_voz, bid, texto):
@@ -30,7 +41,8 @@ def voz_al_dia(carpeta_voz, bid, texto):
     para que el «montaje mientras se arma» nunca suene con la voz de un guion anterior."""
     try:
         al = json.load(open(os.path.join(carpeta_voz, f'{bid}.align.json'), encoding='utf-8'))
-        return ''.join(al['characters']).strip() == (texto or '').strip()
+        dicho = ''.join(al['characters']).strip()
+        return dicho in ((texto or '').strip(), texto_voz(texto))
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
@@ -154,10 +166,31 @@ def main():
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
+    cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
+    os.makedirs(cache, exist_ok=True)
+    usadas = set()
+    base_huella = [2, alto, crf, FPS, a.estabilizar, huella_archivo(a.original), huella_archivo(a.imagen)]
     for b in d['bloques']:
         m, i = b['montaje'], b['id']
         lab = rotulo(f"{i}  {b.get('ancla', '')}")
         enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf]
+        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))], sort_keys=True,
+                                        default=str).encode()).hexdigest()[:12]
+        hecho = os.path.join(cache, f'{i}_{clave}.json')
+        try:
+            info = json.load(open(hecho, encoding='utf-8'))
+            guardadas = [os.path.join(cache, x) for x in info['partes']]
+            if all(os.path.getsize(x) > 0 for x in guardadas):
+                partes += guardadas
+                codificar.USADOS.update(info.get('codificadores', []))
+                usadas.update([os.path.basename(hecho)] + info['partes'])
+                print(i, 'ok (ya estaba hecho, no se rehace)', flush=True)
+                avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
+                continue
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        antes, cod_antes = len(partes), set(codificar.USADOS)
+        codificar.USADOS.clear()
         if m['modo'].startswith('lento'):
             f = os.path.join(tmp, f'{i}_a.mp4')
             run(['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an',
@@ -202,6 +235,17 @@ def main():
                  f"[0]split[a][b];[a]scale={res[0]}:{res[1]},boxblur=20[bg];[b]scale=-1:{res[1] - 20}[fg];[bg][fg]overlay=(W-w)/2:10,fps={FPS},format=yuv420p{lab}"]
                 + enc + [f])
             partes.append(f)
+        # los tramos de este bloque pasan a la carpeta de tramos hechos; el .json se escribe al final, así un corte a
+        # mitad de bloque nunca deja un tramo a medias marcado como hecho
+        nombres = []
+        for k in range(antes, len(partes)):
+            nombre = f'{i}_{clave}_{k - antes}.mp4'
+            os.replace(partes[k], os.path.join(cache, nombre))
+            partes[k] = os.path.join(cache, nombre)
+            nombres.append(nombre)
+        json.dump({'partes': nombres, 'codificadores': sorted(codificar.USADOS)}, open(hecho, 'w', encoding='utf-8'))
+        usadas.update([os.path.basename(hecho)] + nombres)
+        codificar.USADOS.update(cod_antes)
         mp3 = os.path.join(carpeta_voz, f'{i}.mp3')
         if not (b.get('texto') or '').strip():
             print(i, 'ok', flush=True)  # bloque sin voz a propósito
@@ -223,6 +267,12 @@ def main():
     else:
         run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
     shutil.rmtree(tmp)
+    for viejo in glob.glob(os.path.join(cache, '*')):  # se guardan solo los tramos de este guion, para la próxima vez
+        if os.path.basename(viejo) not in usadas:
+            try:
+                os.remove(viejo)
+            except OSError:
+                pass
     try:
         os.remove(os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO))
     except OSError:

@@ -661,7 +661,15 @@ function pintarPasos(pasos, t, fallo) {
     </div>`;
   }).join('');
 }
+async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuántos bloques y caracteres de voz
+  let c;
+  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { return true; }
+  if (!c.caracteres) return true;
+  return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
+    + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+}
 async function ejecutar(paso) {
+  if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
@@ -679,6 +687,7 @@ let esperaPrueba = false;
 async function probarBloques() {
   const desde = $('#bloqueDesde').value.trim(), hasta = $('#bloqueHasta').value.trim() || desde;
   if (!desde) return alert('Escribe el primer bloque a probar (por ejemplo L23) y, si son varios, el último (L27).');
+  if (!(await confirmarVoz(desde, hasta))) return;
   soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value})}); }
   catch (e) { return alert(e.message); }

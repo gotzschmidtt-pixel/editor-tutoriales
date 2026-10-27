@@ -15,7 +15,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
-import json, mimetypes, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
+import hashlib, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -1013,6 +1013,32 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(ultimo_proyecto())
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
+            if ruta == '/api/version_guion':  # el editor la anota al abrir: si cambió al guardar, otra pestaña o la app guardó antes
+                f = os.path.join(carpeta(q['p']), 'guion.json')
+                v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
+                return self.responder({'v': v})
+            if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
+                d = carpeta(q['p'])
+                if not existe(d, 'guion.json'):
+                    return self.responder({'bloques': [], 'caracteres': 0})
+                datos = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+                if q.get('desde'):
+                    ids = [str(b.get('id', '')).upper() for b in datos['bloques']]
+                    x, y = q['desde'].strip().upper(), (q.get('hasta') or q['desde']).strip().upper()
+                    if x in ids and y in ids:
+                        i, j = sorted((ids.index(x), ids.index(y)))
+                        datos['bloques'] = datos['bloques'][i:j + 1]
+                f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, dir=d, prefix='.costo_', encoding='utf-8')
+                json.dump(datos, f, ensure_ascii=False)
+                f.close()
+                try:
+                    r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'],
+                                       capture_output=True, text=True, encoding='utf-8', timeout=60)
+                    return self.responder(json.loads(r.stdout.strip().splitlines()[-1]))
+                except (ValueError, IndexError, subprocess.TimeoutExpired):
+                    return self.responder({'bloques': [], 'caracteres': 0, 'desconocido': True})
+                finally:
+                    os.remove(f.name)
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
                 d = carpeta(q['p'])
                 leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
