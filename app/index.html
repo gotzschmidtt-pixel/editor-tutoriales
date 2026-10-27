@@ -503,7 +503,9 @@
   Cada proyecto ya queda en su propia carpeta: puedes empezar otro con «+ Nuevo proyecto» y volver a este cuando quieras
   eligiéndolo arriba. Este guardado es además un punto al que puedes volver si algo sale mal.</p>
   <div class="fila"><input id="notaGuardado" placeholder="Nota (opcional), por ejemplo «guion aprobado»" style="flex:1">
-    <button class="principal" onclick="guardarProyecto()">💾 Guardar ahora</button></div>
+    <button class="principal" onclick="guardarProyecto()">💾 Guardar ahora</button>
+    <button onclick="guardarComo()" title="Además del guardado de siempre, deja un .zip donde tú elijas (USB, otra carpeta…)">📁 Guardar como…</button></div>
+  <div class="fila"><button onclick="abrirGuardado()" title="Trae un .zip hecho con «Guardar como» a la lista de abajo">📂 Abrir guardado…</button></div>
   <div id="listaGuardados"></div>
   <div class="fila"><button onclick="dlgGuardados.close()">Cerrar</button><span class="msg" id="msgGuardados"></span></div>
 </dialog>
@@ -698,6 +700,18 @@ async function guardarProyecto() {
   const m = $('#msgGuardados');
   try { const r = await api(`/api/guardar_proyecto?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nota: $('#notaGuardado').value})});
     m.className = 'msg ok'; m.textContent = '✓ Guardado: ' + r.nombre.replace(/_/g, ' '); await pintarGuardados(); }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function guardarComo() {
+  const m = $('#msgGuardados'); m.className = 'msg'; m.textContent = 'Elige dónde guardar en la ventana que se abrió (puede quedar detrás del navegador)…';
+  try { const r = await api(`/api/guardar_como?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nota: $('#notaGuardado').value})});
+    m.className = 'msg ok'; m.textContent = r.cancelado ? 'Cancelado: no se guardó nada.' : '✓ Guardado en ' + r.ruta; await pintarGuardados(); }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function abrirGuardado() {
+  const m = $('#msgGuardados'); m.className = 'msg'; m.textContent = 'Elige el .zip en la ventana que se abrió (puede quedar detrás del navegador)…';
+  try { const r = await api(`/api/abrir_guardado?p=${q(P)}`, {method: 'POST', body: '{}'});
+    m.className = 'msg ok'; m.textContent = r.cancelado ? 'Cancelado.' : '✓ Añadido a la lista. Pulsa «↩ Volver a este» para usarlo.'; await pintarGuardados(); }
   catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function volverAGuardado(nombre) {

@@ -608,6 +608,63 @@ def volver_a_guardado(d, nombre):
     return respaldo
 
 
+def elegir_en_la_pc(modo, nombre=''):
+    """Abre la ventana de Windows para elegir dónde guardar (modo 'guardar') o qué archivo abrir ('abrir').
+    Corre en un proceso aparte (tkinter no se lleva bien con los hilos del servidor). Devuelve la ruta o '' si cancelas."""
+    salida = tempfile.mktemp(suffix='.txt')
+    codigo = ('import sys, tkinter as tk\nfrom tkinter import filedialog as fd\n'
+              'r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)\n'
+              'f = fd.asksaveasfilename(parent=r, title="Guardar proyecto como", initialfile=sys.argv[3], defaultextension=".zip", '
+              'filetypes=[("Proyecto guardado", "*.zip")]) if sys.argv[1] == "guardar" else '
+              'fd.askopenfilename(parent=r, title="Abrir proyecto guardado", filetypes=[("Proyecto guardado", "*.zip")])\n'
+              'open(sys.argv[2], "w", encoding="utf-8").write(f or "")\n')
+    try:
+        subprocess.run([sys.executable, '-c', codigo, modo, salida, nombre], timeout=3600,
+                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return open(salida, encoding='utf-8').read().strip()
+    except (OSError, subprocess.SubprocessError):
+        raise ValueError('No se pudo abrir la ventana para elegir la ubicación (falta tkinter en este Python).')
+    finally:
+        if os.path.exists(salida):
+            os.remove(salida)
+
+
+def guardar_como(d, nota=''):
+    """Hace un guardado normal y además lo copia como un .zip donde tú elijas (USB, otra carpeta, la nube…)."""
+    import zipfile
+    sugerido = os.path.basename(d) + '_' + time.strftime('%Y-%m-%d') + ('_' + re.sub(r'[^\w\- ]', '', nota).strip()[:40] if nota.strip() else '') + '.zip'
+    destino = elegir_en_la_pc('guardar', sugerido)
+    if not destino:
+        return None
+    nombre = guardar_proyecto(d, nota)
+    src = os.path.join(d, GUARDADOS, nombre)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for a, _, xs in os.walk(src):
+            for x in xs:
+                z.write(os.path.join(a, x), os.path.relpath(os.path.join(a, x), src))
+    return destino
+
+
+def abrir_guardado(d):
+    """Trae un .zip de «Guardar como» a la lista de guardados del proyecto, para luego «↩ Volver a este»."""
+    import zipfile
+    origen = elegir_en_la_pc('abrir')
+    if not origen:
+        return None
+    nombre = time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + re.sub(r'[^\w\- ]', '', os.path.splitext(os.path.basename(origen))[0]).strip()[:40]
+    dst = os.path.join(d, GUARDADOS, nombre)
+    with zipfile.ZipFile(origen) as z:
+        if 'guion.json' not in z.namelist() and 'transcripcion.json' not in z.namelist():
+            raise ValueError('Ese .zip no parece un proyecto guardado con «Guardar como».')
+        for m in z.infolist():  # sin rutas que salgan de la carpeta
+            if m.is_dir() or os.path.isabs(m.filename) or '..' in m.filename.replace('\\', '/').split('/'):
+                continue
+            os.makedirs(os.path.dirname(os.path.join(dst, m.filename)), exist_ok=True)
+            with z.open(m) as a, open(os.path.join(dst, m.filename), 'wb') as b:
+                shutil.copyfileobj(a, b)
+    return nombre
+
+
 def carpeta_estilo(nombre):
     n = re.sub(r'[^\w\- ]', '', nombre or '').strip()
     if not n:
@@ -1627,7 +1684,7 @@ class Manejador(BaseHTTPRequestHandler):
                     borrados += 1
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
                 return self.responder({'ok': True, 'borrados': borrados})
-            if ruta in ('/api/guardar_proyecto', '/api/volver_a_guardado'):
+            if ruta in ('/api/guardar_proyecto', '/api/volver_a_guardado', '/api/guardar_como', '/api/abrir_guardado'):
                 d = carpeta(q['p'])
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 with CANDADO:
@@ -1635,6 +1692,12 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error('Hay un paso trabajando en este proyecto. Espera a que termine o detenlo primero.')
                 if ruta == '/api/guardar_proyecto':
                     return self.responder({'ok': True, 'nombre': guardar_proyecto(d, str(datos.get('nota') or ''))})
+                if ruta in ('/api/guardar_como', '/api/abrir_guardado'):
+                    try:
+                        r = guardar_como(d, str(datos.get('nota') or '')) if ruta == '/api/guardar_como' else abrir_guardado(d)
+                    except (ValueError, OSError) as e:
+                        return self.error(str(e))
+                    return self.responder({'ok': True, 'cancelado': not r, 'ruta': r})
                 try:
                     respaldo = volver_a_guardado(d, str(datos.get('nombre') or ''))
                 except ValueError as e:
