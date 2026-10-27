@@ -1022,7 +1022,7 @@ def correr(proyecto, pasos, opciones):
         RESULTADO[proyecto] = {'resultado': resultado, 'incidencias': informes if not f else [], 'resumen': resumen,'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
                                'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
-                               'pausa': None if f else opciones.get('_pausa'), 'diagnostico': diag if f else None,
+                               'pausa': None if f else opciones.get('_pausa'), 'seguir': opciones.get('_seguir'), 'diagnostico': diag if f else None,
                                'repetir': {'pasos': pasos[pasos.index(f['paso']):] if f and f['paso'] in pasos else [],
                                            'opciones': opciones} if f and diag and diag.get('reintentable') else None}
         with CANDADO:
@@ -1405,9 +1405,19 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x for x in pasos if x not in PREPARA_EXTRA or x == 'trailer_ia' and not existe(carpeta(q['p']), 'trailer.json')]
                 if extras:
                     pasos = [x for x in pasos if x in elegidos or PREPARA_EXTRA.get(x) in elegidos]
-                    if 'trailer' not in pasos:
-                        pasos.append('final_sin_trailer')
-                    datos['_limpiar_extras'] = True
+                    proponer = [x for x in pasos if x in ('etiquetas_ia', 'senales_ia')]
+                    if proponer and not datos.get('revisado'):
+                        # la IA propone etiquetas y flechas y se para: las revisas en el editor por pistas (sí, mover, quitar)
+                        # antes de ponerlas. «▶ Ponerlas así» vuelve a llamar con revisado y ya no las rehace.
+                        pasos = proponer
+                        datos['_pausa'] = 'extras'
+                        datos['_seguir'] = {'solo': elegidos, 'calidad': datos.get('calidad')}
+                    else:
+                        if datos.get('revisado'):  # ya las revisaste: la IA no las vuelve a proponer encima de tus cambios
+                            pasos = [x for x in pasos if x not in proponer]
+                        if 'trailer' not in pasos:
+                            pasos.append('final_sin_trailer')
+                        datos['_limpiar_extras'] = True
                 elif q['paso'] == 'todo' and 'musica' in pasos:  # solo el video; los extras van después
                     luego = set(datos.get('luego_extras') or [])  # el editor por pistas: rehace el video y vuelve a poner sus extras
                     sigue = [x for x in pasos if x in luego or PREPARA_EXTRA.get(x) in luego]

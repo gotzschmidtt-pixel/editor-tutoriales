@@ -287,7 +287,9 @@ ratio 6, attack 20 ms, release 400 ms.
 **Etiquetas** (`etiquetas.json`): `bloque`, `frase` (2 a 4 palabras COPIADAS TAL CUAL del texto del bloque), `tipo`
 (web | archivo | dato | precio | pin | consejo), `titulo` (1 a 3 palabras), `texto` (el dato, corto), `dur` (3 a 6 s);
 `color` hex solo para `pin`. Ejemplo: `{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5}`.
-En Honor FRP fueron 8 etiquetas de 4 s.
+En Honor FRP fueron 8 etiquetas de 4 s. Agrega `por_que` (por qué conviene, una frase) y, solo si no estás seguro, `duda`
+(la pregunta para el autor): la app las muestra en «📋 Propuestas de la IA» del editor por pistas, donde el autor dice sí,
+la mueve o la quita antes de ponerlas. Lo mismo vale para `senales.json`.
 
 **Tráiler** (`trailer.json`), unos 10 s: `titulo` (máx. 5 palabras), `subtitulo` (frase con gancho), `voz` (máx. 15
 palabras), `clips` con `fase` ANTES (teléfono bloqueado) · DURANTE (cuando se pone la key y avanza) · DESPUÉS (pantalla

@@ -101,6 +101,7 @@
   <label class="aviso">Zoom <input type="range" id="zoom" min="2" max="80" value="12"></label>
   <button onclick="nueva('eti')">＋ Etiqueta aquí</button>
   <button onclick="nueva('sen')">＋ Flecha aquí</button>
+  <button onclick="propuestas()" title="Cada etiqueta y flecha con por qué la puso la IA y lo que no tiene seguro">📋 Propuestas de la IA</button>
 </div>
 
 <div class="linea">
@@ -130,6 +131,34 @@ async function cargar() {
   L.bloques.forEach(b => b.textoVoz = b.texto);  // el texto con que se hizo la voz que hay (para medir tu velocidad al hablar)
   V.src = `/archivo?p=${q(P)}&f=${L.base}`;
   pintar();
+  if (new URLSearchParams(location.search).get('revision') || [...L.etiquetas, ...L.senales].some(x => x.duda)) propuestas();
+}
+
+// ---------- revisión de lo que propuso la IA: sí, marcar otro lugar o quitar ----------
+function propuestas() {
+  SEL = null;
+  const items = [...L.etiquetas.map((x, k) => ['eti', k, x]), ...L.senales.map((x, k) => ['sen', k, x])]
+    .sort((a, b) => (a[2]._t ?? 1e9) - (b[2]._t ?? 1e9));
+  const dudas = items.filter(([, , x]) => x.duda).length;
+  $('#props').innerHTML = `<h3>📋 Propuestas de la IA</h3>
+    <p class="aviso">${items.length ? `${items.length} en total${dudas ? `, <b>${dudas} con duda</b> (en amarillo)` : ''}. «👁 Ver» la muestra en el video:
+      ahí la cambias, la arrastras en la pista o, en una flecha, haces clic sobre el video para que apunte a otro lugar.
+      Cuando termines, pulsa «▶ Armar el video con estos cambios».` : 'No hay etiquetas ni flechas todavía.'}</p>
+    ${items.map(([tipo, k, x]) => `<div class="propuesta" style="border-left:3px solid ${x.duda ? '#f5b041' : x.ok ? '#2ecc71' : 'var(--suave)'}; padding:4px 8px; margin:6px 0">
+      <div><b>${tipo === 'eti' ? '🏷' : '🎯'} ${x._t != null ? mmss(x._t) : '¿?'}</b> ${esc(tipo === 'eti' ? (x.titulo ? x.titulo + ': ' : '') + (x.texto || '') : (x.tipo || '') + (x.texto ? ' · ' + x.texto : ''))}</div>
+      ${x.por_que ? `<div class="aviso">${esc(x.por_que)}</div>` : ''}
+      ${x.duda ? `<div style="color:#f5b041">❓ ${esc(x.duda)}</div>` : ''}
+      <div class="fila"><button onclick="elegir('${tipo}', ${k})">👁 Ver y marcar</button>
+        <button onclick="aprobar('${tipo}', ${k})" ${x.ok && !x.duda ? 'disabled' : ''}>✔ Sí, así</button>
+        <button class="peligro" onclick="quitarPropuesta('${tipo}', ${k})">🗑 Quitar</button></div></div>`).join('')}`;
+  pintar();
+}
+function aprobar(tipo, k) {
+  const x = (tipo === 'eti' ? L.etiquetas : L.senales)[k];
+  delete x.duda; x.ok = true; CAMBIOS.extras = true; marcar(); propuestas();
+}
+function quitarPropuesta(tipo, k) {
+  (tipo === 'eti' ? L.etiquetas : L.senales).splice(k, 1); CAMBIOS.extras = true; marcar(); propuestas();
 }
 
 function pintar() {  // las seis pistas a la escala del zoom
@@ -289,6 +318,13 @@ function elegir(tipo, k) {
     enlazar(s, {pTipo: 'tipo', pTx: 'texto', pR: 'r', pAng: 'angulo', pDur: 'dur'});
     $('#pSeg').onchange = e => { s.seguir = e.target.checked; CAMBIOS.extras = true; marcar(); };
     $('#pTipo').addEventListener('change', () => elegir('sen', k));
+  }
+  if (tipo === 'eti' || tipo === 'sen') {  // lo que dijo la IA de esta propuesta, y volver a la lista
+    const x = (tipo === 'eti' ? L.etiquetas : L.senales)[k];
+    p.querySelector('h3').insertAdjacentHTML('afterend', `${x.por_que ? `<p class="aviso">IA: ${esc(x.por_que)}</p>` : ''}
+      ${x.duda ? `<p style="color:#f5b041">❓ ${esc(x.duda)}</p>` : ''}
+      <div class="fila">${x.duda ? `<button onclick="aprobar('${tipo}', ${k})">✔ Sí, así</button>` : ''}
+        <button onclick="propuestas()">← Todas las propuestas</button></div>`);
   }
   pintar();
 }

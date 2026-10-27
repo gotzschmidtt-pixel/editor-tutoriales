@@ -1520,6 +1520,16 @@ function pintarBarra(t, r, arch) {
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
     return;
   }
+  if (r.ok && r.pausa === 'extras') {
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">✓ La IA propuso dónde van las etiquetas y flechas: revísalas antes de ponerlas</span>
+      <span class="cuanto">tú dices sí, las mueves o las quitas; las dudas de la IA salen marcadas</span>
+      <span class="chips"><button class="principal" onclick="open('/pistas?p=' + q(P) + '&revision=1')">🎯 Revisar y marcar</button>
+      <button onclick="ponerExtrasAsi()" title="Pone las propuestas tal como están, sin revisarlas">▶ Ponerlas así</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>`;
+    SEGUIR_EXTRAS = r.seguir;
+    return;
+  }
   if (r.ok) {
     b.className = 'ok';
     const final = arch['FINAL.mp4'] ? `<button class="principal" onclick="ver('FINAL.mp4'); irA('#video')">▶ Ver FINAL.mp4</button>` : '';
@@ -1824,6 +1834,14 @@ async function agregarExtras() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
   catch (x) { $('#msgExtras').textContent = x.message; $('#msgExtras').className = 'msg err'; return; }
   dlgExtras.close(); refrescar();
+}
+let SEGUIR_EXTRAS = null;
+async function ponerExtrasAsi() {
+  const sg = SEGUIR_EXTRAS || {};
+  soltarVideo();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true})}); }
+  catch (e) { return alert(e.message); }
+  refrescar();
 }
 async function seguirTodo() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }

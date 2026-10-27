@@ -544,8 +544,11 @@ Elige los datos valiosos que merecen una etiqueta en pantalla: webs, nombres de 
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la etiqueta aparece cuando la voz las dice),
 "tipo" (web | archivo | dato | precio | pin | consejo), "titulo" (1 a 3 palabras), "texto" (el dato, corto), "dur" (3 a 6 segundos)
 y, solo para "pin", "color" (hex del color del cable).
+El autor revisa cada etiqueta antes de ponerla, así que agrega "por_que" (una frase corta: por qué conviene esa etiqueta) y,
+SOLO si no estás seguro de algo (el dato exacto, si vale la pena, el momento), "duda" con la pregunta para el autor.
 Responde SOLO con un objeto JSON {{"etiquetas": [...]}}. Ejemplo de un elemento:
-{{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5}}"""]
+{{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5,
+"por_que": "la voz nombra la web donde se descarga la herramienta"}}"""]
     elif tarea == 'trailer':
         partes += [f"""Arma el tráiler de inicio de unos 10 segundos con la firma del autor: ANTES, DURANTE y DESPUÉS.
 Muestra lo mejor de lo mejor para que el espectador se quede:
@@ -1799,6 +1802,7 @@ Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 4
             print(f"· salto «{m.get('que')}»: la IA no lo vio en el cuadro", flush=True)
             continue
         s['_t'] = tiempos[k - 1]
+        s['por_que'] = f"señala {m.get('que')}" if m.get('que') else ''
         senales.append(s)
         if not exacta:
             dudosas.append((len(senales) - 1, k, m))
@@ -1806,6 +1810,8 @@ Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 4
               + ('  ✓ leído en pantalla' if exacta else ''), flush=True)
     if propias:
         senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, senales, dudosas)
+    for i, k, m in dudosas:  # no se leyó en pantalla: el autor la confirma en la revisión (la segunda mirada puede aclararla)
+        senales[i]['duda'] = f"No pude leer «{m.get('que') or 'lo marcado'}» en la pantalla; la ubiqué a ojo. ¿Está bien puesta?"
     if dudosas and ajustes.get('revisar_senales', True):
         senales = revisar_senales(d, ajustes, senales, dudosas, caps, W, H)
     # las del autor mandan: se quitan las automáticas que caen encima de una suya
@@ -1874,7 +1880,7 @@ Responde SOLO con un objeto JSON {{"marcas": [{{"par": 1, "que": "...", "tipo": 
         if not s:
             print(f'· en tu captura {n} la IA no encontró qué señalar; prueba con una nota más clara', flush=True)
             continue
-        s.update(t=t, _t=t, autor=True)
+        s.update(t=t, _t=t, autor=True, por_que=f"lo marcaste en tu captura: {m['que']}" if m.get('que') else 'lo marcaste en tu captura')
         caps.append((f'cuadro {n} del video', f))
         senales.append(s)
         if not exacta:
@@ -1939,6 +1945,9 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
         if x.get('quitar'):
             quitar.add(i); print(f"· quito «{m.get('que')}»: en la revisión no se ve", flush=True)
             continue
+        if x.get('ok'):
+            s.pop('duda', None)
+            continue
         try:
             nx, ny = float(x['x']), float(x['y'])
         except (KeyError, TypeError, ValueError):
@@ -1954,6 +1963,7 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
                 s['r'] = round(min(max(max(tw, th) * 0.7, H * 0.045), H * 0.16))
         if s['tipo'] == 'flecha':
             apuntar(s, tw or 60, th or 40, W, H)
+        s['duda'] = f"La corregí a ojo para que quede sobre «{m.get('que') or 'lo marcado'}». ¿Quedó bien?"
         print(f"· corregí «{m.get('que')}» → ({nx:.0f}%, {ny:.0f}%)", flush=True)
     return [s for i, s in enumerate(senales) if i not in quitar]
 
