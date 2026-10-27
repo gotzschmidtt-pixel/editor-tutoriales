@@ -485,6 +485,9 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
    al final (en "preguntas").
 5. Al final, para cada bloque, indica qué se ve en su primer y en su último segundo ("ve_inicio" y "ve_fin"), para que
    pueda comprobarlo.
+6. Un evento es el momento de la ACCIÓN (cuando presiono un botón o hago clic), no cuando aparece el resultado en
+   pantalla. El mapa marca cuándo cambia la pantalla: úsalo para orientarte, pero busca la acción en las imágenes, unos
+   segundos antes.
 
 Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...

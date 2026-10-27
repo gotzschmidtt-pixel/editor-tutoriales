@@ -14,6 +14,7 @@ Antes de escribir el guion:
 3. Si lo que digo en el audio no coincide con lo que se ve en ese momento, manda la imagen: narra lo que se ve y deja lo que digo para el bloque donde ocurre.
 4. No inventes datos (versiones, modelos, botones). Si no se ve ni lo digo, escribe la frase sin ese dato y pregúntamelo al final.
 5. Al final, para cada bloque, indica qué se ve en su primer y en su último segundo, para que pueda comprobarlo.
+6. Un evento es el momento de la ACCIÓN (cuando presiono un botón o hago clic), no cuando aparece el resultado en pantalla. El mapa de la app marca cuándo cambia la pantalla: úsalo para orientarte, pero busca la acción en las hojas, unos segundos antes.
 
 **Por qué:** en IOS27_FRP el guion cortó el video en trozos fijos de 18 s y escribió cada texto según el audio. En 4 zonas
 (Recovery, DFU, la placa, el reinicio) la voz quedó un bloque corrida respecto a la imagen, y hubo datos inventados.
