@@ -222,18 +222,27 @@ def capas_hechas(d):
         return []
 
 
-def etiquetas_viejas(d):
-    """Si etiquetas.json es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
+def etiquetas_viejas(d, archivo='etiquetas.json'):
+    """Si etiquetas.json (o senales.json) es de otro guion (bloques que ya no están o frases que la voz ya no dice): hay que rehacerlas."""
     import unicodedata
     n = lambda c: ' '.join(''.join(x for x in unicodedata.normalize('NFD', str(c).lower()) if unicodedata.category(x) != 'Mn').split())
     try:
         textos = {b['id']: n(b.get('texto', '')) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}
-        lista = json.load(open(os.path.join(d, 'etiquetas.json'), encoding='utf-8'))
+        lista = json.load(open(os.path.join(d, archivo), encoding='utf-8'))
     except (OSError, ValueError, KeyError, TypeError):
         return False
     # las que pusiste o moviste a mano en el editor por pistas (traen su segundo «t») no cuentan: son tuyas
     return bool(lista) and any(n(e.get('frase', '')) not in textos.get(e.get('bloque'), '') for e in lista
                                if e.get('t') is None and e.get('en') is None)
+
+
+def senales_viejas(d):
+    """Las flechas guardan el lugar de la pieza en el cuadro: si el video se volvió a montar después, o sus frases ya no
+    están en el guion, ese lugar puede ser de otra imagen y hay que ubicarlas de nuevo."""
+    s, m = os.path.join(d, 'senales.json'), os.path.join(d, '1_montaje.mp4')
+    if not os.path.exists(s):
+        return False
+    return etiquetas_viejas(d, 'senales.json') or (os.path.exists(m) and os.path.getmtime(m) > os.path.getmtime(s))
 
 
 def marcas_nuevas(d):
@@ -1398,7 +1407,8 @@ class Manejador(BaseHTTPRequestHandler):
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
                     for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
-                        viejo = paso_ia == 'etiquetas_ia' and etiquetas_viejas(carpeta(q['p']))  # guion nuevo: etiquetas nuevas
+                        # guion o montaje nuevo: etiquetas y flechas nuevas (las flechas guardan el lugar en el cuadro de antes)
+                        viejo = etiquetas_viejas(carpeta(q['p'])) if paso_ia == 'etiquetas_ia' else senales_viejas(carpeta(q['p']))
                         if (not existe(carpeta(q['p']), archivo) or viejo) and antes in pasos:
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
