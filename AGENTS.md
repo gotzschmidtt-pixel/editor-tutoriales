@@ -5,6 +5,27 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 
 ---
 
+## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)
+
+Antes de escribir el guion:
+
+1. Haz una lista con el segundo exacto de cada evento de pantalla: cada botón que presiono, cada cambio de modo (Recovery, DFU), cada reinicio, la pantalla de inicio y cada ventana nueva del programa.
+2. Corta cada bloque donde empieza y termina ese evento. No partas el video en trozos fijos (por ejemplo, de 18 segundos).
+3. Si lo que digo en el audio no coincide con lo que se ve en ese momento, manda la imagen: narra lo que se ve y deja lo que digo para el bloque donde ocurre.
+4. No inventes datos (versiones, modelos, botones). Si no se ve ni lo digo, escribe la frase sin ese dato y pregúntamelo al final.
+5. Al final, para cada bloque, indica qué se ve en su primer y en su último segundo, para que pueda comprobarlo.
+
+**Por qué:** en IOS27_FRP el guion cortó el video en trozos fijos de 18 s y escribió cada texto según el audio. En 4 zonas
+(Recovery, DFU, la placa, el reinicio) la voz quedó un bloque corrida respecto a la imagen, y hubo datos inventados.
+
+**Cómo se entrega:**
+- Regla 1: la lista va en `mis_proyectos/NOMBRE/eventos_pantalla.txt`, una línea por evento («m:ss qué pasa»), y también
+  en `"eventos"` de `respuesta_guion.json`: `[{"s": 140.0, "evento": "pulsa volumen más"}, ...]`.
+- Regla 5: en cada bloque de `respuesta_guion.json`, los campos `"ve_inicio"` y `"ve_fin"`. Muéstralos también al autor
+  en el chat, junto con las preguntas.
+
+---
+
 # PARTE A · Qué hacer cuando te pasan un video
 
 ## A1. Quién hace qué
@@ -47,8 +68,9 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
 2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,
    se abre el programa, se conecta el cable, se pega la key, se pulsa el botón, reinicio, pantalla de inicio.
-3. **Escribir el guion** siguiendo `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
-   `mis_proyectos/NOMBRE/respuesta_guion.json`.
+3. **Escribir el guion**: primero cumple las **REGLAS DEL AUTOR** de arriba de todo (la lista de eventos en
+   `eventos_pantalla.txt` y los bloques cortados por evento). Después sigue `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
+   `mis_proyectos/NOMBRE/respuesta_guion.json`, con `"ve_inicio"` y `"ve_fin"` en cada bloque.
 4. **Revisar tú mismo antes de entregar** (lista de A4). Corrige lo que falle.
 5. **Entregar:** `python deepseek/video.py entregar guion mis_proyectos/NOMBRE/respuesta_guion.json --nombre "NOMBRE"`
    La app corrige tiempos y largo, quita bloques con el texto repetido y el «ok» suelto, y frena los pasos de

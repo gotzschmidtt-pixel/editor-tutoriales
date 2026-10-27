@@ -263,7 +263,7 @@ def main():
         print(f'\nLISTO. Lee en este orden:\n  1. {os.path.join(d, "ia_prompt_guion.txt")}  (el encargo exacto: reglas, '
               f'transcripción, mapa)\n  2. las imágenes de {os.path.join(d, "ia_capturas")} (y su carpeta hojas)\n'
               f'  3. las {n} hojas de {out} (un cuadro cada 2 s, con el segundo escrito)\n'
-              'Escribe el JSON {"bloques": [...], "preguntas": [...]} en un archivo y entrégalo con:\n'
+              'Cumple las REGLAS DEL AUTOR de AGENTS.md (eventos y ve_inicio/ve_fin). Escribe el JSON {"eventos": [...], "bloques": [...], "preguntas": [...]} en un archivo y entrégalo con:\n'
               f'  python deepseek/video.py entregar guion respuesta.json --nombre "{p}"')
 
     elif a.accion == 'entregar':

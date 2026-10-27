@@ -208,7 +208,8 @@ function pintar() {
     return `<div class="bloque" id="b${i}">
       <div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
         <div class="meta"><b>${mmss(b.inicio_min)}–${mmss(b.fin_max)}</b> del video · de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div>
-        ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}</div>
+        ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}
+        ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}</div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span></div>
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>

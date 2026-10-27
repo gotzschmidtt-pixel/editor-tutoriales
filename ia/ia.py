@@ -474,9 +474,22 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                                                                    for k, (u, n, t) in enumerate(refs, 1)))
         objetivo = (idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)) or acortar_plan(d).get('objetivo_s')
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
-        partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
+        partes += [ESTILO, f"""ANTES DE ESCRIBIR EL GUION (pedido fijo del autor):
+1. Haz una lista con el segundo exacto de cada evento de pantalla: cada botón que presiono, cada cambio de modo (Recovery,
+   DFU), cada reinicio, la pantalla de inicio y cada ventana nueva del programa. Va en "eventos":
+   [{{"s": 140.0, "evento": "pulsa volumen más"}}, ...]. Búscalos en las imágenes, no solo en la transcripción.
+2. Corta cada bloque donde empieza y termina ese evento. No partas el video en trozos fijos (por ejemplo, de 18 segundos).
+3. Si lo que digo en el audio no coincide con lo que se ve en ese momento, manda la imagen: narra lo que se ve y deja lo
+   que digo para el bloque donde ocurre.
+4. No inventes datos (versiones, modelos, botones). Si no se ve ni lo digo, escribe la frase sin ese dato y pregúntamelo
+   al final (en "preguntas").
+5. Al final, para cada bloque, indica qué se ve en su primer y en su último segundo ("ve_inicio" y "ve_fin"), para que
+   pueda comprobarlo.
+
+Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
+- "ve_inicio" y "ve_fin": qué se ve en el primer y en el último segundo de su tramo (regla 5 de arriba).
 - "texto": lo que dice la voz en off. Unas {PALABRAS_POR_S} palabras por segundo de bloque.
 - "humor": true si el bloque lleva un remate de humor (y "humor_tema": de qué trata, p. ej. "suegra"), false si no.
 - "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
@@ -515,7 +528,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
   dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
   concretas, por ejemplo {{"tipo": "mejora", "bloque": "L03", "pregunta": "¿Explico por qué hay que quitar la batería antes?",
   "opciones": ["Sí, en una frase", "No hace falta"]}}. Pregunta solo lo que cambiaría el guion; no repitas lo que ya dice.
-Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
+Responde SOLO con un objeto JSON {{"eventos": [...], "bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato de los bloques (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
         g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
@@ -2957,6 +2970,10 @@ def main():
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
         if a.tarea in ARCHIVO_PREGUNTAS and isinstance(datos, dict) and datos.get('preguntas'):
             guardar_preguntas(d, datos['preguntas'], a.tarea)  # las preguntas de una IA de chat se contestan en la revisión
+        if a.tarea == 'guion' and isinstance(datos, dict) and isinstance(datos.get('eventos'), list):
+            # regla 1 del autor: la lista de eventos de pantalla queda a mano para comprobar los cortes
+            filas = [f"{mmss(float(e.get('s', 0)))} {e.get('evento', '')}" for e in datos['eventos'] if isinstance(e, dict)]
+            open(os.path.join(d, 'eventos_pantalla.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in filas))
     else:
         try:
             n = int(json.load(open(a.ajustes, encoding='utf-8')).get('capturas', 14))
