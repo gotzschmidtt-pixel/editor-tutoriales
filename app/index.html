@@ -666,12 +666,12 @@ async function subirVarios(tipo, files, el) {
 
 let avisado = null;
 function pintarPasos(pasos, t, fallo) {
-  $('#pasos').innerHTML = pasos.map((p, i) => {
-    const corre = t.proyecto === P && t.paso === p.id;
+  $('#pasos').innerHTML = pasos.filter(p => !p.dentro).map((p, i) => {
+    const corre = t.proyecto === P && (t.paso === p.id || (p.ids || []).includes(t.paso));
     return `<div class="paso ${p.listo ? 'listo' : ''} ${corre ? 'corriendo' : ''}">
       <div class="num">${p.listo ? '✓' : i + 1}</div>
       <div class="info"><div class="nom">${p.nombre}${p.opcional ? ' <span class="aviso">(opcional)</span>' : ''}</div>
-        <div class="det">${corre ? '⏳ Trabajando… ' + t.segundos + ' s · mira el registro abajo' : fallo && fallo.paso === p.id ? `<span style="color:var(--rojo)">✗ Falló: ${fallo.msg}</span>` : p.puede ? (p.listo ? 'Hecho · ' + p.produce : 'Listo para hacer') : 'Necesita: ' + p.necesita.join(', ')}</div></div>
+        <div class="det">${corre ? '⏳ Trabajando… ' + t.segundos + ' s · mira el registro abajo' : fallo && (fallo.paso === p.id || (p.ids || []).includes(fallo.paso)) ? `<span style="color:var(--rojo)">✗ Falló: ${fallo.msg}</span>` : p.puede ? (p.listo ? 'Hecho · ' + p.produce : 'Listo para hacer') : 'Necesita: ' + p.necesita.join(', ')}</div></div>
       <div class="acc"><button ${!p.puede || t.proyecto ? 'disabled' : ''} onclick="ejecutar('${p.id}')">${p.listo ? 'Rehacer' : 'Hacer'}</button></div>
     </div>`;
   }).join('');

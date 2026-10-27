@@ -928,6 +928,9 @@ def correr(proyecto, pasos, opciones):
                 pasos.insert(pasos.index(juntas[-1]) + 1, 'capas')
             opciones['_capas'] = True
             shutil.rmtree(os.path.join(d, CAPAS_DIR), ignore_errors=True)  # capas de una tanda anterior no se cuelan
+            for x in PASOS:  # los videos de cuando se hacían por separado: el nuevo los reemplaza
+                if x['id'] in CAPAS and existe(d, x['produce']) and not borrar_seguro(os.path.join(d, x['produce'])):
+                    log.write(f"· {x['produce']} está abierto en otro programa y no se pudo borrar.\n"); log.flush()
             with CANDADO:
                 TRABAJO['plan'] = [next(x['nombre'] for x in PASOS if x['id'] == p) for p in pasos]
         for k, paso in enumerate(pasos):
@@ -1074,6 +1077,17 @@ def estado(proyecto):
         if p.get('oculto'):
             continue
         pasos.append({**p, 'listo': existe(d, p['produce']), 'puede': all(existe(d, n) for n in p['necesita'])})
+    # etiquetas, flechas y tarjetas se muestran como un solo paso: se hacen juntos, en una sola pasada
+    juntos = [p for p in pasos if p['id'] in CAPAS]
+    if juntos:
+        hechos = [p for p in juntos if p['listo'] or p['id'] in capas_hechas(d)]
+        for p in juntos:
+            p['dentro'] = True  # la lista no los muestra sueltos; «Agregar extras» sí mira cada uno
+        pasos[pasos.index(juntos[0]):pasos.index(juntos[0])] = [{
+            'id': 'capas_juntas', 'ids': CAPAS + ['capas'], 'nombre': 'Etiquetas, flechas y tarjetas (una sola pasada)', 'opcional': True,
+            'listo': bool(hechos), 'puede': any(p['puede'] for p in juntos),
+            'produce': next((p['produce'] for p in reversed(juntos) if existe(d, p['produce'])), juntos[-1]['produce']),
+            'necesita': ['3_voz.mp4', 'etiquetas.json, senales.json o tarjetas']}]
     completo = open(registro(d), encoding='utf-8', errors='replace').read() if existe(d, 'registro.txt') else ''
     log = completo[-12000:]
     with CANDADO:
@@ -1356,6 +1370,11 @@ class Manejador(BaseHTTPRequestHandler):
                 if datos.get('motor') == 'auto':  # Scribe si hay clave de ElevenLabs (unos centavos, mucho más preciso); si no, Whisper
                     datos['motor'] = 'scribe' if clave_eleven() else 'whisper'
                 pasos = [q['paso']]
+                if q['paso'] == 'capas_juntas':  # la tarjeta «Etiquetas, flechas y tarjetas»: los que tengan con qué, juntos
+                    d0 = carpeta(q['p'])
+                    pasos = [x['id'] for x in PASOS if x['id'] in CAPAS and all(existe(d0, n) for n in x['necesita'])]
+                    if not pasos:
+                        return self.error('Todavía no hay etiquetas, flechas ni tarjetas que poner.')
                 extras = q['paso'] == 'extras'
                 if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos
                     if not existe(carpeta(q['p']), '4_musica.mp4'):
