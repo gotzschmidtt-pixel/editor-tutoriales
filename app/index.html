@@ -136,6 +136,7 @@
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
+  <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
@@ -495,6 +496,18 @@
     <button onclick="dlgDiag.close()">Cerrar</button><span class="msg" id="msgDiag"></span></div>
 </dialog>
 
+<dialog id="dlgGuardados">
+  <h3>💾 Guardar proyecto</h3>
+  <p class="aviso">Guarda lo hecho de este proyecto: guion, transcripción, voces, respuestas, tráiler, etiquetas y tus tarjetas.
+  Los videos no se copian: el grabado sigue en el proyecto y lo armado se rehace sin volver a pagar la voz.
+  Cada proyecto ya queda en su propia carpeta: puedes empezar otro con «+ Nuevo proyecto» y volver a este cuando quieras
+  eligiéndolo arriba. Este guardado es además un punto al que puedes volver si algo sale mal.</p>
+  <div class="fila"><input id="notaGuardado" placeholder="Nota (opcional), por ejemplo «guion aprobado»" style="flex:1">
+    <button class="principal" onclick="guardarProyecto()">💾 Guardar ahora</button></div>
+  <div id="listaGuardados"></div>
+  <div class="fila"><button onclick="dlgGuardados.close()">Cerrar</button><span class="msg" id="msgGuardados"></span></div>
+</dialog>
+
 <dialog id="dlgEleven">
   <h3>🔑 Clave de ElevenLabs</h3>
   <p class="aviso">Sirve para transcribir con Scribe, la voz, la música y el tráiler. Sácala en elevenlabs.io → Developers → API Keys.</p>
@@ -667,6 +680,32 @@ async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuá
   if (!c.caracteres) return true;
   return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
     + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+}
+async function abrirGuardados() {
+  if (!P) return alert('Elige primero un proyecto.');
+  $('#msgGuardados').textContent = ''; $('#notaGuardado').value = '';
+  await pintarGuardados(); dlgGuardados.showModal();
+}
+async function pintarGuardados() {
+  let g = [];
+  try { g = (await api(`/api/guardados?p=${q(P)}`)).guardados; } catch (e) {}
+  $('#listaGuardados').innerHTML = !g.length ? '<p class="aviso">Todavía no hay guardados de este proyecto.</p>' :
+    '<p><b>Guardados de «' + esc(P) + '»</b></p>' + g.map(x => `<div class="fila" style="margin:4px 0"><span style="flex:1">${esc(x.nombre.replace(/_/g, ' '))}
+      · ${x.bloques} bloques · ${x.voces} voces · ${x.mb} MB</span>
+      <button onclick="volverAGuardado('${esc(x.nombre)}')" title="El proyecto vuelve a como estaba; lo actual se guarda antes">↩ Volver a este</button></div>`).join('');
+}
+async function guardarProyecto() {
+  const m = $('#msgGuardados');
+  try { const r = await api(`/api/guardar_proyecto?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nota: $('#notaGuardado').value})});
+    m.className = 'msg ok'; m.textContent = '✓ Guardado: ' + r.nombre.replace(/_/g, ' '); await pintarGuardados(); }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function volverAGuardado(nombre) {
+  if (!confirm(`¿Volver «${P}» a como estaba en el guardado ${nombre.replace(/_/g, ' ')}?\n\nLo actual se guarda antes («antes de volver»), así que no se pierde. Tu video grabado no cambia. Después pulsa «▶ Hacer todo» para rehacer el video (las voces se reutilizan, no gastan).`)) return;
+  const m = $('#msgGuardados');
+  try { await api(`/api/volver_a_guardado?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nombre})});
+    m.className = 'msg ok'; m.textContent = '✓ Listo: el proyecto volvió a ese guardado.'; await pintarGuardados(); refrescar(); }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function ejecutar(paso) {
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;

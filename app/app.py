@@ -549,6 +549,65 @@ def carpeta(p):
     return os.path.join(PROYECTOS, p)
 
 
+GUARDADOS = 'guardados'  # puntos de guardado del proyecto: lo hecho (guion, voces, respuestas, extras), sin los videos
+NO_SE_GUARDA = {GUARDADOS, '.montaje_partes', 'hojas_2s', 'acciones', 'ia_capturas', 'para_claude', 'historial_guion'}
+
+
+def _entra_en_guardado(nombre, es_carpeta):
+    if nombre in NO_SE_GUARDA or nombre.startswith('.'):
+        return False
+    return es_carpeta or os.path.splitext(nombre)[1].lower() not in VIDEOS | {'.wav', '.npz', '.zip'}
+
+
+def guardar_proyecto(d, nota=''):
+    """Copia lo hecho del proyecto (guion, transcripción, voces, respuestas, tráiler, etiquetas, tus tarjetas…) a
+    guardados/<fecha>. Los videos no se copian: el grabado queda en el proyecto y los armados se rehacen sin gastar,
+    porque las voces van en el guardado. Devuelve el nombre del guardado."""
+    nombre = time.strftime('%Y-%m-%d_%H-%M-%S') + ('_' + re.sub(r'[^\w\- ]', '', nota).strip()[:40] if nota.strip() else '')
+    dst = os.path.join(d, GUARDADOS, nombre)
+    os.makedirs(dst)
+    for f in os.listdir(d):
+        r = os.path.join(d, f)
+        if not _entra_en_guardado(f, os.path.isdir(r)):
+            continue
+        if os.path.isdir(r):
+            shutil.copytree(r, os.path.join(dst, f), ignore=lambda carp, xs: [x for x in xs if not _entra_en_guardado(x, os.path.isdir(os.path.join(carp, x)))])
+        else:
+            shutil.copy2(r, os.path.join(dst, f))
+    return nombre
+
+
+def lista_guardados(d):
+    g = os.path.join(d, GUARDADOS)
+    out = []
+    for n in sorted(os.listdir(g), reverse=True) if os.path.isdir(g) else []:
+        r = os.path.join(g, n)
+        tam = sum(os.path.getsize(os.path.join(a, x)) for a, _, xs in os.walk(r) for x in xs)
+        try:
+            bloques = len(json.load(open(os.path.join(r, 'guion.json'), encoding='utf-8')).get('bloques', []))
+        except (OSError, ValueError, AttributeError):
+            bloques = 0
+        voces = len([x for x in os.listdir(os.path.join(r, 'voz')) if x.endswith('.mp3')]) if os.path.isdir(os.path.join(r, 'voz')) else 0
+        out.append({'nombre': n, 'mb': round(tam / 1e6, 1), 'bloques': bloques, 'voces': voces})
+    return out
+
+
+def volver_a_guardado(d, nombre):
+    """Pone el proyecto como estaba en ese guardado. Antes guarda lo actual, por si quieres volver."""
+    src = os.path.join(d, GUARDADOS, os.path.basename(nombre))
+    if not nombre or not os.path.isdir(src):
+        raise ValueError('no existe ese guardado')
+    respaldo = guardar_proyecto(d, 'antes de volver')
+    for f in os.listdir(d):  # los archivos de lo hecho se reemplazan por los del guardado; el video grabado y lo subido no
+        r = os.path.join(d, f)
+        if os.path.isfile(r) and _entra_en_guardado(f, False) and f not in set(SUBIBLES.values()):
+            os.remove(r)
+    for f in os.listdir(src):  # las carpetas se completan (no se borran: ahí están tus videos de testimonios y modelos)
+        r = os.path.join(src, f)
+        shutil.copytree(r, os.path.join(d, f), dirs_exist_ok=True) if os.path.isdir(r) else shutil.copy2(r, os.path.join(d, f))
+    return respaldo
+
+
 def carpeta_estilo(nombre):
     n = re.sub(r'[^\w\- ]', '', nombre or '').strip()
     if not n:
@@ -1013,6 +1072,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(ultimo_proyecto())
             if ruta == '/api/estado':
                 return self.responder(estado(q['p']))
+            if ruta == '/api/guardados':
+                return self.responder({'guardados': lista_guardados(carpeta(q['p']))})
             if ruta == '/api/version_guion':  # el editor la anota al abrir: si cambió al guardar, otra pestaña o la app guardó antes
                 f = os.path.join(carpeta(q['p']), 'guion.json')
                 v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
@@ -1555,7 +1616,7 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto'] == q['p']:
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
-                quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz'} | \
+                quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz', GUARDADOS} | \
                     {sub for sub, *_ in GRUPOS.values()}
                 borrados = 0
                 for f in os.listdir(d):
@@ -1566,6 +1627,20 @@ class Manejador(BaseHTTPRequestHandler):
                     borrados += 1
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
                 return self.responder({'ok': True, 'borrados': borrados})
+            if ruta in ('/api/guardar_proyecto', '/api/volver_a_guardado'):
+                d = carpeta(q['p'])
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Espera a que termine o detenlo primero.')
+                if ruta == '/api/guardar_proyecto':
+                    return self.responder({'ok': True, 'nombre': guardar_proyecto(d, str(datos.get('nota') or ''))})
+                try:
+                    respaldo = volver_a_guardado(d, str(datos.get('nombre') or ''))
+                except ValueError as e:
+                    return self.error(str(e))
+                FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
+                return self.responder({'ok': True, 'respaldo': respaldo})
             if ruta == '/api/borrar':
                 if os.path.basename(q['f']) in ('', '.', '..'):  # «.» borraba el proyecto entero
                     return self.error('nombre de archivo no válido')
