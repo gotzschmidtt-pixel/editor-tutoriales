@@ -708,7 +708,9 @@ async function guardarProyecto() {
 async function guardarComo() {
   const m = $('#msgGuardados'); m.className = 'msg'; m.textContent = 'Elige dónde guardar en la ventana que se abrió (puede quedar detrás del navegador)…';
   try { const r = await api(`/api/guardar_como?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nota: $('#notaGuardado').value})});
-    m.className = 'msg ok'; m.textContent = r.cancelado ? 'Cancelado: no se guardó nada.' : '✓ Guardado en ' + r.ruta; await pintarGuardados(); }
+    m.className = 'msg ok'; m.textContent = r.cancelado ? 'Cancelado: no se guardó nada.' : '✓ Guardado en ' + r.ruta +
+      (VOZ_VIEJA ? ` · ⚠ Ojo: ${VOZ_VIEJA.bloques.length} bloque(s) del guion todavía no tienen su voz nueva (guardar no la hace: pulsa «▶ Hacer todo»).` : '');
+    await pintarGuardados(); }
   catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function abrirGuardado() {
@@ -1838,6 +1840,9 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
 async function abrirExtras() {
   const e = await api(`/api/estado?p=${q(P)}`);
   if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo». Cuando el guion te guste, le agregas los extras.');
+  pintarVozVieja(e.voz_vieja);
+  if (VOZ_VIEJA && !confirm(`⚠ El guion cambió y la voz es vieja: ${VOZ_VIEJA.bloques.length} bloque(s) no tienen la voz de su texto nuevo.\n\n` +
+    'Los extras irían sobre un video que todavía dice el guion anterior y pueden no calzar. ¿Los pongo igual?')) return;
   const aj = (await api('/api/ajustes')).ajustes, conIA = !!(aj.modelo && aj.url);
   const listo = id => (e.pasos.find(p => p.id === id) || {}).puede;
   $('#listaExtras').innerHTML = EXTRAS.map(([id, nombre, falta, ia, aparte]) => {  // aparte: el tráiler se arma en su módulo; aquí solo se vuelve a poner
