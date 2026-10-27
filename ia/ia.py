@@ -283,6 +283,14 @@ def capturas_pistas(d, an):
     return lista
 
 
+def cuantos_extras(bloques):
+    """Cuántas etiquetas y flechas pedir según lo que dura el video. Referencia del autor: el de la Raspberry (7 min)
+    llevó 21 etiquetas y 9 flechas y así le gusta; con «entre 4 y 12» uno de 11 min salió con 8 y 5, muy pocas."""
+    fin = max([float(b.get('fin_max') or b.get('inicio_min') or 0) for b in bloques] or [0])
+    minutos = max(fin / 60, 3)
+    return round(minutos * 3), round(minutos * 1.2), round(minutos * 1.6)
+
+
 def mmss(s):
     return f'{int(s // 60)}:{int(s % 60):02d}'
 
@@ -541,6 +549,9 @@ Responde SOLO con un objeto JSON {{"eventos": [...], "bloques": [...], "pregunta
 
 {("Páginas del autor (si la voz nombra una, ponle su etiqueta «web» con esta dirección exacta, sin «https://»):" + chr(10) + texto_paginas(mis_paginas()) + chr(10)) if mis_paginas() else ""}
 Elige los datos valiosos que merecen una etiqueta en pantalla: webs, nombres de archivo, precios, pines, valores, botones y consejos.
+Al autor le gustan los videos bien etiquetados: apunta a unas {cuantos_extras(g['bloques'])[0]} etiquetas repartidas por todo el
+video (el de la Raspberry, de 7 minutos, llevó 21: materiales, precios, dónde comprar, cada pin, la temperatura, el archivo,
+las webs y los consejos). Cada dato que la voz nombra y que el que mira querría anotar o ver escrito merece la suya.
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la etiqueta aparece cuando la voz las dice),
 "tipo" (web | archivo | dato | precio | pin | consejo), "titulo" (1 a 3 palabras), "texto" (el dato, corto), "dur" (3 a 6 segundos)
 y, solo para "pin", "color" (hex del color del cable).
@@ -1738,7 +1749,9 @@ def senales_auto(d, ajustes, video):
 {textos}
 
 Elige los momentos donde una flecha o un círculo ayuda a seguir el paso: el botón u opción que hay que tocar,
-el dato importante en la pantalla del celular o la PC, la pieza o conector. Máximo uno por bloque y entre 4 y 12 en total.
+el dato importante en la pantalla del celular o la PC, la pieza o conector. Máximo dos por bloque y entre {cuantos_extras(g['bloques'])[1]} y
+{cuantos_extras(g['bloques'])[2]} en total, repartidos por todo el video (al autor le gustan bien señalados: el de la Raspberry,
+de 7 minutos, llevó 9).
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la marca aparece cuando la
 voz las dice), "que" (qué hay que señalar, tal como se vería en pantalla, ej. «botón Aceptar», «opción Restablecer»),
 "tipo" (circulo para botones y opciones, flecha para algo pequeño, caja para un texto o dato largo) y "texto"
