@@ -128,7 +128,7 @@ datos del autor en `idea.txt` y trabaja SIEMPRE dentro de esa carpeta (todos los
 
 | # | Qué | Comando | ¿Gasta? |
 |---|---|---|---|
-| 1 | Transcribir (texto con tiempos por palabra) | `python R\transcripcion\transcribir.py --video original.mp4 --salida transcripcion --motor scribe` (si falla por la clave: `--motor whisper`) | Scribe: unos $0,05 por video de 14 min (acierta DFU, ECID, 3uTools); Whisper: gratis pero se equivoca más |
+| 1 | Transcribir (texto con tiempos por palabra) | `python R\transcripcion\transcribir.py --video original.mp4 --salida transcripcion --motor scribe` (si falla por la clave: `--motor whisper`) | Scribe (ElevenLabs) descuenta créditos del plan de fabian: ~330 créditos por minuto (un video de ~10 min ≈ 3.000 créditos). El precio en dólares (~$0,22/hora) es solo para cuentas que pagan la API aparte, no para su plan de créditos. Acierta DFU, ECID, 3uTools. Avísale cuántos créditos costará antes de transcribir. Whisper: gratis pero se equivoca más |
 | 2 | Capturas nítidas, mapa del video (OCR de cada pantalla) y el encargo exacto del guion | `python R\ia\ia.py --proyecto . --tarea guion --modo prompt --ajustes R\app\ajustes.json` → `ia_prompt_guion.txt`, `ia_capturas\`, `mapa_video.json` | No |
 | 3 | Hojas de un cuadro cada 2 s (método Claude) | el comando ffmpeg de B10, una hoja por minuto, en `hojas_2s\` | No |
 | 4 | **Tú:** mirar todo y escribir el guion | lees `ia_prompt_guion.txt`, todas las hojas y capturas; escribes `respuesta_guion.json` y repasas la lista A4 | Tus tokens |
