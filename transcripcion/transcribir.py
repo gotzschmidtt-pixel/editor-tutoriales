@@ -8,7 +8,7 @@ Uso:
   python3 transcribir.py --video "Mi video.mp4" --salida mi_video [--motor scribe|whisper] [--modelo large-v3-turbo]
 Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabras con inicio y fin).
 """
-import argparse, json, os, subprocess, tempfile, urllib.error, urllib.request, uuid
+import argparse, json, os, re, subprocess, tempfile, urllib.error, urllib.request, uuid
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -38,10 +38,29 @@ def audio(video):
     return f
 
 
+# palabras clave para Scribe v2 (cuesta ~20% más; probado en IOS27_FRP: arregla «modo FU», «Weishe», «RAM Disk»)
+PALABRAS_CLAVE = ['modo DFU', 'DFU', 'modo Recovery', 'Exit Recovery', '3uTools', 'iTunes', 'ECID', 'Ramdisk', 'Boot Ramdisk',
+                  'Bypass Hello Screen', 'Hello Screen', 'iCloud', 'FRP', 'FRP Files', 'UnlockTool', 'IMEI', 'SSH', 'payload',
+                  'Waveshare RP2350', 'Raspberry Pi Pico', 'AliExpress', 'xiaomiunlock.com', 'App Store', 'Face ID',
+                  'iPhone', 'Xiaomi', 'Honor', 'PWN']
+
+
+def palabras_clave():
+    # límites de ElevenLabs: hasta 1000, cada una < 50 letras, máximo 5 palabras y sin < > { } [ ] \
+    vistas, salida = set(), []
+    for k in PALABRAS_CLAVE:
+        k = ' '.join(re.sub(r'[<>{}\[\]\\]', ' ', str(k)).split())
+        if k and len(k) < 50 and len(k.split()) <= 5 and k.lower() not in vistas:
+            vistas.add(k.lower())
+            salida.append(k)
+    return salida[:1000]
+
+
 def scribe(f, idioma):
     lim = uuid.uuid4().hex
-    partes = [f'--{lim}\r\nContent-Disposition: form-data; name="model_id"\r\n\r\nscribe_v1\r\n'.encode(),
-              f'--{lim}\r\nContent-Disposition: form-data; name="language_code"\r\n\r\n{idioma}\r\n'.encode(),
+    campo = lambda n, v: f'--{lim}\r\nContent-Disposition: form-data; name="{n}"\r\n\r\n{v}\r\n'.encode()
+    partes = [campo('model_id', 'scribe_v2'), campo('language_code', idioma),
+              *[campo('keyterms', k) for k in palabras_clave()],
               f'--{lim}\r\nContent-Disposition: form-data; name="file"; filename="audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n'.encode(),
               open(f, 'rb').read(), f'\r\n--{lim}--\r\n'.encode()]
     req = urllib.request.Request('https://api.elevenlabs.io/v1/speech-to-text', data=b''.join(partes),
