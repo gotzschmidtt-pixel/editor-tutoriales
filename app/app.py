@@ -26,6 +26,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402  informes locales cuando una IA o un paso no completa su trabajo
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  codifica con la tarjeta NVIDIA si la hay, si no con el procesador
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import conocimiento  # noqa: E402  «🧠 Conocimiento»: lo aprendido de todos tus videos, en mis_conocimientos/
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
@@ -675,6 +677,9 @@ def guardar_como(d, nota=''):
         if os.path.exists(MUSICA_FIJA) and not os.path.exists(os.path.join(src, 'musica.mp3')):
             # la música fija vive fuera del proyecto: va como música propia, para que en otra PC suene la misma
             z.write(MUSICA_FIJA, 'musica.mp3')
+        for x in ('CONOCIMIENTO.md', 'aprendido_de_proyectos.md'):  # lo aprendido viaja con el proyecto a la otra PC
+            if os.path.exists(os.path.join(conocimiento.CARPETA, x)):
+                z.write(os.path.join(conocimiento.CARPETA, x), 'mis_conocimientos/' + x)
     return destino
 
 
@@ -695,6 +700,10 @@ def abrir_guardado(d):
             os.makedirs(os.path.dirname(os.path.join(dst, m.filename)), exist_ok=True)
             with z.open(m) as a, open(os.path.join(dst, m.filename), 'wb') as b:
                 shutil.copyfileobj(a, b)
+    otra = os.path.join(dst, 'mis_conocimientos')
+    if os.path.isdir(otra):  # lo aprendido en la otra PC se suma al tuyo (no borra nada) y no queda dentro del proyecto
+        conocimiento.juntar(otra)
+        shutil.rmtree(otra, ignore_errors=True)
     return nombre
 
 
@@ -746,7 +755,7 @@ def registro(d):
 
 
 RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
-NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
+NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'mis_conocimientos', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
 
 
@@ -1036,6 +1045,10 @@ def correr(proyecto, pasos, opciones):
                 log.write(f"· {resumen['texto']} Resumen en diagnosticos/{resumen['archivo']}.txt\n")
         except Exception as e:
             log.write(f'· no pude escribir el resumen de la ejecución ({type(e).__name__}: {e})\n')
+        try:  # lo que contestaste y confirmaste en este proyecto queda aprendido para los próximos videos
+            conocimiento.aprender_de_proyecto(d)
+        except Exception as e:
+            log.write(f'· no pude anotar lo aprendido ({type(e).__name__}: {e})\n')
         log.close()
         RESULTADO[proyecto] = {'resultado': resultado, 'incidencias': informes if not f else [], 'resumen': resumen,'ok': not f, 'paso': next((x['nombre'] for x in PASOS if f and x['id'] == f['paso']), None),
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
@@ -1215,6 +1228,17 @@ class Manejador(BaseHTTPRequestHandler):
                 f = os.path.join(carpeta(q['p']), 'guion.json')
                 v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
                 return self.responder({'v': v})
+            if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
+                return self.responder(conocimiento.resumen())
+            if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
+                cuerpo = conocimiento.texto_completo().encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/markdown; charset=utf-8')
+                self.send_header('Content-Disposition', 'attachment; filename="CONOCIMIENTO.md"')
+                self.send_header('Content-Length', str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+                return
             if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
                 d = carpeta(q['p'])
                 if not existe(d, 'guion.json'):
@@ -1734,6 +1758,37 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
+            if ruta.startswith('/api/conocimiento/'):
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                que = ruta.rsplit('/', 1)[1]
+                try:
+                    if que == 'guardar':
+                        conocimiento.escribir(conocimiento.PRINCIPAL, str(datos.get('texto') or ''))
+                    elif que == 'anotar':
+                        _, entro = conocimiento.anotar(str(datos.get('tipo') or 'idea'), datos.get('texto'))
+                        if not entro:
+                            return self.responder({**conocimiento.resumen(), 'msg': 'Esa nota ya estaba.'})
+                    elif que == 'usar':
+                        conocimiento.poner_usar(datos.get('usar'))
+                    elif que == 'aprender':
+                        if datos.get('todos'):
+                            r = conocimiento.aprender_de_todos(PROYECTOS)
+                            msg = f"Aprendí de {len(r)} proyecto(s): {sum(r.values())} dato(s)." if r else 'Ningún proyecto tiene preguntas contestadas todavía.'
+                        else:
+                            n = conocimiento.aprender_de_proyecto(carpeta(q['p']))
+                            msg = f'Aprendí {n} dato(s) de este proyecto.' if n else 'Este proyecto todavía no tiene preguntas contestadas ni datos confirmados.'
+                        return self.responder({**conocimiento.resumen(), 'msg': msg})
+                    elif que == 'abrir':
+                        conocimiento.asegurar()
+                        if sys.platform == 'win32':
+                            os.startfile(conocimiento.CARPETA)
+                        else:
+                            subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', conocimiento.CARPETA])
+                    else:
+                        return self.error('pedido desconocido', 404)
+                except ValueError as e:
+                    return self.error(str(e))
+                return self.responder(conocimiento.resumen())
             if ruta == '/api/abrir_carpeta':  # abre en tu PC la carpeta del proyecto (o una de adentro, como para_claude)
                 c = os.path.join(carpeta(q['p']), os.path.basename(q.get('sub', '')))
                 if not os.path.isdir(c):

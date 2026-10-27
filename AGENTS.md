@@ -7,6 +7,12 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 (por ejemplo `C:\Users\PC\Downloads\CLOUDE SINCRONIZACION\EDITOR DE VIDEO CLAUDE\editor-tutoriales\mis_musica\musica_fija.mp3`),
 nunca solo el nombre o una ruta a medias como `mis_musica\musica_fija.mp3`.
 
+**Conocimiento del canal (léelo primero):** `editor-tutoriales\mis_conocimientos\CONOCIMIENTO.md` tiene los procesos
+(DFU, Recovery, ECID, FRP…), las reglas del guion y los datos que el autor ya confirmó en videos anteriores, y
+`aprendido_de_proyectos.md` lo que contestó en cada proyecto. Úsalo y no vuelvas a preguntar lo que ya está ahí. Lo nuevo que
+aprendas con el autor, anótalo en la sección que toca de `CONOCIMIENTO.md` (una línea por dato, con la fecha), sin borrar lo que hay.
+La app (botón «🧠 Conocimiento») se lo pasa sola a la IA cuando escribe el guion, el tráiler y las etiquetas.
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)

@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocimientos/CONOCIMIENTO.md)
 import numpy as np  # noqa: E402
 import hashlib, inspect, threading, time  # noqa: E402
 
@@ -437,6 +439,10 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
+    sabido = conocimiento.texto_para_ia() if tarea in ('guion', 'trailer', 'etiquetas') else ''
+    if sabido:
+        partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
+                      "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos. El HUMOR de las reglas de estilo de más abajo "
@@ -2689,6 +2695,9 @@ def ideas_guion(d, ajustes):
         partes.append("Lo que se ve en la grabación, pantalla por pantalla:\n" + texto_mapa(mapa)[:20000])
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    sabido = conocimiento.texto_para_ia()
+    if sabido:
+        partes.append("Lo que ya sabemos del canal (no preguntes lo que ya está aquí):\n" + sabido)
     if hechas or pendientes:
         partes.append("Ya le preguntaste esto y contestó (no lo repitas):\n" + '\n'.join(
             f"- {x['pregunta']} → {str(x['respuesta']).strip()}" for x in hechas + pendientes))
@@ -2756,6 +2765,12 @@ Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
         if str(x.get('respuesta', '')).strip():
             x['hecha'] = True
     json.dump(preguntas, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    try:  # lo que contestaste queda aprendido para los próximos videos
+        n = conocimiento.aprender_de_proyecto(d)
+        if n:
+            print(f'· {n} dato(s) de este proyecto quedaron en {conocimiento.APRENDIDO}', flush=True)
+    except OSError:
+        pass
     return {**datos, 'bloques': bloques}
 
 
@@ -2830,7 +2845,7 @@ def paquete(d, tarea, prompt, caps, mapa=None):
     proyecto = os.path.basename(os.path.abspath(d))
     leeme = f"""Paquete para una IA de chat (ChatGPT, Claude, DeepSeek, etc.) · proyecto «{proyecto}» · tarea: {tarea}
 
-IA: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
+IA: lee primero CONOCIMIENTO.md si viene (lo que ya sabemos del canal) y escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
 transcripción con tiempos en transcripcion.json; si está, mapa_video.json y ia_capturas/mapa/ traen el video entero
 cuadro a cuadro con el texto de pantalla).
 
@@ -2855,6 +2870,8 @@ Cómo devolver el resultado, según lo que puedas hacer:
                 z.write(f, nombre)
         for _, f in caps:
             z.write(f, 'ia_capturas/' + os.path.basename(f))
+        if conocimiento.texto_para_ia():  # lo aprendido de todos tus videos, para la IA del chat
+            z.writestr('CONOCIMIENTO.md', conocimiento.texto_completo())
         if mapa:  # el video entero, un cuadro cada pocos segundos, con el texto de pantalla
             z.write(os.path.join(d, 'mapa_video.json'), 'mapa_video.json')
             for f in sorted(os.listdir(os.path.join(d, 'ia_capturas', 'mapa'))):

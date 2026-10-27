@@ -142,6 +142,7 @@
   <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
   <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
+  <button onclick="irA('#panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
   <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
@@ -370,6 +371,33 @@
       3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
       La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
     </section>
+
+    <section class="panel" id="panelConocimiento">
+      <h2>🧠 Conocimiento del canal</h2>
+      <p class="aviso">Lo que vamos aprendiendo de todos tus videos: procesos (DFU, Recovery, FRP…), reglas del guion, preguntas,
+      dudas e ideas. La app lo llena sola con lo que contestas y confirmas en cada proyecto, y se lo pasa a la IA cuando escribe el
+      guion, el tráiler y las etiquetas (también a DeepSeek y al ZIP para el chat). Es un archivo de texto: lo puede leer cualquier IA.</p>
+      <div class="aviso" id="conoRutas"></div>
+      <label class="aviso" style="display:block;margin-top:6px"><input type="checkbox" id="conoUsar" onchange="conoUsar()"> Pasárselo a la IA cuando escribe</label>
+      <div class="fila">
+        <select id="conoTipo"><option value="proceso">Proceso</option><option value="guion">Guion</option><option value="pregunta">Pregunta</option>
+          <option value="duda">Duda</option><option value="idea">Idea</option></select>
+        <input type="text" id="conoNota" placeholder="Nota rápida: «En DFU, soltar Power a los 3 s y seguir con Volumen −»" style="flex:1; min-width:12em"
+          onkeydown="if (event.key === 'Enter') conoAnotar()">
+        <button onclick="conoAnotar()">➕ Anotar</button>
+      </div>
+      <textarea id="conoTexto" rows="14" style="width:100%; margin-top:8px; font: 13px/1.4 Consolas, monospace" oninput="$('#conoMsg').textContent = 'Sin guardar'"></textarea>
+      <div class="fila">
+        <button class="principal" onclick="conoGuardar()">💾 Guardar cambios</button>
+        <button onclick="conoAprender(false)" title="Junta las preguntas que contestaste y los datos que confirmaste en este proyecto">🧠 Aprender de este proyecto</button>
+        <button onclick="conoAprender(true)">🧠 Aprender de todos</button>
+        <a href="/api/conocimiento/bajar" download="CONOCIMIENTO.md"><button title="Todo en un solo archivo, para subirlo al chat de Claude, DeepSeek o ChatGPT">⬇ Bajar para otra IA</button></a>
+        <button onclick="conoAbrir()">📂 Abrir carpeta</button>
+        <span class="msg" id="conoMsg"></span>
+      </div>
+      <details style="margin-top:8px"><summary class="aviso" id="conoAprSum">Aprendido de los proyectos</summary>
+        <pre id="conoAprendido" style="white-space:pre-wrap; max-height:22em; overflow:auto; font-size:12px"></pre></details>
+    </section>
   </div>
 
   <div>
@@ -583,7 +611,7 @@ async function cargarProyectos(sel) {
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1396,6 +1424,32 @@ async function acortarRehacer() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify({rehacer: true})}); } catch (e) { return alert(e.message); }
   esperaAcortar = true; refrescar();
 }
+// «🧠 Conocimiento»: mis_conocimientos/CONOCIMIENTO.md (tuyo, editable) y lo aprendido de los proyectos (lo llena la app)
+function pintarConocimiento(r, msg) {
+  $('#conoRutas').innerHTML = `📄 <b>${esc(r.principal)}</b><br>📄 ${esc(r.aprendido_ruta)}`;
+  if (!$('#conoTexto').matches(':focus') || msg !== undefined) $('#conoTexto').value = r.texto;
+  $('#conoUsar').checked = r.usar;
+  $('#conoAprendido').textContent = r.aprendido || 'Todavía nada: contesta las preguntas de la IA en «📝 Ver guion» o pulsa «🧠 Aprender de todos».';
+  const n = Object.values(r.notas || {}).reduce((a, b) => a + b, 0);
+  $('#conoAprSum').textContent = `Aprendido de ${r.proyectos} proyecto(s) · ${n} nota(s) tuyas`;
+  if (msg !== undefined) { $('#conoMsg').className = 'msg ok'; $('#conoMsg').textContent = msg; }
+}
+async function cargarConocimiento() { try { pintarConocimiento(await api('/api/conocimiento')); } catch (e) {} }
+async function conoPost(que, datos, ok) {
+  try { const r = await api('/api/conocimiento/' + que, {method: 'POST', body: JSON.stringify(datos || {})}); pintarConocimiento(r, r.msg || ok || ''); return r; }
+  catch (e) { $('#conoMsg').className = 'msg err'; $('#conoMsg').textContent = e.message; }
+}
+function conoGuardar() { return conoPost('guardar', {texto: $('#conoTexto').value}, '✓ Guardado'); }
+async function conoAnotar() {
+  const texto = $('#conoNota').value.trim();
+  if (!texto) return $('#conoNota').focus();
+  if ($('#conoMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en el texto. ¿Los guardo antes de anotar?')) return;
+  if ($('#conoMsg').textContent === 'Sin guardar') await conoGuardar();
+  if (await conoPost('anotar', {tipo: $('#conoTipo').value, texto}, '✓ Anotado')) $('#conoNota').value = '';
+}
+function conoAprender(todos) { return conoPost('aprender' + (todos ? '' : `?p=${q(P)}`), {todos}); }
+function conoUsar() { return conoPost('usar', {usar: $('#conoUsar').checked}, $('#conoUsar').checked ? '✓ La IA lo va a leer' : 'La IA ya no lo lee'); }
+function conoAbrir() { return conoPost('abrir', {}, ''); }
 async function verPerfil() {
   const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
   if (!t) return alert('Todavía no hay perfil: agrega videos y pulsa «Aprender mi estilo».');
