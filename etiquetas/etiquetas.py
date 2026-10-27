@@ -21,6 +21,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
+sys.path.insert(0, os.path.join(RAIZ, 'capas'))
+import capas  # noqa: E402  con --capa: se pega junto con flechas y tarjetas en una sola pasada
 FPS = 25
 
 
@@ -61,6 +63,7 @@ def main():
     ap.add_argument('--video', required=True)
     ap.add_argument('--salida', required=True)
     ap.add_argument('--desfase', type=float, default=0.3, help='retraso con que se colocó cada bloque de voz')
+    ap.add_argument('--capa', help='solo dibuja y deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
 
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
@@ -87,33 +90,44 @@ def main():
     if not grupos:  # ninguna etiqueta cabe en este guion: el video sigue igual, sin fallar
         print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '
               'Pulsa «Escribir con IA» en etiquetas para hacerlas de nuevo con este guion.')
-        shutil.copyfile(a.video, a.salida)
+        if a.capa:
+            capas.guardar(a.capa, [])
+        else:
+            shutil.copyfile(a.video, a.salida)
         json.dump([], open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'))
         return
     tmp = codificar.temporal('etiquetas')
-    ins, filtros, ultimo = ['-i', a.video], [], '0:v'
+    ins, filtros, ultimo, piezas = ['-i', a.video], [], '0:v', []
     for k, g in enumerate(grupos, 1):
         total = round(g['fin'] - g['ini'], 2)
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
         carpeta = os.path.join(tmp, f'g{k:02d}')
         r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)],
-                           cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace')
+                           cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                           env=codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp')))
         if r.returncode != 0:  # se muestra lo que dijo Node, no solo «exit status 1»
             detalle = ' '.join((r.stderr or r.stdout).split())[-600:]
             if 'playwright' in detalle.lower() and ('cannot find' in detalle.lower() or 'executable' in detalle.lower()):
                 detalle += ' → Falta Playwright: corre instalar.bat (o «npm install» y «npx playwright install chromium» en la carpeta del editor).'
             raise SystemExit(f'ERROR: no pude dibujar las etiquetas con Node: {detalle}')
-        ins += ['-framerate', str(FPS), '-i', os.path.join(carpeta, 'f_%04d.png')]
+        piezas.append({'args': ['-framerate', str(FPS), '-i', os.path.join(carpeta, 'f_%04d.png')],
+                       'pre': f"setpts=PTS+{g['ini']}/TB", 'overlay': '0:0:eof_action=pass'})
+        ins += piezas[-1]['args']
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
         print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']))
+    tiempos = os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json'
+    if a.capa:  # se pega después junto con flechas y tarjetas: una sola codificación
+        capas.guardar(a.capa, piezas, borrar=tmp, crf=20)
+        json.dump(items, open(tiempos, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        return
     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ultimo}]', '-map', '0:a?',
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida],
                    check=True)
     shutil.rmtree(tmp)
-    json.dump(items, open(os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    json.dump(items, open(tiempos, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':

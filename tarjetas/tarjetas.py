@@ -110,6 +110,7 @@ def main():
     ap.add_argument('--tarjetas', required=True)
     ap.add_argument('--srt')
     ap.add_argument('--salida', required=True)
+    ap.add_argument('--capa', help='no codifica: deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
     carpeta = os.path.dirname(os.path.abspath(a.tarjetas))
     datos = json.load(open(a.tarjetas, encoding='utf-8'))
@@ -119,21 +120,29 @@ def main():
     if not plan:
         raise SystemExit('ERROR: no hay tarjetas para poner. Sube imágenes en COMENTARIOS o WHATSAPP.')
 
-    ins, filtros, ult = ['-i', a.video], [], '0:v'
+    ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     margen = round(H * 0.04)
     for k, (t, dur, c, g, por) in enumerate(plan, 1):
         pos = c.get('posicion') if c.get('posicion') in POSICIONES else 'abajo-derecha'
         ancho = round(W * (0.5 if pos == 'centro' else 0.32)) // 2 * 2
-        ins += ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.join(carpeta, os.path.basename(c['archivo']))]
-        filtros.append(f"[{k}:v]format=rgba,scale='min({ancho},iw*{H * 0.42:.0f}/ih)':-2,"
-                       f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={dur - ENTRA:.2f}:d={ENTRA}:alpha=1,"
-                       f"setpts=PTS-STARTPTS+{t}/TB[t{k}]")
         x = {'abajo-derecha': f'W-w-{margen}', 'arriba-derecha': f'W-w-{margen}', 'centro': '(W-w)/2'}.get(pos, str(margen))
         y = {'arriba-derecha': str(margen), 'arriba-izquierda': str(margen), 'centro': '(H-h)/2'}.get(pos, f'H-h-{margen}')
         desliza = f'{round(H * 0.06)}*max(0,1-(t-{t})/{ENTRA})'  # entra subiendo un poco
-        filtros.append(f"[{ult}][t{k}]overlay=x='{x}':y='{y}+{desliza}':eof_action=pass:enable='between(t,{t},{t + dur:.2f})'[v{k}]")
+        piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.abspath(os.path.join(carpeta, os.path.basename(c['archivo'])))],
+                       'pre': f"format=rgba,scale='min({ancho},iw*{H * 0.42:.0f}/ih)':-2,"
+                              f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={dur - ENTRA:.2f}:d={ENTRA}:alpha=1,"
+                              f"setpts=PTS-STARTPTS+{t}/TB",
+                       'overlay': f"x='{x}':y='{y}+{desliza}':eof_action=pass:enable='between(t,{t},{t + dur:.2f})'"})
+        ins += piezas[-1]['args']
+        filtros.append(f"[{k}:v]{piezas[-1]['pre']}[t{k}];[{ult}][t{k}]overlay={piezas[-1]['overlay']}[v{k}]")
         ult = f'v{k}'
         print(f'{g:11s} {t:7.1f}s  {dur:.0f} s  {pos:16s} {c["archivo"]}  ({por})', flush=True)
+    if a.capa:  # se pega después junto con etiquetas y flechas: una sola codificación
+        sys.path.insert(0, os.path.join(RAIZ, 'capas'))
+        import capas
+        capas.guardar(a.capa, piezas, crf=18)
+        print(f'{len(plan)} tarjetas listas para pegar')
+        return
     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                    ['-filter_complex', ';'.join(filtros), '-map', f'[{ult}]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium',
                     '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', a.salida], check=True)

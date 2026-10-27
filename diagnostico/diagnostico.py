@@ -52,12 +52,12 @@ ETAPA_FUNCION = {
 ETAPA_PASO = {
     'transcribir': 3, 'guion_ia': 5, 'ia': 5, 'trailer_ia': 5, 'etiquetas_ia': 5, 'revisar_imagen': 9, 'senales_ia': 1,
     'alimentar': 4, 'acortar': 4, 'voz': 6, 'musica': 6, 'mezclar': 7, 'montaje': 8, 'insertos': 8, 'etiquetas': 8,
-    'senales': 8, 'tarjetas': 8, 'testimonios': 8, 'nuevos_modelos': 8, 'trailer': 8, 'final_sin_trailer': 8,
+    'senales': 8, 'tarjetas': 8, 'capas': 8, 'testimonios': 8, 'nuevos_modelos': 8, 'trailer': 8, 'final_sin_trailer': 8,
     'exportar': 8, 'nube': 8,
 }
 SERVICIO_PASO = {
     'transcribir': 'ElevenLabs Scribe o Whisper', 'voz': 'ElevenLabs', 'musica': 'ElevenLabs', 'mezclar': 'FFmpeg',
-    'montaje': 'FFmpeg', 'insertos': 'FFmpeg', 'etiquetas': 'Remotion', 'senales': 'Remotion', 'tarjetas': 'FFmpeg',
+    'montaje': 'FFmpeg', 'insertos': 'FFmpeg', 'etiquetas': 'Remotion', 'senales': 'Remotion', 'tarjetas': 'FFmpeg', 'capas': 'FFmpeg',
     'testimonios': 'FFmpeg', 'nuevos_modelos': 'ElevenLabs y FFmpeg', 'trailer': 'ElevenLabs, Remotion y FFmpeg',
     'final_sin_trailer': 'FFmpeg', 'exportar': 'FFmpeg',
 }
@@ -264,7 +264,9 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
     elif not base:
         base = {**reg, 'tipo': reg.get('tipo') or 'paso'}
     clase, confirmada, explica = clasificar(base)
-    etapa = (base.get('etapa') or ETAPA_FUNCION.get(base.get('funcion', '')) or ETAPA_PASO.get(paso) or 5)
+    # la función solo dice la etapa si es una llamada a la IA; en un error del programa «main» es cualquier paso
+    de_ia = bool(fallidas) and base.get('tipo') != 'programa'
+    etapa = (base.get('etapa') or (ETAPA_FUNCION.get(base.get('funcion', '')) if de_ia else None) or ETAPA_PASO.get(paso) or 5)
     ia = base.get('proveedor') or SERVICIO_PASO.get(paso) or proveedor or 'desconocido'
     ident = uuid.uuid4().hex[:8]
     datos = {

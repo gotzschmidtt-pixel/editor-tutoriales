@@ -27,6 +27,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from etiquetas import buscar  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'capas'))
+import capas  # noqa: E402  con --capa: se pega junto con etiquetas y tarjetas en una sola pasada
 
 FPS = 25
 
@@ -85,6 +87,7 @@ def main():
     ap.add_argument('--salida')
     ap.add_argument('--desfase', type=float, default=0.3)
     ap.add_argument('--prueba')
+    ap.add_argument('--capa', help='solo dibuja y deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
 
     inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
@@ -127,11 +130,26 @@ def main():
     if a.prueba and not a.salida:
         return
     json.dump(trabajos, open(os.path.join(tmp, 'trabajos.json'), 'w', encoding='utf-8'))
-    env = dict(os.environ)
+    env = codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp'))
     chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
     if os.path.exists(chrome):
         env.setdefault('REMOTION_CHROME', chrome)
-    subprocess.run(['node', 'render_lote.mjs', os.path.join(tmp, 'trabajos.json')], cwd=os.path.join(RAIZ, 'remotion'), env=env, check=True)
+    if trabajos:
+        r = subprocess.run(['node', 'render_lote.mjs', os.path.join(tmp, 'trabajos.json')], cwd=os.path.join(RAIZ, 'remotion'), env=env,
+                           capture_output=True, text=True, encoding='utf-8', errors='replace')
+        print((r.stdout or '') + (r.stderr or ''), flush=True)
+        if r.returncode != 0:  # se muestra lo que dijo Remotion, no solo «returned non-zero exit status 1»
+            detalle = ' '.join((r.stderr or r.stdout or '').split())[-600:]
+            if 'cannot find' in detalle.lower() or 'err_module_not_found' in detalle.lower():
+                detalle += ' → Faltan las piezas de Remotion: corre instalar.bat (o «npm install» dentro de la carpeta remotion).'
+            raise SystemExit(f'ERROR: Remotion no pudo dibujar las flechas y círculos: {detalle}')
+    tiempos = os.path.splitext(a.salida)[0] + '.senales_tiempos.json'
+    if a.capa:  # se pega después junto con etiquetas y tarjetas: una sola codificación
+        capas.guardar(a.capa, [{'args': ['-i', c['archivo']], 'pre': f"setpts=PTS+{c['t']}/TB", 'overlay': '0:0:eof_action=pass'}
+                               for c in colocadas], borrar=tmp, crf=20)
+        json.dump([{k: v for k, v in c.items() if k != 'archivo'} for c in colocadas], open(tiempos, 'w', encoding='utf-8'),
+                  ensure_ascii=False, indent=1)
+        return
 
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, c in enumerate(colocadas, 1):
@@ -143,7 +161,7 @@ def main():
                     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', a.salida], check=True)
     shutil.rmtree(tmp)
     json.dump([{k: v for k, v in c.items() if k != 'archivo'} for c in colocadas],
-              open(os.path.splitext(a.salida)[0] + '.senales_tiempos.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+              open(tiempos, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':

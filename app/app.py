@@ -210,8 +210,16 @@ def linea_tiempo(d):
     return {'base': base, 'duracion': duracion_original(d, base) if base else 0, 'bloques': bloques,
             'etiquetas': etiquetas, 'senales': senales, 'subtitulos': leer_srt(os.path.join(d, '3_voz.srt')) if existe(d, '3_voz.srt') else [],
             'musica': {'volumen': edicion.get('musica_volumen', 0.22), 'fija': os.path.exists(MUSICA_FIJA), 'propia': existe(d, 'musica.mp3')},
-            'extras': [p['id'] for p in PASOS if p['id'] in EXTRAS and existe(d, p['produce']) and p['produce'] != 'FINAL.mp4']
+            'extras': [p['id'] for p in PASOS if p['id'] in EXTRAS and (existe(d, p['produce']) or p['id'] in capas_hechas(d)) and p['produce'] != 'FINAL.mp4']
             + (['trailer'] if existe(d, 'trailer.mp4') else [])}
+
+
+def capas_hechas(d):
+    """Qué extras lleva el video cuando se pegaron juntos en una sola pasada (no queda un mp4 por cada uno)."""
+    try:
+        return json.load(open(os.path.join(d, 'capas_hechas.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
 
 
 def etiquetas_viejas(d):
@@ -336,13 +344,20 @@ def comandos(paso, d, op):
         if op.get('prompt'):
             c += ['--prompt', op['prompt']]
         return [c]
+    # con dos o más de etiquetas, flechas y tarjetas en la tanda, cada uno solo dibuja su capa sobre el video base y
+    # el paso «capas» las pega todas en una sola codificación (antes eran hasta tres)
+    capa = (lambda n: ['--capa', os.path.join(CAPAS_DIR, n + '.json')]) if op.get('_capas') else (lambda n: [])
+    base = (lambda hasta: ultimo_video(d, '5_etiquetas.mp4')) if op.get('_capas') else (lambda hasta: ultimo_video(d, hasta))
     if paso == 'etiquetas':
-        return [[PY, m('etiquetas', 'etiquetas.py')] + g + ['--voz', 'voz', '--etiquetas', 'etiquetas.json', '--video', ultimo_video(d, '5_etiquetas.mp4'), '--salida', '5_etiquetas.mp4']]
+        return [[PY, m('etiquetas', 'etiquetas.py')] + g + ['--voz', 'voz', '--etiquetas', 'etiquetas.json', '--video', base('5_etiquetas.mp4'), '--salida', '5_etiquetas.mp4'] + capa('etiquetas')]
     if paso == 'senales':
-        return [[PY, m('senales', 'senales.py')] + g + ['--voz', 'voz', '--senales', 'senales.json', '--video', ultimo_video(d, '6_senales.mp4'), '--salida', '6_senales.mp4']]
+        return [[PY, m('senales', 'senales.py')] + g + ['--voz', 'voz', '--senales', 'senales.json', '--video', base('6_senales.mp4'), '--salida', '6_senales.mp4'] + capa('senales')]
     if paso == 'tarjetas':
-        return [[PY, m('tarjetas', 'tarjetas.py'), '--video', ultimo_video(d, '7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
-                 '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4']]
+        return [[PY, m('tarjetas', 'tarjetas.py'), '--video', base('7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
+                 '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4'] + capa('tarjetas')]
+    if paso == 'capas':
+        return [[PY, m('capas', 'capas.py'), '--video', ultimo_video(d, '5_etiquetas.mp4'), '--carpeta', CAPAS_DIR,
+                 '--orden', ','.join(f"{x}:{next(p['produce'] for p in PASOS if p['id'] == x)}" for x in CAPAS)]]
     if paso == 'testimonios':
         return [[PY, m('testimonios', 'testimonios.py'), '--video', ultimo_video(d, '8_testimonios.mp4'),
                  '--testimonios', os.path.join('testimonios', 'testimonios.json'), '--srt', '3_voz.srt', '--salida', '8_testimonios.mp4']]
@@ -422,6 +437,7 @@ PASOS = [
     {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True, 'blando': True},
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True, 'blando': True},
     {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True, 'blando': True},
+    {'id': 'capas', 'nombre': 'Pegar etiquetas, flechas y tarjetas (una sola pasada)', 'necesita': [], 'produce': '', 'oculto': True, 'blando': True},
     {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
@@ -442,6 +458,8 @@ TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales
 # «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
 # así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
 EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+CAPAS = ['etiquetas', 'senales', 'tarjetas']  # se pegan juntos en una sola codificación (capas/capas.py)
+CAPAS_DIR = '.capas'
 PRUEBA_GUION = 'guion_prueba.json'  # copia con solo los bloques a probar; guion.json no se toca
 
 
@@ -462,7 +480,7 @@ def guion_de_prueba(d, desde, hasta):
 
 PREPARA_EXTRA = {'etiquetas_ia': 'etiquetas', 'senales_ia': 'senales', 'trailer_ia': 'trailer'}
 VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
-                 '9_modelos.srt', 'trailer.mp4']
+                 '9_modelos.srt', 'trailer.mp4', 'capas_hechas.json']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
@@ -809,7 +827,7 @@ def informe_paso(d, proyecto, paso, info, ejec, estado, log):
         return None
 
 
-VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4',
+VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', 'capas_hechas.json',
                     '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4',
                     'prueba_montaje.mp4', 'prueba_bloques.mp4', 'prueba_bloques.srt']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
@@ -904,6 +922,14 @@ def correr(proyecto, pasos, opciones):
             for viejo in VIDEOS_EXTRAS + ['FINAL.mp4']:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
+        juntas = [x for x in pasos if x in CAPAS]
+        if len(juntas) > 1:  # una sola codificación para etiquetas, flechas y tarjetas
+            if 'capas' not in pasos:
+                pasos.insert(pasos.index(juntas[-1]) + 1, 'capas')
+            opciones['_capas'] = True
+            shutil.rmtree(os.path.join(d, CAPAS_DIR), ignore_errors=True)  # capas de una tanda anterior no se cuelan
+            with CANDADO:
+                TRABAJO['plan'] = [next(x['nombre'] for x in PASOS if x['id'] == p) for p in pasos]
         for k, paso in enumerate(pasos):
             info = next(x for x in PASOS if x['id'] == paso)
             with CANDADO:
@@ -1066,7 +1092,7 @@ def estado(proyecto):
         for f, info in archivos.items():
             if f.endswith('.mp4') and f != 'montaje_en_curso.mp4' and (f in prod or ahora - info['fecha'] < 8):
                 info['en_proceso'] = True
-    return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
+    return {'archivos': archivos, 'capas_hechas': capas_hechas(d), 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto),
             'resultado': RESULTADO.get(proyecto),
             'musica_fija': (leer_ajustes().get('musica_fija_de') or 'una pista guardada') if os.path.exists(MUSICA_FIJA) else '',
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,

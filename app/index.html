@@ -1788,8 +1788,9 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
   const e = await api(`/api/estado?p=${q(P)}`);
   if (!e.archivos['4_musica.mp4']) return alert('Primero haz el video con «▶ Hacer todo» (pestaña 🎬 Video). Cuando el guion te guste, le metes el material extra.');
   const solo = [];
-  if (e.archivos['5_etiquetas.mp4']) solo.push('etiquetas');  // lo que ya tenía el video se conserva
-  if (e.archivos['6_senales.mp4']) solo.push('senales');
+  const juntas = e.capas_hechas || [];  // pegadas en una sola pasada: no queda un video por cada una
+  if (e.archivos['5_etiquetas.mp4'] || juntas.includes('etiquetas')) solo.push('etiquetas');  // lo que ya tenía el video se conserva
+  if (e.archivos['6_senales.mp4'] || juntas.includes('senales')) solo.push('senales');
   if (Object.values(TARJ).some(l => l.length)) solo.push('tarjetas');
   if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
   if (MODS.MODELOS.length) solo.push('nuevos_modelos');

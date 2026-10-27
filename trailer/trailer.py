@@ -127,12 +127,14 @@ def main():
         ff(ins + ['-filter_complex', ';'.join(filtros), '-map', '[a]', '-ar', '48000', os.path.join(PUB, 'audio.wav')])
         props['audio'] = 'trailer/audio.wav'
 
-    env = dict(os.environ)
+    tmp_node = codificar.temporal('trailer_node')
+    env = codificar.env_temporal(os.environ, tmp_node)
     chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
     if os.path.exists(chrome):
         env.setdefault('REMOTION_CHROME', chrome)
     subprocess.run([shutil.which('npx') or 'npx', 'remotion', 'render', 'src/index.ts', 'Trailer', os.path.abspath(a.salida),
                     '--props', json.dumps(props), '--crf', '18'], cwd=REMOTION, env=env, check=True)
+    shutil.rmtree(tmp_node, ignore_errors=True)
 
     if a.unir and a.final:
         n = duracion(a.salida)

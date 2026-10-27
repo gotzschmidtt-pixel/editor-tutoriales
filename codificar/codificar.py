@@ -163,6 +163,13 @@ if __name__ == '__main__':  # la app lo usa como envoltorio: python codificar.py
     sys.exit(run(sys.argv[1:]).returncode)
 
 
+def env_temporal(env, carpeta):
+    """Node (Remotion, Playwright) y su propio ffmpeg escriben en %TEMP%; en algunas PC el antivirus o el «acceso
+    controlado a carpetas» lo niega («Permission denied») y el paso se cae. Se les da una carpeta dentro del proyecto."""
+    os.makedirs(carpeta, exist_ok=True)
+    return dict(env, TEMP=os.path.abspath(carpeta), TMP=os.path.abspath(carpeta), TMPDIR=os.path.abspath(carpeta))
+
+
 def temporal(prefijo):
     """Carpeta para los tramos de un paso, dentro del proyecto (la carpeta actual) y no en %TEMP%: el ffmpeg de NVIDIA no
     puede escribir en %TEMP% en algunas PC («Permission denied») y todo el paso caía al procesador. Borra restos de antes."""
