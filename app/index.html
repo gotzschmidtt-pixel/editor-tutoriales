@@ -127,6 +127,8 @@
   #barra .chip.mal { background: #ff4d6d22; color: var(--rojo); }
   #barra button { padding: 5px 10px; font-size: 12px; }
   body.con-barra { padding-bottom: 120px; }
+  .voz-vieja { background: #ff4d6d22; border: 1px solid var(--rojo); color: #ffc2cc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+  .voz-vieja b { color: var(--rojo); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
 </style>
 </head>
@@ -178,6 +180,7 @@
 
     <section class="panel">
       <h2>2 · Pasos</h2>
+      <div id="vozVieja" class="voz-vieja" hidden></div>
       <div id="pasos"></div>
       <div class="fila">
         <button class="principal grande" id="todo" title="Arma el video: voz, cortes, subtítulos y música. Los extras se agregan después, cuando el guion te guste.">▶ Hacer todo</button>
@@ -767,9 +770,9 @@ function pintarSalidas(arch) {
     const fuente = arch['FINAL.mp4'] && (!paso || arch['FINAL.mp4'].fecha >= arch[paso].fecha) ? 'FINAL.mp4' : paso || armado;
     const lista = h => arch[`FINAL_${h}p.mp4`] && !arch[`FINAL_${h}p.mp4`].en_proceso && arch[`FINAL_${h}p.mp4`].fecha >= arch[fuente].fecha;
     const marcadas = new Set([...document.querySelectorAll('#calidades input:checked')].map(i => i.value));
-    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
+    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}" onclick="return seguirConVozVieja()"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
       ['1080', '720', '480', '360'].map(h => lista(h)
-        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download><button class="principal">⬇ ${h}p</button></a>`
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download onclick="return seguirConVozVieja()"><button class="principal">⬇ ${h}p</button></a>`
         : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ');
     if ($('#calidades').dataset.html !== html) {  // solo se repinta si cambió: así no se pierde un clic en las casillas
       $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
@@ -781,10 +784,25 @@ function pintarSalidas(arch) {
     }
   }
 }
+// cambiaste el guion y no volviste a «Generar voz»: el video que exportes lleva la voz del guion anterior
+let VOZ_VIEJA = null;
+function pintarVozVieja(v) {
+  VOZ_VIEJA = v;
+  const b = $('#vozVieja');
+  b.hidden = !v;
+  if (v) b.innerHTML = `⚠ <b>El guion cambió y la voz es vieja.</b> ${v.bloques.length} bloque(s) (${esc(v.bloques.slice(0, 8).join(', '))}` +
+    `${v.bloques.length > 8 ? '…' : ''}) tienen una voz hecha con otro texto. El video armado todavía dice el guion anterior. ` +
+    `Pulsa «▶ Hacer todo» para hacer su voz (${v.caracteres} caracteres de ElevenLabs) antes de exportar.`;
+}
+function seguirConVozVieja() {
+  return !VOZ_VIEJA || confirm(`⚠ El guion cambió y la voz es vieja: ${VOZ_VIEJA.bloques.length} bloque(s) no tienen la voz de su texto nuevo.\n\n` +
+    'El video que bajes todavía dice el guion anterior. ¿Lo bajas igual?');
+}
 const PEND_DESCARGA = new Set();
 async function exportar() {
   const alturas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
   if (!alturas.length) return alert('Marca al menos una calidad (las que ya están listas se descargan con su botón).');
+  if (!seguirConVozVieja()) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas})}); } catch (e) { alert(e.message); return; }
   alturas.forEach(h => PEND_DESCARGA.add(h));
   refrescar();
@@ -1886,7 +1904,7 @@ async function reiniciarApp() {
 async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
-  pintarSubidas(e.archivos); pintarMusicaFija(e); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  pintarSubidas(e.archivos); pintarMusicaFija(e); pintarVozVieja(e.voz_vieja); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
   if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
   if (PAGINA === null) PAGINA = e.pagina;

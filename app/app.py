@@ -1080,6 +1080,30 @@ def causa(d):
     return utiles[-1] if utiles else 'sin detalle'
 
 
+VOZ_VIEJA = {}  # carpeta -> (firma de guion.json y voz/, resultado): estado() se pide cada segundo
+
+
+def voz_vieja(d):
+    """Bloques del guion cuya voz ya hecha es de otro texto (cambiaste el guion y no volviste a «Generar voz»).
+    Solo si ya hay voces: en un proyecto sin voz todavía no hay nada viejo. No llama a ElevenLabs."""
+    g, v = os.path.join(d, 'guion.json'), os.path.join(d, 'voz')
+    mp3 = [f for f in os.listdir(v) if f.endswith('.mp3')] if os.path.isdir(v) else []
+    if not mp3 or not os.path.exists(g):
+        return None
+    firma = (os.path.getmtime(g), len(os.listdir(v)), max(os.path.getmtime(os.path.join(v, f)) for f in os.listdir(v)))
+    if VOZ_VIEJA.get(d, (None,))[0] == firma:
+        return VOZ_VIEJA[d][1]
+    try:
+        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', g, '--salida', v, '--costo'],
+                           capture_output=True, text=True, encoding='utf-8', timeout=60, **SIN_VENTANA)
+        res = json.loads(r.stdout.strip().splitlines()[-1])
+        res = res if res.get('bloques') else None
+    except (ValueError, IndexError, subprocess.TimeoutExpired):
+        res = None
+    VOZ_VIEJA[d] = (firma, res)
+    return res
+
+
 def estado(proyecto):
     d = carpeta(proyecto)
     archivos = {}
@@ -1126,7 +1150,8 @@ def estado(proyecto):
             'musica_fija': (leer_ajustes().get('musica_fija_de') or 'una pista guardada') if os.path.exists(MUSICA_FIJA) else '',
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,
             'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
-            'duracion_original': duracion_original(d)}
+            'duracion_original': duracion_original(d),
+            'voz_vieja': None if t['proyecto'] == proyecto else voz_vieja(d)}
 
 
 class Manejador(BaseHTTPRequestHandler):
