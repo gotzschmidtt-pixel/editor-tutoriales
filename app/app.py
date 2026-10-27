@@ -397,7 +397,10 @@ def comandos(paso, d, op):
         alturas = [int(x) for x in (op.get('alturas') or [op.get('altura', 480)])]
         if not alturas or any(h not in (1080, 720, 480, 360) for h in alturas):
             raise ValueError('calidad no válida')
-        fuente = 'FINAL.mp4' if existe(d, 'FINAL.mp4') else ultimo_video(d, None)  # sin FINAL, el video más avanzado que haya
+        # FINAL.mp4, o el video más avanzado si no hay FINAL o si es más nuevo (extras puestos después del final)
+        ultimo = ultimo_video(d, None)
+        fuente = 'FINAL.mp4' if existe(d, 'FINAL.mp4') and (not ultimo or os.path.getmtime(os.path.join(d, 'FINAL.mp4'))
+                                                            >= os.path.getmtime(os.path.join(d, ultimo))) else ultimo
         if not fuente:
             raise RuntimeError('Todavía no hay video armado para exportar. Pulsa «▶ Hacer todo».')
         # se escribe con otro nombre y se renombra al final: así nadie descarga un archivo a medio hacer (no se abriría)
@@ -1375,6 +1378,8 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x['id'] for x in PASOS if x['id'] in CAPAS and all(existe(d0, n) for n in x['necesita'])]
                     if not pasos:
                         return self.error('Todavía no hay etiquetas, flechas ni tarjetas que poner.')
+                    if not existe(d0, 'trailer.mp4'):  # el FINAL.mp4 (lo que se descarga) también las lleva; con tráiler, «✨ Agregar extras»
+                        pasos.append('final_sin_trailer')
                 extras = q['paso'] == 'extras'
                 if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos
                     if not existe(carpeta(q['p']), '4_musica.mp4'):

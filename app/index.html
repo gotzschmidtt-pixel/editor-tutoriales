@@ -762,7 +762,9 @@ function pintarSalidas(arch) {
     extras.map(f => `<button onclick="window.open('/archivo?p=${q(P)}&f=${f}')">📄 ${f}</button>`).join('');
   $('#exportar').hidden = !armado;
   if (armado) {  // cada calidad: lista si su archivo es más nuevo que el video del que sale
-    const fuente = arch['FINAL.mp4'] ? 'FINAL.mp4' : armado;
+    // FINAL.mp4 más viejo que el último video armado (pusiste extras después): se baja el más nuevo, que los lleva
+    const paso = AVANCE.slice(1, -1).reverse().find(v => hay.includes(v));
+    const fuente = arch['FINAL.mp4'] && (!paso || arch['FINAL.mp4'].fecha >= arch[paso].fecha) ? 'FINAL.mp4' : paso || armado;
     const lista = h => arch[`FINAL_${h}p.mp4`] && !arch[`FINAL_${h}p.mp4`].en_proceso && arch[`FINAL_${h}p.mp4`].fecha >= arch[fuente].fecha;
     const marcadas = new Set([...document.querySelectorAll('#calidades input:checked')].map(i => i.value));
     const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
