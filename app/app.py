@@ -404,9 +404,10 @@ def comandos(paso, d, op):
         return [c]
     if paso == 'alimentar':
         return [[PY, m('alimentacion', 'alimentacion.py'), '--estilo', carpeta_estilo(op.get('estilo')), '--ajustes', AJUSTES]]
-    if paso == 'exportar':  # una o varias calidades a la vez (cada una queda como FINAL_<altura>p.mp4)
-        alturas = [int(x) for x in (op.get('alturas') or [op.get('altura', 480)])]
-        if not alturas or any(h not in (1080, 720, 480, 360) for h in alturas):
+    if paso == 'exportar':  # una o varias calidades a la vez (cada una queda como FINAL_<altura>p.mp4); y, si se pide, solo el audio en FINAL.mp3
+        alturas = [int(x) for x in (op.get('alturas') or ([] if op.get('mp3') else [op.get('altura', 480)]))]
+        quiere_mp3 = bool(op.get('mp3'))
+        if any(h not in (1080, 720, 480, 360) for h in alturas) or (not alturas and not quiere_mp3):
             raise ValueError('calidad no válida')
         # FINAL.mp4, o el video más avanzado si no hay FINAL o si es más nuevo (extras puestos después del final)
         ultimo = ultimo_video(d, None)
@@ -421,6 +422,9 @@ def comandos(paso, d, op):
                       '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4',
                       f'FINAL_{h}p.mp4.parcial'])
             c.append([PY, '-c', f'import os; os.replace("FINAL_{h}p.mp4.parcial", "FINAL_{h}p.mp4")'])
+        if quiere_mp3:  # solo el audio del video (voz + música), en mp3; sin recodificar el video
+            c.append(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-f', 'mp3', 'FINAL.mp3.parcial'])
+            c.append([PY, '-c', 'import os; os.replace("FINAL.mp3.parcial", "FINAL.mp3")'])
         return c
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)

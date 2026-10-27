@@ -799,18 +799,23 @@ function pintarSalidas(arch) {
     const paso = AVANCE.slice(1, -1).reverse().find(v => hay.includes(v));
     const fuente = arch['FINAL.mp4'] && (!paso || arch['FINAL.mp4'].fecha >= arch[paso].fecha) ? 'FINAL.mp4' : paso || armado;
     const lista = h => arch[`FINAL_${h}p.mp4`] && !arch[`FINAL_${h}p.mp4`].en_proceso && arch[`FINAL_${h}p.mp4`].fecha >= arch[fuente].fecha;
+    const mp3Listo = arch['FINAL.mp3'] && !arch['FINAL.mp3'].en_proceso && arch['FINAL.mp3'].fecha >= arch[fuente].fecha;
     const marcadas = new Set([...document.querySelectorAll('#calidades input:checked')].map(i => i.value));
     const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download title="${fuente}" onclick="return seguirConVozVieja()"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
       ['1080', '720', '480', '360'].map(h => lista(h)
         ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download onclick="return seguirConVozVieja()"><button class="principal">⬇ ${h}p</button></a>`
-        : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ');
+        : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ') + ' ' +
+      (mp3Listo
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp3" download onclick="return seguirConVozVieja()"><button class="principal">⬇ 🎵 Solo audio (MP3)</button></a>`
+        : `<label class="aviso" title="Solo el audio del video (voz y música), en mp3"><input type="checkbox" value="mp3"> 🎵 Solo audio (MP3)</label>`);
     if ($('#calidades').dataset.html !== html) {  // solo se repinta si cambió: así no se pierde un clic en las casillas
       $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
       $('#calidades').querySelectorAll('input').forEach(i => i.checked = marcadas.has(i.value));
     }
-    for (const h of [...PEND_DESCARGA]) if (lista(h)) {  // terminó de prepararse: se descarga sola
+    for (const h of [...PEND_DESCARGA]) if (h === 'mp3' ? mp3Listo : lista(h)) {  // terminó de prepararse: se descarga solo
       PEND_DESCARGA.delete(h);
-      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=FINAL_${h}p.mp4`; a.download = `FINAL_${h}p.mp4`; a.click();
+      const f = h === 'mp3' ? 'FINAL.mp3' : `FINAL_${h}p.mp4`;
+      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=${f}`; a.download = f; a.click();
     }
   }
 }
@@ -830,11 +835,14 @@ function seguirConVozVieja() {
 }
 const PEND_DESCARGA = new Set();
 async function exportar() {
-  const alturas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
-  if (!alturas.length) return alert('Marca al menos una calidad (las que ya están listas se descargan con su botón).');
+  const marcas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
+  const alturas = marcas.filter(v => v !== 'mp3');
+  const mp3 = marcas.includes('mp3');
+  if (!alturas.length && !mp3) return alert('Marca al menos una calidad o «Solo audio (MP3)» (lo que ya está listo se descarga con su botón).');
   if (!seguirConVozVieja()) return;
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas})}); } catch (e) { alert(e.message); return; }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas, mp3})}); } catch (e) { alert(e.message); return; }
   alturas.forEach(h => PEND_DESCARGA.add(h));
+  if (mp3) PEND_DESCARGA.add('mp3');
   refrescar();
 }
 function ver(f, seguir, tocar) {
