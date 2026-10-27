@@ -566,6 +566,11 @@ pregunta lo que no te quede claro (tipo "dato": cuál es la pantalla del problem
 un clip muestra algo privado) y propón ideas para que enganche más (tipo "mejora": otro gancho para el título, terminar en
 el resultado, una toma que podría ir). Cada una con 2 o 3 opciones concretas, por ejemplo {{"tipo": "mejora",
 "pregunta": "¿El título habla del modelo o del problema?", "opciones": ["iPhone sin cuenta en 5 min", "Adiós al bloqueo"]}}.
+SIEMPRE, además, UNA PREGUNTA POR FASE (ANTES, DURANTE y DESPUÉS), con "fase" puesta, para que el autor confirme lo que
+elegiste: qué muestra la toma, en qué segundo del original, y si su duración está bien. Di los segundos y ofrece opciones
+concretas, por ejemplo {{"tipo": "dato", "fase": "ANTES", "pregunta": "Para el ANTES elegí la pantalla Hello en 0:12, 1,6 s.
+¿Está bien?", "opciones": ["Está bien", "Más corta (1,2 s)", "Más larga (2,4 s)", "Otra toma"]}}. Y una sobre el largo total
+del tráiler (di cuántos segundos suma) con opciones como «Está bien», «Más corto» y «Más largo».
 Responde SOLO con el objeto JSON, con "preguntas" dentro."""]
         resp = respuestas_trailer(d)
         if resp:
@@ -2476,6 +2481,9 @@ def normalizar_preguntas(lista):
             out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
                         'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
+            fase = normal(str(x.get('fase') or '')).upper()  # tráiler: la pregunta de cada fase (ANTES, DURANTE, DESPUÉS)
+            if fase in ('ANTES', 'DURANTE', 'DESPUES'):
+                out[-1]['fase'] = {'DESPUES': 'DESPUÉS'}.get(fase, fase)
     return [x for x in out if x['tipo'] == 'dato'][:PREGUNTAS_MAX] + [x for x in out if x['tipo'] == 'mejora'][:MEJORAS_MAX]
 
 

@@ -161,9 +161,12 @@ async function verPreguntas() {  // preguntas_trailer.json: lo que la IA no vio 
     <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
   const todas = PREGUNTAS.map((x, k) => [x, k]);
   const pend = todas.filter(([x]) => !String(x.respuesta || '').trim()), hechas = todas.length - pend.length;
-  const datos = todas.filter(([x]) => x.tipo !== 'mejora'), ideas = todas.filter(([x]) => x.tipo === 'mejora');
+  const porFase = FASES.map(([f, nombre]) => [nombre, todas.filter(([x]) => fase(x.fase) === f)]).filter(([, l]) => l.length);
+  const sinFase = todas.filter(([x]) => !x.fase);
+  const datos = sinFase.filter(([x]) => x.tipo !== 'mejora'), ideas = sinFase.filter(([x]) => x.tipo === 'mejora');
   $('#preguntas').innerHTML = !todas.length ? '' : `<details class="panel preg"${pend.length ? ' open' : ''}><summary>❓ La IA te pregunta sobre el tráiler (${pend.length} sin contestar${hechas ? `, ${hechas} contestadas` : ''})</summary>
     <p class="msg">Elige una opción o escribe la respuesta. Las vacías no cambian nada. Con «Rehacer» la IA vuelve a proponer el tráiler con tus respuestas.</p>
+    ${porFase.map(([nombre, l]) => `<p><b>${nombre}: ¿la toma y su duración están bien?</b></p>${l.map(una).join('')}`).join('')}
     ${datos.length ? `<p><b>Lo que no le quedó claro</b></p>${datos.map(una).join('')}` : ''}
     ${ideas.length ? `<p><b>💡 Ideas para que enganche más</b></p>${ideas.map(una).join('')}` : ''}
     <div class="acciones"><button class="principal" onclick="responder()" title="Guarda tus respuestas y la IA de la app vuelve a proponer el tráiler con ellas (gasta un pedido a la IA)">✨ Rehacer con mis respuestas</button>
@@ -209,7 +212,8 @@ function pintar() {
     <label>¿Dónde va?<select id="donde"><option value="inicio">⏮ Al inicio (abre el video)</option><option value="final">⏭ Al final (cierra el video)</option></select></label></div></div>`;
   for (const [f, nombre, ayuda] of FASES) {
     const lista = T.clips.map((c, i) => [c, i]).filter(([c]) => fase(c.fase) === f);
-    h += `<div class="fase"><h2>${nombre}</h2><span class="aviso">${ayuda}</span><span class="espacio"></span><button onclick="agregar('${f}')">+ Toma</button></div>`;
+    const seg = lista.reduce((a, [c]) => a + (+c.dur || 0), 0);
+    h += `<div class="fase"><h2>${nombre}</h2><span class="aviso">${lista.length} toma${lista.length === 1 ? '' : 's'} · ${seg.toFixed(1).replace(".", ",")} s · ${ayuda}</span><span class="espacio"></span><button onclick="agregar('${f}')">+ Toma</button></div>`;
     h += lista.length ? lista.map(([c, i]) => clip(c, i)).join('') : '<p class="vacio">Sin tomas en esta fase.</p>';
   }
   $('#plan').innerHTML = h;
