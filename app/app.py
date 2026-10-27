@@ -1209,6 +1209,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/ejecutar':
                 datos = json.loads(self.rfile.read(largo) or b'{}')
+                if datos.get('motor') == 'auto':  # Scribe si hay clave de ElevenLabs (unos centavos, mucho más preciso); si no, Whisper
+                    datos['motor'] = 'scribe' if clave_eleven() else 'whisper'
                 pasos = [q['paso']]
                 extras = q['paso'] == 'extras'
                 if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos

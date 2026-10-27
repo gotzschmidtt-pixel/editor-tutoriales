@@ -6,8 +6,9 @@ sus mismos pasos y parámetros. Este script habla con la app (http://localhost:8
 
 Uso (desde la carpeta editor-tutoriales):
   python deepseek/video.py preparar "C:\\ruta\\video.mp4" --nombre "Mi video" [--idea "datos seguros del video"]
-      crea el proyecto, sube el video, transcribe con Whisper (gratis), y deja el encargo del guion:
-      ia_prompt_guion.txt, ia_capturas/ (capturas, mapa y hojas) y hojas_2s/ (un cuadro cada 2 s, 30 por hoja)
+      crea el proyecto, sube el video, transcribe (Scribe si la app tiene la clave de ElevenLabs; si no, Whisper) y deja el encargo:
+      ia_prompt_guion.txt, ia_capturas/ (capturas, mapa y hojas), hojas_2s/ (un cuadro cada 2 s, 30 por hoja) y acciones/
+      (cuadros grandes cada 0,5 s donde el autor dice que hace algo)
   python deepseek/video.py entregar guion respuesta.json --nombre "Mi video"
       la app corrige el guion (tiempos, largo, orden) y lo guarda en guion.json; muestra el resumen y los avisos
   python deepseek/video.py preguntas [trailer] --nombre "Mi video"
@@ -24,7 +25,7 @@ Uso (desde la carpeta editor-tutoriales):
 
 No usa claves: la app las lee de app/ajustes.json, que este script nunca abre ni muestra.
 """
-import argparse, hashlib, json, os, shutil, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = f"http://localhost:{os.environ.get('PUERTO', 8765)}"
@@ -124,6 +125,58 @@ def hojas_2s(d):
         if r.returncode:  # un ffmpeg sin fuentes para escribir el segundo: la hoja sale igual (cuadro k = segundo ini + 2k)
             subprocess.run(base + ['-vf', 'fps=1/2,scale=320:-1,tile=6x5', '-frames:v', '1', f], check=True)
     return out, hechas
+
+
+# palabras con las que el autor narra una ACCIÓN (sin tildes): ahí se mira con detalle, porque es justo lo que el mapa
+# (que marca cuándo cambia la pantalla, o sea el resultado) y las miniaturas de 320 px no muestran bien
+ACCION = re.compile(r'^(presion|aprie|puls|power|volum|vol$|clic|click|dale|damos|toca|toque|exit$|recov|dfu|conect|descon|'
+                    r'solt|suelt|manten|boton|bypas|start|reini|enviam|peg|escri|ingres|selec|elij|elegi|abri|abre|cerr|'
+                    r'instal|flash|cable|parpad)')
+
+
+def hojas_acciones(d, antes=2.0, despues=4.0, paso=0.5, ancho=480, maximo=80):
+    """Donde el autor dice que hace algo («presiono», «power», «le damos clic», «exit», «DFU»): un cuadro cada medio
+    segundo, a 480 px, de 2 s antes a 4 s después, en una hoja de 4 × 3 con el segundo escrito. Así la IA ve la acción
+    con detalle. Gratis: sale de la transcripción y de ffmpeg. Deja acciones/acciones.txt con qué dice en cada hoja."""
+    try:
+        palabras = json.load(open(os.path.join(d, 'transcripcion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return None, 0
+    def normal(x):
+        return ''.join(c for c in unicodedata.normalize('NFD', str(x).lower()) if unicodedata.category(c) != 'Mn')
+    momentos = []
+    for w in palabras:
+        if ACCION.match(re.sub(r'[^a-z0-9]', '', normal(w.get('texto', '')))):
+            t = float(w['inicio'])
+            if momentos and t - momentos[-1][1] <= despues:  # varias palabras de la misma acción: una sola hoja más larga
+                momentos[-1][1] = t
+            else:
+                momentos.append([t, t])
+    out = os.path.join(d, 'acciones')
+    os.makedirs(out, exist_ok=True)
+    indice = []
+    for k, (t0, t1) in enumerate(momentos[:maximo], 1):
+        ini = max(0.0, t0 - antes)
+        largo = min(t1 + despues, ini + 12 * paso * 2) - ini  # hasta 2 hojas de 12 cuadros por acción
+        dicho = ' '.join(w['texto'] for w in palabras if t0 - 3 <= float(w['inicio']) <= t1 + 3)
+        for h in range(int(largo // (12 * paso)) + (1 if largo % (12 * paso) else 0)):
+            a = ini + h * 12 * paso
+            nombre = f'accion_{k:02d}_{int(a) // 60}m{int(a) % 60:02d}s{"" if h == 0 else "_b"}.jpg'
+            f = os.path.join(out, nombre)
+            if not os.path.exists(f):
+                texto = "%{eif\\:t+" + f'{a:.1f}' + "\\:d}s"  # el segundo entero de la grabación
+                base = ['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{a:.2f}', '-t', f'{12 * paso:.2f}', '-i',
+                        os.path.join(d, 'original.mp4')]
+                r = subprocess.run(base + ['-vf', f"fps={1 / paso},scale={ancho}:-1,drawtext=text='{texto}':x=6:y=6:fontsize=26:"
+                                                  "fontcolor=yellow:box=1:boxcolor=black,tile=4x3", '-frames:v', '1', f], capture_output=True)
+                if r.returncode:
+                    subprocess.run(base + ['-vf', f'fps={1 / paso},scale={ancho}:-1,tile=4x3', '-frames:v', '1', f], capture_output=True)
+            if os.path.exists(f):
+                indice.append(f'{int(a) // 60}:{int(a) % 60:02d}–{int(a + 12 * paso) // 60}:{int(a + 12 * paso) % 60:02d}  {nombre}  «{dicho}»')
+    open(os.path.join(out, 'acciones.txt'), 'w', encoding='utf-8').write(
+        'Hojas de acciones: 12 cuadros cada medio segundo (de izquierda a derecha y de arriba abajo), donde el autor dice\n'
+        'que hace algo. Busca aquí el segundo exacto de la ACCIÓN (no del resultado en pantalla).\n\n' + '\n'.join(indice) + '\n')
+    return out, len(indice)
 
 
 def resumen_guion(d):
@@ -255,14 +308,21 @@ def main():
         if a.idea:
             api('/api/json', cuerpo=a.idea.encode('utf-8'), p=p, f='idea.txt')
         if not os.path.exists(os.path.join(d, 'transcripcion.srt')):
-            print('Transcribo con Whisper en esta PC (no gasta créditos)…', flush=True)
-            correr(p, 'transcribir', {'motor': 'whisper'})
+            # Scribe de ElevenLabs si la app tiene la clave (unos $0,05 por video de 14 min): en IOS27_FRP acertó DFU, ECID,
+            # 3uTools y Bypass Hello Screen, que Whisper escribía mal y corrían los tramos. Sin clave, Whisper en esta PC.
+            print('Transcribo tu voz (ElevenLabs Scribe si la app tiene la clave; si no, Whisper en esta PC)…', flush=True)
+            correr(p, 'transcribir', {'motor': 'auto'})
         print('Armo el encargo del guion (capturas, mapa del video y hojas)…', flush=True)
         correr(p, 'ia', {'tarea': 'guion', 'modo': 'prompt'})
         out, n = hojas_2s(d)
+        print('Saco cuadros grandes donde dices que haces algo (presiono, power, clic, exit, DFU…)…', flush=True)
+        out_ac, n_ac = hojas_acciones(d)
         print(f'\nLISTO. Lee en este orden:\n  1. {os.path.join(d, "ia_prompt_guion.txt")}  (el encargo exacto: reglas, '
               f'transcripción, mapa)\n  2. las imágenes de {os.path.join(d, "ia_capturas")} (y su carpeta hojas)\n'
               f'  3. las {n} hojas de {out} (un cuadro cada 2 s, con el segundo escrito)\n'
+              + (f'  4. {os.path.join(out_ac, "acciones.txt")} y sus {n_ac} hojas de acciones (cuadros grandes cada 0,5 s donde '
+                 'dices que haces algo): de ahí sale el segundo exacto de cada acción\n' if n_ac else '')
+              + 
               'Cumple las REGLAS DEL AUTOR de AGENTS.md (eventos y ve_inicio/ve_fin). Escribe el JSON {"eventos": [...], "bloques": [...], "preguntas": [...]} en un archivo y entrégalo con:\n'
               f'  python deepseek/video.py entregar guion respuesta.json --nombre "{p}"')
 

@@ -69,6 +69,8 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
 2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,
    se abre el programa, se conecta el cable, se pega la key, se pulsa el botón, reinicio, pantalla de inicio.
+   Después abre `acciones/acciones.txt` y sus hojas: son cuadros grandes cada medio segundo donde el autor dice que hace
+   algo («presiono», «power», «clic», «exit», «DFU»). De ahí sale el **segundo exacto de cada acción** (regla 6).
 3. **Escribir el guion**: primero cumple las **REGLAS DEL AUTOR** de arriba de todo (la lista de eventos en
    `eventos_pantalla.txt` y los bloques cortados por evento). Después sigue `ia_prompt_guion.txt` y la PARTE B. Guárdalo en
    `mis_proyectos/NOMBRE/respuesta_guion.json`, con `"ve_inicio"` y `"ve_fin"` en cada bloque.
@@ -116,7 +118,7 @@ datos del autor en `idea.txt` y trabaja SIEMPRE dentro de esa carpeta (todos los
 
 | # | Qué | Comando | ¿Gasta? |
 |---|---|---|---|
-| 1 | Transcribir (texto con tiempos por palabra) | `python R\transcripcion\transcribir.py --video original.mp4 --salida transcripcion --motor whisper` | No (Whisper, en la PC) |
+| 1 | Transcribir (texto con tiempos por palabra) | `python R\transcripcion\transcribir.py --video original.mp4 --salida transcripcion --motor scribe` (si falla por la clave: `--motor whisper`) | Scribe: unos $0,05 por video de 14 min (acierta DFU, ECID, 3uTools); Whisper: gratis pero se equivoca más |
 | 2 | Capturas nítidas, mapa del video (OCR de cada pantalla) y el encargo exacto del guion | `python R\ia\ia.py --proyecto . --tarea guion --modo prompt --ajustes R\app\ajustes.json` → `ia_prompt_guion.txt`, `ia_capturas\`, `mapa_video.json` | No |
 | 3 | Hojas de un cuadro cada 2 s (método Claude) | el comando ffmpeg de B10, una hoja por minuto, en `hojas_2s\` | No |
 | 4 | **Tú:** mirar todo y escribir el guion | lees `ia_prompt_guion.txt`, todas las hojas y capturas; escribes `respuesta_guion.json` y repasas la lista A4 | Tus tokens |
