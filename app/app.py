@@ -672,6 +672,9 @@ def guardar_como(d, nota=''):
         for a, _, xs in os.walk(src):
             for x in xs:
                 z.write(os.path.join(a, x), os.path.relpath(os.path.join(a, x), src))
+        if os.path.exists(MUSICA_FIJA) and not os.path.exists(os.path.join(src, 'musica.mp3')):
+            # la música fija vive fuera del proyecto: va como música propia, para que en otra PC suene la misma
+            z.write(MUSICA_FIJA, 'musica.mp3')
     return destino
 
 
