@@ -42,7 +42,8 @@ def audio(video):
 PALABRAS_CLAVE = ['modo DFU', 'DFU', 'modo Recovery', 'Exit Recovery', '3uTools', 'iTunes', 'ECID', 'Ramdisk', 'Boot Ramdisk',
                   'Bypass Hello Screen', 'Hello Screen', 'iCloud', 'FRP', 'FRP Files', 'UnlockTool', 'IMEI', 'SSH', 'payload',
                   'Waveshare RP2350', 'Raspberry Pi Pico', 'AliExpress', 'xiaomiunlock.com', 'App Store', 'Face ID',
-                  'iPhone', 'Xiaomi', 'Honor', 'PWN']
+                  'iPhone', 'Xiaomi', 'Honor', 'PWN', 'Motorola', 'Samsung', 'fastboot', 'modo fastboot', 'ADB',
+                  'cuenta Google', 'parche de seguridad', 'Easy-Unlocker']
 
 
 def palabras_clave():
