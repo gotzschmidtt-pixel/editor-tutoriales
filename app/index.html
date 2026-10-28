@@ -1230,9 +1230,10 @@ $('#importarClaude').onchange = async () => {  // el .zip de Claude: guion (con 
   refrescar();
   const partes = [r.hecho.includes('guion') ? '📝 el guion (con sus preguntas e ideas): ábrelo con «Ver y editar guion» cuando termine la revisión' : '',
     r.hecho.some(x => /etiquetas|senales/.test(x)) ? '🏷 etiquetas / 🎯 círculos y flechas: revísalos en «Editor por pistas» → «📋 Propuestas de la IA»' : '',
-    r.hecho.includes('trailer.json') ? '🎬 el tráiler: revísalo en «🎬 Tráiler»' : '', r.hecho.includes('ideas') ? '💡 sus notas e ideas: ideas_de_claude.md' : ''].filter(Boolean);
+    r.hecho.some(x => /trailer/.test(x)) ? '🎬 el tráiler (tomas, guion de la voz, dudas e ideas): se abre «🎬 Tráiler» en otra pestaña' : '', r.hecho.includes('ideas') ? '💡 sus notas e ideas: ideas_de_claude.md' : ''].filter(Boolean);
   alert('✓ Importado:\n\n' + partes.join('\n'));
   if (r.hecho.some(x => /etiquetas|senales/.test(x))) open('/pistas?p=' + q(P) + '&revision=1');
+  if (r.hecho.some(x => /trailer/.test(x))) verTrailer();
 };
 let esperaNube = null;
 async function finNube(e) {

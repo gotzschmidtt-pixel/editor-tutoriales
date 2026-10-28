@@ -2103,8 +2103,28 @@ class Manejador(BaseHTTPRequestHandler):
                         f = os.path.join(d, nombre)
                         if os.path.exists(f):
                             shutil.copyfile(f, f + '.anterior')
+                        if nombre == 'trailer.json':  # sus dudas e ideas del tráiler van aparte, como las de la IA de la app
+                            t = json.loads(txt)
+                            if isinstance(t, dict) and isinstance(t.get('preguntas'), list):
+                                json.dump(t.pop('preguntas'), open(os.path.join(d, 'preguntas_trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                                txt = json.dumps(t, ensure_ascii=False, indent=1)
+                            if isinstance(t, dict) and t.get('donde') in ('inicio', 'final'):
+                                ed = edicion(d)
+                                ed['trailer_donde'] = t['donde']
+                                json.dump(ed, open(os.path.join(d, 'edicion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                         open(f, 'w', encoding='utf-8').write(txt)
                         hecho.append(nombre)
+                if 'preguntas_trailer.json' in nombres:
+                    txt = z.read(nombres['preguntas_trailer.json']).decode('utf-8-sig')
+                    try:
+                        json.loads(txt)
+                    except ValueError:
+                        return self.error('preguntas_trailer.json del zip tiene un error de JSON.')
+                    open(os.path.join(d, 'preguntas_trailer.json'), 'w', encoding='utf-8').write(txt)
+                    hecho.append('preguntas_trailer')
+                if 'ideas_trailer.md' in nombres:  # cómo haría el tráiler: ideas, guion de la voz, por qué esas tomas
+                    open(os.path.join(d, 'ideas_trailer.md'), 'wb').write(z.read(nombres['ideas_trailer.md']))
+                    hecho.append('ideas_trailer')
                 guion = nombres.get('respuesta_guion.json') or nombres.get('guion.json')
                 if guion:  # el guion pasa por la misma revisión de la app que el de DeepSeek («Revisar respuesta pegada»)
                     open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(z.read(guion))

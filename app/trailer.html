@@ -147,7 +147,13 @@ async function cargar() {
     ${hay('guion.json') ? 'Ya puedes pedir la propuesta, pero para armarlo hace falta el video.' : ''}</div>` : '';
   $('#btnProponer').disabled = !hay('guion.json') || !hay('original.mp4');
   $('#btnArmar').disabled = !hay('3_voz.mp4') || !T;
-  verPreguntas(); verVideo(); pintar();
+  verPreguntas(); verVideo(); pintar(); verIdeas();
+}
+async function verIdeas() {  // ideas_trailer.md: cómo haría Claude el tráiler (lo trae «📥 Importar lo de Claude»)
+  let t = '';
+  if (hay('ideas_trailer.md')) try { t = await api(`/archivo?p=${q(P)}&f=ideas_trailer.md&v=${E.archivos['ideas_trailer.md'].fecha}`); } catch (e) {}
+  $('#mejoras').innerHTML = t ? `<details class="panel preg" open><summary>💡 Cómo haría Claude el tráiler: ideas, guion de la voz y por qué esas tomas</summary>
+    <pre style="white-space:pre-wrap; font:inherit; margin:0">${esc(t)}</pre></details>` : '';
 }
 function verVideo() {
   $('#ver').innerHTML = hay('trailer.mp4') ? `<details class="panel" open><summary>▶ Tráiler armado</summary>

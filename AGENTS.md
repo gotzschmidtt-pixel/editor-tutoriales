@@ -191,7 +191,16 @@ guion final y de la voz** le devuelve al autor un `.zip` (por ejemplo `respuesta
   a ×1, sus señales y etiquetas).
 - `etiquetas.json` (B9) y `senales.json` (círculos y flechas), cada propuesta con `por_que` y, si no está seguro, `duda`:
   el autor las ve en «Editor por pistas → 📋 Propuestas de la IA» y dice sí, las mueve o las quita.
-- Opcional: `trailer.json` y `ideas.md` (notas sueltas para el autor).
+- **Tráiler (pedido del autor, 28/10/2026: que lo redirijas al tráiler con propuestas, siempre):** según lo que aprendiste
+  y analizaste del video, entrega una propuesta de tráiler para el INICIO del video:
+  - `trailer.json` (B9) con `"donde": "inicio"`, las mejores tomas ANTES · DURANTE · DESPUÉS (cada una con `por_que`),
+    `titulo`, `subtitulo` y la frase de `voz` (máx. 15 palabras), y en `"preguntas"` tus dudas (`"tipo": "dato"`) e ideas
+    (`"tipo": "mejora"`), con opciones; si una pregunta es de una toma, ponle `"fase"`. La app las separa en
+    `preguntas_trailer.json` y el autor las contesta en «🎬 Tráiler».
+  - `ideas_trailer.md`: cómo lo harías y por qué (el gancho, el orden de las tomas, 2 o 3 variantes de la frase de voz,
+    música o ritmo, qué evitar). La app lo muestra arriba de todo en «🎬 Tráiler».
+  Al importar, la app abre «🎬 Tráiler» sola. La voz del tráiler gasta ElevenLabs: solo se arma con el «sí» del autor.
+- Opcional: `ideas.md` (notas sueltas para el autor).
 El autor contesta en la app y te manda de vuelta su guion editado y sus respuestas; recién con su «sí» se hace la voz.
 
 ## A5. Sobre «hacerlo en la nube» y la velocidad
