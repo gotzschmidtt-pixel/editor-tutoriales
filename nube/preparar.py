@@ -12,7 +12,10 @@ import argparse, hashlib, json, os, shutil, time
 # lo que subes o eliges tú (lo que la app genera no hace falta: se rehace allá)
 ARCHIVOS = ['original.mp4', 'material.mp4', 'imagen.png', 'musica.mp3', 'idea.txt', 'referencias.json', 'guion.json',
             'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'preguntas_guion.json',
-            'transcripcion.json', 'transcripcion.srt', 'transcripcion.txt']
+            'transcripcion.json', 'transcripcion.srt', 'transcripcion.txt',
+            # lo que marcaste en la app: cortes importantes, señales, subtítulos e idiomas (Claude lo respeta en la nube)
+            'cortes_importantes.json', 'para_claude_marcas.json', 'para_claude_marcas.txt', 'subtitulos.json',
+            'etiquetas_idiomas.json', 'idioma_video.json']
 CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios', 'nuevos_modelos']
 SECRETOS = ('clave', 'elevenlabs')
 SALIDA = 'para_claude'

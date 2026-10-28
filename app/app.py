@@ -136,6 +136,42 @@ def estado_idiomas(d, lang=''):
             'hechos': sorted(datos['traducciones']), 'filas': [{'orig': t, 'trad': tabla.get(t, '')} for t in idiomas.textos(d)]}
 
 
+def para_chat(d):
+    """Todo lo que marcaste en la app para un video (cortes importantes, señales dibujadas, capturas con etiqueta), en un
+    texto para pegar en el chat de Claude y en para_claude_marcas.json (va también en el paquete para la nube)."""
+    mm = lambda s: f'{int(float(s) // 60)}:{float(s) % 60:04.1f}'
+    imp = importantes.leer(d)
+    try:
+        marcas = json.load(open(os.path.join(d, 'marcas_senales', 'marcas.json'), encoding='utf-8')).get('MARCAS', [])
+    except (OSError, ValueError, AttributeError):
+        marcas = []
+    sen = [m for m in marcas if isinstance(m, dict)]
+    datos = {'proyecto': os.path.basename(d), 'cortes_importantes': imp,
+             'senales': [{k: m.get(k) for k in ('segundo', 'video', 'forma', 'zona', 'etiqueta', 'nota', 'tipo', 'archivo') if m.get(k)} for m in sen]}
+    forma = {'circulo': 'círculo', 'flecha': 'flecha', 'caja': 'recuadro'}
+    lineas = [f"MARCAS DEL AUTOR PARA EL VIDEO «{datos['proyecto']}» (hechas en la app; respétalas al armar el guion y el video)", '']
+    lineas.append('⭐ CORTES IMPORTANTES (se muestran enteros y a velocidad normal, nunca acelerados ni recortados):')
+    lineas += [f"- {mm(x['inicio'])} a {mm(x['fin'])} de la grabación original" + (f": {x['nota']}" if x['nota'] else '') for x in imp] or ['- (ninguno)']
+    lineas += ['', '🎯 SEÑALES Y ETIQUETAS (segundo del video indicado; zona en % del cuadro: x, y = centro; w, h = tamaño):']
+    for m in datos['senales']:
+        partes = [f"- {m.get('segundo', '¿segundo?')}" + (f" de {m['video']}" if m.get('video') else ''),
+                  forma.get(m.get('forma'), m.get('forma') or m.get('tipo') or '')]
+        if m.get('zona'):
+            z = m['zona']
+            partes.append(f"en x {z.get('x')} %, y {z.get('y')} % (tamaño {z.get('w')} × {z.get('h')} %)")
+        if m.get('etiqueta'):
+            partes.append(f"etiqueta «{m['etiqueta']}»")
+        if m.get('nota'):
+            partes.append(f"nota: {m['nota']}")
+        lineas.append(' · '.join(p for p in partes if p))
+    if not datos['senales']:
+        lineas.append('- (ninguna)')
+    texto = '\n'.join(lineas) + '\n'
+    json.dump(datos, open(os.path.join(d, 'para_claude_marcas.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    open(os.path.join(d, 'para_claude_marcas.txt'), 'w', encoding='utf-8').write(texto)
+    return texto
+
+
 def estado_importantes(d, aplicar=False):
     """Los cortes importantes del proyecto y cómo quedan en el guion. Con aplicar, deja a ×1 los bloques que los tocan."""
     lista, g = importantes.leer(d), None
@@ -1437,6 +1473,12 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'v': v})
             if ruta == '/api/importantes':  # «⭐ Cortes importantes» del proyecto y los bloques del guion que los tocan
                 return self.responder(estado_importantes(carpeta(q['p'])))
+            if ruta == '/api/para_chat':  # todo lo marcado, para pegarlo en el chat de Claude (y guardado en el proyecto)
+                d = carpeta(q['p'])
+                texto = para_chat(d)
+                rel = lambda n: '/ver?ruta=' + urllib.parse.quote(os.path.relpath(os.path.join(d, n), RAIZ).replace('\\', '/'))
+                return self.responder({'texto': texto, 'txt': rel('para_claude_marcas.txt'), 'json': rel('para_claude_marcas.json'),
+                                       'carpeta': '/abrir?ruta=' + urllib.parse.quote(os.path.relpath(d, RAIZ).replace('\\', '/'))})
             if ruta == '/api/etiquetas_idiomas':  # «🌐 Etiquetas en otro idioma»
                 return self.responder(estado_idiomas(carpeta(q['p']), q.get('lang', '')))
             if ruta == '/api/subs':  # «💬 Subtítulos»: idioma, estilo, textos y videos donde grabarlos

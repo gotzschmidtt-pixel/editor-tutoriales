@@ -504,6 +504,11 @@
         <button class="principal" onclick="impAgregar()">⭐ Agregar</button>
       </div>
       <div id="impLista" style="margin-top:8px"></div>
+      <div class="fila" style="align-items:center">
+        <button class="principal" onclick="paraChat(true)" title="Copia el resumen de tus cortes importantes, señales y etiquetas (con sus segundos) para pegarlo en el chat de Claude junto con el video">📋 Copiar para el chat de Claude</button>
+        <button onclick="paraChat(false)" title="Lo guarda en el proyecto (para_claude_marcas.txt y .json); también va en el paquete para la nube">💾 Guardar para Claude</button>
+        <span class="msg" id="chatMsg"></span>
+      </div>
       <p class="aviso" id="impAfectados"></p>
       <span class="msg" id="impMsg"></span>
     </section>
@@ -1841,6 +1846,17 @@ function impAgregar() {
   const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
   if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
   impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+}
+async function paraChat(copiar) {  // cortes importantes + señales + etiquetas, para el chat de Claude (y guardado en el proyecto)
+  try {
+    const r = await api(`/api/para_chat?p=${q(P)}`);
+    let copiado = false;
+    if (copiar) try { await navigator.clipboard.writeText(r.texto); copiado = true; } catch (e) {}
+    $('#chatMsg').className = 'msg ok';
+    $('#chatMsg').innerHTML = (copiado ? '✓ Copiado: pégalo en el chat de Claude junto con el video. ' : '✓ Guardado en el proyecto. ')
+      + `<a href="${r.txt}" target="_blank">📄 Ver</a> · <a href="${r.carpeta}" target="_blank">📂 Carpeta</a>`;
+    if (copiar && !copiado) prompt('Copia este texto (Ctrl+C) y pégalo en el chat de Claude:', r.texto);
+  } catch (e) { $('#chatMsg').className = 'msg err'; $('#chatMsg').textContent = e.message; }
 }
 function impQuitar(i) { if (confirm('¿Quitar este corte importante?')) impGuardar(IMP.filter((_, k) => k !== i)); }
 // «💬 Subtítulos»: subtitulos.json del proyecto (idioma, estilo, textos) — subtitulos/subtitulos.py dibuja con libass
