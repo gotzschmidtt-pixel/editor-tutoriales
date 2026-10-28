@@ -291,28 +291,34 @@
     </section>
 
     <section class="panel extra" id="panelIdiomas">
-      <h2>🌐 Etiquetas en otro idioma</h2>
-      <p class="aviso">Las mismas etiquetas (las de la IA y las de tus capturas), traducidas: no se hacen de nuevo. Al cambiar de
-      idioma solo se vuelven a dibujar las etiquetas; la voz, el montaje y la música no se tocan (la voz sigue en español).</p>
+      <h2>🌐 Idiomas</h2>
+      <p class="aviso">Aquí hay dos cosas distintas: <b>① el video completo en otro idioma</b> (guion, voz y etiquetas traducidos, en una
+      copia del proyecto) y <b>② solo las etiquetas traducidas</b> sobre tu video en español.</p>
       <div class="fila" style="align-items:center">
         <label>Idioma <select id="idLang" onchange="idCargar(this.value)"></select></label>
         <input type="text" id="idOtro" placeholder="otro código (ej.: ru, ar)" style="width:11em" onchange="this.value && idCargar(this.value.trim().toLowerCase())">
-        <button onclick="idTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido corto, solo texto. No gasta ElevenLabs">🌐 Traducir con IA</button>
       </div>
-      <div id="idFilas" style="margin-top:8px"></div>
-      <div class="fila" style="align-items:center">
-        <button onclick="idGuardar()">💾 Guardar traducciones</button>
-        <button class="principal" onclick="idUsar()" title="Las etiquetas se dibujan en este idioma y se vuelven a poner sobre el video">🎬 Poner las etiquetas en este idioma</button>
-        <button onclick="idUsar('es')">↩ Volver al español</button>
-        <span class="msg" id="idMsg"></span>
-      </div>
-      <p class="aviso" id="idActual"></p>
-      <h3 style="margin:16px 0 6px">🎬 El video completo en este idioma</h3>
+      <h3 style="margin:16px 0 6px">① 🎬 El video completo en este idioma</h3>
+      <div id="idPrevia"></div>
       <p class="aviso">Crea una copia del proyecto (por ejemplo MOTOROLA_FRP_2026_EN) con el guion traducido por la IA: mismos tramos,
-      cortes importantes, flechas y etiquetas (traducidas). La voz en inglés es <b>Brian</b>. No gasta ElevenLabs: revisas el guion
-      traducido y la voz se hace cuando pulsas «▶ Hacer todo» en la copia (te muestra antes cuántos créditos usa). Tu video en
-      español no se toca.</p>
-      <div class="fila"><button class="principal" onclick="idVersion()">🌐 Hacer versión en este idioma</button><span class="msg" id="idVerMsg"></span></div>
+      cortes importantes, flechas y etiquetas (traducidas). No gasta ElevenLabs: revisas el guion traducido y la voz se hace cuando
+      pulsas «▶ Hacer todo» en la copia (te muestra antes cuántos créditos usa). Tu video en español no se toca.</p>
+      <div class="fila" id="idVersionFila"><button class="principal" onclick="idVersion()">🌐 Hacer versión en este idioma</button><span class="msg" id="idVerMsg"></span></div>
+      <details id="idEtiq" style="margin-top:16px">
+        <summary style="cursor:pointer"><b>② 🏷 Solo las etiquetas traducidas</b> <span class="aviso">(la voz sigue en español)</span> <span class="aviso" id="idEtiqCuenta"></span></summary>
+        <p class="aviso">Las mismas etiquetas (las de la IA y las de tus capturas), traducidas: no se hacen de nuevo. Al cambiar de
+        idioma solo se vuelven a dibujar las etiquetas; la voz, el montaje y la música no se tocan. A la izquierda el texto en español,
+        a la derecha su traducción (vacía = sale en español).</p>
+        <div class="fila"><button onclick="idTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido corto, solo texto. No gasta ElevenLabs">🌐 Traducir con IA las que faltan</button></div>
+        <div id="idFilas" style="margin-top:8px"></div>
+        <div class="fila" style="align-items:center">
+          <button onclick="idGuardar()">💾 Guardar traducciones</button>
+          <button class="principal" onclick="idUsar()" title="Las etiquetas se dibujan en este idioma y se vuelven a poner sobre el video">🎬 Poner las etiquetas en este idioma</button>
+          <button onclick="idUsar('es')">↩ Volver al español</button>
+          <span class="msg" id="idMsg"></span>
+        </div>
+        <p class="aviso" id="idActual"></p>
+      </details>
     </section>
 
     <section class="panel extra" id="panelTarjetas">
@@ -500,10 +506,11 @@
           <option value="60" selected>60 s (YouTube Shorts)</option><option value="90">90 s (TikTok / Reels largo)</option><option value="120">2 min</option><option value="180">3 min (máximo de YouTube Shorts)</option>
           <option value="otro">Personalizada (escribe los segundos)</option></select></label>
         <label id="shortSegL" hidden><input type="number" id="shortSeg" min="10" max="180" step="1" value="40" style="width:5.5em"> segundos</label>
-        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
+        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva" onchange="$('#shortDurAviso').hidden = !this.checked"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
         <button class="principal" id="shortBtn" onclick="shortHacer()">📱 Hacer Short</button>
         <span class="msg" id="shortMsg"></span>
       </div>
+      <p class="aviso" id="shortDurAviso" hidden>Con la voz nueva, el largo lo da el guion del Short (short_guion.json), no la duración elegida.</p>
       <div id="shortVer"></div>
     </section>
 
@@ -2202,9 +2209,32 @@ function idPintar(r, msg) {
       <input type="text" data-orig="${esc(f.orig)}" value="${esc(f.trad)}" placeholder="traducción (vacío = va el original)" style="flex:1; min-width:12em"></div>`).join('')
     : '<p class="aviso">Todavía no hay etiquetas en este proyecto (ni de la IA ni de tus capturas).</p>';
   $('#idActual').textContent = 'Ahora las etiquetas se dibujan en: ' + (r.nombres[r.idioma] || r.idioma) + '.';
+  const hechas = r.filas.filter(f => f.trad).length;
+  $('#idEtiqCuenta').textContent = r.filas.length ? `· ${r.filas.length} etiquetas, ${hechas} traducidas` : '· todavía no hay etiquetas';
   if (msg !== undefined) { $('#idMsg').className = 'msg ok'; $('#idMsg').textContent = msg; }
 }
-async function idCargar(lang) { if (!P) return; try { idPintar(await api(`/api/etiquetas_idiomas?p=${q(P)}&lang=${q(lang || '')}`)); } catch (e) {} }
+async function idCargar(lang) { if (!P) return; try { idPintar(await api(`/api/etiquetas_idiomas?p=${q(P)}&lang=${q(lang || '')}`)); idPrevia(); } catch (e) {} }
+async function idPrevia() {  // ① lo que se va a traducir: el video, el guion, la voz, la IA, las etiquetas y si ya está la copia
+  let r; try { r = await api(`/api/idioma_previa?p=${q(P)}&lang=${q(ID_LANG)}`); } catch (e) { return; }
+  const nombre = $('#idLang').selectedOptions[0]?.textContent.replace(' ✓', '') || ID_LANG;
+  const c = r.copia, abrir = `/?p=${q(c.nombre)}`;
+  $('#idVersionFila').hidden = r.es_copia || c.existe;
+  const copia = r.es_copia ? `<p class="msg ok">Este proyecto ya es una versión traducida (${esc(r.idioma_video)}): la voz sale en ese idioma cuando pulses «▶ Hacer todo».</p>`
+    : c.existe ? `<p><b>La copia ya existe:</b> ${esc(c.nombre)} · guion traducido ✓ · voz ${c.voz ? '✓' : 'todavía no'} · video final ${c.final ? '✓' : 'todavía no'}<br>
+        <a href="/guion?p=${q(c.nombre)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="${abrir}" target="_blank">🎬 Abrir la copia</a></p>`
+    : `<p class="aviso">Todavía no hiciste la versión en ${esc(nombre)}.</p>`;
+  const vid = r.video ? `<video controls preload="metadata" style="width:320px; max-width:100%; aspect-ratio:16/9; background:#000; border-radius:10px" src="/archivo?p=${q(P)}&f=${q(r.video)}"></video>` : '';
+  $('#idPrevia').innerHTML = `<div class="fila" style="align-items:flex-start; gap:16px; flex-wrap:wrap">${vid}
+    <div style="flex:1; min-width:16em">
+      <p><b>Video:</b> ${r.video ? `${esc(r.video)} · ${mmss(r.duracion)}` : 'todavía no hay video armado (se traduce el guion igual)'}</p>
+      <p><b>Guion:</b> ${r.bloques.length} bloques · ${r.letras.toLocaleString('es')} letras → voz en ${esc(nombre)} con <b>${esc(r.voz || 'la voz de ⚙ Ajustes')}</b>:
+        ≈ ${r.letras.toLocaleString('es')} créditos de ElevenLabs (recién en la copia, al pulsar «▶ Hacer todo», y te los muestra antes)</p>
+      <p><b>Traduce:</b> ${r.ia ? `la IA de ⚙ Ajustes IA (${esc(r.ia)}), un pedido de texto` : '<span class="msg err">no hay IA configurada en ⚙ Ajustes IA</span>'}</p>
+      <p><b>Etiquetas:</b> ${r.etiquetas} · ${r.traducidas} ya traducidas a ${esc(nombre)}${r.etiquetas > r.traducidas ? ' (las que faltan las traduce la misma IA)' : ''}</p>
+      ${copia}</div></div>
+    ${r.bloques.length ? `<details style="margin:6px 0"><summary style="cursor:pointer">📝 Ver el guion que se va a traducir (${r.bloques.length} bloques)</summary>
+      ${r.bloques.map(b => `<p style="margin:4px 0"><b>${esc(b.id)}</b> ${esc(b.texto)}</p>`).join('')}</details>` : ''}`;
+}
 function idTabla() { return Object.fromEntries([...document.querySelectorAll('#idFilas input[data-orig]')].map(i => [i.dataset.orig, i.value.trim()])); }
 async function idGuardar(extra) {
   try { const r = await api(`/api/etiquetas_idiomas?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lang: ID_LANG, traducciones: idTabla(), ...(extra || {})})}); idPintar(r, '✓ Guardado'); return r; }
@@ -2227,6 +2257,7 @@ async function idVersion() {
     $('#idVerMsg').innerHTML = `✓ Lista: <b>${esc(r.proyecto)}</b> (voz ${esc(r.voz)}, unos ${r.caracteres.toLocaleString('es')} caracteres de voz)`
       + (r.sin_traducir.length ? ` · sin traducir: ${esc(r.sin_traducir.join(', '))}` : '')
       + ` · <a href="/guion?p=${q(r.proyecto)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="/?p=${q(r.proyecto)}" target="_blank">🎬 Abrir el proyecto</a>`;
+    idPrevia();
   } catch (e) { $('#idVerMsg').className = 'msg err'; $('#idVerMsg').textContent = e.message; }
 }
 async function idUsar(lang) {
