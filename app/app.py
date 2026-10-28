@@ -207,7 +207,8 @@ os.makedirs(PROYECTOS, exist_ok=True)
 os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json', 'preguntas_trailer.json']
+EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json', 'preguntas_trailer.json',
+             'guion_quitados.json']  # los bloques que quitaste en el editor de guion, por si te arrepientes
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 VIDEOS = {'.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'}

@@ -33,6 +33,9 @@
   .bloque { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel); border: 1px solid var(--borde);
     border-radius: 14px; padding: 12px; margin-bottom: 12px; }
   .bloque.cambiado { border-color: var(--rosa); }
+  .bloque.quitado { opacity: .55; border-style: dashed; }
+  .bloque.quitado:hover { opacity: .9; }
+  .bloque.quitado .texto { text-decoration: line-through; white-space: pre-wrap; margin: 6px 0; }
   .bloque img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
   .meta { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
   .meta b { color: var(--texto); }
@@ -144,6 +147,7 @@ async function cargar() {
   try { G = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null'); } catch (e) { G = null; }
   if (!G || !(G.bloques || []).length) { $('#bloques').innerHTML = '<p class="msg err">Todavía no hay guion en este proyecto. Pídelo primero a la IA en la app.</p>'; return; }
   ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
+  try { QUITADOS = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion_quitados.json`) || '[]') || []; } catch (e) { QUITADOS = []; }
   try { DUR = (await api(`/api/estado?p=${q(P)}`)).duracion_original || 0; } catch (e) {}
   pintar();
   verMejoras(); verPreguntas();
@@ -216,10 +220,46 @@ async function seguir() {
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
   $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
 }
+// Los bloques quitados quedan a la vista (apagados) en su lugar, por si te arrepientes: «↩ Volver a ponerlo»
+let QUITADOS = [];  // guion_quitados.json: [{bloque, vecino}] (vecino: a qué lado se unió su imagen con «quitar solo lo que dice»)
+const srcDe = b => +((b.montaje || {}).src_inicio ?? 0);
+function lugarQuitado(x) {  // va antes del primer bloque cuyo tramo empieza después (los id cambian al revisar; el segundo no)
+  const k = G.bloques.findIndex(b => srcDe(b) > srcDe(x.bloque));
+  return k < 0 ? G.bloques.length : k;
+}
+function fantasma(x, k) {
+  const b = x.bloque, m = b.montaje || {};
+  return `<div class="bloque quitado"><div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${m.src_inicio ?? 0}" alt="">
+      <div class="meta">de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div></div>
+    <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">🗑 quitado${x.vecino ? ' · su imagen quedó en el bloque de al lado' : ''}</span></div>
+      <div class="texto">${esc(b.texto)}</div>
+      <div class="acciones"><button class="principal" onclick="reponer(${k})">↩ Volver a ponerlo</button>
+        <button onclick="olvidar(${k})" title="Ya no aparece aquí (sigue en el historial del guion)">Olvidar</button></div></div></div>`;
+}
+function reponer(k) {
+  const x = QUITADOS[k], b = x.bloque, m = b.montaje || {};
+  if (x.vecino) for (const o of G.bloques) {  // le devuelve al vecino solo su tramo
+    const n = o.montaje || {};
+    if (x.vecino === 'antes' && Math.abs(n.src_fin - m.src_fin) < 0.05) { n.src_fin = m.src_inicio; delete n.unido; break; }
+    if (x.vecino === 'despues' && Math.abs(n.src_inicio - m.src_inicio) < 0.05) { n.src_inicio = m.src_fin; delete n.unido; break; }
+  }
+  G.bloques.splice(lugarQuitado(x), 0, b);
+  QUITADOS.splice(k, 1); sucio = true; pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ ${b.id} volvió a su lugar. Pulsa «Guardar cambios».`;
+}
+function olvidar(k) { QUITADOS.splice(k, 1); sucio = true; pintar(); }
+function reponerVoz(i) {  // «sin voz, acelerado»: vuelve lo que decía
+  const b = G.bloques[i], m = b.montaje;
+  b.texto = m.texto_quitado; m.velocidad = m.velocidad_antes || 1; if (m.modo_antes) m.modo = m.modo_antes; if (m.congelar_antes != null) m.congelar_s = m.congelar_antes;
+  ['texto_quitado', 'velocidad_antes', 'modo_antes', 'congelar_antes', 'sin_voz'].forEach(c => delete m[c]);
+  sucio = true; pintar();
+}
 function pintar() {
+  const porLugar = {};
+  QUITADOS.forEach((x, k) => (porLugar[lugarQuitado(x)] = porLugar[lugarQuitado(x)] || []).push(fantasma(x, k)));
   $('#bloques').innerHTML = G.bloques.map((b, i) => {
     const m = b.montaje || {}, t = m.src_inicio ?? 0;
-    return `<div class="bloque" id="b${i}">
+    return (porLugar[i] || []).join('') + `<div class="bloque" id="b${i}">
       <div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
         <div class="meta"><b>${mmss(b.inicio_min)}–${mmss(b.fin_max)}</b> del video · de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div>
         ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}
@@ -229,8 +269,9 @@ function pintar() {
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardar()" hidden>💾 Guardar cambios</button>
-          <button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
-  }).join('');
+          <button onclick="quitar(${i})">✕ Quitar bloque</button>
+          ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
+  }).join('') + (porLugar[G.bloques.length] || []).join('');
   document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos(); });
   SUG = {};
   avisos();
@@ -342,17 +383,20 @@ function quitarSoloVoz() {
   const m = G.bloques[i].montaje, n = G.bloques[v].montaje;
   if (v < i) n.src_fin = m.src_fin; else n.src_inicio = m.src_inicio;
   n.unido = true;  // la app no recorta este tramo al revisar: trae la imagen del paso que quitaste
+  QUITADOS.push({bloque: JSON.parse(JSON.stringify(G.bloques[i])), vecino: v < i ? 'antes' : 'despues'});
   G.bloques.splice(i, 1); sucio = true; dlgQuitar.close(); pintar();
   $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ Quité lo que decía; su imagen quedó en el bloque de al lado. Pulsa «Guardar cambios».`;
 }
 function quitarAcelerado() {
   const b = G.bloques[QUITAR], m = b.montaje || {};
   if (m.src_inicio == null || !(m.modo || '').startsWith('lento')) { alert('Este bloque no muestra un tramo de tu grabación (es una imagen): usa otra opción.'); return; }
+  if (b.texto.trim()) Object.assign(m, {texto_quitado: b.texto, velocidad_antes: m.velocidad || 1, modo_antes: m.modo, congelar_antes: m.congelar_s ?? null});
   b.texto = ''; m.modo = 'lento'; m.congelar_s = null; m.velocidad = +$('#qVel').value; m.sin_voz = true;
   sucio = true; dlgQuitar.close(); pintar();
   $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ ${b.id} queda sin voz, con su tramo a ×${m.velocidad}. Pulsa «Guardar cambios». Si después le escribes texto, vuelve a tener voz.`;
 }
 function quitarTodo() {
+  QUITADOS.push({bloque: JSON.parse(JSON.stringify(G.bloques[QUITAR])), vecino: null});
   G.bloques.splice(QUITAR, 1); sucio = true; dlgQuitar.close(); pintar();
 }
 function comoTexto() {
@@ -396,6 +440,7 @@ async function guardar() {
   if (!(await sinCambiosAjenos())) return false;
   b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
   try {
+    await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
     await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
     await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar', editor: true})});
     await esperar();
