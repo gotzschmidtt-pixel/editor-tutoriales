@@ -1870,6 +1870,18 @@ def senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, sena
         subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.join(d, MARCAS_DIR, nombre), '-frames:v', '1',
                         '-vf', 'scale=1024:-2', '-q:v', '3', suya], check=True)
         nota = (c.get('nota') or '').strip()
+        z = c.get('zona')
+        if isinstance(z, dict) and all(isinstance(z.get(k), (int, float)) for k in ('x', 'y', 'w', 'h')):
+            # lo dibujó el autor con «🎯 Señalar aquí»: va exactamente ahí, sin preguntarle a la IA
+            bloque = max((b for b in inicio if inicio[b] <= t), key=lambda b: inicio[b], default=None)
+            m = {'que': nota or 'lo que marcaste', 'texto': '', 'bloque': bloque, 'frase': (nota or 'tu dibujo')[:40],
+                 'tipo': c['forma'] if c.get('forma') in FORMAS else 'circulo', 'forma_fija': True}
+            s, _ = ubicar(m, z, f, None, W, H)
+            if s:
+                s.update(t=t, _t=t, autor=True, por_que=f'lo dibujaste tú: {nota}' if nota else 'lo dibujaste tú')
+                senales.append(s)
+                print(f"tuya {mmss(t)}  {s['tipo']:8s} → dibujada por ti ({z['x']:.0f}%, {z['y']:.0f}%)", flush=True)
+            continue
         pares.append((c, t, f, nota))
         imgs += [(f'captura {n} del autor' + (f': {nota}' if nota else ''), suya), (f'cuadro {n} del video', f)]
         print(f'· tu captura {nombre} va en el {mmss(t)} del video', flush=True)

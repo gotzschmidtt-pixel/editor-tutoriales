@@ -257,7 +257,8 @@
       <div class="fila" style="align-items:center">
         <select id="marcaVideoSel" onchange="marcaVideoCargar(this.value)" title="Qué video ver para capturar"></select>
         <input type="text" id="mEtiqueta" placeholder="🏷 Etiqueta en pantalla (opcional): «Presionamos VOL +, VOL − y después POWER»" style="flex:1; min-width:14em">
-        <button class="principal" onclick="capturarMarca($('#marcaVideo'))" title="Captura el cuadro pausado con su segundo exacto, la forma, la nota y la etiqueta de abajo">📸 Capturar aquí</button>
+        <button class="principal" onclick="senalar($('#marcaVideo'))" title="Captura este cuadro y dibuja encima el círculo, la flecha o el recuadro: va exactamente ahí">🎯 Señalar aquí</button>
+        <button onclick="capturarMarca($('#marcaVideo'))" title="Captura el cuadro pausado con su segundo exacto, la forma, la nota y la etiqueta de abajo">📸 Capturar aquí</button>
       </div>
       <div id="listaMarcas"></div>
       <label class="subida" id="soltarMarca" tabindex="0"><div class="t">➕ Captura o audio</div>
@@ -421,6 +422,7 @@
       <div class="fila" style="align-items:center; justify-content:center; gap:10px">
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('desde')" title="Toma el segundo donde está el video ahora (sin escribir nada)">⏺ Empieza aquí</button>
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('hasta')" title="Toma el segundo donde está el video ahora y agrega el corte">⏹ Termina aquí</button>
+        <button style="font-size:16px; padding:10px 22px" onclick="senalar($('#impVideo'))" title="Captura este cuadro y dibuja encima un círculo, una flecha o un recuadro (con etiqueta si quieres). Va a «🎯 Flechas y círculos»">🎯 Señalar aquí</button>
         <span class="aviso" id="impEstado">Dale play o mueve la barra, y pulsa «Empieza aquí» y luego «Termina aquí».</span>
       </div>
       <div class="fila" style="align-items:center">
@@ -627,6 +629,23 @@
   <div class="fila"><button onclick="abrirGuardado()" title="Trae un .zip hecho con «Guardar como» a la lista de abajo">📂 Abrir guardado…</button></div>
   <div id="listaGuardados"></div>
   <div class="fila"><button onclick="dlgGuardados.close()">Cerrar</button><span class="msg" id="msgGuardados"></span></div>
+</dialog>
+
+<dialog id="dlgDibujo" style="max-width:min(1100px, 96vw)">
+  <h3>🎯 Señalar aquí <span class="aviso" id="dibSeg"></span></h3>
+  <div class="fila" style="margin-top:0; align-items:center">
+    <label><input type="radio" name="dibForma" value="circulo" checked> ⭕ Círculo</label>
+    <label><input type="radio" name="dibForma" value="flecha"> ➜ Flecha</label>
+    <label><input type="radio" name="dibForma" value="caja"> ▭ Recuadro</label>
+    <span class="aviso">Arrastra con el mouse sobre la imagen. En la flecha, suelta donde quieres que apunte la punta.</span>
+  </div>
+  <canvas id="dibCanvas" style="width:100%; border-radius:8px; cursor:crosshair; background:#000; touch-action:none"></canvas>
+  <div class="fila">
+    <input type="text" id="dibEtiqueta" placeholder="🏷 Etiqueta en pantalla (opcional): «Presionamos VOL +, VOL − y después POWER»" style="flex:1; min-width:14em">
+    <input type="text" id="dibNota" placeholder="Nota (opcional): qué es" style="flex:1; min-width:10em">
+  </div>
+  <div class="fila"><button class="principal" onclick="dibGuardar()">✓ Guardar señal</button><button onclick="dlgDibujo.close()">Cancelar</button>
+    <span class="msg" id="dibMsg"></span></div>
 </dialog>
 
 <dialog id="dlgEleven">
@@ -1295,6 +1314,69 @@ async function capturarMarca(v) {
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
   try { await subirMarca(blob, 'captura.jpg', 'captura', campos); } catch (e) { alert(e.message); }
   guardarMarcas();
+}
+// «🎯 Señalar aquí»: captura el cuadro del reproductor y dibujas encima el círculo, la flecha o el recuadro.
+// Se guarda como captura de «Flechas y círculos» con su segundo exacto y la zona dibujada: la señal va justo ahí.
+const DIB = {foto: null, ini: null, fin: null, seg: '', video: ''};
+const dibForma = () => document.querySelector('input[name="dibForma"]:checked').value;
+function dibPintar(conFoto = true) {
+  const c = $('#dibCanvas'), g = c.getContext('2d');
+  g.drawImage(DIB.foto, 0, 0);
+  if (!DIB.ini || !DIB.fin) return;
+  const [a, b] = [DIB.ini, DIB.fin], ancho = Math.max(4, c.width / 220);
+  g.strokeStyle = '#ff2b4a'; g.lineWidth = ancho; g.lineCap = 'round';
+  g.beginPath();
+  if (dibForma() === 'circulo') g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 2 * Math.PI);
+  else if (dibForma() === 'caja') g.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  else {  // flecha: de donde empezaste a la punta
+    const ang = Math.atan2(b.y - a.y, b.x - a.x), p = ancho * 5;
+    g.moveTo(a.x, a.y); g.lineTo(b.x, b.y);
+    g.moveTo(b.x, b.y); g.lineTo(b.x - p * Math.cos(ang - 0.5), b.y - p * Math.sin(ang - 0.5));
+    g.moveTo(b.x, b.y); g.lineTo(b.x - p * Math.cos(ang + 0.5), b.y - p * Math.sin(ang + 0.5));
+  }
+  g.stroke();
+}
+async function senalar(v) {
+  if (!P) return;
+  if (!v.videoWidth) return alert('Espera a que cargue el video y pon el momento que quieres señalar.');
+  v.pause();
+  const c = $('#dibCanvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  const foto = document.createElement('canvas'); foto.width = v.videoWidth; foto.height = v.videoHeight;
+  foto.getContext('2d').drawImage(v, 0, 0);
+  const t = v.currentTime;
+  Object.assign(DIB, {foto, ini: null, fin: null, seg: `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`,
+    video: new URLSearchParams(v.src.split('?')[1] || '').get('f') || 'original.mp4'});
+  $('#dibSeg').textContent = `· en el ${DIB.seg}`; $('#dibMsg').textContent = ''; $('#dibEtiqueta').value = $('#dibNota').value = '';
+  dibPintar();
+  dlgDibujo.showModal();
+}
+{
+  const c = $('#dibCanvas');
+  const punto = e => { const r = c.getBoundingClientRect(); return {x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height}; };
+  let arrastrando = false;
+  c.onpointerdown = e => { arrastrando = true; DIB.ini = DIB.fin = punto(e); c.setPointerCapture(e.pointerId); dibPintar(); };
+  c.onpointermove = e => { if (arrastrando) { DIB.fin = punto(e); dibPintar(); } };
+  c.onpointerup = () => { arrastrando = false; };
+  document.querySelectorAll('input[name="dibForma"]').forEach(r => r.onchange = () => dibPintar());
+}
+async function dibGuardar() {
+  const c = $('#dibCanvas'), [a, b] = [DIB.ini, DIB.fin];
+  if (!a || !b || (Math.abs(b.x - a.x) < 8 && Math.abs(b.y - a.y) < 8)) return alert('Arrastra con el mouse sobre la imagen para dibujar la señal.');
+  const forma = dibForma(), W = c.width, H = c.height;
+  const zona = forma === 'flecha'  // la flecha apunta a su punta
+    ? {x: b.x * 100 / W, y: b.y * 100 / H, w: 6, h: 6}
+    : {x: (a.x + b.x) / 2 * 100 / W, y: (a.y + b.y) / 2 * 100 / H, w: Math.abs(b.x - a.x) * 100 / W, h: Math.abs(b.y - a.y) * 100 / H};
+  Object.keys(zona).forEach(k => zona[k] = Math.round(zona[k] * 10) / 10);
+  const campos = {nota: $('#dibNota').value.trim(), forma, segundo: DIB.seg, video: DIB.video, zona};
+  if ($('#dibEtiqueta').value.trim()) campos.etiqueta = $('#dibEtiqueta').value.trim();
+  $('#dibMsg').className = 'msg'; $('#dibMsg').textContent = 'Guardando…';
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));  // la captura con tu dibujo encima
+  try {
+    await subirMarca(blob, 'senal.jpg', 'captura', campos);
+    await guardarMarcas();
+    dlgDibujo.close();
+    if ($('#impEstado')) $('#impEstado').textContent = `🎯 Señal guardada en el ${DIB.seg}: va a «Flechas y círculos» y se pone al armar el video.`;
+  } catch (e) { $('#dibMsg').className = 'msg err'; $('#dibMsg').textContent = e.message; }
 }
 let grabadoraMarca = null;
 async function grabarMarca() {
