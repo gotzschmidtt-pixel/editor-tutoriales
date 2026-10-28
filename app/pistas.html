@@ -17,7 +17,7 @@
   ::placeholder { color: #8e97b8; opacity: 1; }
   input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
   header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--borde);
-    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); }
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a), var(--fondo); position: sticky; top: 0; z-index: 10; }  /* Guardar siempre a la vista */
   header h1 { font-size: 17px; margin: 0 8px 0 0; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
   input[type=text], input[type=number], select, textarea { background: var(--panel2); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
@@ -102,6 +102,7 @@
   <button onclick="nueva('eti')">＋ Etiqueta aquí</button>
   <button onclick="nueva('sen')">＋ Flecha aquí</button>
   <button onclick="propuestas()" title="Cada etiqueta y flecha con por qué la puso la IA y lo que no tiene seguro">📋 Propuestas de la IA</button>
+  <button class="principal" onclick="window.open('/vista?p=' + q(P), 'vista_' + P)" title="Una diapositiva por cada etiqueta y círculo, sobre su cuadro del video: apruébalas, edítalas o quítalas antes de ponerlas">👀 Vista previa</button>
 </div>
 
 <div class="linea">
@@ -141,6 +142,7 @@ function propuestas() {
     .sort((a, b) => (a[2]._t ?? 1e9) - (b[2]._t ?? 1e9));
   const dudas = items.filter(([, , x]) => x.duda).length;
   $('#props').innerHTML = `<h3>📋 Propuestas de la IA</h3>
+    ${items.length ? `<div class="fila"><button class="principal" onclick="window.open('/vista?p=' + q(P), 'vista_' + P)">👀 Verlas como diapositivas</button></div>` : ''}
     <p class="aviso">${items.length ? `${items.length} en total${dudas ? `, <b>${dudas} con duda</b> (en amarillo)` : ''}. «👁 Ver» la muestra en el video:
       ahí la cambias, la arrastras en la pista o, en una flecha, haces clic sobre el video para que apunte a otro lugar.
       Cuando termines, pulsa «▶ Armar el video con estos cambios».` : 'No hay etiquetas ni flechas todavía.'}</p>
@@ -206,7 +208,7 @@ function capa() {  // lo que se ve encima del video en este segundo
     const col = s.color || '#ffd23f', r = s.r || 70, elegida = SEL && SEL.tipo === 'sen' && SEL.k === k;
     if (s.tipo === 'caja') return `<rect x="${s.x - (s.w || 160) / 2}" y="${s.y - (s.h || 80) / 2}" width="${s.w || 160}" height="${s.h || 80}" rx="12" fill="none" stroke="${col}" stroke-width="8" ${elegida ? 'stroke-dasharray="20 10"' : ''}/>`;
     if (s.tipo === 'flecha') {
-      const a = (s.angulo || 0) * Math.PI / 180, L2 = r * 2.2, x0 = s.x - Math.cos(a) * L2, y0 = s.y - Math.sin(a) * L2;
+      const a = (s.angulo ?? -35) * Math.PI / 180, L2 = r * 2.2, x0 = s.x + Math.cos(a) * L2, y0 = s.y + Math.sin(a) * L2;  // como en Senal.tsx
       return `<line x1="${x0}" y1="${y0}" x2="${s.x}" y2="${s.y}" stroke="${col}" stroke-width="12" marker-end="url(#punta)"/>`;
     }
     return `<circle cx="${s.x}" cy="${s.y}" r="${r}" fill="none" stroke="${col}" stroke-width="8" ${elegida ? 'stroke-dasharray="20 10"' : ''}/>`;
@@ -310,7 +312,7 @@ function elegir(tipo, k) {
       <label>Forma <select id="pTipo">${TIPOS_SEN.map(x => `<option ${x === s.tipo ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label>Texto encima (opcional) <input type="text" id="pTx" value="${esc(s.texto || '')}"></label>
       <label>Tamaño <input type="number" id="pR" step="5" min="20" value="${s.r || 70}"></label>
-      ${s.tipo === 'flecha' ? `<label>Ángulo (grados) <input type="number" id="pAng" step="15" value="${s.angulo || 0}"></label>` : ''}
+      ${s.tipo === 'flecha' ? `<label>Ángulo (grados; 0 = viene desde la derecha) <input type="number" id="pAng" step="15" value="${s.angulo ?? -35}"></label>` : ''}
       <label>Segundo <input type="number" id="pT" step="0.1" value="${s._t ?? ''}"></label>
       <label>Dura (s) <input type="number" id="pDur" step="0.5" min="1" value="${s.dur || 3}"></label>
       <label class="aviso"><input type="checkbox" id="pSeg" ${s.seguir !== false ? 'checked' : ''} style="width:auto"> Seguir la pieza si se mueve</label>
