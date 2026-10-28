@@ -32,6 +32,19 @@ sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 
 
+sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
+import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
+
+
+def estado_idiomas(d, lang=''):
+    """Con qué idioma se dibujan las etiquetas y la tabla original → traducción de un idioma."""
+    datos = idiomas.leer(d)
+    lang = (lang or (datos['idioma'] if datos['idioma'] != idiomas.ORIGINAL else 'en')).lower()
+    tabla = datos['traducciones'].get(lang) or {}
+    return {'idioma': datos['idioma'], 'lang': lang, 'nombres': idiomas.NOMBRES,
+            'hechos': sorted(datos['traducciones']), 'filas': [{'orig': t, 'trad': tabla.get(t, '')} for t in idiomas.textos(d)]}
+
+
 def estado_importantes(d, aplicar=False):
     """Los cortes importantes del proyecto y cómo quedan en el guion. Con aplicar, deja a ×1 los bloques que los tocan."""
     lista, g = importantes.leer(d), None
@@ -1311,6 +1324,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'v': v})
             if ruta == '/api/importantes':  # «⭐ Cortes importantes» del proyecto y los bloques del guion que los tocan
                 return self.responder(estado_importantes(carpeta(q['p'])))
+            if ruta == '/api/etiquetas_idiomas':  # «🌐 Etiquetas en otro idioma»
+                return self.responder(estado_idiomas(carpeta(q['p']), q.get('lang', '')))
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
@@ -1846,6 +1861,35 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
+            if ruta == '/api/etiquetas_idiomas':  # guarda el idioma elegido y las traducciones que escribiste
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                act = idiomas.leer(d)
+                lang = re.sub(r'[^a-z\-]', '', str(datos.get('lang') or '').lower())[:8]
+                if datos.get('idioma'):
+                    act['idioma'] = re.sub(r'[^a-z\-]', '', str(datos['idioma']).lower())[:8] or idiomas.ORIGINAL
+                if lang and isinstance(datos.get('traducciones'), dict):
+                    tabla = act['traducciones'].setdefault(lang, {})
+                    for k, v in datos['traducciones'].items():
+                        if str(v or '').strip():
+                            tabla[str(k)] = str(v).strip()[:300]
+                        else:
+                            tabla.pop(str(k), None)
+                idiomas.guardar(d, act)
+                return self.responder(estado_idiomas(d, lang))
+            if ruta == '/api/etiquetas_traducir':  # la IA de la app traduce lo que falta (un pedido corto, solo texto)
+                d = carpeta(q['p'])
+                lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]
+                if not lang or lang == idiomas.ORIGINAL:
+                    return self.error('Elige a qué idioma traducir.')
+                r = subprocess.run([sys.executable, os.path.join(RAIZ, 'etiquetas', 'traducir.py'), '--proyecto', d, '--idioma', lang,
+                                    '--ajustes', AJUSTES] + (['--todo'] if q.get('todo') else []),
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600,
+                                   env=dict(os.environ, PYTHONUTF8='1'))
+                ultima = (r.stdout.strip().splitlines() or [''])[-1]
+                if r.returncode != 0 or not ultima.startswith('{'):
+                    return self.error('No pude traducir: ' + ' '.join((r.stderr or r.stdout).split())[-400:])
+                return self.responder({**estado_idiomas(d, lang), 'msg': json.loads(ultima).get('msg', '')})
             if ruta == '/api/importantes':  # guarda los cortes importantes y deja a ×1 los bloques del guion que los tocan
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 d = carpeta(q['p'])

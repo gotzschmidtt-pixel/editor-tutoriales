@@ -25,6 +25,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 sys.path.insert(0, os.path.join(RAIZ, 'capas'))
 import capas  # noqa: E402  con --capa: se pega junto con flechas y tarjetas en una sola pasada
+sys.path.insert(0, AQUI)
+import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 FPS = 25
 
 
@@ -136,6 +138,9 @@ def main():
             continue
         items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + t, 2), 'dur': e.get('dur', 3.5)})
 
+    items, idioma, faltan = idiomas.aplicar(items, os.path.dirname(os.path.abspath(a.guion)))  # «🌐 Etiquetas en otro idioma»
+    if idioma != idiomas.ORIGINAL:
+        print(f"Etiquetas en {idiomas.NOMBRES.get(idioma, idioma)}" + (f" ({faltan} texto(s) sin traducir van en el original)" if faltan else ''))
     grupos = agrupar(items)
     if not grupos:  # ninguna etiqueta cabe en este guion: el video sigue igual, sin fallar
         print('AVISO: ninguna etiqueta coincide con el guion actual; el video sigue sin etiquetas. '

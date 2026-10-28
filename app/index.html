@@ -274,6 +274,25 @@
       «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
+    <section class="panel extra" id="panelIdiomas">
+      <h2>🌐 Etiquetas en otro idioma</h2>
+      <p class="aviso">Las mismas etiquetas (las de la IA y las de tus capturas), traducidas: no se hacen de nuevo. Al cambiar de
+      idioma solo se vuelven a dibujar las etiquetas; la voz, el montaje y la música no se tocan (la voz sigue en español).</p>
+      <div class="fila" style="align-items:center">
+        <label>Idioma <select id="idLang" onchange="idCargar(this.value)"></select></label>
+        <input type="text" id="idOtro" placeholder="otro código (ej.: ru, ar)" style="width:11em" onchange="this.value && idCargar(this.value.trim().toLowerCase())">
+        <button onclick="idTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido corto, solo texto. No gasta ElevenLabs">🌐 Traducir con IA</button>
+      </div>
+      <div id="idFilas" style="margin-top:8px"></div>
+      <div class="fila" style="align-items:center">
+        <button onclick="idGuardar()">💾 Guardar traducciones</button>
+        <button class="principal" onclick="idUsar()" title="Las etiquetas se dibujan en este idioma y se vuelven a poner sobre el video">🎬 Poner las etiquetas en este idioma</button>
+        <button onclick="idUsar('es')">↩ Volver al español</button>
+        <span class="msg" id="idMsg"></span>
+      </div>
+      <p class="aviso" id="idActual"></p>
+    </section>
+
     <section class="panel extra" id="panelTarjetas">
       <h2>💬 Comentarios y WhatsApp</h2>
       <div class="tabs" id="grupos"></div>
@@ -675,7 +694,7 @@ async function cargarProyectos(sel) {
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar();
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1662,6 +1681,40 @@ function impAgregar() {
   impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
 }
 function impQuitar(i) { if (confirm('¿Quitar este corte importante?')) impGuardar(IMP.filter((_, k) => k !== i)); }
+// «🌐 Etiquetas en otro idioma»: etiquetas_idiomas.json (traducciones por idioma y con cuál se dibujan)
+let ID_LANG = 'en';
+function idPintar(r, msg) {
+  ID_LANG = r.lang;
+  const langs = [...new Set([...Object.keys(r.nombres).filter(k => k !== 'es'), ...r.hechos, r.lang])];
+  $('#idLang').innerHTML = langs.map(k => `<option value="${esc(k)}" ${k === r.lang ? 'selected' : ''}>${esc(r.nombres[k] || k)}${r.hechos.includes(k) ? ' ✓' : ''}</option>`).join('');
+  $('#idFilas').innerHTML = r.filas.length ? r.filas.map((f, i) => `<div class="fila" style="align-items:center; margin:3px 0">
+      <span style="flex:1; min-width:12em">${esc(f.orig)}</span>
+      <input type="text" data-orig="${esc(f.orig)}" value="${esc(f.trad)}" placeholder="traducción (vacío = va el original)" style="flex:1; min-width:12em"></div>`).join('')
+    : '<p class="aviso">Todavía no hay etiquetas en este proyecto (ni de la IA ni de tus capturas).</p>';
+  $('#idActual').textContent = 'Ahora las etiquetas se dibujan en: ' + (r.nombres[r.idioma] || r.idioma) + '.';
+  if (msg !== undefined) { $('#idMsg').className = 'msg ok'; $('#idMsg').textContent = msg; }
+}
+async function idCargar(lang) { if (!P) return; try { idPintar(await api(`/api/etiquetas_idiomas?p=${q(P)}&lang=${q(lang || '')}`)); } catch (e) {} }
+function idTabla() { return Object.fromEntries([...document.querySelectorAll('#idFilas input[data-orig]')].map(i => [i.dataset.orig, i.value.trim()])); }
+async function idGuardar(extra) {
+  try { const r = await api(`/api/etiquetas_idiomas?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lang: ID_LANG, traducciones: idTabla(), ...(extra || {})})}); idPintar(r, '✓ Guardado'); return r; }
+  catch (e) { $('#idMsg').className = 'msg err'; $('#idMsg').textContent = e.message; }
+}
+async function idTraducir() {
+  if (!confirm('La IA de «⚙ Ajustes IA» traduce las etiquetas que todavía no tienen traducción (un pedido corto, solo texto; no gasta ElevenLabs). ¿Seguir?')) return;
+  await idGuardar();
+  $('#idMsg').className = 'msg'; $('#idMsg').textContent = '⏳ Traduciendo…';
+  try { const r = await api(`/api/etiquetas_traducir?p=${q(P)}&lang=${q(ID_LANG)}`, {method: 'POST', body: '{}'}); idPintar(r, '✓ ' + r.msg + ' Revísalas abajo.'); }
+  catch (e) { $('#idMsg').className = 'msg err'; $('#idMsg').textContent = e.message; }
+}
+async function idUsar(lang) {
+  lang = lang || ID_LANG;
+  const r = await idGuardar({idioma: lang});
+  if (!r) return;
+  const e = await api(`/api/estado?p=${q(P)}`);
+  if (!e.archivos['4_musica.mp4']) return $('#idMsg').textContent = `✓ Las etiquetas van a salir en ${r.nombres[lang] || lang} cuando armes el video.`;
+  if (confirm(`Las etiquetas quedan en ${r.nombres[lang] || lang}. ¿Las vuelvo a poner ahora sobre el video? (solo se redibujan los extras; no gasta créditos)`)) insertarExtras();
+}
 function cerrarSolo() {
   document.body.classList.remove('solo');
   document.querySelectorAll('.solo-activo').forEach(x => x.classList.remove('solo-activo'));
