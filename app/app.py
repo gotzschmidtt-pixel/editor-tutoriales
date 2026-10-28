@@ -595,7 +595,7 @@ def comandos(paso, d, op):
         return c
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
-        return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--mb', f'{mb:g}']]
+        return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--conocimientos', conocimiento.CARPETA, '--mb', f'{mb:g}']]
     if paso == 'acortar':  # quita silencios, esperas y lo que sobra de la grabación, hasta la duración pedida
         c = [PY, m('acortar', 'acortar.py'), '--proyecto', '.', '--ajustes', AJUSTES]
         if op.get('rehacer'):
