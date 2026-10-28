@@ -13,6 +13,8 @@ etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo":
                   "texto": "gsmprime.co", "color": null, "dur": 3.5}]
                con "en": segundos desde que empieza su bloque (lo pone el editor por pistas; sigue al bloque si se mueve)
                o "t": segundo exacto en el video, en vez de buscar la frase
+Además entran las etiquetas que el autor escribió en sus capturas de «🎯 Flechas y círculos» (marcas_senales/marcas.json),
+en el segundo de la captura.
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 """
 import argparse, json, os, shutil, subprocess, sys, unicodedata
@@ -42,6 +44,53 @@ def buscar(al, frase):
     return al['character_start_times_seconds'][mapa[pos]]
 
 
+MONTADOS = {'1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4'}
+
+
+def segundos(s):
+    """«2:56.1» o «176.1» → 176.1 (None si no se entiende)."""
+    try:
+        partes = [float(x.replace(',', '.')) for x in str(s).strip().split(':')]
+    except ValueError:
+        return None
+    t = 0.0
+    for x in partes:
+        t = t * 60 + x
+    return t if partes else None
+
+
+def de_capturas(carpeta, bloques):
+    """Las etiquetas que pusiste en tus capturas de «🎯 Flechas y círculos» («Presionamos VOL +, VOL − y POWER»), en el
+    segundo exacto del video armado: el de la captura si es del video ya montado, o pasado del original al montaje."""
+    try:
+        marcas = json.load(open(os.path.join(carpeta, 'marcas_senales', 'marcas.json'), encoding='utf-8')).get('MARCAS', [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    out = []
+    for m in marcas:
+        texto = str(m.get('etiqueta') or '').strip() if isinstance(m, dict) else ''
+        if not texto:
+            continue
+        s = segundos(m.get('segundo'))
+        if s is None:
+            print(f"AVISO: la etiqueta «{texto}» es de una captura sin segundo: captúrala desde el reproductor de la app")
+            continue
+        if m.get('video') in MONTADOS:
+            t = s
+        else:  # del original: en qué bloque se ve ese segundo y a qué velocidad va
+            t = None
+            for b in bloques:
+                mo = b.get('montaje') or {}
+                if str(mo.get('modo', '')).startswith('lento') and mo['src_inicio'] <= s <= mo['src_fin'] and b.get('inicio_min') is not None:
+                    t = b['inicio_min'] + (s - mo['src_inicio']) / (mo.get('velocidad') or 1)
+                    break
+            if t is None:
+                print(f"AVISO: el segundo {m.get('segundo')} de tu grabación no queda en el video (ese tramo se saltó); salto «{texto}»")
+                continue
+        out.append({'tipo': 'consejo', 'titulo': None, 'texto': texto, 't': round(t, 2), 'dur': 5.0, 'de_captura': m.get('archivo')})
+    return out
+
+
 def agrupar(items, max_pila=3):
     """Junta en una misma pila las etiquetas que se solapan en el tiempo."""
     grupos = []
@@ -66,8 +115,9 @@ def main():
     ap.add_argument('--capa', help='solo dibuja y deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
-    items = []
+    bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
+    inicio = {b['id']: b['inicio_min'] for b in bloques}
+    items = de_capturas(os.path.dirname(os.path.abspath(a.guion)), bloques)
     for e in json.load(open(a.etiquetas, encoding='utf-8')):
         if e.get('t') is not None:  # con su segundo exacto en el video
             items.append({**e, 't': round(float(e['t']), 2), 'dur': e.get('dur', 3.5)})
