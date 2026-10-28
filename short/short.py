@@ -7,7 +7,9 @@ Uso (desde la carpeta del proyecto): python short.py --proyecto . --duracion 60
    suscribirse, grupo, WhatsApp de soporte), hasta llenar la duración. Deja el plan con el porqué de cada toma en short.json.
 2. Reencuadra a 9:16 siguiendo lo importante: tu cara si sales (cuadro completo en alto), y si no, lo que se mueve o cambia en
    la pantalla (cursor, botón, celular) con un zoom suave; donde marcaste un círculo, encuadra esa zona. Nunca acelera.
-3. Voz: las mismas voces del video (voz/Lxx.mp3), así que no gasta créditos. Subtítulos grandes en español y tu música fija.
+3. Voz: las mismas voces del video (voz/Lxx.mp3), así que no gasta créditos. Con --voz-nueva usa el guion propio del Short
+   (short_guion.json: tomas con src_inicio, texto y por_que, escrito para el Short, con más gancho) y genera esa voz con
+   ElevenLabs en voz_short/ (gasta ~1 crédito por letra; lo que no cambió se reutiliza). Subtítulos grandes y tu música fija.
 Deja SHORT.mp4 en la carpeta del proyecto.
 """
 import argparse, json, os, re, subprocess, sys
@@ -21,6 +23,7 @@ W, H = 1920, 1080          # el original
 SW, SH = 1080, 1920        # el Short
 PASO_SEG = 0.5             # cada cuánto se mira dónde está lo importante
 ZOOM_PANTALLA = 1.2        # sin cara: un poco más cerca de lo que se mueve (sin cortar el teléfono)
+MIN_TOMA = 7.0             # con la voz nueva (frases cortas): cada toma dura al menos esto, para ver la acción entera
 MUSICA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')
 
 PROMO = re.compile(r'coment|suscrib|facebook|grupo privado|soporte|asesor|testimon|capturas de whatsapp|nos vemos|abrazo|'
@@ -77,6 +80,25 @@ def elegir(d, g, objetivo, dur_video):
             menos = min((c for c in elegidas if c['k']), key=lambda c: c['puntos'])
             elegidas.remove(menos); elegidas.append(fin[-1])
     return sorted(elegidas, key=lambda c: c['k'])
+
+
+def voz_nueva(d):
+    """Las tomas del guion propio del Short (short_guion.json), con su voz nueva generada en voz_short/."""
+    try:
+        sg = json.load(open(os.path.join(d, 'short_guion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        raise SystemExit('ERROR: falta el guion del Short (short_guion.json). Pídeselo a Claude o a la IA de la app.')
+    bloques = [{'id': x['id'], 'texto': x['texto'], 'tipo': 'libre', 'humor': False,
+                'montaje': {'modo': 'lento', 'src_inicio': float(x['src_inicio']), 'src_fin': float(x['src_inicio']) + 30,
+                            'velocidad': 1.0, 'congelar_s': None}} for x in sg['tomas']]
+    f = os.path.join(d, '.short_voz_guion.json')
+    json.dump({'bloques': bloques}, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print('· voz nueva del Short con ElevenLabs (solo las frases nuevas o cambiadas gastan créditos)…', flush=True)
+    subprocess.run([sys.executable, os.path.join(RAIZ, 'voz', 'voz.py'), '--guion', f, '--salida', os.path.join(d, 'voz_short')],
+                   check=True, cwd=d)
+    return [{'k': i, 'id': x['id'], 'voz': round(duracion(os.path.join(d, 'voz_short', f"{x['id']}.mp3")), 2), 'puntos': 0,
+             'por_que': x.get('por_que', ''), 'src_inicio': float(x['src_inicio']), 'texto': x['texto'], 'carpeta': 'voz_short'}
+            for i, x in enumerate(sg['tomas'])]
 
 
 def marcas_autor(d):
@@ -163,10 +185,10 @@ def expr(claves, i_val, lo, hi):
     return e
 
 
-def palabras_voz(d, bid):
+def palabras_voz(d, bid, carpeta='voz'):
     """[(inicio, fin, palabra)] de la voz de un bloque, con los tiempos por letra de ElevenLabs."""
     try:
-        a = json.load(open(os.path.join(d, 'voz', f'{bid}.align.json'), encoding='utf-8'))
+        a = json.load(open(os.path.join(d, carpeta, f'{bid}.align.json'), encoding='utf-8'))
     except (OSError, ValueError):
         return []
     out, actual, ini = [], '', None
@@ -196,7 +218,7 @@ def subtitulos(d, tomas, retraso):
               '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text']
     t0 = 0.0
     for c in tomas:
-        pal = palabras_voz(d, c['id'])
+        pal = palabras_voz(d, c['id'], c.get('carpeta', 'voz'))
         for i in range(0, len(pal), 3):  # de a 3 palabras: se leen de un vistazo en el celular
             grupo = pal[i:i + 3]
             txt = ' '.join(p[2] for p in grupo).replace('{', '').replace('}', '')
@@ -211,13 +233,17 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--duracion', type=float, default=60)
     ap.add_argument('--salida', default='SHORT.mp4')
+    ap.add_argument('--voz-nueva', action='store_true', help='voz escrita para el Short (short_guion.json), gasta ElevenLabs')
     a = ap.parse_args()
     import cv2
     d = os.path.abspath(a.proyecto)
     orig = os.path.join(d, 'original.mp4')
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
     dur_video = duracion(orig)
-    tomas = elegir(d, g, a.duracion, dur_video)
+    if a.voz_nueva:
+        tomas = voz_nueva(d)
+    else:
+        tomas = elegir(d, g, a.duracion, dur_video)
     if not tomas:
         raise SystemExit('ERROR: no encontré tomas con voz para el Short (falta generar la voz del video).')
     print(f'Elegí {len(tomas)} tomas para un Short de {a.duracion:.0f} s:', flush=True)
@@ -229,7 +255,7 @@ def main():
     cap = cv2.VideoCapture(orig)
     partes = []
     for i, c in enumerate(tomas):
-        largo = round(c['voz'] + 0.4, 2)
+        largo = round(max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0), 2)  # que se alcance a ver la acción
         s0 = min(c['src_inicio'], max(0.0, dur_video - largo - 0.1))
         claves, zoom = seguir(cap, s0, largo, marcas)
         ch = round(H / zoom / 2) * 2
@@ -241,7 +267,7 @@ def main():
         p = os.path.join(tmp, f'p{i:02d}.mp4')
         print(f"· armo {c['id']} ({'tu cara' if zoom == 1 else 'pantalla, con zoom'})…", flush=True)
         codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{largo:.3f}', '-i', orig,
-                       '-i', os.path.join(d, 'voz', f"{c['id']}.mp3"),
+                       '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
                        '-filter_complex', f'[0:v]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
                        'aresample=44100,aformat=channel_layouts=stereo[a]',
                        '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',

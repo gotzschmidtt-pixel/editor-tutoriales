@@ -550,7 +550,8 @@ def comandos(paso, d, op):
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
     if paso == 'short':  # «📱 Short»: vertical 9:16 con lo más importante, reencuadrado y con subtítulos (sin gastar créditos)
-        return [[PY, m('short', 'short.py'), '--proyecto', '.', '--duracion', str(max(10, min(180, float(op.get('duracion') or 60))))]]
+        return [[PY, m('short', 'short.py'), '--proyecto', '.', '--duracion', str(max(10, min(180, float(op.get('duracion') or 60))))]
+                + (['--voz-nueva'] if op.get('voz_nueva') else [])]
     if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'etiquetas_ia':
