@@ -1020,12 +1020,12 @@ function pintarSalidas(arch) {
     // al bajarlo se llama como el proyecto y la fecha (MOTOROLA_FRP_2026_1080p_2026-10-28.mp4), no «FINAL.mp4»
     const bajada = f => { const m = f.match(/(_\d+p)?\.(mp4|mp3)$/), fecha = new Date().toLocaleDateString('sv');
       return `${P.replace(/[^\w\- ]/g, '')}${m && m[1] ? m[1] : ''}_${fecha}.${m ? m[2] : 'mp4'}`; };
-    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}" download="${bajada(fuente.startsWith('FINAL') ? fuente : 'x.mp4')}" title="${fuente}" onclick="return seguirConVozVieja()"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
+    const html = `<a href="/archivo?p=${q(P)}&f=${fuente}&nombre=${q(bajada(fuente.startsWith('FINAL') ? fuente : 'x.mp4'))}" download="${bajada(fuente.startsWith('FINAL') ? fuente : 'x.mp4')}" title="${fuente}" onclick="return seguirConVozVieja()"><button class="principal">⬇ Original (calidad completa)</button></a> ` +
       ['1080', '720', '480', '360'].map(h => lista(h)
-        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4" download="${bajada(`FINAL_${h}p.mp4`)}" onclick="return seguirConVozVieja()"><button class="principal">⬇ ${h}p</button></a>`
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL_${h}p.mp4&nombre=${q(bajada(`FINAL_${h}p.mp4`))}" download="${bajada(`FINAL_${h}p.mp4`)}" onclick="return seguirConVozVieja()"><button class="principal">⬇ ${h}p</button></a>`
         : `<label class="aviso"><input type="checkbox" value="${h}"> ${h}p</label>`).join(' ') + ' ' +
       (mp3Listo
-        ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp3" download="${bajada('FINAL.mp3')}" onclick="return seguirConVozVieja()"><button class="principal">⬇ 🎵 Solo audio (MP3)</button></a>`
+        ? `<a href="/archivo?p=${q(P)}&f=FINAL.mp3&nombre=${q(bajada('FINAL.mp3'))}" download="${bajada('FINAL.mp3')}" onclick="return seguirConVozVieja()"><button class="principal">⬇ 🎵 Solo audio (MP3)</button></a>`
         : `<label class="aviso" title="Solo el audio del video (voz y música), en mp3"><input type="checkbox" value="mp3"> 🎵 Solo audio (MP3)</label>`);
     if ($('#calidades').dataset.html !== html) {  // solo se repinta si cambió: así no se pierde un clic en las casillas
       $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
@@ -1034,7 +1034,7 @@ function pintarSalidas(arch) {
     for (const h of [...PEND_DESCARGA]) if (h === 'mp3' ? mp3Listo : lista(h)) {  // terminó de prepararse: se descarga solo
       PEND_DESCARGA.delete(h);
       const f = h === 'mp3' ? 'FINAL.mp3' : `FINAL_${h}p.mp4`;
-      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=${f}`; a.download = bajada(f); a.click();
+      const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=${f}&nombre=${q(bajada(f))}`; a.download = bajada(f); a.click();
     }
   }
 }

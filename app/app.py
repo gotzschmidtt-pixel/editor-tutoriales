@@ -1619,7 +1619,7 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
                 sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz'] + [g[0] for g in GRUPOS.values()] else ''
-                return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
+                return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])), q.get('nombre', ''))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
                 try:
@@ -1651,7 +1651,7 @@ class Manejador(BaseHTTPRequestHandler):
             return self.error(str(e))
         self.error('no encontrado', 404)
 
-    def servir(self, f):
+    def servir(self, f, nombre=''):
         if not os.path.isfile(f):
             return self.error('no existe', 404)
         tam = os.path.getsize(f)
@@ -1669,6 +1669,9 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(largo))
         if rango:
             self.send_header('Content-Range', f'bytes {ini}-{fin}/{tam}')
+        if nombre:  # «⬇ Original / 1080p…»: se baja con el nombre del proyecto y la fecha (no «archivo.mp4» ni «FINAL.mp4»)
+            limpio = re.sub(r'[^\w\-. ]', '', nombre)[:120] or os.path.basename(f)
+            self.send_header('Content-Disposition', f'attachment; filename="{limpio}"; filename*=UTF-8\'\'{urllib.parse.quote(limpio)}')
         self.end_headers()
         with open(f, 'rb') as fh:
             fh.seek(ini)
