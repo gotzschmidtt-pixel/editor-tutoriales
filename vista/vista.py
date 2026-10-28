@@ -81,16 +81,18 @@ def pildora(dib, x, y, alto_marca, texto, W, H):
     dib.text((left + 36, top + 37), texto, font=f, fill=(17, 17, 17), anchor='lm')
 
 
-def etiqueta(dib, e, W):
-    """La tarjeta de arriba a la derecha (como Etiqueta.tsx): título chico y el dato grande."""
-    ft, fx = fuente(26), fuente(52)
+def etiqueta(dib, e, W, H):
+    """La píldora de abajo a la izquierda (como etiquetas/plantilla.html): ícono, título chico y el dato grande."""
+    ft, fx = fuente(24), fuente(44)
     tit, txt = str(e.get('titulo') or '').upper(), str(e.get('texto') or '')
-    ancho = int(max(dib.textlength(tit, font=ft), dib.textlength(txt, font=fx))) + 150
-    right, top = W - 70, 90
-    dib.rounded_rectangle([right - ancho, top, right, top + 130], radius=24, fill=(12, 14, 22), outline=(255, 210, 63), width=4)
-    dib.text((right - ancho + 110, top + 34), tit, font=ft, fill=(200, 200, 210), anchor='lm')
-    dib.text((right - ancho + 110, top + 84), txt, font=fx, fill='white', anchor='lm')
-    dib.ellipse([right - ancho + 26, top + 36, right - ancho + 86, top + 96], fill=(255, 210, 63))
+    ancho = int(max(dib.textlength(tit, font=ft), dib.textlength(txt, font=fx))) + 130
+    left, alto = 80, 104
+    top = H - 110 - alto
+    dib.rounded_rectangle([left - 3, top - 3, left + ancho + 3, top + alto + 3], radius=60, fill=(255, 45, 149))
+    dib.rounded_rectangle([left, top, left + ancho, top + alto], radius=58, fill=(20, 17, 36))
+    dib.ellipse([left + 20, top + 18, left + 88, top + 86], fill=(34, 211, 238))
+    dib.text((left + 108, top + 30), tit, font=ft, fill=(190, 190, 205), anchor='lm')
+    dib.text((left + 108, top + 68), txt, font=fx, fill='white', anchor='lm')
 
 
 def main():
@@ -145,7 +147,7 @@ def main():
         dib = ImageDraw.Draw(img)
         if t is not None and not aviso:
             if clase == 'etiqueta':
-                etiqueta(dib, x, W)
+                etiqueta(dib, x, W, H)
             else:
                 if x.get('tipo') == 'caja':
                     ovalo_a_mano(dib, x['x'], x['y'], x.get('w', 200) * 0.62, x.get('h', 80) * 0.66)
@@ -161,6 +163,12 @@ def main():
                       'frase': x.get('frase'), 'tipo': x.get('tipo'), 'titulo': x.get('titulo'), 'texto': x.get('texto'),
                       'por_que': x.get('por_que'), 'duda': x.get('duda'), 'aprobado': bool(x.get('aprobado')),
                       'x': x.get('x'), 'y': x.get('y')})
+    # un círculo con rótulo abajo a la izquierda, mientras está la etiqueta: se tapan entre sí
+    etqs = [z for z in lista if z['clase'] == 'etiqueta' and z['t'] is not None]
+    for z in lista:
+        if z['clase'] == 'senal' and z['t'] is not None and z.get('texto') and (z.get('x') or 0) < 1000 and (z.get('y') or 0) > 560:
+            if any(abs(e['t'] - z['t']) < 4.5 for e in etqs) and not z.get('aviso'):
+                z['duda'] = (z.get('duda') + ' · ' if z.get('duda') else '') + 'su rótulo cae sobre la etiqueta de abajo a la izquierda que sale al mismo tiempo: muévelo o quita el rótulo'
     lista.sort(key=lambda z: (z['t'] is None, z['t'] or 0))
     json.dump(lista, open(lista_f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'Vista previa: {len(lista)} diapositivas en {SALIDA}/')
