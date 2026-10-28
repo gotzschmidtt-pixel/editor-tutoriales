@@ -569,6 +569,8 @@ def comandos(paso, d, op):
         c = [PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', op['tarea'], '--modo', op['modo'], '--ajustes', AJUSTES]
         if op['modo'] == 'revisar':
             c += ['--entrada', 'ia_respuesta_pegada.txt']
+            if op.get('editor'):  # lo escribiste tú en el editor de guion: tus palabras no se cambian, solo se avisa
+                c += ['--sin-variar']
         return [c]
     if paso == 'alimentar':
         return [[PY, m('alimentacion', 'alimentacion.py'), '--estilo', carpeta_estilo(op.get('estilo')), '--ajustes', AJUSTES]]

@@ -750,6 +750,49 @@ def repeticiones(bloques):
     return out
 
 
+VARIAR = True
+# Cómo se cambia cada muletilla repetida (la primera vez queda como está; desde la segunda, una alternativa distinta cada vez).
+# Sacadas de cómo el autor aprobó el guion de MOTOROLA_FRP_2026.
+CAMBIOS_MULETILLA = [
+    (r'\b[Yy] como (puedes|pueden) (ver|observar|detallar)( aqu[ií])?\s*[,:]\s*', ['¿Lo ves? ', 'Fíjate: ', 'Aquí se nota: ', 'Mira esto: ']),
+    (r'\b[Cc]omo (puedes|pueden) (ver|observar|detallar)( aqu[ií])?\s*[,:]\s*', ['Fíjate: ', 'Aquí se ve: ', '¿Lo ves? ']),
+    (r'\b[Yy] listo\s*[,:.!]\s*', ['Ya está. ', 'Hecho. ', 'Perfecto. ']),
+    (r'^[Aa]hora,?\s+', ['Luego ', 'Enseguida ', 'Después ', 'Toca seguir: ']),
+]
+
+
+def _mayuscula_tras(texto, i):
+    """Después de «¿Lo ves?» o «Ya está.» la frase siguiente arranca con mayúscula."""
+    return texto[:i] + texto[i:i + 1].upper() + texto[i + 1:]
+
+
+def variar_muletillas(bloques):
+    """Cambia las muletillas repetidas en 3 o más bloques («Y como puedes ver», «Y listo», bloques que empiezan con
+    «Ahora») y quita «efectivamente». Devuelve los avisos de lo que cambió. Solo el texto: tiempos y montaje igual."""
+    out = []
+    for rx, alternativas in CAMBIOS_MULETILLA:
+        con = [b for b in bloques if re.search(rx, str(b.get('texto', '')))]
+        if len(con) < 3:
+            continue
+        for k, b in enumerate(con[1:]):
+            alt = alternativas[k % len(alternativas)]
+            t = b['texto']
+            m = re.search(rx, t)
+            t = t[:m.start()] + alt + t[m.end():]
+            if alt.rstrip().endswith(('?', '.')):
+                t = _mayuscula_tras(t, m.start() + len(alt))
+            elif m.start() == 0 or alt[0].isupper():
+                t = t[:1].upper() + t[1:]
+            b['texto'] = t
+            out.append(f"{b.get('id')}: cambié «{m.group(0).strip()}» por «{alt.strip()}» (se repetía en {len(con)} bloques)")
+    for b in bloques:
+        t = re.sub(r'\b([Yy] )?efectivamente,?\s*', lambda m: m.group(1) or '', b['texto'])
+        if t != b['texto']:
+            b['texto'] = t[:1].upper() + t[1:]
+            out.append(f"{b.get('id')}: quité la muletilla «efectivamente»")
+    return out
+
+
 def problemas(bloques, total, con_saltos=True):
     """Lo que el guion revisado todavía hace mal y la app no puede arreglar sola sin cambiar textos: saltos atrás, escenas
     repetidas, demasiado video sin voz y humor mal repartido. Sirve para avisarte y para pedirle a la IA que lo corrija."""
@@ -1114,6 +1157,8 @@ def revisar(d, tarea, datos):
             vistos[clave] = b.get('id', k)
             unicos.append(b)
         bloques[:] = unicos
+        if VARIAR:  # lo que escribió una IA; lo que escribiste tú en el editor solo se avisa (en problemas)
+            avisos += variar_muletillas(bloques)
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
         imp = importantes.leer(d)  # «⭐ Cortes importantes»: esos bloques van a ×1 y no se recortan
         frenados = importantes.marcar(bloques, imp)
@@ -3092,10 +3137,12 @@ def main():
     ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
     ap.add_argument('--revisar-imagen', action='store_true', help='tarea guion: hace la revisión contra imágenes que quedó pendiente')
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
+    ap.add_argument('--sin-variar', action='store_true', help='modo revisar: el texto es del autor; las muletillas solo se avisan')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
-    global AJUSTES_F
+    global AJUSTES_F, VARIAR
     AJUSTES_F = a.ajustes
+    VARIAR = not a.sin_variar
     try:
         configurar_humor(nivel_humor(json.load(open(a.ajustes, encoding='utf-8'))))
     except (OSError, ValueError):
