@@ -284,6 +284,53 @@ def anotar_marca(n, tipo, texto, archivo=''):
     return True
 
 
+def leer_url(url, largo_max=15000):
+    """El texto de un link para alimentar una marca: de YouTube, el título, la descripción y lo que dice (sus
+    subtítulos); de un blog o una web, el título y el texto de la página. Devuelve (título, texto)."""
+    import html, subprocess, sys, tempfile, urllib.request
+    url = str(url or '').strip()
+    if not re.match(r'https?://', url):
+        raise ValueError('Pega un link completo, que empiece con https://')
+    if re.search(r'(youtube\.com|youtu\.be)/', url):
+        sys.path.insert(0, os.path.join(RAIZ, 'alimentacion'))
+        import alimentacion as al
+        with tempfile.TemporaryDirectory(prefix='yt_') as tmp:
+            # --print solo simula; --no-simulate hace que igual baje los subtítulos (el video no: --skip-download)
+            base = al.yt_dlp() + ['--no-playlist', '--no-simulate', '--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs',
+                                  # solo los del idioma original (las traducciones automáticas hacen que YouTube corte con 429)
+                                  'es,es-orig,es-ES,en,en-orig', '--sub-format', 'vtt', '-o', os.path.join(tmp, 'v.%(ext)s')]
+            r = subprocess.run(base + ['--print', 'title', '--print', 'description', url], capture_output=True, text=True,
+                               encoding='utf-8', errors='replace', timeout=300)
+            if r.returncode != 0 and not r.stdout.strip():
+                raise ValueError('No pude leer ese video de YouTube: ' + r.stderr.strip()[-200:])
+            lineas = r.stdout.strip().splitlines()
+            titulo, descripcion = (lineas[0] if lineas else url), '\n'.join(lineas[1:]).strip()[:2000]
+            vtts = sorted([x for x in os.listdir(tmp) if x.endswith('.vtt')],
+                          key=lambda x: (not x.split('.')[-2].startswith('es'), 'orig' not in x, len(x)))
+            dice = ' '.join(t for _, t in al.leer_vtt(os.path.join(tmp, vtts[0]))) if vtts else ''
+        if not dice:
+            dice = ('(YouTube no dejó bajar los subtítulos ahora: vuelve a pegar el link en un rato)' if '429' in r.stderr
+                    else '(el video no tiene subtítulos)')
+        texto = f'DESCRIPCIÓN: {descripcion}\nLO QUE DICE: {dice}'
+    else:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            crudo = r.read(5_000_000)
+            juego = r.headers.get_content_charset() or 'utf-8'
+        pagina = crudo.decode(juego, errors='replace')
+        m = re.search(r'<title[^>]*>(.*?)</title>', pagina, flags=re.S | re.I)
+        titulo = html.unescape(re.sub(r'\s+', ' ', m.group(1))).strip() if m else url
+        pagina = re.sub(r'(?is)<(script|style|noscript|svg|nav|footer|header|form)\b.*?</\1>', ' ', pagina)
+        pagina = re.sub(r'(?i)<br\s*/?>|</(p|div|li|h[1-6]|tr|article|section)>', '\n', pagina)
+        texto = html.unescape(re.sub(r'<[^>]+>', ' ', pagina))
+        texto = '\n'.join(x for x in (re.sub(r'[ \t\xa0]+', ' ', y).strip() for y in texto.split('\n')) if len(x) > 2)
+        if len(texto) < 80:
+            raise ValueError('Esa página casi no tiene texto para leer (puede que necesite iniciar sesión o JavaScript).')
+    if len(texto) > largo_max:
+        texto = texto[:largo_max].rsplit('\n', 1)[0] + '\n[… recortado]'
+    return titulo[:150], texto
+
+
 def marca_de_proyecto(d):
     """La marca de un proyecto, por su nombre o su idea.txt (MOTOROLA_FRP_2026 → MOTOROLA). '' si no se reconoce."""
     if not d:

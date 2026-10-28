@@ -1835,6 +1835,18 @@ class Manejador(BaseHTTPRequestHandler):
                         entro = conocimiento.anotar_marca(datos.get('marca'), str(datos.get('tipo') or 'texto'), datos.get('texto'),
                                                           os.path.basename(str(datos.get('archivo') or '')))
                         return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''), 'msg': 'Agregado.' if entro else 'Eso ya estaba.'})
+                    elif que == 'marca_url':  # un link de YouTube, un blog o una web: su texto entra a la marca
+                        try:
+                            titulo, texto = conocimiento.leer_url(datos.get('url'))
+                        except ValueError:
+                            raise
+                        except Exception as e:  # sin internet, la web no deja leerla, YouTube tardó demasiado…
+                            raise ValueError(f'No pude leer ese link ({e}).')
+                        entro = conocimiento.anotar_marca(datos.get('marca'), 'texto', texto, f"{titulo} · {datos.get('url')}")
+                        return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''),
+                                               'msg': (f'Agregado: «{titulo}».' + (' Ojo: YouTube no dejó bajar sus subtítulos ahora, '
+                                                       'entró solo el título y la descripción; prueba de nuevo en un rato.'
+                                                       if 'YouTube no dejó' in texto else '')) if entro else 'Ese link ya estaba.'})
                     elif que == 'usar':
                         conocimiento.poner_usar(datos.get('usar'))
                     elif que == 'aprender':

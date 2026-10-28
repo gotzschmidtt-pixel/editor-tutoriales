@@ -396,6 +396,11 @@
             <option value="texto">📄 Texto para alimentar</option></select>
           <button onclick="marcaTxt.click()">📎 Agregar .txt</button><input type="file" id="marcaTxt" accept=".txt,.md,text/plain" multiple hidden>
         </div>
+        <div class="fila">
+          <input type="text" id="marcaUrl" placeholder="🔗 Link de YouTube, de un blog o de una web (https://…)" style="flex:1; min-width:14em"
+            onkeydown="if (event.key === 'Enter') marcaUrl_()">
+          <button onclick="marcaUrl_()" title="Lee el video (título, descripción y lo que dice, por sus subtítulos) o el texto de la página, y lo agrega a la marca">🔗 Agregar link</button>
+        </div>
         <textarea id="marcaNota" rows="4" style="width:100%; margin-top:6px; min-height:0; height:6.5em; resize:vertical" placeholder="Escribe o pega aquí: una pregunta, una idea o un texto largo (procesos, modelos, respuestas…)"></textarea>
         <div class="fila"><button class="principal" onclick="marcaAnotar()">➕ Agregar a la marca</button><span class="msg" id="marcaMsg"></span></div>
         <details style="margin-top:6px"><summary class="aviso" id="marcaSum">Ver y editar todo lo de esta marca</summary>
@@ -1505,6 +1510,15 @@ async function marcaAnotar() {
   if (await marcaPost('marca_anotar', {tipo: $('#marcaTipo').value, texto})) $('#marcaNota').value = '';
 }
 function marcaGuardar() { return marcaPost('marca_guardar', {texto: $('#marcaTexto').value}); }
+async function marcaUrl_() {  // YouTube (título, descripción y subtítulos) o blog/web (texto de la página)
+  const urls = $('#marcaUrl').value.split(/\s+/).filter(u => /^https?:\/\//.test(u));
+  if (!urls.length) return $('#marcaUrl').focus();
+  for (const url of urls) {
+    $('#marcaMsg').className = 'msg'; $('#marcaMsg').textContent = `Leyendo ${url}…`;
+    if (!(await marcaPost('marca_url', {url}))) return;
+  }
+  $('#marcaUrl').value = '';
+}
 $('#marcaTxt').onchange = async () => {  // cada .txt entra entero como «Texto para alimentar», con su nombre de archivo
   for (const f of [...$('#marcaTxt').files]) await marcaPost('marca_anotar', {tipo: 'texto', texto: await f.text(), archivo: f.name});
   $('#marcaTxt').value = '';
