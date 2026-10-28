@@ -298,6 +298,12 @@
         <span class="msg" id="idMsg"></span>
       </div>
       <p class="aviso" id="idActual"></p>
+      <h3 style="margin:16px 0 6px">🎬 El video completo en este idioma</h3>
+      <p class="aviso">Crea una copia del proyecto (por ejemplo MOTOROLA_FRP_2026_EN) con el guion traducido por la IA: mismos tramos,
+      cortes importantes, flechas y etiquetas (traducidas). La voz en inglés es <b>Brian</b>. No gasta ElevenLabs: revisas el guion
+      traducido y la voz se hace cuando pulsas «▶ Hacer todo» en la copia (te muestra antes cuántos créditos usa). Tu video en
+      español no se toca.</p>
+      <div class="fila"><button class="principal" onclick="idVersion()">🌐 Hacer versión en este idioma</button><span class="msg" id="idVerMsg"></span></div>
     </section>
 
     <section class="panel extra" id="panelTarjetas">
@@ -1797,6 +1803,18 @@ async function idTraducir() {
   $('#idMsg').className = 'msg'; $('#idMsg').textContent = '⏳ Traduciendo…';
   try { const r = await api(`/api/etiquetas_traducir?p=${q(P)}&lang=${q(ID_LANG)}`, {method: 'POST', body: '{}'}); idPintar(r, '✓ ' + r.msg + ' Revísalas abajo.'); }
   catch (e) { $('#idMsg').className = 'msg err'; $('#idMsg').textContent = e.message; }
+}
+async function idVersion() {
+  const nombre = $('#idLang').selectedOptions[0]?.textContent.replace(' ✓', '') || ID_LANG;
+  if (!confirm(`¿Hago la versión en ${nombre} de «${P}»?\n\nCopio el proyecto y la IA de «⚙ Ajustes IA» traduce el guion (un pedido de texto). No genera voz ni gasta ElevenLabs. Tarda uno o dos minutos.`)) return;
+  $('#idVerMsg').className = 'msg'; $('#idVerMsg').textContent = '⏳ Copiando y traduciendo el guion…';
+  try {
+    const r = await api(`/api/version_idioma?p=${q(P)}&lang=${q(ID_LANG)}`, {method: 'POST', body: '{}'});
+    $('#idVerMsg').className = 'msg ok';
+    $('#idVerMsg').innerHTML = `✓ Lista: <b>${esc(r.proyecto)}</b> (voz ${esc(r.voz)}, unos ${r.caracteres.toLocaleString('es')} caracteres de voz)`
+      + (r.sin_traducir.length ? ` · sin traducir: ${esc(r.sin_traducir.join(', '))}` : '')
+      + ` · <a href="/guion?p=${q(r.proyecto)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="/?p=${q(r.proyecto)}" target="_blank">🎬 Abrir el proyecto</a>`;
+  } catch (e) { $('#idVerMsg').className = 'msg err'; $('#idVerMsg').textContent = e.message; }
 }
 async function idUsar(lang) {
   lang = lang || ID_LANG;

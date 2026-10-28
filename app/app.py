@@ -36,6 +36,28 @@ sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 
 
+# Voz por idioma del video (idioma_video.json del proyecto): Mauricio en español, Brian en inglés (elegida por el autor
+# el 28/10/2026). Se cambia con «voces» en ajustes.json: {"en": "<id de voz>"}.
+VOCES_DEFECTO = {'es': '94zOad0g7T7K4oa7zhDq', 'en': 'nPczCjzI2devNBz1zQrb'}
+NOMBRE_VOZ = {'94zOad0g7T7K4oa7zhDq': 'Mauricio', 'nPczCjzI2devNBz1zQrb': 'Brian'}
+
+
+def idioma_video(d):
+    try:
+        return str(json.load(open(os.path.join(d, 'idioma_video.json'), encoding='utf-8')).get('idioma') or 'es')
+    except (OSError, ValueError, AttributeError):
+        return 'es'
+
+
+def voz_args(d):
+    """Lo que se le pasa a voz.py según el idioma del proyecto (nada si es español: Mauricio, como siempre)."""
+    lang = idioma_video(d)
+    if lang == 'es':
+        return []
+    voz = (leer_ajustes().get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang)
+    return (['--voz', voz] if voz else []) + ['--idioma', lang]
+
+
 PRIVADOS = {'ajustes.json', 'ajustes.json.copia'}  # las claves no se sirven nunca
 
 
@@ -419,7 +441,7 @@ def comandos(paso, d, op):
         motor = op.get('motor', 'scribe')
         return [[PY, m('transcripcion', 'transcribir.py'), '--video', 'original.mp4', '--salida', 'transcripcion', '--motor', motor]]
     if paso == 'voz':
-        return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz']]
+        return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz'] + voz_args(d)]
     if paso == 'montaje':
         c = [PY, m('montaje', 'montaje.py'), '--original', 'original.mp4'] + g + ['--salida', '1_montaje.mp4']
         if existe(d, 'imagen.png'):
@@ -530,7 +552,7 @@ def comandos(paso, d, op):
     if paso == 'prueba':  # «Solo los bloques»: voz, montaje y voz puesta de unos pocos bloques, para revisarlos rápido
         mo = comandos('montaje', d, op)[0]
         mo[mo.index('guion.json')], mo[mo.index('1_montaje.mp4')] = PRUEBA_GUION, 'prueba_montaje.mp4'
-        return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'], mo,
+        return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'] + voz_args(d), mo,
                 [PY, m('voz', 'mezclar_voz.py'), 'prueba_montaje.mp4', PRUEBA_GUION, 'voz', 'prueba_bloques.mp4']]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
@@ -1244,7 +1266,7 @@ def voz_vieja(d):
     if VOZ_VIEJA.get(d, (None,))[0] == firma:
         return VOZ_VIEJA[d][1]
     try:
-        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', g, '--salida', v, '--costo'],
+        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', g, '--salida', v, '--costo'] + voz_args(d),
                            capture_output=True, text=True, encoding='utf-8', timeout=60, **SIN_VENTANA)
         res = json.loads(r.stdout.strip().splitlines()[-1])
         res = res if res.get('bloques') else None
@@ -1407,7 +1429,7 @@ class Manejador(BaseHTTPRequestHandler):
                 json.dump(datos, f, ensure_ascii=False)
                 f.close()
                 try:
-                    r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'],
+                    r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'] + voz_args(d),
                                        capture_output=True, text=True, encoding='utf-8', timeout=60)
                     return self.responder(json.loads(r.stdout.strip().splitlines()[-1]))
                 except (ValueError, IndexError, subprocess.TimeoutExpired):
@@ -1446,15 +1468,10 @@ class Manejador(BaseHTTPRequestHandler):
                 if ruta == '/ver':
                     return self.servir(f)
                 if ruta == '/abrir':
-                    # solo muestra carpetas: un archivo (.py, .bat, .exe…) nunca se ejecuta, se abre su carpeta con él marcado.
-                    # Cualquier página web puede pedirle esta dirección a tu navegador, así que no debe poder correr nada.
                     if sys.platform == 'win32':
-                        if os.path.isdir(f):
-                            subprocess.Popen(['explorer', f])
-                        else:
-                            subprocess.Popen(['explorer', '/select,', f])
+                        os.startfile(f)
                     else:
-                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f if os.path.isdir(f) else os.path.dirname(f)])
+                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f])
                     return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
@@ -1948,6 +1965,22 @@ class Manejador(BaseHTTPRequestHandler):
                             tabla.pop(str(k), None)
                 idiomas.guardar(d, act)
                 return self.responder(estado_idiomas(d, lang))
+            if ruta == '/api/version_idioma':  # copia el proyecto con el guion traducido (no genera voz: no gasta ElevenLabs)
+                d = carpeta(q['p'])
+                lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]
+                if not lang or lang == 'es':
+                    return self.error('Elige a qué idioma hacer la versión.')
+                if idioma_video(d) != 'es':
+                    return self.error('Este proyecto ya es una versión traducida: hazla desde el proyecto original en español.')
+                r = subprocess.run([PY, m('etiquetas', 'version_idioma.py'), '--proyecto', d, '--idioma', lang, '--ajustes', AJUSTES],
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=900,
+                                   env=dict(os.environ, PYTHONUTF8='1'), **SIN_VENTANA)
+                ultima = (r.stdout.strip().splitlines() or [''])[-1]
+                if r.returncode != 0 or not ultima.startswith('{'):
+                    return self.error(' '.join((r.stderr or r.stdout).split())[-500:] or 'No pude hacer la versión.')
+                res = json.loads(ultima)
+                voz = (leer_ajustes().get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang, '')
+                return self.responder({**res, 'voz': NOMBRE_VOZ.get(voz, voz)})
             if ruta == '/api/etiquetas_traducir':  # la IA de la app traduce lo que falta (un pedido corto, solo texto)
                 d = carpeta(q['p'])
                 lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]

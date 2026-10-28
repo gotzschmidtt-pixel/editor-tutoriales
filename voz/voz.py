@@ -135,6 +135,7 @@ def main():
     ap.add_argument('--guion', required=True)
     ap.add_argument('--salida', required=True)
     ap.add_argument('--voz', default='94zOad0g7T7K4oa7zhDq', help='id de voz de ElevenLabs (por defecto Mauricio)')
+    ap.add_argument('--idioma', default='es', help='idioma de la voz (es, en…): el de la versión del video')
     ap.add_argument('--modelo', default='eleven_v4')
     ap.add_argument('--estabilidad', type=float, default=0.5)
     ap.add_argument('--costo', action='store_true', help='solo dice qué bloques generaría y cuántos caracteres (no gasta)')
@@ -152,7 +153,7 @@ def main():
             continue
         if os.path.exists(mp3):
             print(b['id'], 'cambió el texto: genero la voz de nuevo', flush=True)
-        body = json.dumps({'text': texto_voz(b['texto']), 'model_id': a.modelo, 'language_code': 'es',
+        body = json.dumps({'text': texto_voz(b['texto']), 'model_id': a.modelo, 'language_code': a.idioma,
                            'voice_settings': {'stability': a.estabilidad}}).encode()
         req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{a.voz}/with-timestamps?output_format=mp3_44100_128',
                                      data=body, headers={'Content-Type': 'application/json', **CLAVE})
