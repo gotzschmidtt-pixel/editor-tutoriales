@@ -949,6 +949,11 @@ def acciones_desfasadas(d, bloques):
     """Avisos: un bloque cuya voz nombra una acción (volumen, power, menú, pegar, omitir…) que el autor dice y hace en
     otro momento, lejos de su tramo (la voz va adelantada o atrasada), y momentos donde el autor dice una acción que
     ningún bloque cercano nombra (el paso se perdió)."""
+    try:  # la voz en otro idioma (versión en inglés) no se compara con lo que dices en español
+        if json.load(open(os.path.join(d, 'idioma_video.json'), encoding='utf-8')).get('idioma', 'es') != 'es':
+            return []
+    except (OSError, ValueError, AttributeError):
+        pass
     momentos = momentos_accion(d)
     if not momentos:
         return []
@@ -1964,8 +1969,6 @@ def ubicar(m, p, f, ocr, W, H):
     else:
         s['r'] = round(min(max(max(tam_w, tam_h) * (0.62 if exacta else 0.7), H * 0.045), H * 0.16))
         s['foco'] = tipo == 'circulo'
-        if exacta and tipo == 'circulo':  # tamaño del texto o botón leído en pantalla: el contorno toma su forma
-            s['w'], s['h'] = round(tam_w), round(tam_h)
     if tipo == 'flecha':
         apuntar(s, tam_w, tam_h, W, H)
     if (m.get('texto') or '').strip():
