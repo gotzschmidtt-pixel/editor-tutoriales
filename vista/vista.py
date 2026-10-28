@@ -5,19 +5,94 @@ Uso (desde la carpeta del proyecto): python vista.py --proyecto .  [--solo etiqu
 Deja vista_extras/NN.jpg y vista_extras/lista.json. Es una vista aproximada (dibujada aquí, al instante); el video final
 usa el mismo lugar, tamaño, colores y textos, con su animación.
 """
-import argparse, json, os, re, sys
+import argparse, json, math, os, re, sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'senales'))
 sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from PIL import Image, ImageDraw, ImageFilter, ImageFont  # noqa: E402
 
 DESFASE = 0.3
 ROJO = (255, 45, 85)
 FUENTES = [r'C:\Windows\Fonts\ariblk.ttf', r'C:\Windows\Fonts\arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']
 SALIDA = 'vista_extras'
+ESTILO = 'contorno'  # se lee de remotion/src/estilo.ts al empezar
+ROSA, FONDO_ROTULO = '#ff2bd6', (12, 14, 22, 209)  # los de remotion/src/estilo.ts
+
+
+def estilo_senal():
+    """El estilo de círculos y recuadros que usa el video (remotion/src/estilo.ts → senal): 'contorno' o 'marcador'."""
+    try:
+        m = re.search(r"senal:\s*'(\w+)'", open(os.path.join(RAIZ, 'remotion', 'src', 'estilo.ts'), encoding='utf-8').read())
+        return m.group(1) if m else 'contorno'
+    except OSError:
+        return 'contorno'
+
+
+def flecha(dib, s, col, ancho=11):
+    """La flecha de Senal.tsx ya dibujada: llega desde `angulo` (0 = desde la derecha, -35 si no se dice) con una curva leve."""
+    x, y, r = float(s['x']), float(s['y']), float(s.get('r') or 70)
+    a = math.radians(float(s['angulo']) if s.get('angulo') is not None else -35)
+    hueco = float(s['hueco']) if s.get('hueco') is not None else 18
+    px, py = x + math.cos(a) * hueco, y + math.sin(a) * hueco
+    ox, oy = px + math.cos(a) * r * 2.2, py + math.sin(a) * r * 2.2
+    cx, cy = (px + ox) / 2 - math.sin(a) * 30, (py + oy) / 2 + math.cos(a) * 30
+    curva = [((1 - t) ** 2 * ox + 2 * (1 - t) * t * cx + t * t * px, (1 - t) ** 2 * oy + 2 * (1 - t) * t * cy + t * t * py)
+             for t in (i / 24 for i in range(25))]
+    dib.line(curva, fill=col, width=ancho, joint='curve')
+    dib.line([(px + math.cos(a + 0.5) * 34, py + math.sin(a + 0.5) * 34), (px, py),
+              (px + math.cos(a - 0.5) * 34, py + math.sin(a - 0.5) * 34)], fill=col, width=ancho, joint='curve')
+
+
+def contorno(img, s):
+    """Como Senal.tsx con el estilo «Contorno»: trazo rosa con brillo y la forma del botón si se sabe su tamaño (w, h); el
+    foco oscurece alrededor; el rótulo es una píldora oscura con borde rosa. Devuelve la imagen nueva."""
+    W, H = img.size
+    col = s.get('color') or ROSA
+    x, y, r = float(s['x']), float(s['y']), float(s.get('r') or 70)
+    w, h = float(s.get('w') or 200), float(s.get('h') or 80)
+    tipo, pild = s.get('tipo'), s.get('tipo') == 'circulo' and s.get('w') and s.get('h')
+    pw, ph = w + 24, h + 24
+    capa = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(capa)
+    if tipo == 'caja':
+        d.rounded_rectangle([x - w / 2, y - h / 2, x + w / 2, y + h / 2], radius=min(h / 2, 22), outline=col, width=7)
+        alto, marco = h / 2, (w + 20, h + 20, min(h / 2, 22) + 10)
+    elif tipo == 'flecha':
+        flecha(d, s, col)
+        alto, marco = r, None
+    elif pild:
+        d.rounded_rectangle([x - pw / 2, y - ph / 2, x + pw / 2, y + ph / 2], radius=min(pw, ph) / 2, outline=col, width=7)
+        alto, marco = ph / 2, (pw + 20, ph + 20, min(pw, ph) / 2 + 10)
+    else:
+        d.ellipse([x - r, y - r, x + r, y + r], outline=col, width=7)
+        alto, marco = r, None
+    base = img.convert('RGBA')
+    if s.get('foco') and tipo != 'flecha':  # oscurece el resto (en el video: negro al 85 % con opacidad 0,42)
+        hueco = Image.new('L', (W, H), 91)
+        dh = ImageDraw.Draw(hueco)
+        if marco:
+            dh.rounded_rectangle([x - marco[0] / 2, y - marco[1] / 2, x + marco[0] / 2, y + marco[1] / 2], radius=marco[2], fill=0)
+        else:
+            dh.ellipse([x - r * 1.3 - 30, y - r * 1.3 - 30, x + r * 1.3 + 30, y + r * 1.3 + 30], fill=0)
+        base = Image.composite(Image.new('RGBA', (W, H), (0, 0, 0, 255)), base, hueco.filter(ImageFilter.GaussianBlur(20)))
+    brillo = capa.filter(ImageFilter.GaussianBlur(6))
+    for c in (brillo, brillo, capa):
+        base = Image.alpha_composite(base, c)
+    if s.get('texto'):  # píldora debajo de la marca, o encima si no cabe; nunca se sale del cuadro
+        texto = str(s['texto'])
+        ancho = min(620, 60 + len(texto) * 26)
+        abajo = y + alto + 110 < H
+        left = min(max(x - ancho / 2, 24), W - ancho - 24)
+        top = y + alto + 24 if abajo else y - alto - 24 - 74
+        rot = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(rot)
+        dr.rounded_rectangle([left - 4, top - 4, left + ancho + 4, top + 78], radius=40, fill=FONDO_ROTULO, outline=col, width=4)
+        dr.text((left + ancho / 2, top + 37), texto, font=fuente(40), fill='white', anchor='mm')
+        base = Image.alpha_composite(base, rot)
+    return base.convert('RGB')
 
 
 def fuente(tam):
@@ -101,6 +176,8 @@ def main():
     ap.add_argument('--solo', default='', help='clase:índice (etiqueta:3 o senal:0) para rehacer una sola')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
+    global ESTILO
+    ESTILO = estilo_senal()
     video = next((os.path.join(d, v) for v in ('4_musica.mp4', '3_voz.mp4') if os.path.exists(os.path.join(d, v))), None)
     if not video:
         raise SystemExit('ERROR: primero arma el video con voz (falta 3_voz.mp4): la vista previa se dibuja sobre ese video.')
@@ -148,6 +225,12 @@ def main():
         if t is not None and not aviso:
             if clase == 'etiqueta':
                 etiqueta(dib, x, W, H)
+            elif ESTILO == 'contorno':  # el mismo estilo que va a tener el video
+                img = contorno(img, x)
+            elif x.get('tipo') == 'flecha':
+                flecha(dib, x, ROJO)
+                if x.get('texto'):
+                    pildora(dib, x['x'], x['y'], x.get('r', 70), x['texto'], W, H)
             else:
                 if x.get('tipo') == 'caja':
                     ovalo_a_mano(dib, x['x'], x['y'], x.get('w', 200) * 0.62, x.get('h', 80) * 0.66)
