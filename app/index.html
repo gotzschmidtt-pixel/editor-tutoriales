@@ -1754,6 +1754,24 @@ function abrirModuloAqui() {
   if (v) { v.textContent = '✕ Cerrar esta pestaña'; v.onclick = () => window.close(); }
   document.title = ($(s).querySelector('h2')?.firstChild?.textContent || 'Módulo').trim() + ' · ' + P;
 }
+// Velocidad de los reproductores (×1 a ×4) para revisar más rápido: se recuerda por reproductor
+const VELOCIDADES = [1, 1.5, 2, 3, 4];
+document.querySelectorAll('video').forEach(v => {
+  let vel = 1;
+  try { vel = +localStorage.getItem('vel_' + v.id) || 1; } catch (e) {}
+  const poner = x => {
+    v.defaultPlaybackRate = v.playbackRate = x;
+    barra.querySelectorAll('button').forEach(b => b.classList.toggle('principal', +b.dataset.v === x));
+    try { localStorage.setItem('vel_' + v.id, x); } catch (e) {}
+  };
+  const barra = document.createElement('div');
+  barra.className = 'fila velocidades'; barra.style.cssText = 'margin:4px 0; align-items:center; gap:4px';
+  barra.innerHTML = '<span class="aviso">⏩ Velocidad:</span>' + VELOCIDADES.map(x => `<button type="button" data-v="${x}" style="padding:3px 10px; font-size:12px">×${x}</button>`).join('');
+  barra.onclick = e => { const b = e.target.closest('button[data-v]'); if (b) poner(+b.dataset.v); };
+  v.after(barra);
+  v.addEventListener('loadedmetadata', () => { v.playbackRate = v.defaultPlaybackRate; });  // al cambiar de video no vuelve a ×1
+  poner(vel);
+});
 document.querySelectorAll('section.panel[id] > h2').forEach(h => {  // en cada módulo: «↗ Abrir aparte», en su propia pestaña
   h.insertAdjacentHTML('beforeend', `<button class="abrirAparte" onclick="abrirModulo('${h.parentElement.id}')" title="Abrir este módulo solo, en una pestaña nueva">↗ Abrir aparte</button>`);
 });
