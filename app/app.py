@@ -1457,6 +1457,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(edicion(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'guion.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/vista':  # «👀 Vista previa»: una diapositiva por etiqueta y círculo, para aprobar antes de ponerlos
+                return self.responder(open(os.path.join(AQUI, 'vista.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/trailer':  # el módulo del tráiler, aparte del video: proponer, contestar, editar y armar
                 return self.responder(open(os.path.join(AQUI, 'trailer.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
@@ -1622,7 +1624,7 @@ class Manejador(BaseHTTPRequestHandler):
                     return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz'] + [g[0] for g in GRUPOS.values()] else ''
+                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz', 'vista_extras'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])), q.get('nombre', ''))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
@@ -2105,6 +2107,14 @@ class Manejador(BaseHTTPRequestHandler):
                     for viejo in sorted(os.listdir(h))[:-40]:
                         os.remove(os.path.join(h, viejo))
                 open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(cuerpo)
+                return self.responder({'ok': True})
+            if ruta == '/api/vista_extras':  # dibuja las diapositivas de la vista previa (todas, o solo q['solo'] = «senal:2»)
+                d = carpeta(q['p'])
+                solo = re.sub(r'[^a-z:0-9]', '', q.get('solo', ''))
+                r = subprocess.run([PY, m('vista', 'vista.py'), '--proyecto', '.'] + (['--solo', solo] if solo else []), cwd=d,
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', **SIN_VENTANA)
+                if r.returncode:
+                    return self.error((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'falló la vista previa')
                 return self.responder({'ok': True})
             if ruta == '/api/importar_proyecto':  # «📂 Abrir proyecto (.zip)»: un proyecto de otra PC o de «Guardar como»
                 import zipfile

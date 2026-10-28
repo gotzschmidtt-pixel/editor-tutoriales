@@ -105,12 +105,21 @@ def afinar(original, video, src, t, margen=1.5):
     if ref is None:
         return t, 0.0
     mejor, parecido = t, -1.0
-    for k in range(int(-margen * 10), int(margen * 10) + 1):
-        g = gris(cv_, t + k / 10)
-        if g is not None:
-            p = float((g * ref).mean())
-            if p > parecido:
-                mejor, parecido = t + k / 10, p
+    ini = max(0.0, t - margen)
+    cv_.set(cv2.CAP_PROP_POS_MSEC, ini * 1000)  # se lee de corrido (saltar a cada cuadro es lentísimo en h264)
+    fps = cv_.get(cv2.CAP_PROP_FPS) or 30
+    cada = max(1, int(round(fps / 10)))
+    for k in range(int(2 * margen * fps) + 1):
+        ok, f = cv_.read()
+        if not ok:
+            break
+        if k % cada:
+            continue
+        g = cv2.cvtColor(cv2.resize(f, (160, 90)), cv2.COLOR_BGR2GRAY).astype(np.float32)
+        g = (g - g.mean()) / (g.std() + 1e-6)
+        p = float((g * ref).mean())
+        if p > parecido:
+            mejor, parecido = ini + k / fps, p
     return round(mejor, 2), parecido
 
 
