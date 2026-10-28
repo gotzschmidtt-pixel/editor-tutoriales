@@ -14,31 +14,45 @@ export type SenalProps = {
   hueco?: number; // distancia del centro a la punta de la flecha (para no tapar el texto señalado)
 };
 
-export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 80, color = estilo.amarillo, texto, foco, angulo = -35, hueco = 18}) => {
+export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 80, color = estilo.marcador, texto, foco, angulo = -35, hueco = 18}) => {
   const f = useCurrentFrame();
   const {fps, durationInFrames, width, height} = useVideoConfig();
   const [x, y] = puntos[Math.min(f, puntos.length - 1)];
   const dibuja = interpolate(f, [0, 0.45 * fps], [0, 1], {extrapolateRight: 'clamp'});
   const pop = spring({frame: f, fps, config: {damping: 10, stiffness: 160}});
   const sale = interpolate(f, [durationInFrames - 0.4 * fps, durationInFrames], [1, 0], {extrapolateLeft: 'clamp'});
-  const pulso = 1 + 0.04 * Math.sin((f / fps) * Math.PI * 2.2);
-  const brillo = `drop-shadow(0 0 10px ${color}) drop-shadow(0 4px 6px rgba(0,0,0,.6))`;
-  const trazo = {fill: 'none', stroke: color, strokeWidth: 9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const};
+  const pulso = 1; // sin latido: el trazo queda quieto, como marcado a mano sobre la pantalla
+  const brillo = 'drop-shadow(0 3px 4px rgba(0,0,0,.45))'; // sombra suave, sin brillo de neón
+  const trazo = {fill: 'none', stroke: color, strokeWidth: 8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const};
+  // contorno dibujado a mano: una vuelta un poco irregular que se pasa de largo al cerrar (como con un marcador)
+  const aMano = (rx: number, ry: number, vueltas = 1.12) => {
+    const p: string[] = [];
+    const n = 64;
+    for (let i = 0; i <= n * vueltas; i++) {
+      const a = (i / n) * Math.PI * 2 - 2.2;
+      const temblor = 1 + 0.018 * Math.sin(i * 0.45) + 0.01 * Math.cos(i * 0.21); // ondulación suave, de mano firme
+      const crece = 1 + 0.06 * (i / (n * vueltas)); // la segunda pasada queda un poco más afuera
+      p.push(`${(Math.cos(a) * rx * temblor * crece).toFixed(1)} ${(Math.sin(a) * ry * temblor * crece).toFixed(1)}`);
+    }
+    return 'M ' + p.join(' L ');
+  };
 
   let forma: React.ReactNode = null;
   if (tipo === 'circulo') {
     // trazo a mano: elipse un poco irregular que se pasa de largo al cerrar
-    const L = 2 * Math.PI * r * 1.15;
+    const L = 2 * Math.PI * r * 1.5;
     forma = (
-      <g transform={`translate(${x} ${y}) scale(${pulso}) rotate(-12)`}>
-        <ellipse rx={r * 1.08} ry={r * 0.92} {...trazo} strokeDasharray={L} strokeDashoffset={L * (1 - dibuja)} />
+      <g transform={`translate(${x} ${y}) rotate(-8)`}>
+        <path d={aMano(r * 1.35, r * 0.85)} {...trazo} strokeDasharray={L} strokeDashoffset={L * (1 - dibuja)} />
       </g>
     );
   } else if (tipo === 'caja') {
-    const L = 2 * (w + h) + 40;
+    // recuadro también a mano: un óvalo ancho que rodea la zona (se ve como el marcador del autor, no como un cuadro de PowerPoint)
+    const L = Math.PI * (w + h) * 1.4;
     forma = (
-      <rect x={x - w / 2} y={y - h / 2} width={w} height={h} rx={16} {...trazo}
-        transform={`rotate(-1.5 ${x} ${y})`} strokeDasharray={L} strokeDashoffset={L * (1 - dibuja)} />
+      <g transform={`translate(${x} ${y}) rotate(-2)`}>
+        <path d={aMano(w * 0.62, h * 0.66)} {...trazo} strokeDasharray={L} strokeDashoffset={L * (1 - dibuja)} />
+      </g>
     );
   } else {
     // flecha que llega desde fuera y rebota apuntando al objeto
@@ -81,8 +95,8 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
         return (
           <div style={{position: 'absolute', left, top, width: ancho, height: 74, display: 'flex', alignItems: 'center',
             justifyContent: 'center', transform: `scale(${pop})`, transformOrigin: abajo ? '50% 0' : '50% 100%',
-            background: estilo.fondo, border: `4px solid ${color}`, borderRadius: 40, boxShadow: `0 0 18px ${color}88, 0 8px 18px rgba(0,0,0,.55)`,
-            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, color: 'white', whiteSpace: 'nowrap'}}>{texto}</div>
+            background: 'white', borderLeft: `12px solid ${color}`, borderRadius: 14, boxShadow: '0 8px 18px rgba(0,0,0,.45)',
+            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, color: '#111', whiteSpace: 'nowrap'}}>{texto}</div>
         );
       })()}
     </AbsoluteFill>
