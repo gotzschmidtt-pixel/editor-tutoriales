@@ -159,8 +159,11 @@ def seguir(cap, s0, largo, marcas):
         if punto is None:
             bordes = cv2.dilate(cv2.Canny(g, 40, 120), np.ones((3, 3), np.uint8)).astype(np.float32)
             cambia = cv2.dilate((cv2.absdiff(g, fondo) > 18).astype(np.uint8), np.ones((15, 15), np.uint8))
-            if cambia.mean() > 0.03:  # hay algo que se mueve sobre el fondo: su parte con detalle
-                peso = bordes * cambia + cambia * 40
+            if cambia.mean() > 0.03:  # hay algo que se mueve sobre el fondo (el teléfono en la mano)
+                # la pantalla encendida es lo CLARO de lo que se mueve: los guantes son negros y la mesa y la pared no se
+                # mueven (quedan en el fondo). Su detalle (letras, iconos) suma un poco más.
+                clara = (g > 150).astype(np.float32)
+                peso = cambia * clara * (60 + bordes * 0.3)
             else:  # todo quieto (una ventana de la PC a pantalla completa): la parte con más detalle
                 peso = bordes
             densidad = cv2.GaussianBlur(peso, (0, 0), 30)
