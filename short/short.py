@@ -119,11 +119,15 @@ def marcas_autor(d):
 
 
 def seguir(cap, s0, largo, marcas):
-    """Dónde mirar en cada momento del tramo: [(t relativo, cx, cy)] y el zoom (1 con tu cara, más cerca en pantallas)."""
+    """Dónde mirar en cada momento del tramo: [(t relativo, cx, cy)] y el zoom (1 con tu cara, más cerca en pantallas).
+
+    Lo importante en un tutorial es lo que CAMBIA respecto del fondo: el teléfono en la mano, su pantalla, la ventana del
+    programa. El fondo (la mesa, el cubo de Motorola, el cartel «Frp») queda igual en todo el tramo, así que se saca con la
+    mediana de los cuadros; de lo que queda, se mira la zona con más detalle (letras, botones, iconos), no los guantes lisos."""
     import cv2, numpy as np
     import montaje
     det = montaje.detector_caras()
-    puntos, previo, caras = [], None, 0
+    cuadros, caras = [], []
     n = max(2, int(largo / PASO_SEG) + 1)
     for i in range(n):
         t = min(largo, i * PASO_SEG)
@@ -132,44 +136,50 @@ def seguir(cap, s0, largo, marcas):
         if not ok:
             break
         chico = cv2.resize(f, (640, 360))
-        punto = None
+        cara = None
         if det is not None:
             det.setInputSize((640, 360))
             _, cs = det.detect(chico)
             cs = [c for c in (cs if cs is not None else []) if c[2] >= 640 * 0.03]
             if cs:
                 c = max(cs, key=lambda c: c[2] * c[3])
-                punto = ((c[0] + c[2] / 2) * 3, (c[1] + c[3] / 2) * 3, 'cara')
-                caras += 1
-        gris = cv2.GaussianBlur(cv2.cvtColor(chico, cv2.COLOR_BGR2GRAY), (9, 9), 0)
+                cara = ((c[0] + c[2] / 2) * 3, (c[1] + c[3] / 2) * 3)
+        cuadros.append((t, cv2.GaussianBlur(cv2.cvtColor(chico, cv2.COLOR_BGR2GRAY), (5, 5), 0)))
+        caras.append(cara)
+    if not cuadros:
+        return [(0.0, W / 2, H / 2)], 1.0
+    fondo = np.median(np.stack([g for _, g in cuadros]), axis=0).astype(np.uint8)
+    puntos = []
+    for (t, g), cara in zip(cuadros, caras):
+        punto = (cara[0], cara[1], 'cara') if cara else None
         if punto is None:
             for tm, x, y in marcas:  # tu círculo manda en su segundo (±1,5 s)
                 if abs(tm - (s0 + t)) <= 1.5:
                     punto = (x, y, 'marca')
-            if punto is None and previo is not None:
-                dif = cv2.absdiff(gris, previo)
-                _, mov = cv2.threshold(dif, 18, 255, cv2.THRESH_BINARY)
-                if mov.mean() > 0.4:  # algo cambió de verdad (no solo ruido)
-                    m = cv2.moments(mov, True)
-                    if m['m00'] > 0:
-                        punto = (m['m10'] / m['m00'] * 3, m['m01'] / m['m00'] * 3, 'mov')
-        previo = gris
+        if punto is None:
+            bordes = cv2.dilate(cv2.Canny(g, 40, 120), np.ones((3, 3), np.uint8)).astype(np.float32)
+            cambia = cv2.dilate((cv2.absdiff(g, fondo) > 18).astype(np.uint8), np.ones((15, 15), np.uint8))
+            if cambia.mean() > 0.03:  # hay algo que se mueve sobre el fondo: su parte con detalle
+                peso = bordes * cambia + cambia * 40
+            else:  # todo quieto (una ventana de la PC a pantalla completa): la parte con más detalle
+                peso = bordes
+            densidad = cv2.GaussianBlur(peso, (0, 0), 30)
+            _, pico, _, (px, py) = cv2.minMaxLoc(densidad)
+            if pico > 3:
+                punto = (px * 3, py * 3, 'pantalla')
         puntos.append((t, punto))
-    con_cara = caras >= max(1, len(puntos) * 0.4)
+    con_cara = sum(1 for c in caras if c) >= max(1, len(caras) * 0.4)
     zoom = 1.0 if con_cara else ZOOM_PANTALLA
-    # se rellenan los huecos con el último punto conocido y se suaviza (sin saltos bruscos)
-    cx, cy, out = W / 2, H / 2, []
-    primero = next((p for _, p in puntos if p), None)
-    if primero:
-        cx, cy = primero[0], primero[1]
+    # se suaviza (sin saltos bruscos): mediana de los últimos 2 s y un acercamiento lento
     import statistics
-    ultimos = []
+    validos = [p for _, p in puntos if p and (not con_cara or p[2] == 'cara')]
+    cx, cy = (statistics.median(p[0] for p in validos), statistics.median(p[1] for p in validos)) if validos else (W / 2, H / 2)
+    ultimos, out = [], []
     for t, p in puntos:
         if p and (not con_cara or p[2] == 'cara'):
-            ultimos = (ultimos + [p])[-4:]  # la mediana de los últimos 2 s: la mano que pasa no arrastra el cuadro
+            ultimos = (ultimos + [p])[-4:]
             mx, my = statistics.median(q[0] for q in ultimos), statistics.median(q[1] for q in ultimos)
-            dx, dy = (mx - cx) * 0.2, (my - cy) * 0.2
-            cx, cy = cx + max(-50, min(50, dx)), cy + max(-40, min(40, dy))
+            cx += max(-45, min(45, (mx - cx) * 0.25)); cy += max(-35, min(35, (my - cy) * 0.25))
         out.append((t, cx, cy))
     return out, zoom
 
