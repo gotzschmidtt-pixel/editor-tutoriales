@@ -1446,10 +1446,15 @@ class Manejador(BaseHTTPRequestHandler):
                 if ruta == '/ver':
                     return self.servir(f)
                 if ruta == '/abrir':
+                    # solo muestra carpetas: un archivo (.py, .bat, .exe…) nunca se ejecuta, se abre su carpeta con él marcado.
+                    # Cualquier página web puede pedirle esta dirección a tu navegador, así que no debe poder correr nada.
                     if sys.platform == 'win32':
-                        os.startfile(f)
+                        if os.path.isdir(f):
+                            subprocess.Popen(['explorer', f])
+                        else:
+                            subprocess.Popen(['explorer', '/select,', f])
                     else:
-                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f])
+                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f if os.path.isdir(f) else os.path.dirname(f)])
                     return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
