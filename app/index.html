@@ -510,6 +510,9 @@
         </div>
       </div>
       <div class="fila" style="align-items:center; justify-content:center; gap:10px">
+        <button type="button" style="font-size:16px; padding:10px 14px" onclick="impVideo.currentTime = Math.max(0, impVideo.currentTime - 5)" title="5 s atrás (Mayús + ←)">⏪ 5 s</button>
+        <button type="button" id="impPlay" style="font-size:16px; padding:10px 22px; min-width:7.5em" onclick="impVideo.paused ? impVideo.play() : impVideo.pause()" title="Reproducir o pausar (Espacio)">▶ Play</button>
+        <button type="button" style="font-size:16px; padding:10px 14px" onclick="impVideo.currentTime = Math.min(impVideo.duration || 0, impVideo.currentTime + 5)" title="5 s adelante (Mayús + →)">5 s ⏩</button>
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('desde')" title="Toma el segundo donde está el video ahora (sin escribir nada)">⏺ Empieza aquí</button>
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('hasta')" title="Toma el segundo donde está el video ahora y agrega el corte">⏹ Termina aquí</button>
         <button style="font-size:16px; padding:10px 22px" onclick="senalar($('#impVideo'))" title="Captura este cuadro y dibuja encima un círculo, una flecha o un recuadro (con etiqueta si quieres). Va a «🎯 Flechas y círculos»">🎯 Señalar aquí</button>
@@ -1938,6 +1941,8 @@ function lineaZoom(d) { $('#lineaZoom').value = Math.max(1, Math.min(30, +$('#li
   v.addEventListener('seeked', lineaCabezal);
   const bucle = () => { if (!v.paused) { lineaCabezal(); requestAnimationFrame(bucle); } };
   v.addEventListener('play', () => requestAnimationFrame(bucle));
+  const botonPlay = () => { $('#impPlay').textContent = v.paused ? '▶ Play' : '⏸ Pausa'; };  // el botón de abajo, junto a la línea
+  v.addEventListener('play', botonPlay); v.addEventListener('pause', botonPlay); v.addEventListener('ended', botonPlay);
   addEventListener('resize', () => lineaPintar(true));
   let modo = null;
   const tiempo = e => lineaT(e.clientX - pista.getBoundingClientRect().left);
