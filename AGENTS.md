@@ -45,8 +45,9 @@ Antes de escribir el guion:
   todo coincida con la imagen y le preguntas al autor lo que no sepas.
 - **La app «Estudio de tutoriales»** (en la PC, carpeta `editor-tutoriales`): transcribe, saca capturas y el mapa del
   video, genera la voz con ElevenLabs (voz Mauricio, `eleven_v4`), monta el video con repetición de escena en vez de foto
-  fija, pone música, etiquetas, flechas y tráiler, y exporta. La clave de ElevenLabs está guardada en la app: **tú nunca la
-  ves ni la pides**; las herramientas de voz y música la leen solas.
+  fija, pone música, etiquetas, flechas y tráiler, y exporta. La clave de ElevenLabs está guardada en la app
+  (`app\ajustes.json`); las herramientas de voz y música la leen solas. Desde el 27/10/2026 el autor te autoriza a
+  leer las claves API de `ajustes.json` cuando las necesites (ver B12).
 - **Las herramientas de la PC que usas:** las de la app una por una (transcribir, capturas y mapa, voz, montaje, música,
   etiquetas, tráiler; ver A3), ffmpeg/ffprobe y la gráfica NVIDIA o Intel (las herramientas la usan solas).
 
@@ -98,7 +99,9 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
    **Sus cambios mandan:** si el autor editó el guion en la app después de tu última entrega, `entregar` se niega y deja
    su versión en `guion_editado_por_autor.json`. Parte de ese archivo (no de tu respuesta vieja), aplica solo lo que
    falte y entrega con `--parti-del-guion-actual`. Si no tienes nada que cambiar, no entregues: arma con su guion.
-7. **Armar (gasta ElevenLabs):** `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
+7. **Armar (gasta ElevenLabs):** antes, `python deepseek/video.py clave` (gratis) comprueba la clave de ElevenLabs y dice
+   cuántos créditos quedan (`CREDITOS_ELEVENLABS=…`). Si no alcanzan para los caracteres de voz del guion, avísale al
+   autor y no armes. Después: `python deepseek/video.py armar --nombre "NOMBRE" --confirmo-creditos`
 8. **Etiquetas:** `python deepseek/video.py encargo etiquetas --nombre "NOMBRE"` → escribe lo que pide
    `ia_prompt_etiquetas.txt` → `python deepseek/video.py entregar etiquetas archivo.json --nombre "NOMBRE"`. Luego
    `python deepseek/video.py extras etiquetas --nombre "NOMBRE"`.
@@ -144,10 +147,11 @@ datos del autor en `idea.txt` y trabaja SIEMPRE dentro de esa carpeta (todos los
 | 14 | Exportar 480p | `python R\codificar\codificar.py ffmpeg -y -i FINAL.mp4 -vf scale=-2:480 -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 128k FINAL_480p.mp4` | No |
 
 Notas:
-- Las herramientas de voz y música leen la clave de ElevenLabs por su cuenta (de la app). **Tú no la abres, no la
-  pides y no la escribes en ningún comando.**
+- Las herramientas de voz y música leen la clave de ElevenLabs por su cuenta (de la app). Puedes leer las claves de
+  `ajustes.json` si te hacen falta (autorizado por el autor el 27/10/2026), pero no las muestres en el chat ni las
+  escribas en archivos del proyecto.
 - Todo lo que codifica video usa sola la gráfica NVIDIA o Intel si la hay.
-- Para el paso 2 y el 5 se pasa la ruta de `ajustes.json` a la herramienta: eso es todo; no lo abras ni lo muestres.
+- Para el paso 2 y el 5 se pasa la ruta de `ajustes.json` a la herramienta. Puedes abrirlo (ver B12); no lo muestres.
 - Si cambias el texto de un bloque después de la voz, repite 5 → 7 (solo regenera los bloques cambiados) → 8 → 9…
 - Si un paso falla, lee el error, explícale la causa real al autor y no lo reintentes a ciegas.
 
@@ -172,7 +176,7 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
 
 - DeepSeek Harness corre los comandos en la PC del autor (modo Workspace Write = su carpeta). El modelo piensa en los
   servidores de DeepSeek, pero ffmpeg, la voz y el montaje se hacen en la PC. No hay una nube de DeepSeek que arme el
-  video; no intentes subir el video ni la clave de ElevenLabs a otro servicio.
+  video; no subas el video ni la clave de ElevenLabs a otros servicios (fuera de DeepSeek y la propia ElevenLabs).
 - La velocidad depende de la PC. Medido con Honor FRP (etiquetas + flechas + testimonios): PC1 con NVIDIA 17 min 47 s;
   **PC2 (Core Ultra 7, gráfica Intel) 5 min 43 s, con batería**. La nube de Claude armó la Raspberry en 7 min.
   Usa la **PC2 enchufada al cargador** para que sea igual de rápido.
@@ -344,8 +348,17 @@ en cada minuto, o trabaja con la transcripción y marca en `preguntas` lo que no
 
 ## B12. Reglas del dueño (obligatorias)
 
-- No mostrar ni pedir claves de API, tokens ni contraseñas.
+- DeepSeek puede leer y usar las claves API de `app\ajustes.json` (cambio pedido por el autor el 27/10/2026). No las
+  muestres en el chat, no las copies a archivos del proyecto ni las mandes a otros servicios fuera de DeepSeek y del
+  servicio de cada clave. Contraseñas y tokens personales: sigue sin pedirlos.
 - No presentar suposiciones como hechos.
 - No gastar créditos de ElevenLabs ni de IA sin preguntar.
-- No reconstruir la app; cambios pequeños sobre lo que existe.
+- Puedes cambiar y editar el código de la app (autorizado por el autor el 27/10/2026). Antes de tocar un archivo,
+  guarda una copia (`archivo.py.antes_deepseek`); haz cambios sobre lo que existe, sin reconstruir la app entera; prueba
+  que la app siga abriendo (`/api/latido`), y dile al autor qué archivos cambiaste, con la ruta completa, y para qué.
+  Claude también edita esta app: los dos pueden. Para no pisarse, uno a la vez: antes de editar un archivo, vuelve a
+  leerlo (puede haberlo cambiado Claude) y no edites mientras el autor te diga que Claude está trabajando.
+- OJO: «⬇ Actualizar la app» baja la versión de GitHub y la copia ENCIMA: borra los cambios hechos solo en esta PC. Lo
+  que cambies aquí tiene que subirse también a GitHub (pídeselo al autor o a Claude) o se pierde en la próxima
+  actualización.
 - No intentar evadir las políticas de ninguna IA.

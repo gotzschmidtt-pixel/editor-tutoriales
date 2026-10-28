@@ -6,6 +6,8 @@ Vive en mis_conocimientos/ (al lado de mis_proyectos, y «Actualizar la app» no
 - aprendido_de_proyectos.md: lo llena la app sola, una sección por proyecto, con las preguntas de la IA que
   contestaste y los datos que confirmaste. Si vuelves a aprender de un proyecto, su sección se reemplaza (no se duplica).
 - config.json: {"usar": true|false}, si la app se lo pasa a la IA cuando escribe.
+- marcas/MOTOROLA.md, APPLE.md…: lo de cada marca (textos y .txt para alimentar, preguntas o dudas de la IA, ideas o
+  mejoras). A la IA le llega la marca del proyecto, reconocida por el nombre del proyecto o su idea.txt.
 
 La app se lo pasa a la IA al escribir el guion, el tráiler y las etiquetas, y en «💡 Ideas y dudas» (para que no
 pregunte lo que ya sabes). No guarda claves, ni el guion completo, ni fotogramas ni audio: solo texto que tú
@@ -184,17 +186,121 @@ def texto_completo():
     ap = _sin_comentarios(leer(APRENDIDO))
     if ap:
         partes.append(ap)
+    for m in marcas():  # y las marcas que tienen algo
+        if os.path.exists(_ruta_marca(m)):
+            t = _sin_comentarios(leer(_ruta_marca(m)))
+            if _normal(t) != _normal(_sin_comentarios(_plantilla_marca(m))):
+                partes.append(t)
     return '\n\n'.join(p for p in partes if p) + '\n'
 
 
-def texto_para_ia(limite=12000):
-    """Lo que va dentro del pedido a la IA. Vacío si lo apagaste o si todavía no hay nada aprendido."""
+def texto_para_ia(limite=12000, d=None):
+    """Lo que va dentro del pedido a la IA: primero la marca del proyecto d (si tiene algo), después lo general.
+    Vacío si lo apagaste o si todavía no hay nada aprendido."""
     if not usar() or not os.path.exists(PRINCIPAL):
         return ''
-    t = texto_completo()
-    if _normal(_sin_comentarios(PLANTILLA)) == _normal(t):
-        return ''  # solo la plantilla, sin nada tuyo todavía
+    asegurar()
+    general = '\n\n'.join(p for p in (_sin_comentarios(leer(PRINCIPAL)), _sin_comentarios(leer(APRENDIDO))) if p)
+    if _normal(_sin_comentarios(PLANTILLA)) == _normal(general):
+        general = ''  # solo la plantilla, sin nada tuyo todavía
+    marca = texto_marca_para_ia(d)
+    if marca:
+        marca = f'SOBRE ESTA MARCA ({marca_de_proyecto(d)}), lo más importante para este video:\n' + marca[:limite // 2]
+    t = '\n\n'.join(p for p in (marca, general) if p)
+    if not t:
+        return ''
+    t += '\n'
     return t if len(t) <= limite else t[:limite].rsplit('\n', 1)[0] + '\n[… sigue en mis_conocimientos/CONOCIMIENTO.md]'
+
+
+# Submódulos por marca: mis_conocimientos/marcas/MOTOROLA.md, APPLE.md… Cada uno con textos para alimentar, preguntas o
+# dudas de la IA, e ideas o mejoras. La IA recibe la marca del proyecto (por su nombre o su idea.txt) además de lo general.
+MARCAS = os.path.join(CARPETA, 'marcas')
+MARCAS_BASE = ['MOTOROLA', 'APPLE', 'HONOR', 'SAMSUNG', 'XIAOMI', 'HUAWEI']
+# otras palabras con las que se reconoce la marca de un proyecto
+ALIAS = {'APPLE': ['iphone', 'ipad', 'ios', 'icloud', 'apple'], 'MOTOROLA': ['moto', 'motorola'], 'XIAOMI': ['xiaomi', 'redmi', 'poco'],
+         'SAMSUNG': ['samsung', 'galaxy'], 'HONOR': ['honor'], 'HUAWEI': ['huawei']}
+TIPOS_MARCA = {'texto': 'Conocimiento (textos)', 'pregunta': 'Preguntas o dudas de la IA', 'idea': 'Ideas o mejoras'}
+
+
+def _nombre_marca(n):
+    n = re.sub(r'[^\w\- ]', '', str(n or ''), flags=re.U).strip().upper()
+    if not n:
+        raise ValueError('Falta el nombre de la marca.')
+    return n[:40]
+
+
+def _ruta_marca(n):
+    return os.path.join(MARCAS, _nombre_marca(n) + '.md')
+
+
+def _plantilla_marca(n):
+    return (f'# {n}\n\n> Lo que sabemos de {n}: procesos, modelos, respuestas y datos confirmados por el autor. '
+            f'La IA lo recibe en los proyectos de {n}.\n\n' + '\n\n'.join(f'## {t}' for t in TIPOS_MARCA.values()) + '\n')
+
+
+def marcas():
+    """Las marcas: las de siempre más las que agregaste (cada archivo de mis_conocimientos/marcas)."""
+    hechas = [os.path.splitext(f)[0] for f in os.listdir(MARCAS) if f.endswith('.md')] if os.path.isdir(MARCAS) else []
+    return MARCAS_BASE + sorted(x for x in hechas if x not in MARCAS_BASE)
+
+
+def leer_marca(n):
+    n = _nombre_marca(n)
+    return leer(_ruta_marca(n)) or _plantilla_marca(n)
+
+
+def guardar_marca(n, texto):
+    os.makedirs(MARCAS, exist_ok=True)
+    escribir(_ruta_marca(n), str(texto or ''))
+
+
+def anotar_marca(n, tipo, texto, archivo=''):
+    """Agrega a la marca: una pregunta, una idea (una línea) o un texto o .txt entero (un bloque con fecha)."""
+    texto = str(texto or '').replace('\r\n', '\n').strip()
+    if not texto:
+        raise ValueError('El texto está vacío.')
+    n = _nombre_marca(n)
+    md = leer_marca(n)
+    if _normal(texto) in _normal(md):
+        return False
+    titulo = TIPOS_MARCA.get(tipo, TIPOS_MARCA['texto'])
+    fecha = time.strftime('%Y-%m-%d')
+    if tipo in ('pregunta', 'idea'):
+        nuevo = [f'- {re.sub(r"\s+", " ", texto)} ({fecha})']
+    else:
+        nuevo = ['', f'### {archivo or "Texto"} · {fecha}', texto]
+    lineas = md.rstrip('\n').split('\n')
+    i = next((k for k, x in enumerate(lineas) if x.strip().lower() == f'## {titulo.lower()}'), None)
+    if i is None:
+        lineas += ['', f'## {titulo}'] + nuevo
+    else:
+        fin = next((k for k in range(i + 1, len(lineas)) if lineas[k].startswith('## ')), len(lineas))
+        while fin > i + 1 and not lineas[fin - 1].strip():
+            fin -= 1
+        lineas[fin:fin] = nuevo
+    guardar_marca(n, '\n'.join(lineas) + '\n')
+    return True
+
+
+def marca_de_proyecto(d):
+    """La marca de un proyecto, por su nombre o su idea.txt (MOTOROLA_FRP_2026 → MOTOROLA). '' si no se reconoce."""
+    if not d:
+        return ''
+    texto = (os.path.basename(os.path.abspath(d)) + ' ' + leer(os.path.join(d, 'idea.txt'))[:2000]).lower()
+    palabras = set(re.findall(r'[a-z0-9]+', texto.replace('_', ' ')))
+    for m in marcas():
+        if any(a in palabras for a in ALIAS.get(m, [m.lower()])):
+            return m
+    return ''
+
+
+def texto_marca_para_ia(d):
+    m = marca_de_proyecto(d)
+    if not m or not os.path.exists(_ruta_marca(m)):
+        return ''
+    t = _sin_comentarios(leer(_ruta_marca(m)))
+    return '' if _normal(t) == _normal(_sin_comentarios(_plantilla_marca(m))) else t
 
 
 def resumen():
@@ -234,6 +340,12 @@ def juntar(otra_carpeta):
                     md, entro = anotar(tipo_de.get(seccion.lower(), 'idea'), nota, md, f.group(1) if f else None)
                     nuevas += entro
         escribir(PRINCIPAL, md)
+    otras_marcas = os.path.join(otra_carpeta, 'marcas')
+    for x in os.listdir(otras_marcas) if os.path.isdir(otras_marcas) else []:  # cada marca que no tengas entra entera
+        if x.endswith('.md') and not os.path.exists(os.path.join(MARCAS, x)):
+            os.makedirs(MARCAS, exist_ok=True)
+            escribir(os.path.join(MARCAS, x), leer(os.path.join(otras_marcas, x)))
+            nuevas += 1
     otras = _secciones_aprendido(leer(os.path.join(otra_carpeta, 'aprendido_de_proyectos.md')))
     if otras:
         mias = _secciones_aprendido(leer(APRENDIDO))

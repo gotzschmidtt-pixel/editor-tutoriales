@@ -96,6 +96,14 @@
   .pestanas button.activo { border-color: var(--rosa); background: #ff2bd626; }
   body.tab-extra main > div:first-child > section.panel:not(.extra) { display: none; }
   body:not(.tab-extra) section.panel.extra { display: none; }
+  /* botones de arriba (Flechas, Acortar, Alimentación, Conocimiento): cada uno abre su panel solo, como una pestaña aparte */
+  body.solo #pestanas { display: none; }
+  body.solo main { grid-template-columns: 1fr; max-width: 1100px; }
+  body.solo main > div:not(:has(.solo-activo)), body.solo main section.panel:not(.solo-activo) { display: none; }
+  body.solo section.panel.solo-activo { display: block !important; }
+  .volverSolo { display: none; margin-bottom: 10px; }
+  body.solo .volverSolo { display: inline-block; }
+  header button.activo { border-color: var(--rosa); background: #ff2bd626; }
   .mapa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
   @media (max-width: 700px) { .mapa { grid-template-columns: 1fr 1fr; } }
   .mapa > div { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px; min-height: 5em; font-size: 13px; }
@@ -139,10 +147,10 @@
   <button id="nuevo">+ Nuevo proyecto</button>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
   <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
-  <button onclick="irA('#panelMarcas')">🎯 Flechas y círculos</button>
-  <button onclick="irA('#panelAcortar')">✂️ Acortar</button>
-  <button onclick="irA('#panelEstilo')">📚 Alimentación</button>
-  <button onclick="irA('#panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
+  <button onclick="abrirSolo('#panelMarcas', this)">🎯 Flechas y círculos</button>
+  <button onclick="abrirSolo('#panelAcortar', this)">✂️ Acortar</button>
+  <button onclick="abrirSolo('#panelEstilo', this)">📚 Alimentación</button>
+  <button onclick="abrirSolo('#panelConocimiento', this)" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
   <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
@@ -377,6 +385,24 @@
       <p class="aviso">Lo que vamos aprendiendo de todos tus videos: procesos (DFU, Recovery, FRP…), reglas del guion, preguntas,
       dudas e ideas. La app lo llena sola con lo que contestas y confirmas en cada proyecto, y se lo pasa a la IA cuando escribe el
       guion, el tráiler y las etiquetas (también a DeepSeek y al ZIP para el chat). Es un archivo de texto: lo puede leer cualquier IA.</p>
+      <h3 style="margin:14px 0 6px">🏷 Por marca</h3>
+      <p class="aviso" style="margin-top:0">Cada marca tiene lo suyo. Cuando el proyecto es de esa marca (por su nombre, como MOTOROLA_FRP_2026,
+      o por los datos del video), la IA lo recibe primero, antes que lo general.</p>
+      <div class="chips" id="marcasChips" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+      <div id="marcaCaja" style="margin-top:8px; border:1px solid var(--borde); border-radius:10px; padding:10px">
+        <div class="aviso" id="marcaRuta"></div>
+        <div class="fila">
+          <select id="marcaTipo"><option value="pregunta">❓ Preguntas o dudas de la IA</option><option value="idea">💡 Ideas o mejoras</option>
+            <option value="texto">📄 Texto para alimentar</option></select>
+          <button onclick="marcaTxt.click()">📎 Agregar .txt</button><input type="file" id="marcaTxt" accept=".txt,.md,text/plain" multiple hidden>
+        </div>
+        <textarea id="marcaNota" rows="4" style="width:100%; margin-top:6px; min-height:0; height:6.5em; resize:vertical" placeholder="Escribe o pega aquí: una pregunta, una idea o un texto largo (procesos, modelos, respuestas…)"></textarea>
+        <div class="fila"><button class="principal" onclick="marcaAnotar()">➕ Agregar a la marca</button><span class="msg" id="marcaMsg"></span></div>
+        <details style="margin-top:6px"><summary class="aviso" id="marcaSum">Ver y editar todo lo de esta marca</summary>
+          <textarea id="marcaTexto" rows="14" style="width:100%; margin-top:6px; font: 13px/1.4 Consolas, monospace" oninput="$('#marcaMsg').textContent = 'Sin guardar'"></textarea>
+          <div class="fila"><button onclick="marcaGuardar()">💾 Guardar cambios de la marca</button></div></details>
+      </div>
+      <h3 style="margin:16px 0 6px">🌐 General (todas las marcas)</h3>
       <div class="aviso" id="conoRutas"></div>
       <label class="aviso" style="display:block;margin-top:6px"><input type="checkbox" id="conoUsar" onchange="conoUsar()"> Pasárselo a la IA cuando escribe</label>
       <div class="fila">
@@ -546,6 +572,7 @@
   <p class="aviso">Sirve para transcribir con Scribe, la voz, la música y el tráiler. Sácala en elevenlabs.io → Developers → API Keys.</p>
   <label>Clave API <input type="password" id="clEleven" placeholder="sk_..." autocomplete="off"></label>
   <p class="aviso" id="clEstado"></p>
+  <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarEleven()" title="Vacío = comprueba la clave guardada. No gasta créditos">🔍 Comprobar clave</button><span id="clPrueba" class="aviso" style="align-self:center"></span></div>
   <p class="aviso" id="clRuta">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
   <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
 </dialog>
@@ -569,7 +596,7 @@
   <p class="aviso">La app cuenta los bloques con chiste. Si la IA se pasa, se queda con los mejores (nunca dos seguidos, nunca en pasos delicados, sin repetir tema) y quita el resto.</p>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
-  <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con 3 IAs a la vez</b> (GPT, Claude y Gemini): las tres escriben el guion
+  <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con varias IAs a la vez</b> (GPT, Claude, Gemini y DeepSeek): las que tengan clave y modelo escriben el guion
     al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
     Después eliges la versión que más te guste o pides que se combinen.</label>
   <div id="ajTresIAs" class="aviso"></div>
@@ -764,7 +791,13 @@ async function ejecutar(paso) {
     const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
-  if (paso === 'transcribir') op.motor = confirm('¿Transcribir en línea con ElevenLabs? (Cancelar = Whisper en tu PC, sin internet)') ? 'scribe' : 'whisper';
+  if (paso === 'transcribir') {
+    // con una transcripción ya hecha (y corregida a mano en transcripcion.txt), Forced Alignment solo le pone los tiempos exactos
+    const hay = (est || await api(`/api/estado?p=${q(P)}`)).archivos['transcripcion.txt'];
+    if (hay && confirm('¿Alinear la transcripción corregida?\n\nUsa el texto de transcripcion.txt (el que corregiste a mano) y ElevenLabs Forced Alignment le pone el segundo exacto de cada palabra, sin volver a transcribir. Usa ElevenLabs. La versión anterior queda como *.antes_alinear.\n\nCancelar = transcribir de nuevo.'))
+      op.motor = 'alinear';
+    else op.motor = confirm('¿Transcribir en línea con ElevenLabs? (Cancelar = Whisper en tu PC, sin internet)') ? 'scribe' : 'whisper';
+  }
   try { await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { alert(e.message); }
   refrescar();
 }
@@ -1442,7 +1475,40 @@ function pintarConocimiento(r, msg) {
   $('#conoAprSum').textContent = `Aprendido de ${r.proyectos} proyecto(s) · ${n} nota(s) tuyas`;
   if (msg !== undefined) { $('#conoMsg').className = 'msg ok'; $('#conoMsg').textContent = msg; }
 }
-async function cargarConocimiento() { try { pintarConocimiento(await api('/api/conocimiento')); } catch (e) {} }
+async function cargarConocimiento() { try { pintarConocimiento(await api('/api/conocimiento')); } catch (e) {} marcaVer(''); }
+// «🏷 Por marca»: mis_conocimientos/marcas/MOTOROLA.md, APPLE.md… (preguntas o dudas, ideas o mejoras, textos y .txt)
+let MARCA = '';
+function pintarMarca(r, msg) {
+  MARCA = r.marca;
+  $('#marcasChips').innerHTML = r.marcas.map(m => `<button class="${m === r.marca ? 'principal' : ''}" onclick="marcaVer('${esc(m)}')">${esc(m)}${m === r.detectada ? ' · este proyecto' : ''}</button>`).join('')
+    + '<button onclick="marcaNueva()">+ Marca</button>';
+  $('#marcaRuta').innerHTML = `📄 <b>${esc(r.ruta)}</b>`;
+  $('#marcaSum').textContent = `Ver y editar todo lo de ${r.marca}`;
+  if (!$('#marcaTexto').matches(':focus') || msg !== undefined) $('#marcaTexto').value = r.texto;
+  $('#marcaMsg').className = 'msg ok'; $('#marcaMsg').textContent = msg || '';
+}
+async function marcaVer(m) {
+  if (m && $('#marcaMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en esta marca. ¿Cambiar igual?')) return;
+  try { pintarMarca(await api(`/api/conocimiento/marca?m=${q(m)}&p=${q(P || '')}`)); } catch (e) {}
+}
+async function marcaPost(que, datos) {
+  try { const r = await api(`/api/conocimiento/${que}?p=${q(P || '')}`, {method: 'POST', body: JSON.stringify({marca: MARCA, ...datos})}); pintarMarca(r, r.msg); return r; }
+  catch (e) { $('#marcaMsg').className = 'msg err'; $('#marcaMsg').textContent = e.message; }
+}
+function marcaNueva() {
+  const m = (prompt('Nombre de la marca nueva (por ejemplo OPPO, VIVO, LG):') || '').trim();
+  if (m) marcaPost('marca_guardar', {marca: m.toUpperCase(), texto: ''}).then(() => marcaVer(m.toUpperCase()));
+}
+async function marcaAnotar() {
+  const texto = $('#marcaNota').value.trim();
+  if (!texto) return $('#marcaNota').focus();
+  if (await marcaPost('marca_anotar', {tipo: $('#marcaTipo').value, texto})) $('#marcaNota').value = '';
+}
+function marcaGuardar() { return marcaPost('marca_guardar', {texto: $('#marcaTexto').value}); }
+$('#marcaTxt').onchange = async () => {  // cada .txt entra entero como «Texto para alimentar», con su nombre de archivo
+  for (const f of [...$('#marcaTxt').files]) await marcaPost('marca_anotar', {tipo: 'texto', texto: await f.text(), archivo: f.name});
+  $('#marcaTxt').value = '';
+};
 async function conoPost(que, datos, ok) {
   try { const r = await api('/api/conocimiento/' + que, {method: 'POST', body: JSON.stringify(datos || {})}); pintarConocimiento(r, r.msg || ok || ''); return r; }
   catch (e) { $('#conoMsg').className = 'msg err'; $('#conoMsg').textContent = e.message; }
@@ -1472,7 +1538,26 @@ async function verPerfil() {
 }
 
 let PROV = {};
+function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «← Volver al proyecto»; otro clic en el mismo botón lo cierra
+  const yaAbierto = $(s).classList.contains('solo-activo');
+  cerrarSolo();
+  if (yaAbierto) return;
+  document.body.classList.add('solo');
+  $(s).classList.add('solo-activo');
+  if (boton) boton.classList.add('activo');
+  if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
+  if (!$(s).querySelector('.volverSolo'))
+    $(s).insertAdjacentHTML('afterbegin', '<button class="volverSolo" onclick="cerrarSolo()">← Volver al proyecto</button>');
+  scrollTo(0, 0);
+}
+function cerrarSolo() {
+  document.body.classList.remove('solo');
+  document.querySelectorAll('.solo-activo').forEach(x => x.classList.remove('solo-activo'));
+  document.querySelectorAll('header button.activo').forEach(b => b.classList.remove('activo'));
+}
+addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('solo') && !document.querySelector('dialog[open]')) cerrarSolo(); });
 function irA(s) {
+  if (!$(s).classList.contains('solo-activo')) cerrarSolo();
   const extra = $(s).classList.contains('extra');
   if (extra !== document.body.classList.contains('tab-extra')) pestana(extra ? 'extra' : 'video');
   $(s).scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -1495,6 +1580,12 @@ async function ajustesIA() {
       <select id="ajTS_${id}" style="display:none; flex:1" onchange="if (this.value) $('#ajTM_${id}').value = this.value"></select>
       <input type="text" id="ajTM_${id}" placeholder="3. modelo (se llena al elegir de la lista)" value="${esc((ias[id] || {}).modelo || '')}" style="flex:1; min-width:12em"></div>
     <div id="ajTP_${id}"></div></div>`).join('') +
+    `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
+    <b>ElevenLabs</b> <span class="aviso">(voz, Scribe, música, tráiler y alinear)</span>
+    <div class="fila" style="margin:4px 0; align-items:center">
+      <input type="password" id="ajEleven" placeholder="${a.eleven ? 'guardada: ' + esc(a.eleven) + ' · pega otra solo para cambiarla' : '1. pega aquí la clave API (elevenlabs.io → Developers → API Keys)'}" style="flex:1; min-width:14em" autocomplete="off">
+      <button type="button" onclick="verElevenAj()">2. 🔍 Comprobar clave y créditos</button></div>
+    <div id="ajEP"></div></div>` +
     '<p class="aviso">Si la de tu IA principal queda vacía, se usa la clave de arriba. Las claves se guardan solo en tu PC.</p>';
   $('#ajProv').onchange = () => PROV[$('#ajProv').value] && pon(PROV[$('#ajProv').value]);
   // un modelo con visión conocido marca solo «ve imágenes» (se puede desmarcar)
@@ -1504,7 +1595,8 @@ async function ajustesIA() {
 // «3 IAs a la vez»: [id, nombre, url, tipo, dónde se saca la clave]
 const TRES_IAS = [['gpt', 'GPT', 'https://api.openai.com/v1', '', 'platform.openai.com'],
   ['claude', 'Claude', 'https://api.anthropic.com', 'claude', 'console.anthropic.com'],
-  ['gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '', 'aistudio.google.com']];
+  ['gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '', 'aistudio.google.com'],
+  ['deepseek', 'DeepSeek (el mismo modelo del Harness: deepseek-flash)', 'https://api.deepseek.com', '', 'platform.deepseek.com']];
 async function verModelos(id) {  // comprueba la clave y trae los modelos que esa cuenta puede usar (no gasta tokens)
   const [, , url, tipo] = TRES_IAS.find(x => x[0] === id), e = $('#ajTP_' + id);
   e.style.color = ''; e.textContent = 'Comprobando…';
@@ -1520,6 +1612,16 @@ async function verModelos(id) {  // comprueba la clave y trae los modelos que es
     e.textContent = r.ok ? (ms.length ? '✓ La clave funciona. Elige el modelo en la lista de arriba.' : '✓ La clave funciona, pero el proveedor no mandó la lista: escribe el modelo a mano.') : '✗ ' + r.mensaje;
   } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = ' ✗ No se pudo comprobar.'; }
 }
+async function probarEleven(campo, salida) {  // la clave escrita, o la guardada si el campo está vacío (no gasta créditos)
+  const e = $(salida); e.style.color = ''; e.textContent = 'Comprobando…';
+  try {
+    const r = await api('/api/probar_eleven', {method: 'POST', body: JSON.stringify({clave: $(campo).value.trim()})});
+    e.style.color = r.ok ? 'var(--verde)' : 'var(--rojo)';
+    e.textContent = (r.ok ? '✓ ' : '✗ ') + r.mensaje;
+  } catch (x) { e.style.color = 'var(--rojo)'; e.textContent = '✗ No se pudo comprobar.'; }
+}
+const comprobarEleven = () => probarEleven('#clEleven', '#clPrueba');
+const verElevenAj = () => probarEleven('#ajEleven', '#ajEP');
 async function comprobarClave() {
   const e = $('#ajPrueba'); e.style.color = ''; e.textContent = 'Comprobando…';
   try {
@@ -1537,6 +1639,8 @@ async function guardarAjustes() {
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
     tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
     tres_ia: $('#ajTres').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
+  const ke = $('#ajEleven').value.trim();
+  if (ke) { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: ke})}); verEleven(); }
   const listas = TRES_IAS.filter(([id]) => $('#ajTM_' + id).value.trim()).length;
   if ($('#ajTres').checked && listas < 2) alert('Para el guion con varias IAs pon el modelo (y la clave) de al menos dos. Mientras tanto se usa solo tu IA principal.');
   dlgAjustes.close(); quienIA();
@@ -1821,6 +1925,7 @@ const DONDE_PAGINA = [['auto', '🤖 Donde ayude (la IA elige)'], ['inicio', '�
 const DONDE_TRAILER = [['inicio', '⏮ Al inicio (abre el video)'], ['final', '⏭ Al final (cierra el video)']];
 let TRAILER_DONDE = 'inicio';
 function pestana(cual) {
+  cerrarSolo();
   document.body.classList.toggle('tab-extra', cual === 'extra');
   document.querySelectorAll('#pestanas button').forEach(b => b.classList.toggle('activo', b.dataset.p === cual));
   try { localStorage.setItem('pestana', cual); } catch (e) {}

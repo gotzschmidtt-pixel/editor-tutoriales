@@ -64,6 +64,7 @@ PROVEEDORES = {
                                         'imagenes': True, 'json': False},
     'DeepSeek': {'url': 'https://api.deepseek.com', 'modelo': 'deepseek-chat', 'imagenes': False},
     'DeepSeek · Flash con visión': {'url': 'https://api.deepseek.com', 'modelo': 'deepseek-flash', 'imagenes': True},
+    'DeepSeek · V4 Pro': {'url': 'https://api.deepseek.com', 'modelo': 'deepseek-v4-pro', 'imagenes': False},
     'Gemini': {'url': 'https://generativelanguage.googleapis.com/v1beta/openai', 'modelo': 'gemini-2.0-flash', 'imagenes': True},
     'Ollama (en tu PC, gratis)': {'url': 'http://localhost:11434/v1', 'modelo': 'gemma3:12b', 'imagenes': True},
     'Ollama · Gemma 3 liviana (PC sencilla)': {'url': 'http://localhost:11434/v1', 'modelo': 'gemma3:4b', 'imagenes': True},
@@ -566,6 +567,42 @@ def probar_clave(aj):
         return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
 
 
+def probar_eleven(clave):
+    """¿Sirve la clave de ElevenLabs? Pide el plan y los créditos que quedan. No gasta créditos."""
+    clave = (clave or '').strip()
+    if not clave:
+        return {'ok': False, 'mensaje': 'Falta la clave de ElevenLabs.'}
+
+    def pedir(ruta):
+        req = urllib.request.Request('https://api.elevenlabs.io' + ruta, headers={'xi-api-key': clave})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read(2_000_000) or b'{}')
+    try:
+        try:
+            s = pedir('/v1/user/subscription')
+        except urllib.error.HTTPError as e:
+            if e.code not in (401, 403):
+                raise
+            pedir('/v1/models')  # una clave restringida puede no leer el plan, pero sí usar la API
+            return {'ok': True, 'mensaje': 'La clave funciona (no tiene permiso para mostrar el plan ni los créditos).'}
+        usados, limite = s.get('character_count'), s.get('character_limit')
+        plan = s.get('tier') or ''
+        if isinstance(usados, int) and isinstance(limite, int):
+            return {'ok': True, 'mensaje': f'La clave funciona · plan {plan} · te quedan {max(0, limite - usados):,} de {limite:,} créditos.'.replace(',', '.'),
+                    'quedan': max(0, limite - usados)}
+        return {'ok': True, 'mensaje': f'La clave funciona · plan {plan}.'}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {'ok': False, 'mensaje': 'ElevenLabs rechazó la clave: no es válida o le faltan permisos.'}
+        if e.code == 429:
+            return {'ok': False, 'mensaje': 'La clave sirve, pero ElevenLabs dice que hiciste muchas peticiones. Prueba en un rato.'}
+        return {'ok': False, 'mensaje': f'ElevenLabs respondió con un error ({e.code}).'}
+    except urllib.error.URLError:
+        return {'ok': False, 'mensaje': 'No se pudo conectar con ElevenLabs. Revisa el internet.'}
+    except Exception:
+        return {'ok': False, 'mensaje': 'No se pudo comprobar la clave.'}
+
+
 def revision_imagen_pendiente(d):
     """¿El guion quedó sin revisar contra sus imágenes? (se deja para después de que lo apruebas)"""
     try:
@@ -684,6 +721,10 @@ def guardar_como(d, nota=''):
         for x in ('CONOCIMIENTO.md', 'aprendido_de_proyectos.md'):  # lo aprendido viaja con el proyecto a la otra PC
             if os.path.exists(os.path.join(conocimiento.CARPETA, x)):
                 z.write(os.path.join(conocimiento.CARPETA, x), 'mis_conocimientos/' + x)
+        if os.path.isdir(conocimiento.MARCAS):  # y las marcas (MOTOROLA.md, APPLE.md…)
+            for x in os.listdir(conocimiento.MARCAS):
+                if x.endswith('.md'):
+                    z.write(os.path.join(conocimiento.MARCAS, x), 'mis_conocimientos/marcas/' + x)
     return destino
 
 
@@ -978,7 +1019,7 @@ def correr(proyecto, pasos, opciones):
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
                 return
-            eleven = paso in USAN_ELEVEN or (paso == 'transcribir' and opciones.get('motor', 'scribe') == 'scribe')
+            eleven = paso in USAN_ELEVEN or (paso == 'transcribir' and opciones.get('motor', 'scribe') in ('scribe', 'alinear'))
             if eleven and sys.platform == 'win32' and not env.get('ELEVENLABS_API_KEY'):
                 raise RuntimeError('Falta tu clave de ElevenLabs. Pulsa el botón «🔑 Clave ElevenLabs» arriba a la derecha, '
                                    'pégala y guarda. (Para transcribir sin clave usa Whisper: «Cancelar» al preguntar.)')
@@ -1175,6 +1216,16 @@ class Manejador(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _marca(self, m, p=''):
+        """Una marca de «🧠 Conocimiento»: su texto y ruta, todas las marcas y la del proyecto abierto."""
+        try:
+            detectada = conocimiento.marca_de_proyecto(carpeta(p)) if p else ''
+        except Exception:
+            detectada = ''
+        m = conocimiento._nombre_marca(m or detectada or conocimiento.MARCAS_BASE[0])
+        return {'marcas': conocimiento.marcas(), 'marca': m, 'texto': conocimiento.leer_marca(m),
+                'ruta': conocimiento._ruta_marca(m), 'detectada': detectada}
+
     def responder(self, cuerpo, tipo='application/json', codigo=200):
         if not isinstance(cuerpo, (bytes, bytearray)):
             cuerpo = json.dumps(cuerpo, ensure_ascii=False).encode()
@@ -1234,6 +1285,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'v': v})
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
+            if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
+                return self.responder(self._marca(q.get('m') or '', q.get('p') or ''))
             if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
                 cuerpo = conocimiento.texto_completo().encode('utf-8')
                 self.send_response(200)
@@ -1657,6 +1710,9 @@ class Manejador(BaseHTTPRequestHandler):
                     mismo = not datos.get('ia') or (aj.get('url') or '').rstrip('/') == (datos.get('url') or '').rstrip('/')
                     datos['clave'] = guardada or (aj.get('clave', '') if mismo else '')  # si no mandan clave nueva, prueba la guardada
                 return self.responder(probar_clave(datos))
+            if ruta == '/api/probar_eleven':  # comprueba la clave de ElevenLabs (la escrita o la guardada) sin gastar créditos
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                return self.responder(probar_eleven(datos.get('clave') or clave_eleven()))
             if ruta == '/api/pista_archivo':
                 sub, _, _, extensiones = GRUPOS[q.get('g', 'pistas')]
                 ext = os.path.splitext(q.get('nombre', ''))[1].lower()
@@ -1772,6 +1828,13 @@ class Manejador(BaseHTTPRequestHandler):
                         _, entro = conocimiento.anotar(str(datos.get('tipo') or 'idea'), datos.get('texto'))
                         if not entro:
                             return self.responder({**conocimiento.resumen(), 'msg': 'Esa nota ya estaba.'})
+                    elif que == 'marca_guardar':
+                        conocimiento.guardar_marca(datos.get('marca'), datos.get('texto'))
+                        return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''), 'msg': 'Guardado.'})
+                    elif que == 'marca_anotar':
+                        entro = conocimiento.anotar_marca(datos.get('marca'), str(datos.get('tipo') or 'texto'), datos.get('texto'),
+                                                          os.path.basename(str(datos.get('archivo') or '')))
+                        return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''), 'msg': 'Agregado.' if entro else 'Eso ya estaba.'})
                     elif que == 'usar':
                         conocimiento.poner_usar(datos.get('usar'))
                     elif que == 'aprender':

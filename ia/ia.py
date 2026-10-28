@@ -439,7 +439,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
-    sabido = conocimiento.texto_para_ia() if tarea in ('guion', 'trailer', 'etiquetas') else ''
+    sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
                       "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
@@ -2520,7 +2520,8 @@ def normalizar_preguntas(lista):
 # Tarda lo que la más lenta, no la suma; se paga un guion a cada una.
 IAS_GUION = {'gpt': ('GPT', 'OpenAI (GPT)', 'https://api.openai.com/v1', ''),
              'claude': ('Claude', 'Claude (Anthropic)', 'https://api.anthropic.com', 'claude'),
-             'gemini': ('Gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', '')}
+             'gemini': ('Gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', ''),
+             'deepseek': ('DeepSeek', 'DeepSeek', 'https://api.deepseek.com', '')}
 
 
 def ias_del_guion(ajustes):
@@ -2695,7 +2696,7 @@ def ideas_guion(d, ajustes):
         partes.append("Lo que se ve en la grabación, pantalla por pantalla:\n" + texto_mapa(mapa)[:20000])
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    sabido = conocimiento.texto_para_ia()
+    sabido = conocimiento.texto_para_ia(d=d)
     if sabido:
         partes.append("Lo que ya sabemos del canal (no preguntes lo que ya está aquí):\n" + sabido)
     if hechas or pendientes:
@@ -2870,7 +2871,7 @@ Cómo devolver el resultado, según lo que puedas hacer:
                 z.write(f, nombre)
         for _, f in caps:
             z.write(f, 'ia_capturas/' + os.path.basename(f))
-        if conocimiento.texto_para_ia():  # lo aprendido de todos tus videos, para la IA del chat
+        if conocimiento.texto_para_ia(d=d):  # lo aprendido de todos tus videos, para la IA del chat
             z.writestr('CONOCIMIENTO.md', conocimiento.texto_completo())
         if mapa:  # el video entero, un cuadro cada pocos segundos, con el texto de pantalla
             z.write(os.path.join(d, 'mapa_video.json'), 'mapa_video.json')

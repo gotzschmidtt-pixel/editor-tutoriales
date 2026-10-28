@@ -22,6 +22,8 @@ Uso (desde la carpeta editor-tutoriales):
       primero el video aprobado; después encargo trailer → entregar trailer → el autor lo revisa en «🎬 Tráiler»
   python deepseek/video.py exportar 480 720 --nombre "Mi video"
   python deepseek/video.py estado --nombre "Mi video"
+  python deepseek/video.py clave
+      comprueba la clave de ElevenLabs guardada en la app y dice cuántos créditos quedan (no gasta créditos)
 
 No usa claves: la app las lee de app/ajustes.json, que este script nunca abre ni muestra.
 """
@@ -282,15 +284,26 @@ def texto_preguntas(d, tarea='guion'):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('accion', choices=['preparar', 'entregar', 'preguntas', 'armar', 'encargo', 'extras', 'exportar', 'estado'])
+    ap.add_argument('accion', choices=['preparar', 'entregar', 'preguntas', 'armar', 'encargo', 'extras', 'exportar', 'estado', 'clave'])
     ap.add_argument('args', nargs='*')
-    ap.add_argument('--nombre', required=True, help='nombre del proyecto (carpeta en mis_proyectos)')
+    ap.add_argument('--nombre', help='nombre del proyecto (carpeta en mis_proyectos); no hace falta para «clave»')
     ap.add_argument('--idea', help='datos seguros del video para la IA (se guardan en idea.txt)')
     ap.add_argument('--parti-del-guion-actual', action='store_true',
                     help='entregar guion: tu archivo ya incluye lo que el autor editó en la app (guion_editado_por_autor.json)')
     ap.add_argument('--confirmo-creditos', action='store_true', help='el autor aprobó gastar créditos de ElevenLabs')
     a = ap.parse_args()
+    if a.accion != 'clave' and not a.nombre:
+        ap.error('falta --nombre "NOMBRE DEL PROYECTO"')
     abrir_app()
+    if a.accion == 'clave':  # ¿sirve la clave de ElevenLabs guardada en la app y cuántos créditos quedan? No gasta créditos
+        try:
+            r = api('/api/probar_eleven', {})
+        except SystemExit:
+            raise SystemExit('La app abierta es una versión vieja sin «Comprobar clave»: ciérrala y vuelve a correr este comando.')
+        print(('OK: ' if r.get('ok') else 'ERROR: ') + r.get('mensaje', ''))
+        if r.get('quedan') is not None:
+            print(f'CREDITOS_ELEVENLABS={r["quedan"]}')
+        return
     p = api('/api/proyecto', {'nombre': a.nombre})['nombre']
     d = carpeta(p)
 
