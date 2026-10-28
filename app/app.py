@@ -362,11 +362,12 @@ def linea_tiempo(d):
     from etiquetas import buscar
     leer = lambda f, defecto: json.load(open(os.path.join(d, f), encoding='utf-8')) if existe(d, f) else defecto
     guion = leer('guion.json', {'bloques': []})
-    bloques, inicio, alin = [], {}, {}
+    bloques, inicio, alin, original = [], {}, {}, {}
     for b in guion.get('bloques', []):
         if b.get('inicio_min') is None:
             continue
         inicio[b['id']] = b['inicio_min']
+        original[b['id']] = b.get('texto_original')  # versión traducida: la frase de la etiqueta sigue en español
         f_al = os.path.join(d, 'voz', f"{b['id']}.align.json")
         al = json.load(open(f_al, encoding='utf-8')) if os.path.exists(f_al) else None
         alin[b['id']] = al
@@ -381,7 +382,7 @@ def linea_tiempo(d):
         if x.get('en') is not None and x.get('bloque') in inicio:
             return round(inicio[x['bloque']] + DESFASE_VOZ + float(x['en']) + retraso, 2)
         al = alin.get(x.get('bloque'))
-        t = buscar(al, x.get('frase', '')) if al else None
+        t = buscar(al, x.get('frase', ''), original.get(x.get('bloque'))) if al else None
         return None if t is None else round(inicio[x['bloque']] + DESFASE_VOZ + t + retraso, 2)
     etiquetas = [{**e, '_t': cuando(e)} for e in leer('etiquetas.json', [])]
     senales = [{**x, '_t': cuando(x, x.get('retraso', 0))} for x in leer('senales.json', [])]

@@ -48,8 +48,12 @@ def seguir(video, t, x, y, n, radio):
     cv2.circle(mask, (int(x), int(y)), rr, 255, -1)
     p0 = cv2.goodFeaturesToTrack(prev, 60, 0.01, 6, mask=mask)
     pos, fiables, cx, cy = [(x, y)], n, float(x), float(y)
+    vf, leidos = cap.get(cv2.CAP_PROP_FPS) or FPS, 0  # el video armado puede ir a 30 cuadros por segundo; la señal, a FPS
     for k in range(1, n):
-        ok, f = cap.read()
+        ok = True
+        while ok and leidos < int(round(k * vf / FPS)):  # el cuadro del video que cae en el mismo momento que el de la señal
+            ok, f = cap.read()
+            leidos += 1
         if not ok:
             break
         g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
@@ -137,6 +141,7 @@ def main():
 
     bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
     inicio = {b['id']: b['inicio_min'] for b in bloques}
+    texto_original = {b['id']: b.get('texto_original') for b in bloques}  # versión traducida: el texto en español de cada bloque
     original = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'original.mp4')
     tmp = codificar.temporal('senales')
     trabajos, colocadas = [], []
@@ -155,8 +160,11 @@ def main():
         elif s.get('en') is not None and s.get('bloque') in inicio:  # puesta a mano en el editor por pistas: desde que empieza su bloque
             t = round(inicio[s['bloque']] + a.desfase + float(s['en']) + s.get('retraso', 0), 2)
         else:
-            al = json.load(open(os.path.join(a.voz, s['bloque'] + '.align.json'), encoding='utf-8'))
-            t = buscar(al, s['frase'])
+            f_al = os.path.join(a.voz, str(s.get('bloque')) + '.align.json')
+            if s.get('bloque') not in inicio or not os.path.exists(f_al):  # una señal vieja no frena las demás
+                print(f"AVISO: el bloque {s.get('bloque')} ya no está en el guion, salto «{s['frase']}»"); continue
+            al = json.load(open(f_al, encoding='utf-8'))
+            t = buscar(al, s['frase'], texto_original.get(s['bloque']))
             if t is None:
                 print(f"AVISO: no encontré «{s['frase']}» en {s['bloque']}, la salto"); continue
             t = round(inicio[s['bloque']] + a.desfase + t + s.get('retraso', 0), 2)

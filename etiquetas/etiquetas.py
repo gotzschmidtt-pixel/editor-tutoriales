@@ -34,14 +34,18 @@ def normal(c):
     return ''.join(x for x in unicodedata.normalize('NFD', c.lower()) if unicodedata.category(x) != 'Mn')
 
 
-def buscar(al, frase):
-    """Segundo (relativo al bloque) en que empieza `frase` dentro de la alineación."""
+def buscar(al, frase, original=None):
+    """Segundo (relativo al bloque) en que empieza `frase` dentro de la alineación. En una versión traducida la frase
+    sigue en español: si no está en la voz nueva y está en el texto `original` del bloque, va en el mismo punto relativo."""
     chars = [normal(c) for c in al['characters']]
     texto = ''.join(chars)
     # índice de carácter de texto normalizado -> índice en la alineación
     mapa = [i for i, c in enumerate(chars) for _ in c]
     pos = texto.find(normal(frase))
     if pos < 0:
+        k = normal(original).find(normal(frase)) if original else -1
+        if k >= 0 and al.get('character_end_times_seconds'):
+            return round(k / max(1, len(normal(original))) * al['character_end_times_seconds'][-1], 2)
         return None
     return al['character_start_times_seconds'][mapa[pos]]
 
@@ -119,6 +123,7 @@ def main():
 
     bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
     inicio = {b['id']: b['inicio_min'] for b in bloques}
+    original = {b['id']: b.get('texto_original') for b in bloques}  # versión traducida: el texto en español de cada bloque
     items = de_capturas(os.path.dirname(os.path.abspath(a.guion)), bloques)
     for e in json.load(open(a.etiquetas, encoding='utf-8')):
         if e.get('t') is not None:  # con su segundo exacto en el video
@@ -132,7 +137,7 @@ def main():
             print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
             continue
         al = json.load(open(f_al, encoding='utf-8'))
-        t = buscar(al, e['frase'])
+        t = buscar(al, e['frase'], original.get(e['bloque']))
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
             continue
