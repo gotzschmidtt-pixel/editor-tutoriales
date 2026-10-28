@@ -2083,7 +2083,14 @@ class Manejador(BaseHTTPRequestHandler):
                                                     'tipo': (m.get('rule') or {}).get('issueType', '')}
                                                    for m in r.get('matches', [])]})
             if ruta == '/api/pegar':
-                open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
+                cuerpo, d = self.rfile.read(largo), carpeta(q['p'])
+                if b'"bloques"' in cuerpo and existe(d, 'guion.json'):  # un guion nuevo: el actual queda en el historial (no solo en .anterior)
+                    h = os.path.join(d, 'historial_guion')
+                    os.makedirs(h, exist_ok=True)
+                    shutil.copy(os.path.join(d, 'guion.json'), os.path.join(h, time.strftime('guion_%Y%m%d_%H%M%S.json')))
+                    for viejo in sorted(os.listdir(h))[:-40]:
+                        os.remove(os.path.join(h, viejo))
+                open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(cuerpo)
                 return self.responder({'ok': True})
             if ruta == '/api/importar_claude':  # «📥 Importar lo de Claude»: el .zip que arma Claude en la nube para revisar aquí
                 import zipfile, io
