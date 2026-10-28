@@ -1817,6 +1817,8 @@ class Manejador(BaseHTTPRequestHandler):
                     # el editor por pistas puede volver a poner el tráiler; «✨ Agregar extras» usa el que armaste en «🎬 Tráiler»
                     # (la IA no lo rehace por su cuenta encima de tus cambios)
                     pasos = TODO[:-1] + ['trailer_ia', 'trailer']
+                if extras and 'trailer' in elegidos and not existe(carpeta(q['p']), 'trailer.json') and aj.get('modelo') and aj.get('url'):
+                    pasos = [x for x in pasos if x != 'final_sin_trailer'] + ['trailer_ia', 'trailer']  # sin plan propio, lo arma la IA
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
                     for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
@@ -2426,6 +2428,9 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto'] == q['p']:
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                # los extras que tenía el video, para volver a ponerlos después de rehacerlo
+                extras = [p['id'] for p in PASOS if p['id'] in EXTRAS and (existe(d, p['produce']) or p['id'] in capas_hechas(d))
+                          and p['produce'] != 'FINAL.mp4']
                 quitados = []
                 for f in os.listdir(d):
                     if (f in VIDEOS_GENERADOS or f.endswith(('.parcial', '.etiquetas_tiempos.json'))) and borrar_seguro(os.path.join(d, f)):
@@ -2433,7 +2438,7 @@ class Manejador(BaseHTTPRequestHandler):
                 if existe(d, 'registro.txt'):  # el registro viejo queda aparte, para no confundir con fallas pasadas
                     os.replace(os.path.join(d, 'registro.txt'), os.path.join(d, 'registro_anterior.txt'))
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
-                return self.responder({'ok': True, 'quitados': quitados})
+                return self.responder({'ok': True, 'quitados': quitados, 'extras': extras})
             if ruta == '/api/empezar_de_nuevo':  # «Borrar todo»: quita lo generado y deja lo que subiste
                 d = carpeta(q['p'])
                 with CANDADO:

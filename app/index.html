@@ -2811,6 +2811,8 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
+  if (!(await confirmarVoz())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs, cuántos caracteres
+  soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
   refrescar();
 }
@@ -2823,10 +2825,17 @@ let reiniciando = false, PAGINA = null;
 function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
   const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
 }
-async function actualizarProyecto() {
+async function actualizarProyecto() {  // reutiliza transcripción, guion y voces; rehace el resto y vuelve a poner los extras que tenía
+  if (!confirm(`¿Actualizar «${P}»?\n\nBorro los videos hechos (FINAL.mp4 y los de cada paso) y las fallas viejas, y vuelvo a hacer el video `
+    + 'con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y '
+    + 'tráiler que tenía se vuelven a poner al final.')) return;
+  if (!(await confirmarVoz())) return;  // si falta alguna voz, antes de borrar nada
   soltarVideo();
-  try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
+  let r;
+  try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true})}); }
+  catch (e) { alert(e.message); }
+  refrescar();
 }
 async function borrarTodo() {
   if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
