@@ -65,13 +65,19 @@ def idioma_video(d):
         return 'es'
 
 
-def voz_args(d):
-    """Lo que se le pasa a voz.py según el idioma del proyecto (nada si es español: Mauricio, como siempre)."""
+def voz_env(d):
+    """La voz y el idioma de un proyecto traducido (vacío si es español: Mauricio, como siempre). Van como variables de
+    entorno a todo lo que habla: voz.py, la voz nueva del Short, los testimonios narrados, nuevos modelos y el tráiler."""
     lang = idioma_video(d)
     if lang == 'es':
-        return []
-    voz = (leer_ajustes().get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang)
-    return (['--voz', voz] if voz else []) + ['--idioma', lang]
+        return {}
+    return {'VOZ_ID': (leer_ajustes().get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang) or '', 'VOZ_IDIOMA': lang}
+
+
+def voz_args(d):
+    """Lo que se le pasa a voz.py según el idioma del proyecto (nada si es español: Mauricio, como siempre)."""
+    e = voz_env(d)
+    return (['--voz', e['VOZ_ID']] if e.get('VOZ_ID') else []) + (['--idioma', e['VOZ_IDIOMA']] if e else [])
 
 
 PRIVADOS = {'ajustes.json', 'ajustes.json.copia'}  # las claves no se sirven nunca
@@ -314,6 +320,8 @@ def duracion_original(d, nombre='original.mp4'):
                                                       capture_output=True, text=True, **SIN_VENTANA).stdout)
         except ValueError:
             _DURACIONES[clave] = 0
+        except OSError:  # sin ffprobe: la página carga igual y el paso avisa que falta ffmpeg (no se guarda, por si lo instalas)
+            return 0
     return _DURACIONES[clave]
 
 
@@ -1156,9 +1164,17 @@ def correr(proyecto, pasos, opciones):
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
         return
-    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
-    if clave_eleven():
-        env['ELEVENLABS_API_KEY'] = clave_eleven()
+    try:  # ajustes.json roto o a medio guardar: se avisa y el proyecto queda libre (antes quedaba «ya está corriendo» para siempre)
+        env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
+        if clave_eleven():
+            env['ELEVENLABS_API_KEY'] = clave_eleven()
+        env.update(voz_env(d))  # versión en otro idioma: el tráiler, los testimonios, nuevos modelos y el Short hablan en ese idioma
+    except Exception as e:
+        log.close()
+        FALLOS[proyecto] = {'paso': pasos[0], 'msg': f'No pude leer tus ajustes (app/ajustes.json): {e}. Vuelve a guardar «⚙ Ajustes IA».'}
+        with CANDADO:
+            TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None)
+        return
     paso = pasos[0]
     nombres = [next(x for x in PASOS if x['id'] == p)['nombre'] for p in pasos]
     ejec = time.strftime('%Y%m%d_%H%M%S_') + uuid.uuid4().hex[:6]  # para el diagnóstico: qué llamadas son de esta ejecución
@@ -1233,9 +1249,15 @@ def correr(proyecto, pasos, opciones):
             if not env['REANUDAR_IA']:
                 shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
             for c in comandos(paso, d, opciones):
-                proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
-                with CANDADO:
-                    TRABAJO['proc'] = proc
+                with CANDADO:  # «■ Detener» mientras se instalaba node (puede tardar minutos): el paso ya no arranca
+                    parar = TRABAJO.get('detenido')
+                    if not parar:
+                        proc = subprocess.Popen(c, cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env, **SIN_VENTANA)
+                        TRABAJO['proc'] = proc
+                if parar:
+                    FALLOS[proyecto] = {'paso': paso, 'msg': 'detenido por ti'}
+                    log.write(f'\n■ Detenido antes de «{info["nombre"]}»\n'); log.flush()
+                    return
                 if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
                     # un extra de la IA que no salió no frena el video: se sigue sin eso
                     log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
@@ -1800,6 +1822,10 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x['id'] for x in PASOS if x['id'] in CAPAS and all(existe(d0, n) for n in x['necesita'])]
                     if not pasos:
                         return self.error('Todavía no hay etiquetas, flechas ni tarjetas que poner.')
+                    for x in PASOS:  # los testimonios y nuevos modelos que ya tenía van encima de las capas nuevas (si no, el
+                        # final salía del 8_ o 9_ viejo, con las etiquetas de antes); sus voces guardadas no se vuelven a pagar
+                        if x['id'] in ('testimonios', 'nuevos_modelos') and existe(d0, x['produce']) and all(existe(d0, n) for n in x['necesita']):
+                            pasos.append(x['id'])
                     if not existe(d0, 'trailer.mp4'):  # el FINAL.mp4 (lo que se descarga) también las lleva; con tráiler, «✨ Agregar extras»
                         pasos.append('final_sin_trailer')
                 extras = q['paso'] == 'extras'
@@ -1956,7 +1982,9 @@ class Manejador(BaseHTTPRequestHandler):
                 os.replace(MUSICA_FIJA + '.nueva', MUSICA_FIJA)
                 aj = leer_ajustes()
                 aj['musica_fija_de'] = f"la música del proyecto «{q['p']}»"
-                json.dump(aj, open(AJUSTES, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                with open(AJUSTES + '.tmp', 'w', encoding='utf-8') as fh:  # aparte y de una vez, como en «⚙ Ajustes»: un corte no borra tus claves
+                    json.dump(aj, fh, ensure_ascii=False, indent=1)
+                os.replace(AJUSTES + '.tmp', AJUSTES)
                 return self.responder({'ok': True})
             if ruta == '/api/elegir_version':  # «3 IAs a la vez»: esa versión pasa a ser tu guion (el actual queda de respaldo)
                 d = carpeta(q['p'])
@@ -2012,8 +2040,9 @@ class Manejador(BaseHTTPRequestHandler):
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
                     aj = leer_ajustes()
                     guardada = ((aj.get('ias_guion') or {}).get(datos.get('ia')) or {}).get('clave') if datos.get('ia') else ''
-                    # la clave principal solo sirve para el mismo proveedor (la de OpenAI no abre Gemini)
-                    mismo = not datos.get('ia') or (aj.get('url') or '').rstrip('/') == (datos.get('url') or '').rstrip('/')
+                    # la clave principal solo sirve para el mismo proveedor (la de OpenAI no abre Gemini): si cambiaste de
+                    # proveedor y todavía no pegaste su clave, la guardada no se le manda al otro
+                    mismo = (aj.get('url') or '').strip().rstrip('/') == (datos.get('url') or '').strip().rstrip('/')
                     datos['clave'] = guardada or (aj.get('clave', '') if mismo else '')  # si no mandan clave nueva, prueba la guardada
                 return self.responder(probar_clave(datos))
             if ruta == '/api/probar_eleven':  # comprueba la clave de ElevenLabs (la escrita o la guardada) sin gastar créditos
@@ -2050,9 +2079,11 @@ class Manejador(BaseHTTPRequestHandler):
                 elif os.path.exists(os.path.join(d, nombre)):  # sin nada, el paso que lo usa queda «necesita»
                     os.remove(os.path.join(d, nombre))
                 usados = {os.path.basename(p.get('archivo') or '') for x in apartados for p in limpio[x]}
+                # la narración guardada de cada testimonio que sigue (testimonios.py): borrarla obliga a pagarla otra vez
+                narr = {'narr_' + re.sub(r'\W+', '', os.path.splitext(u)[0]) for u in usados}
                 for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
                     base = f[:-4] if f.endswith('.txt') else f
-                    if f != nombre and base not in usados:
+                    if f != nombre and base not in usados and os.path.splitext(f)[0] not in narr:
                         os.remove(os.path.join(d, f))
                 return self.responder({'ok': True})
             if ruta == '/api/estilo':
@@ -2417,7 +2448,7 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto']:  # entre dos pasos no hay proceso vivo, pero el siguiente ya no arranca
                         TRABAJO['detenido'] = True
-                    if TRABAJO['proc']:
+                    if TRABAJO['proc'] and TRABAJO['proc'].poll() is None:  # uno ya terminado no: su número puede ser ya de otro programa
                         if sys.platform == 'win32':  # terminate() deja vivo el ffmpeg hijo: bloquea archivos y sigue gastando
                             subprocess.run(['taskkill', '/T', '/F', '/PID', str(TRABAJO['proc'].pid)], capture_output=True, **SIN_VENTANA)
                         else:
@@ -2445,7 +2476,9 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto'] == q['p']:
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
                 quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz', GUARDADOS} | \
-                    {sub for sub, *_ in GRUPOS.values()}
+                    {sub for sub, *_ in GRUPOS.values()} | \
+                    {'cortes_importantes.json', 'edicion.json', 'subtitulos.json', 'etiquetas_idiomas.json',  # lo que marcaste o elegiste tú
+                     'idioma_video.json'}  # una versión en inglés sigue siendo en inglés (si no, la voz volvía a Mauricio)
                 borrados = 0
                 for f in os.listdir(d):
                     if f in quedan:

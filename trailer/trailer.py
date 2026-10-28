@@ -39,7 +39,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
 
-VOZ_ID = '94zOad0g7T7K4oa7zhDq'  # Mauricio
+VOZ_ID = os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq'  # Mauricio, o la del idioma de la versión
+IDIOMA = os.environ.get('VOZ_IDIOMA', '')
 CIERRE = 2.4
 
 
@@ -53,7 +54,8 @@ def duracion(f):
 
 
 def voz(texto, destino):
-    body = json.dumps({'text': texto, 'model_id': 'eleven_v4', 'voice_settings': {'stability': 0.5}}).encode()
+    body = json.dumps({'text': texto, 'model_id': 'eleven_v4', 'voice_settings': {'stability': 0.5},
+                       **({'language_code': IDIOMA} if IDIOMA else {})}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{VOZ_ID}?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', **CLAVE})
     open(destino, 'wb').write(urllib.request.urlopen(req, timeout=120).read())
@@ -110,8 +112,9 @@ def main():
         # la voz se guarda junto a la salida y se reutiliza mientras el texto no cambie
         vf = os.path.splitext(a.salida)[0] + '.voz.mp3'
         previo = open(vf + '.txt', encoding='utf-8').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
-        if previo != plan['voz']:
-            voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(plan['voz'])
+        firma = plan['voz'] + (f'|{VOZ_ID}|{IDIOMA}' if IDIOMA else '')  # en otro idioma, también si cambió la voz
+        if previo != firma:
+            voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(firma)
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")
         if mus:

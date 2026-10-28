@@ -76,6 +76,8 @@ Desde la carpeta `editor-tutoriales`, con el mismo `--nombre` en todos los pasos
 
 1. **Preparar (gratis):**
    `python deepseek/video.py preparar "RUTA\video.mp4" --nombre "NOMBRE" --idea "datos seguros"`
+   Transcribe con Whisper (gratis). Scribe de ElevenLabs acierta más los nombres técnicos pero gasta créditos (ver la tabla
+   de abajo): pregúntale al autor y, si dice que sí, agrega `--confirmo-creditos`.
    Deja en `mis_proyectos/NOMBRE/`: `ia_prompt_guion.txt` (el encargo exacto de la app, con la transcripción y el mapa
    del video), `ia_capturas/` (capturas y hojas) y `hojas_2s/` (un cuadro cada 2 s con el segundo escrito, 1 min por hoja).
 2. **Mirar TODO el video:** abre cada hoja de `hojas_2s/`. Anota en qué segundo pasa cada cosa: pantalla bloqueada,

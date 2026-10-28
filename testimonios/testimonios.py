@@ -113,11 +113,13 @@ def dur_mp3(f):
     return float(r.stdout or 0)
 
 
-def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
+def narrar(carpeta, bid, texto, voz, modelo, estabilidad, idioma='es'):
     """Genera (y reutiliza) la voz principal que narra un testimonio. Devuelve (mp3, duración).
     Solo vuelve a pedirla a ElevenLabs si cambió el texto, la voz, el modelo o la estabilidad; si no, no gasta créditos."""
     mp3 = os.path.join(carpeta, f'narr_{bid}.mp3')
     firma = {'texto': texto, 'voz': voz, 'modelo': modelo, 'estabilidad': estabilidad}
+    if idioma != 'es':
+        firma['idioma'] = idioma
     meta = os.path.join(carpeta, f'narr_{bid}.json')
     if os.path.exists(mp3) and os.path.exists(meta):
         try:
@@ -129,7 +131,7 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
     if not clave:
         raise SystemExit('ERROR: para narrar los testimonios con tu voz principal falta la clave de ElevenLabs. '
                          'Pulsa «🔑 Clave ElevenLabs» arriba a la derecha, pégala y guarda.')
-    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': 'es',
+    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': idioma,
                        'voice_settings': {'stability': estabilidad}}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', 'xi-api-key': clave})
@@ -167,7 +169,8 @@ def main():
     ap.add_argument('--testimonios', required=True)
     ap.add_argument('--srt', default='3_voz.srt')
     ap.add_argument('--salida', required=True)
-    ap.add_argument('--voz', default='94zOad0g7T7K4oa7zhDq', help='misma voz que la narración principal (voz.py)')
+    ap.add_argument('--voz', default=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq', help='misma voz que la narración principal (voz.py)')
+    ap.add_argument('--idioma', default=os.environ.get('VOZ_IDIOMA') or 'es', help='el de la versión del video (es, en…)')
     ap.add_argument('--modelo', default='eleven_v4')
     ap.add_argument('--estabilidad', type=float, default=0.5)
     a = ap.parse_args()
@@ -194,7 +197,7 @@ def main():
         narr, dur = None, clip_dur
         if texto:  # el narrador (tu voz principal) cuenta el testimonio y el audio del cliente se silencia
             bid = re.sub(r'\W+', '', os.path.splitext(os.path.basename(f))[0]) or f'testi{len(cortes) + 1}'
-            narr, ndur = narrar(carpeta, bid, texto, a.voz, a.modelo, a.estabilidad)
+            narr, ndur = narrar(carpeta, bid, texto, a.voz, a.modelo, a.estabilidad, a.idioma)
             dur = max(clip_dur, ndur + 0.6)  # el segmento dura lo que la narración, con un respiro al final
         cortes.append({'en': en, 'f': f, 'desde': desde, 'clip_dur': clip_dur, 'dur': dur, 'audio': info['audio'], 'narr': narr})
         print(f"testimonio {os.path.basename(f)} ({dur:.0f} s{', narrado' if narr else ''}) entra en {int(en // 60)}:{int(en % 60):02d}")

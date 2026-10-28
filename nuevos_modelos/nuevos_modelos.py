@@ -75,18 +75,30 @@ def lista_es(xs, articulo=''):
     return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' y ' + xs[-1]
 
 
-def escribir_frase(modelos, ajustes, idea):
+def escribir_frase(modelos, ajustes, idea, idioma='es'):
     """Una o dos frases con el estilo del canal: el método sirve para los modelos más recientes."""
-    fija = (f'Y ojo, que este método también sirve para los modelos más recientes, como {lista_es(modelos, "el ")}. '
-            'Así que no importa si tu equipo es nuevito: aquí también entra.') if modelos else \
-           'Y ojo, que este método también sirve para los modelos más recientes, así que no importa si tu equipo es nuevito.'
+    if idioma == 'en':  # versión en inglés
+        nombres = ', '.join(modelos[:-1]) + ' and ' + modelos[-1] if len(modelos) > 1 else ''.join(modelos)
+        fija = (f'And heads up: this method also works on the latest models, like {nombres}. '
+                'So even if your phone is brand new, it works here too.') if modelos else \
+               'And heads up: this method also works on the latest models, so even if your phone is brand new, it works here too.'
+    elif idioma == 'es':
+        fija = (f'Y ojo, que este método también sirve para los modelos más recientes, como {lista_es(modelos, "el ")}. '
+                'Así que no importa si tu equipo es nuevito: aquí también entra.') if modelos else \
+               'Y ojo, que este método también sirve para los modelos más recientes, así que no importa si tu equipo es nuevito.'
+    else:
+        fija = None
     if not (ajustes.get('modelo') and ajustes.get('url')):
+        if fija is None:
+            raise SystemExit(f'ERROR: no hay IA en «⚙ Ajustes IA» para escribir la frase en este idioma ({idioma}). '
+                             'Escríbela tú en el panel «Nuevos modelos» (campo de la frase) y vuelve a pulsar.')
         return fija
     import ia
     pedido = (ia.ESTILO + "\n\nEscribe la voz en off (1 o 2 frases, máximo 40 palabras) que va mientras se ve un video corto con "
               "los modelos más recientes. Tiene que decir que este método sirve para los modelos más recientes"
               + (f" y nombrar estos, tal cual: {lista_es(modelos)}" if modelos else '') + ". No inventes otros modelos ni datos."
-              + (f"\nLo que cuenta el autor del video: {idea[:1500]}" if idea else '') +
+              + (f"\nLo que cuenta el autor del video: {idea[:1500]}" if idea else '')
+              + (f"\nEl video es la versión en otro idioma (código {idioma}): escribe la frase en ese idioma." if idioma != 'es' else '') +
               "\nResponde SOLO con un objeto JSON {\"frase\": \"...\"}.")
     try:
         frase = str(ia.extraer_json(ia.llamar({**ajustes, 'imagenes': False}, pedido, [])).get('frase') or '').strip()
@@ -95,17 +107,20 @@ def escribir_frase(modelos, ajustes, idea):
         print('· la frase de la IA no nombraba todos los modelos; uso la frase fija', flush=True)
     except (SystemExit, ValueError, AttributeError) as e:
         print(f'· la IA no escribió la frase ({str(e)[:160]}); uso la frase fija', flush=True)
+    if fija is None:
+        raise SystemExit(f'ERROR: la IA no escribió la frase en este idioma ({idioma}). Escríbela tú en el panel «Nuevos modelos» y vuelve a pulsar.')
     return fija
 
 
-def voz(frase, carpeta, voz_id='94zOad0g7T7K4oa7zhDq', modelo='eleven_v4'):
+def voz(frase, carpeta, voz_id=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq', modelo='eleven_v4',
+        idioma=os.environ.get('VOZ_IDIOMA') or 'es'):
     """La frase con tu voz de ElevenLabs (la misma de los bloques). Se guarda y no se vuelve a pagar si no cambió."""
     import voz as vz
-    clave = hashlib.sha1(f'{frase}|{voz_id}|{modelo}'.encode()).hexdigest()[:12]
+    clave = hashlib.sha1(f'{frase}|{voz_id}|{modelo}'.encode() + (f'|{idioma}'.encode() if idioma != 'es' else b'')).hexdigest()[:12]
     mp3, al = os.path.join(carpeta, f'voz_{clave}.mp3'), os.path.join(carpeta, f'voz_{clave}.align.json')
     if os.path.exists(mp3) and os.path.exists(al):
         return mp3, json.load(open(al, encoding='utf-8'))
-    body = json.dumps({'text': frase, 'model_id': modelo, 'language_code': 'es', 'voice_settings': {'stability': 0.5}}).encode()
+    body = json.dumps({'text': frase, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': 0.5}}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{voz_id}/with-timestamps?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', **vz.CLAVE})
     try:
@@ -178,15 +193,36 @@ def main():
     x = lista[0]  # un video corto por tutorial
     clip = os.path.join(carpeta, os.path.basename(x['archivo']))
     info = te.probar(clip)
+    idioma = os.environ.get('VOZ_IDIOMA') or 'es'
+    # lo que la IA leyó y escribió la vez anterior con este mismo video: al volver a armar (Actualizar, volver a poner las
+    # etiquetas) no se le pregunta otra vez, así la frase no cambia y su voz guardada no se vuelve a pagar
+    firma_clip = f"{os.path.basename(clip)}|{os.path.getsize(clip)}"
+    try:
+        previo = json.load(open(os.path.join(trabajo, 'leido.json'), encoding='utf-8'))
+        previo = previo if isinstance(previo, dict) and previo.get('clip') == firma_clip else {}
+    except (OSError, ValueError):
+        previo = {}
     modelos = [m.strip() for m in re.split(r'[,;\n]+', x.get('modelos') or '') if m.strip()]
     if modelos:
         print(f'Modelos que escribiste: {lista_es(modelos)}', flush=True)
+    elif isinstance(previo.get('vistos'), list):
+        modelos = previo['vistos']
+        print(f'Modelos que se vieron la vez anterior: {lista_es(modelos) if modelos else "ninguno con nombre claro"}', flush=True)
     else:
         modelos, quien = leer_modelos(clip, info['dur'], trabajo, ajustes)
+        previo = {}
         print(f'Modelos que vio {quien}: {lista_es(modelos) if modelos else "ninguno con nombre claro"}', flush=True)
-    frase = (x.get('frase') or '').strip() or escribir_frase(modelos, ajustes, idea)
+    vistos = None if (x.get('modelos') or '').strip() else modelos
+    frase, escrita = (x.get('frase') or '').strip(), 'tu'
+    if not frase and previo.get('escrita') == 'app' and previo.get('frase') and previo.get('modelos') == modelos \
+            and previo.get('idioma', 'es') == idioma:
+        frase, escrita = previo['frase'], 'app'
+        print('· la misma frase de la vez anterior', flush=True)
+    if not frase:
+        frase, escrita = escribir_frase(modelos, ajustes, idea, idioma), 'app'
     print(f'La voz dice: «{frase}»', flush=True)
-    json.dump({'modelos': modelos, 'frase': frase}, open(os.path.join(trabajo, 'leido.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    json.dump({'modelos': modelos, 'frase': frase, 'escrita': escrita, 'clip': firma_clip, 'vistos': vistos, 'idioma': idioma},
+              open(os.path.join(trabajo, 'leido.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     mp3, al = voz(frase, trabajo)
     hablado = float(al['character_end_times_seconds'][-1]) if al else te.probar(mp3)['dur']
     largo = hablado + 0.9  # aire antes y después de la voz

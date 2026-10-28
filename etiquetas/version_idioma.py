@@ -15,9 +15,17 @@ sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 import idiomas  # noqa: E402
 
 # lo que NO se copia: lo armado con la voz en español (se vuelve a hacer) y lo de diagnóstico
-NO_COPIAR = re.compile(r'^\.|^(voz|diagnosticos|ia_capturas|hojas_2s|acciones|prueba_ingles|referencias)$|'
-                       r'\.(mp4|mp3|wav)$|^(registro\.txt|ia_respuesta.*|guion\.json.*|.*\.antes_.*|idioma_video\.json|'
-                       r'\d_.*\.(srt|json)|guion_para_leer\.md)$')
+# (las versiones del guion de cada IA y lo que se guardó para Claude están en español, y las voces guardadas son de Mauricio)
+NO_COPIAR = re.compile(r'^\.|^(voz|voz_short|diagnosticos|ia_capturas|hojas_2s|acciones|prueba_ingles|referencias|cache_ia|'
+                       r'trabajo_modelos|para_claude)$|'
+                       r'\.(mp4|mp3|wav)$|^(registro\.txt|ia_respuesta.*|guion\.json.*|guion_.*\.json|versiones_guion\.json|'
+                       r'para_claude\.zip|.*\.antes_.*|idioma_video\.json|\d_.*\.(srt|json)|guion_para_leer\.md)$')
+
+# lo que también se lee o se oye fuera del guion: (archivo, lista dentro del archivo, campos con texto)
+EXTRAS = [('trailer.json', None, ('titulo', 'subtitulo', 'voz')),
+          (os.path.join('testimonios', 'testimonios.json'), 'TESTIMONIOS', ('texto',)),
+          (os.path.join('nuevos_modelos', 'modelos.json'), 'MODELOS', ('frase',)),
+          ('short_guion.json', 'tomas', ('texto',))]
 
 
 def copiar(origen, destino):
@@ -37,7 +45,41 @@ def copiar(origen, destino):
             shutil.copy2(f, g)
 
 
-def traducir_guion(guion, idioma, ajustes):
+def _items_extras(d):
+    """[(clave, campo, item, ruta, datos)] de cada texto de los extras del proyecto d (tráiler, testimonios narrados,
+    frase de nuevos modelos, guion del Short)."""
+    out = []
+    for k, (f, lista, campos) in enumerate(EXTRAS):
+        ruta = os.path.join(d, f)
+        try:
+            datos = json.load(open(ruta, encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        items = (datos.get(lista) if lista else [datos]) if isinstance(datos, dict) else None
+        for i, x in enumerate(items if isinstance(items, list) else []):
+            for c in campos:
+                if isinstance(x, dict) and str(x.get(c) or '').strip():
+                    out.append((f'X{k}_{i}_{c}', c, x, ruta, datos))
+    return out
+
+
+def poner_extras(d, traducidos):
+    """Deja en la copia d los textos de los extras traducidos (el que no vino queda como estaba). Devuelve cuántos."""
+    cambiados, n = {}, 0
+    for clave, c, x, ruta, datos in _items_extras(d):
+        t = str(traducidos.get(clave) or '').strip()
+        if t:
+            x[c] = t
+            cambiados[ruta] = datos
+            n += 1
+    for ruta, datos in cambiados.items():
+        json.dump(datos, open(ruta, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    return n
+
+
+def traducir_guion(guion, idioma, ajustes, extras=None):
+    """Traduce los bloques del guion (en su lugar) y los textos de extras {clave: texto}. Devuelve (bloques sin traducir,
+    respuesta de la IA)."""
     import ia
     nombre = idiomas.NOMBRES.get(idioma, idioma)
     textos = {b['id']: b['texto'] for b in guion['bloques'] if str(b.get('texto') or '').strip()}
@@ -46,9 +88,13 @@ def traducir_guion(guion, idioma, ajustes):
               'cercano y directo del original, los chistes adaptados con naturalidad, y los nombres de botones, programas, '
               'modelos y webs tal cual (VOL +, POWER, fastboot, USB Redirector, xiaomiunlock.com…). Escribe los números y años '
               'como se dicen en ese idioma (fifteen, twenty twenty-six) para que la voz los lea bien.\n'
-              'Responde SOLO con un objeto JSON {"L01": "traducción", …} con exactamente estas claves:\n'
-              + json.dumps(textos, ensure_ascii=False, indent=1))
+              + ('Las claves que empiezan con X son textos del tráiler (título, subtítulo y su voz), de los testimonios narrados, '
+                 'de la frase de nuevos modelos y del Short: tradúcelos igual, con el mismo largo.\n' if extras else '')
+              + 'Responde SOLO con un objeto JSON {"L01": "traducción", …} con exactamente estas claves:\n'
+              + json.dumps(dict(textos, **(extras or {})), ensure_ascii=False, indent=1))
     r = ia.extraer_json(ia.llamar(dict(ajustes, imagenes=False), prompt, []))
+    if not isinstance(r, dict):
+        raise SystemExit('ERROR: la IA no devolvió la traducción como se le pidió (un objeto con cada bloque). Vuelve a pulsar el botón.')
     faltan = []
     for b in guion['bloques']:
         if b['id'] in textos:
@@ -60,7 +106,7 @@ def traducir_guion(guion, idioma, ajustes):
                 faltan.append(b['id'])
         for k in ('voz_real_s', 'voz_estimada_s'):
             b.pop(k, None)
-    return faltan
+    return faltan, r
 
 
 def main():
@@ -77,7 +123,11 @@ def main():
     print(f'Copio el proyecto a {os.path.basename(destino)}…', flush=True)
     copiar(origen, destino)
     print(f'La IA traduce el guion ({len(guion["bloques"])} bloques)…', flush=True)
-    faltan = traducir_guion(guion, idioma, json.load(open(a.ajustes, encoding='utf-8')))
+    extras = {clave: x[c] for clave, c, x, _, _ in _items_extras(origen)}
+    faltan, r = traducir_guion(guion, idioma, json.load(open(a.ajustes, encoding='utf-8')), extras)
+    if extras:
+        n = poner_extras(destino, r)
+        print(f'Textos del tráiler, testimonios, nuevos modelos y Short traducidos: {n} de {len(extras)}.', flush=True)
     json.dump(guion, open(os.path.join(destino, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     json.dump({'idioma': idioma, 'origen': os.path.basename(origen)}, open(os.path.join(destino, 'idioma_video.json'), 'w', encoding='utf-8'))
     et = idiomas.leer(destino)

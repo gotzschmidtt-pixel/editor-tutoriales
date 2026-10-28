@@ -29,7 +29,7 @@ import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocim
 sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 import numpy as np  # noqa: E402
-import hashlib, inspect, threading, time  # noqa: E402
+import hashlib, http.client, inspect, threading, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
 ARCHIVO_PREGUNTAS = {'guion': 'preguntas_guion.json', 'trailer': 'preguntas_trailer.json'}
@@ -612,6 +612,13 @@ Responde SOLO con el objeto JSON, con "preguntas" dentro."""]
         resp = respuestas_trailer(d)
         if resp:
             partes.append("RESPUESTAS DEL AUTOR a tus preguntas sobre el tráiler (mandan sobre lo que pensabas; no vuelvas a preguntarlas):\n" + resp)
+        try:  # versión en otro idioma: lo que se lee y se oye del tráiler, en ese idioma
+            lang = json.load(open(os.path.join(d, 'idioma_video.json'), encoding='utf-8')).get('idioma', 'es')
+        except (OSError, ValueError, AttributeError):
+            lang = 'es'
+        if lang != 'es':
+            partes.append(f'IDIOMA: este video es la versión en otro idioma (código {lang}). Escribe "titulo", "subtitulo" y "voz" '
+                          'en ese idioma; las preguntas al autor, en español.')
         try:  # el guion ya aprobado: el tráiler cuenta lo mismo en corto
             g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
             lineas = [f"{b.get('id')} [{mmss(b['montaje']['src_inicio'])}]: {str(b.get('texto', ''))[:140]}"
@@ -1057,9 +1064,11 @@ def extraer_json(txt):
         return mejor[0]
     _olvidar_respuesta()
     _anotar_respuesta('respuesta_ilegible', txt)
-    raise ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
-                  'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
-                  'Lo que devolvió la IA:\n' + txt[:600], 'F')
+    e = ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
+                'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
+                'Lo que devolvió la IA:\n' + txt[:600], 'F')
+    e.parece_negativa = diagnostico.parece_negativa(txt)  # solo una sospecha: no se reenvía lo mismo en pedazos (por_tandas)
+    raise e
 
 
 def leer_idea(d):
@@ -1344,7 +1353,7 @@ class ErrorIA(SystemExit):
     """Un fallo de la IA ya clasificado (A–I, ver diagnostico.py). Sigue siendo SystemExit, así que todo lo que ya
     atrapaba SystemExit funciona igual; `permanente` dice que repetir el mismo pedido no sirve."""
     def __init__(self, mensaje, clase='I', permanente=None):
-        super().__init__(mensaje)
+        super().__init__(diagnostico.redactar(mensaje, 4000))  # el mensaje va al registro.txt: sin claves aunque el proveedor las repita
         self.clase = clase
         self.permanente = clase in diagnostico.PERMANENTES if permanente is None else permanente
 
@@ -1375,7 +1384,34 @@ def _anotar_respuesta(tipo, txt):
     diagnostico.anotar(ev)
 
 
-_ULTIMA = {}  # datos de la última respuesta, para el diagnóstico de una respuesta ilegible
+class _DictPorHilo:
+    """Un dict propio de cada hilo: con «3 IAs a la vez» cada IA tiene su última respuesta (si no, una borraba la caché
+    buena de otra y el diagnóstico culpaba al proveedor equivocado)."""
+    def __init__(self):
+        self._l = threading.local()
+
+    def _d(self):
+        if not hasattr(self._l, 'd'):
+            self._l.d = {}
+        return self._l.d
+
+    def get(self, *a):
+        return self._d().get(*a)
+
+    def clear(self):
+        self._d().clear()
+
+    def update(self, *a, **k):
+        self._d().update(*a, **k)
+
+    def __getitem__(self, k):
+        return self._d()[k]
+
+    def __setitem__(self, k, v):
+        self._d()[k] = v
+
+
+_ULTIMA = _DictPorHilo()  # datos de la última respuesta, para el diagnóstico de una respuesta ilegible
 
 
 def _clave_cache(ev, ajustes, texto, caps):
@@ -1578,6 +1614,8 @@ def llamar_claude(ajustes, texto, caps, det=None):
             raise ErrorIA(f'ERROR: Claude dice que se pasó un límite ({e.status_code}): {mensaje}. '
                           'Espera un poco o baja las capturas en «⚙ Ajustes IA».', 'E')
         raise ErrorIA(f'ERROR: Claude respondió con error {e.status_code}: {mensaje}', clase)
+    except anthropic.APITimeoutError as e:  # el pedido salió y Claude no terminó a tiempo: pudo cobrarse, no se reintenta solo
+        raise sin_respuesta(e, det)
     except anthropic.APIConnectionError as e:
         det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300], tipo_respuesta='sin_conexion')
         raise ErrorIA('ERROR: no hay conexión con Claude. Revisa tu internet.', 'H')
@@ -1670,11 +1708,23 @@ def llamar_ollama(ajustes, texto, caps, det=None):
     except urllib.error.URLError as e:
         det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
         raise ErrorIA('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.', 'H')
+    except (OSError, http.client.HTTPException) as e:
+        raise sin_respuesta(e, det)
     det.update(http=200, motivo_fin=r.get('done_reason'), **modelos_compatible(r, ajustes['modelo']))
     if r.get('done_reason') == 'length':
         det['tipo_respuesta'] = 'incompleta'
         raise ErrorIA('ERROR: la respuesta de Ollama se cortó por largo y quedó incompleta.', 'E', False)
     return r['message']['content']
+
+
+def sin_respuesta(e, det):
+    """El pedido salió pero la respuesta no llegó (tardó más que el límite o se cortó la conexión mientras se esperaba).
+    El proveedor pudo haberlo cobrado, así que no se reintenta solo."""
+    det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300], tipo_respuesta='sin_respuesta')
+    err = ErrorIA(f'ERROR: la IA no terminó de responder ({type(e).__name__}): tardó demasiado o se cortó la conexión mientras '
+                  'contestaba. Vuelve a intentar (si se repite, baja las capturas en «⚙ Ajustes IA»).', 'H')
+    err.puede_haber_cobrado = True
+    return err
 
 
 def llamar_compatible(ajustes, texto, caps, det=None):
@@ -1735,6 +1785,8 @@ def llamar_compatible(ajustes, texto, caps, det=None):
         except urllib.error.URLError as e:
             det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
             raise ErrorIA(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.', 'H')
+        except (OSError, http.client.HTTPException) as e:
+            raise sin_respuesta(e, det)
     det['ajustes_quitados'] = ajustes_quitados
     try:
         eleccion = r['choices'][0]
@@ -2128,6 +2180,8 @@ Responde SOLO con un objeto JSON {{"marcas": [{{"par": 1, "que": "...", "tipo": 
     try:
         r = llamar(ajustes, pedido, imgs)
     except SystemExit as e:
+        if getattr(e, 'permanente', False) and getattr(e, 'clase', '') != 'A':
+            raise  # clave, cuenta o saldo: el pedido que sigue fallaría igual (y no se intenta)
         print(f'· no pude ubicar tus capturas ({e})', flush=True)
         return
     open(os.path.join(d, 'ia_respuesta_senales_autor.txt'), 'w', encoding='utf-8').write(r)
@@ -2196,6 +2250,8 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     try:
         r = llamar(ajustes, pedido, imgs)
     except SystemExit as e:
+        if getattr(e, 'permanente', False) and getattr(e, 'clase', '') != 'A':
+            raise  # clave, cuenta o saldo: el pedido que sigue fallaría igual (y no se intenta)
         print(f'· no pude revisar las señales ({e}); las dejo como están', flush=True)
         return senales
     open(os.path.join(d, 'ia_respuesta_senales_3.txt'), 'w', encoding='utf-8').write(r)
@@ -2260,7 +2316,7 @@ def por_tandas(ajustes, items, tanda, pedir, que):
     """Manda `items` a la IA de a `tanda`; `pedir(lote, desde)` arma (texto, imágenes) y la respuesta va a `usar`.
     Si un modelo no aguanta tantas imágenes juntas (o contesta mal), la tanda se parte a la mitad y se reintenta:
     así funciona igual con cualquier IA, solo que con más pedidos. Devuelve [(desde, lote, respuesta JSON)]."""
-    out, a = [], 0
+    out, a, esperas = [], 0, 0
     while a < len(items):
         lote = items[a:a + tanda]
         texto, imgs = pedir(lote, a)
@@ -2268,6 +2324,7 @@ def por_tandas(ajustes, items, tanda, pedir, que):
         try:
             out.append((a, lote, extraer_json(llamar(ajustes, texto, imgs))))
             a += len(lote)
+            esperas = 0
         except (SystemExit, ValueError) as e:
             if getattr(e, 'permanente', False):
                 if getattr(e, 'clase', '') != 'A':
@@ -2275,6 +2332,20 @@ def por_tandas(ajustes, items, tanda, pedir, que):
                 # rechazo explícito: no se repite el mismo pedido partido en pedazos; queda en el diagnóstico
                 print(f'· la IA rechazó {que} {a + 1}–{a + len(lote)} ({str(e)[:160]}); no lo reintento, sigo con el resto', flush=True)
                 a += len(lote)
+                continue
+            if getattr(e, 'parece_negativa', False):  # contestó con texto que parece una negativa (no confirmado): tampoco se reenvía
+                print(f'· la IA contestó {que} {a + 1}–{a + len(lote)} con un texto que parece una negativa (sin confirmar, queda en el '
+                      'diagnóstico); no lo reenvío en pedazos, sigo con el resto', flush=True)
+                a += len(lote)
+                continue
+            if getattr(e, 'clase', '') == 'H' or re.search(r'\b(429|50[0-4]|529)\b', str(e)[:200]):
+                # límite de pedidos por minuto, servicio caído o sin red: partir la tanda solo multiplica los pedidos; se espera
+                if esperas >= 3 or getattr(e, 'puede_haber_cobrado', False):
+                    raise
+                esperas += 1
+                print(f'· la IA está ocupada o no responde ({str(e)[:120]}); espero {15 * 2 ** (esperas - 1)} s y vuelvo a probar '
+                      f'({esperas} de 3)', flush=True)
+                time.sleep(15 * 2 ** (esperas - 1))
                 continue
             if tanda > 1:
                 tanda = max(1, tanda // 2)
@@ -2562,7 +2633,8 @@ Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "acc
 def autorrevision(d, ajustes, texto, datos):
     """«Todo con IA»: la IA relee su propio guion contra TODAS nuestras reglas (las del encargo) y el mapa, y lo corrige ella."""
     print('Todo con IA: la IA revisa su guion regla por regla…', flush=True)
-    pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False)[:40000] +
+    # entero: cortado, la IA devolvía el guion sin los últimos bloques (videos largos) y se perdían sin aviso
+    pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False) +
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
               "dice su texto y en ese mismo momento (sin pedir algo ya hecho ni adelantar un resultado), que los pasos clave "
               "estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en orden y ninguna escena se use "
@@ -2979,28 +3051,28 @@ def corregir_con_respuestas(d, ajustes, datos):
         raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
     qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'} ({'idea para mejorar' if x.get('tipo') == 'mejora' else 'dato'}): "
                    f"{x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
-    pedido = f"""Este es el guion de un video tutorial, en JSON:
-{json.dumps(datos, ensure_ascii=False)[:60000]}
+    # solo id y texto, y entero: el montaje no se toca, y cortado la IA devolvía el guion sin los últimos bloques
+    pedido = f"""Este es el guion de un video tutorial, en JSON (cada bloque con su id y lo que dice la voz):
+{json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in datos['bloques']], ensure_ascii=False)}
 
 Le pregunté al autor los datos que no se veían claros y cómo mejorar el guion, y respondió:
 {qa}
 
 Corrige el guion con esas respuestas: en los datos, cambia SOLO las frases que tocan ese dato (en el bloque indicado y en
 cualquier otro que lo mencione). En las ideas para mejorar, aplica lo que el autor eligió en el bloque indicado (agrega o
-cambia una o dos frases); si dijo que no, no cambies nada. Los demás bloques van TAL CUAL, mismo id, mismo texto y mismo
-montaje. No agregues datos que no estén aquí.
+cambia una o dos frases); si dijo que no, no cambies nada. Los demás bloques quedan TAL CUAL. No agregues datos que no estén aquí.
 {ESTILO}
-Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
+Responde SOLO con el objeto JSON {{"bloques": [{{"id": "L03", "texto": "..."}}, ...]}} con los bloques que cambiaste
+(mismo id; los que no cambias no hace falta mandarlos)."""
     print(f'Corrigiendo el guion con tus {len(contestadas)} respuesta(s)…', flush=True)
     nuevo = extraer_json(llamar(ajustes, pedido, []))
-    bloques = nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo
-    if not bloques:
+    lista = nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo
+    if not isinstance(lista, list):
         raise SystemExit('ERROR: la IA no devolvió el guion corregido. Vuelve a intentarlo o corrige el texto a mano.')
-    viejos = {b['id']: b for b in datos['bloques']}
-    for b in bloques:  # el montaje se conserva aunque la IA lo cambie: solo se corrigen datos del texto
-        if b.get('id') in viejos and viejos[b['id']].get('montaje'):
-            b['montaje'] = viejos[b['id']]['montaje']
-    cambiados = [b['id'] for b in bloques if b.get('id') in viejos and b.get('texto') != viejos[b['id']].get('texto')]
+    # se cambia solo el texto de los bloques que devolvió, por su id: el montaje, el orden y los bloques que no mandó quedan igual
+    textos = {str(x.get('id')): str(x.get('texto')).strip() for x in lista if isinstance(x, dict) and str(x.get('texto') or '').strip()}
+    bloques = [dict(b, texto=textos[str(b.get('id'))]) if str(b.get('id')) in textos else b for b in datos['bloques']]
+    cambiados = [b['id'] for b, v in zip(bloques, datos['bloques']) if b.get('texto') != v.get('texto')]
     print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
     fi = os.path.join(d, 'idea.txt')
     previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
@@ -3053,7 +3125,7 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
         corto = fuera and t < minimo
         print(f'El guion da {mmss(t)} (busco unos {mmss(meta)}) y tiene {len(lista)} problema(s): le pido a la IA que lo '
               f'corrija (intento {n + 1})…', flush=True)
-        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta[:30000] + "\n\nPROBLEMAS QUE CORREGIR:\n" +
+        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta + "\n\nPROBLEMAS QUE CORREGIR:\n" +  # entera (ver autorrevision)
                   (f"- Con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
                    f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
                    f"y necesita unas {quiero}. " +
@@ -3394,8 +3466,12 @@ def main():
                 pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
                 # solo tiene sentido con menos imágenes si el fallo puede ser por tamaño; nunca tras un rechazo, permisos o saldo
                 if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or getattr(e, 'permanente', False) \
-                        or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
+                        or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)) \
+                        or re.search(r'\b(50[0-4]|529)\b', str(e)[:200]):  # el servicio falló: con menos imágenes fallaría igual
                     raise
+                if re.search(r'\b429\b', str(e)[:200]):  # límite por minuto: reenviarlo en el acto solo suma otro rechazo
+                    print('· la IA dice que se pasó un límite de pedidos; espero 30 s antes de probar con menos imágenes', flush=True)
+                    time.sleep(30)
                 print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
                 texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
                 caps = pocas

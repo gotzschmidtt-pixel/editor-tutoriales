@@ -955,10 +955,20 @@ function pintarPasos(pasos, t, fallo) {
 }
 async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuántos bloques y caracteres de voz
   let c;
-  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { return true; }
+  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { c = {desconocido: true}; }
+  if (c.desconocido) return confirm('No pude calcular cuánta voz falta generar. Las voces que falten se hacen con ElevenLabs '
+    + '(~1 crédito por letra); las que ya están se reutilizan. ¿Seguir?');
   if (!c.caracteres) return true;
   return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
     + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+}
+async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del proyecto, el paso «Música» genera una pista nueva (gasta)
+  let e;
+  try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) { e = null; }
+  if (e && (e.musica_fija || e.archivos['musica.mp3'])) return true;
+  return confirm((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
+    + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
+    + 'Queda guardada en el proyecto y no se vuelve a pagar.\n\n¿Seguir? (Cancelar = no hago nada todavía)');
 }
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
@@ -1002,12 +1012,13 @@ async function volverAGuardado(nombre) {
 }
 async function ejecutar(paso) {
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
+  if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
-    const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
+    const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
   if (paso === 'transcribir') {
@@ -2820,7 +2831,7 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
-  if (!(await confirmarVoz())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs, cuántos caracteres
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
   soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
   refrescar();
@@ -2838,7 +2849,7 @@ async function actualizarProyecto() {  // reutiliza transcripción, guion y voce
   if (!confirm(`¿Actualizar «${P}»?\n\nBorro los videos hechos (FINAL.mp4 y los de cada paso) y las fallas viejas, y vuelvo a hacer el video `
     + 'con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y '
     + 'tráiler que tenía se vuelven a poner al final.')) return;
-  if (!(await confirmarVoz())) return;  // si falta alguna voz, antes de borrar nada
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
   soltarVideo();
   let r;
   try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
@@ -2847,7 +2858,7 @@ async function actualizarProyecto() {  // reutiliza transcripción, guion y voce
   refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
