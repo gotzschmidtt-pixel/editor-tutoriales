@@ -135,8 +135,12 @@ def main():
     chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
     if os.path.exists(chrome):
         env.setdefault('REMOTION_CHROME', chrome)
+    # los datos van en un archivo: en Windows npx es un .cmd y el texto JSON en la línea de comandos se rompía con & % ^ | < >
+    f_props = os.path.join(tmp_node, 'props.json')
+    json.dump(props, open(f_props, 'w', encoding='utf-8'), ensure_ascii=False)
+    # con pista de audio aunque no haya voz ni música: sin ella no se puede pegar al video (que sí tiene audio)
     subprocess.run([shutil.which('npx') or 'npx', 'remotion', 'render', 'src/index.ts', 'Trailer', os.path.abspath(a.salida),
-                    '--props', json.dumps(props), '--crf', '18'], cwd=REMOTION, env=env, check=True)
+                    '--props', f_props, '--crf', '18', '--enforce-audio-track'], cwd=REMOTION, env=env, check=True)
     shutil.rmtree(tmp_node, ignore_errors=True)
 
     if a.unir and a.final:
