@@ -1473,6 +1473,22 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'v': v})
             if ruta == '/api/importantes':  # «⭐ Cortes importantes» del proyecto y los bloques del guion que los tocan
                 return self.responder(estado_importantes(carpeta(q['p'])))
+            if ruta == '/api/miniaturas':  # la tira de miniaturas para la línea de tiempo (una imagen; queda en caché)
+                d = carpeta(q['p'])
+                f = os.path.join(d, os.path.basename(q.get('f') or 'original.mp4'))
+                if not os.path.isfile(f):
+                    return self.error('Ese video no está en el proyecto.', 404)
+                n = max(20, min(120, int(q.get('n') or 120)))  # ≤ 120 de 128 px: el navegador no dibuja imágenes de más de ~16000 px
+                tira = os.path.join(d, f'.miniaturas_{os.path.splitext(os.path.basename(f))[0]}_{n}.jpg')
+                if not os.path.exists(tira) or os.path.getmtime(tira) < os.path.getmtime(f):
+                    dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
+                                               capture_output=True, text=True, **SIN_VENTANA).stdout or 0) or 1
+                    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-skip_frame', 'nokey', '-i', f, '-vf',
+                                    f'fps={n}/{dur:.3f},scale=128:72,tile={n}x1', '-frames:v', '1', '-q:v', '5', tira],
+                                   timeout=600, **SIN_VENTANA)
+                if not os.path.exists(tira):
+                    return self.error('No pude sacar las miniaturas.')
+                return self.servir(tira)
             if ruta == '/api/para_chat':  # todo lo marcado, para pegarlo en el chat de Claude (y guardado en el proyecto)
                 d = carpeta(q['p'])
                 texto = para_chat(d)

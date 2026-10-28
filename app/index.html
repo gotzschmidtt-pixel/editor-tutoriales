@@ -98,7 +98,9 @@
   body:not(.tab-extra) section.panel.extra { display: none; }
   /* botones de arriba (Flechas, Acortar, Alimentación, Conocimiento): cada uno abre su panel solo, como una pestaña aparte */
   body.solo #pestanas { display: none; }
-  body.solo main { grid-template-columns: 1fr; max-width: 1100px; }
+  body.solo main { grid-template-columns: minmax(0, 1fr); max-width: 1100px; }
+  body.solo main > div, section.panel { min-width: 0; }
+  #lineaScroll { width: 100%; max-width: 100%; }
   body.solo main > div:not(:has(.solo-activo)), body.solo main section.panel:not(.solo-activo) { display: none; }
   body.solo section.panel.solo-activo { display: block !important; }
   .volverSolo { display: none; margin-bottom: 10px; }
@@ -488,6 +490,25 @@
       botones que aprietas, escribir una key…). Se muestran <b>enteros y a velocidad normal</b>: la IA, el ajuste de largo,
       la voz y «Acortar» nunca los aceleran, ni los recortan ni los saltan.</p>
       <video id="impVideo" controls preload="metadata" style="width:100%; max-height:45vh; background:#000; border-radius:10px"></video>
+      <div id="impLinea" class="linea">
+        <div class="fila" style="margin:4px 0; align-items:center">
+          <span class="aviso">🎞 Línea de tiempo · haz clic o arrastra para moverte · <b>Mayús + arrastrar</b> marca un corte ·
+            teclas: Espacio ▶/⏸, ← → 1 s (Mayús 5 s), I empieza, O termina</span>
+          <span style="margin-left:auto" class="aviso">🔍</span>
+          <button type="button" onclick="lineaZoom(-1)">−</button>
+          <input type="range" id="lineaZoom" min="1" max="30" step="0.5" value="1" oninput="lineaPintar(true)" style="width:9em">
+          <button type="button" onclick="lineaZoom(1)">+</button>
+        </div>
+        <div id="lineaScroll" style="overflow-x:auto; overflow-y:hidden; border:1px solid var(--borde); border-radius:8px; background:#0b0e1a">
+          <div id="lineaPista" style="position:relative; height:118px; cursor:pointer; user-select:none">
+            <canvas id="lineaRegla" height="22" style="position:absolute; left:0; top:0; height:22px"></canvas>
+            <canvas id="lineaTira" height="90" style="position:absolute; left:0; top:24px; height:90px; border-radius:4px"></canvas>
+            <div id="lineaMarcas" style="position:absolute; left:0; top:22px; height:96px; width:100%; pointer-events:none"></div>
+            <div id="lineaCabezal" style="position:absolute; top:0; width:2px; height:118px; background:#ff2b4a; pointer-events:none">
+              <div style="position:absolute; top:0; left:-6px; width:14px; height:14px; border-radius:50%; background:#ff2b4a"></div></div>
+          </div>
+        </div>
+      </div>
       <div class="fila" style="align-items:center; justify-content:center; gap:10px">
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('desde')" title="Toma el segundo donde está el video ahora (sin escribir nada)">⏺ Empieza aquí</button>
         <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('hasta')" title="Toma el segundo donde está el video ahora y agrega el corte">⏹ Termina aquí</button>
@@ -1805,7 +1826,7 @@ let IMP = [];
 const impSeg = s => { const m = String(s).trim().match(/^(?:(\d+):)?(\d+(?:[.,]\d+)?)$/); return m ? (+(m[1] || 0)) * 60 + parseFloat(m[2].replace(',', '.')) : NaN; };
 const impMs = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function impPintar(r) {
-  IMP = r.lista;
+  IMP = r.lista; LINEA.sel = null; setTimeout(() => LINEA.dur ? lineaPintar(true) : lineaIniciar(), 0);
   $('#impLista').innerHTML = IMP.length ? IMP.map((x, i) => `<div class="fila" style="align-items:center; margin:3px 0">
       <b>⭐ ${impMs(x.inicio)} – ${impMs(x.fin)}</b> <span style="flex:1">${esc(x.nota || '')}</span>
       <button onclick="impVer(${x.inicio})">▶ Ver</button><button onclick="impQuitar(${i})">✕ Quitar</button></div>`).join('')
@@ -1846,6 +1867,110 @@ function impAgregar() {
   const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
   if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
   impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+}
+// «🎞 Línea de tiempo» de Cortes importantes (como Filmora): miniaturas, regla, cabezal, zoom y tus cortes pintados encima
+const LINEA = {dur: 0, sel: null, tira: ''};
+function lineaX(t) { return t / (LINEA.dur || 1) * $('#lineaPista').clientWidth; }
+function lineaT(x) { return Math.max(0, Math.min(LINEA.dur, x / $('#lineaPista').clientWidth * LINEA.dur)); }
+function lineaIniciar() {
+  const v = $('#impVideo');
+  LINEA.dur = v.duration || 0;
+  if (!LINEA.dur) return;
+  const n = Math.max(40, Math.min(120, Math.round(LINEA.dur / 3)));
+  const url = `/api/miniaturas?p=${q(P)}&f=original.mp4&n=${n}`;
+  if (LINEA.tira !== url) {
+    LINEA.tira = url; LINEA.n = n; LINEA.img = new Image();
+    LINEA.img.onload = () => lineaPintar(true);  // la tira tarda la primera vez (después queda en caché)
+    LINEA.img.src = url;
+  }
+  lineaPintar();
+}
+function lineaMiniaturas(W) {  // como en Filmora: un cuadro cada 160 px, el del momento que cae ahí (sin estirarlo)
+  const c = $('#lineaTira'); c.width = W; c.style.width = W + 'px';
+  const g = c.getContext('2d'), img = LINEA.img;
+  g.fillStyle = '#151a2e'; g.fillRect(0, 0, W, 90);
+  if (!img || !img.complete || !img.naturalWidth) return;
+  const fw = img.naturalWidth / LINEA.n, fh = img.naturalHeight, ancho = 160;
+  for (let x = 0; x < W; x += ancho) {
+    const k = Math.min(LINEA.n - 1, Math.floor((x + ancho / 2) / W * LINEA.n));
+    g.drawImage(img, k * fw, 0, fw, fh, x, 0, ancho, 90);
+    g.fillStyle = '#0b0e1a'; g.fillRect(x + ancho - 1, 0, 1, 90);
+  }
+}
+function lineaPintar(mantener) {
+  if (!LINEA.dur) return;
+  const sc = $('#lineaScroll'), pista = $('#lineaPista'), v = $('#impVideo');
+  const centro = mantener ? (sc.scrollLeft + sc.clientWidth / 2) / (pista.clientWidth || 1) : null;
+  const W = Math.round(sc.clientWidth * +$('#lineaZoom').value);
+  pista.style.width = W + 'px'; lineaMiniaturas(W);
+  if (centro !== null) sc.scrollLeft = centro * W - sc.clientWidth / 2;
+  const c = $('#lineaRegla'); c.width = W; c.style.width = W + 'px';  // la regla: una marca cada ~90 px, con minuto:segundo
+  const g = c.getContext('2d'); g.clearRect(0, 0, W, 22);
+  const paso = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(s => s / LINEA.dur * W >= 90) || 600;
+  g.fillStyle = '#9aa3c0'; g.strokeStyle = '#3a4266'; g.font = '11px system-ui';
+  for (let t = 0; t <= LINEA.dur; t += paso / 5) {
+    const x = Math.round(t / LINEA.dur * W) + 0.5, grande = Math.abs(t / paso - Math.round(t / paso)) < 1e-6;
+    g.beginPath(); g.moveTo(x, grande ? 8 : 15); g.lineTo(x, 22); g.stroke();
+    if (grande) g.fillText(`${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, x + 3, 10);
+  }
+  const caja = (a, b, color, texto) => `<div style="position:absolute; left:${lineaX(a)}px; width:${Math.max(3, lineaX(b) - lineaX(a))}px; top:0; height:96px;
+    background:${color}; border:2px solid ${color.replace(/[\d.]+\)$/, '1)')}; border-radius:4px; overflow:hidden; font-size:11px; color:#fff; padding:1px 3px; box-sizing:border-box">${texto}</div>`;
+  let html = (IMP || []).map(x => caja(x.inicio, x.fin, 'rgba(255,210,63,.28)', '⭐ ' + esc(x.nota || ''))).join('');
+  (MARCAS?.MARCAS || []).filter(m => m.segundo && (m.video || 'original.mp4') === 'original.mp4').forEach(m => {
+    const p = m.segundo.split(':').map(Number), t = p.length > 1 ? p[0] * 60 + p[1] : p[0];
+    html += `<div style="position:absolute; left:${lineaX(t) - 8}px; bottom:2px; font-size:15px" title="${esc(m.etiqueta || m.nota || '')}">🎯</div>`;
+  });
+  if (LINEA.sel) html += caja(Math.min(...LINEA.sel), Math.max(...LINEA.sel), 'rgba(80,170,255,.35)', 'nuevo corte');
+  $('#lineaMarcas').innerHTML = html;
+  lineaCabezal();
+}
+function lineaCabezal() {
+  if (!LINEA.dur) return;
+  const x = lineaX($('#impVideo').currentTime), sc = $('#lineaScroll');
+  $('#lineaCabezal').style.left = (x - 1) + 'px';
+  if (!LINEA.arrastrando && (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 40)) sc.scrollLeft = x - sc.clientWidth / 4;  // el cabezal siempre a la vista
+}
+function lineaZoom(d) { $('#lineaZoom').value = Math.max(1, Math.min(30, +$('#lineaZoom').value * (d > 0 ? 1.5 : 1 / 1.5))); lineaPintar(true); }
+{
+  const v = $('#impVideo'), pista = $('#lineaPista');
+  v.addEventListener('loadedmetadata', lineaIniciar);
+  v.addEventListener('timeupdate', lineaCabezal);
+  v.addEventListener('seeked', lineaCabezal);
+  const bucle = () => { if (!v.paused) { lineaCabezal(); requestAnimationFrame(bucle); } };
+  v.addEventListener('play', () => requestAnimationFrame(bucle));
+  addEventListener('resize', () => lineaPintar(true));
+  let modo = null;
+  const tiempo = e => lineaT(e.clientX - pista.getBoundingClientRect().left);
+  pista.onpointerdown = e => {
+    if (!LINEA.dur) return;
+    pista.setPointerCapture(e.pointerId); LINEA.arrastrando = true;
+    if (e.shiftKey) { modo = 'sel'; LINEA.sel = [tiempo(e), tiempo(e)]; }
+    else { modo = 'mover'; v.currentTime = tiempo(e); }
+    lineaPintar();
+  };
+  pista.onpointermove = e => {
+    if (modo === 'mover') v.currentTime = tiempo(e);
+    else if (modo === 'sel') { LINEA.sel[1] = tiempo(e); v.currentTime = LINEA.sel[1]; lineaPintar(); }
+  };
+  pista.onpointerup = () => {
+    if (modo === 'sel' && LINEA.sel && Math.abs(LINEA.sel[1] - LINEA.sel[0]) >= 0.5) {
+      const [a, b] = [Math.min(...LINEA.sel), Math.max(...LINEA.sel)];
+      $('#impDesde').value = impMs(a); $('#impHasta').value = impMs(Math.ceil(b));
+      $('#impEstado').textContent = `Seleccionaste ${impMs(a)} – ${impMs(Math.ceil(b))}: escribe la nota (opcional) y pulsa «⭐ Agregar».`;
+      $('#impNota').focus();
+    } else if (modo === 'sel') LINEA.sel = null;
+    modo = null; LINEA.arrastrando = false; lineaPintar();
+  };
+  $('#lineaScroll').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); lineaZoom(e.deltaY < 0 ? 1 : -1); } }, {passive: false});
+  addEventListener('keydown', e => {  // atajos solo con el panel de cortes a la vista y sin estar escribiendo
+    if (!$('#panelImportantes').classList.contains('solo-activo') || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.querySelector('dialog[open]')) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (k === 'arrowright' ? 1 : -1) * (e.shiftKey ? 5 : 1)); }
+    else if (k === ',' || k === '.') { v.pause(); v.currentTime += k === '.' ? 1 / 25 : -1 / 25; }
+    else if (k === 'i') impMarcar('desde');
+    else if (k === 'o') impMarcar('hasta');
+  });
 }
 async function paraChat(copiar) {  // cortes importantes + señales + etiquetas, para el chat de Claude (y guardado en el proyecto)
   try {
