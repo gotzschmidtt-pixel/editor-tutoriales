@@ -6,7 +6,7 @@ export type SenalProps = {
   tipo: 'circulo' | 'flecha' | 'caja';
   puntos: [number, number][]; // centro en píxeles, uno por cuadro (si hay menos, se queda en el último)
   r?: number; // radio del círculo o largo de la flecha
-  w?: number; h?: number; // tamaño de la caja
+  w?: number; h?: number; // tamaño de la caja; en un círculo, el del botón que rodea (el contorno toma su forma)
   color?: string;
   texto?: string;
   foco?: boolean; // oscurece el resto de la imagen
@@ -14,17 +14,27 @@ export type SenalProps = {
   hueco?: number; // distancia del centro a la punta de la flecha (para no tapar el texto señalado)
 };
 
-export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 80, color = estilo.marcador, texto, foco, angulo = -35, hueco = 18}) => {
+export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: hDado, color, texto, foco, angulo = -35, hueco = 18}) => {
   const f = useCurrentFrame();
   const {fps, durationInFrames, width, height} = useVideoConfig();
   const [x, y] = puntos[Math.min(f, puntos.length - 1)];
+  const contorno = estilo.senal === 'contorno';
+  const col = color || (contorno ? estilo.rosa : estilo.marcador);
+  const w = wDado ?? 200, h = hDado ?? 80;
+  // contorno: si se sabe el tamaño del botón, el círculo toma su forma (píldora); si no, queda un círculo parejo
+  const pad = 12;
+  const pildora = contorno && tipo === 'circulo' && !!wDado && !!hDado;
+  const pw = w + 2 * pad, ph = h + 2 * pad;
   const dibuja = interpolate(f, [0, 0.45 * fps], [0, 1], {extrapolateRight: 'clamp'});
   const pop = spring({frame: f, fps, config: {damping: 10, stiffness: 160}});
   const sale = interpolate(f, [durationInFrames - 0.4 * fps, durationInFrames], [1, 0], {extrapolateLeft: 'clamp'});
-  const pulso = 1; // sin latido: el trazo queda quieto, como marcado a mano sobre la pantalla
-  const brillo = 'drop-shadow(0 3px 4px rgba(0,0,0,.45))'; // sombra suave, sin brillo de neón
-  const trazo = {fill: 'none', stroke: color, strokeWidth: 8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const};
-  // contorno dibujado a mano: una vuelta un poco irregular que se pasa de largo al cerrar (como con un marcador)
+  const pulso = 1; // sin latido: el trazo queda quieto
+  const brillo = contorno
+    ? `drop-shadow(0 0 5px ${col}) drop-shadow(0 0 14px ${col}) drop-shadow(0 3px 4px rgba(0,0,0,.45))` // brillo del mismo color
+    : 'drop-shadow(0 3px 4px rgba(0,0,0,.45))'; // marcador: sombra suave, sin brillo de neón
+  const trazo = {fill: 'none', stroke: col, strokeWidth: contorno ? 7 : 8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const};
+  const traza = {pathLength: 1, strokeDasharray: '1 1', strokeDashoffset: 1 - dibuja}; // se dibuja de punta a punta
+  // marcador: una vuelta un poco irregular que se pasa de largo al cerrar (como con un marcador)
   const aMano = (rx: number, ry: number, vueltas = 1.12) => {
     const p: string[] = [];
     const n = 64;
@@ -38,8 +48,14 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
   };
 
   let forma: React.ReactNode = null;
-  if (tipo === 'circulo') {
-    // trazo a mano: elipse un poco irregular que se pasa de largo al cerrar
+  if (contorno && tipo === 'circulo') {
+    forma = pildora
+      ? <rect x={x - pw / 2} y={y - ph / 2} width={pw} height={ph} rx={Math.min(pw, ph) / 2} {...trazo} {...traza} />
+      : <circle cx={x} cy={y} r={r} transform={`rotate(-90 ${x} ${y})`} {...trazo} {...traza} />;
+  } else if (contorno && tipo === 'caja') {
+    forma = <rect x={x - w / 2} y={y - h / 2} width={w} height={h} rx={Math.min(h / 2, 22)} {...trazo} {...traza} />;
+  } else if (tipo === 'circulo') {
+    // marcador: elipse un poco irregular que se pasa de largo al cerrar
     const L = 2 * Math.PI * r * 1.5;
     forma = (
       <g transform={`translate(${x} ${y}) rotate(-8)`}>
@@ -47,7 +63,7 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
       </g>
     );
   } else if (tipo === 'caja') {
-    // recuadro también a mano: un óvalo ancho que rodea la zona (se ve como el marcador del autor, no como un cuadro de PowerPoint)
+    // marcador: un óvalo ancho que rodea la zona (como el marcador del autor, no un cuadro de PowerPoint)
     const L = Math.PI * (w + h) * 1.4;
     forma = (
       <g transform={`translate(${x} ${y}) rotate(-2)`}>
@@ -72,31 +88,35 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w = 200, h = 
     );
   }
 
+  // foco con la forma de la marca: rectángulo redondeado para recuadros y píldoras, redondo para el resto
+  const marco = tipo === 'caja' ? {w: w + 20, h: h + 20, rad: contorno ? Math.min(h / 2, 22) + 10 : 22}
+    : pildora ? {w: pw + 20, h: ph + 20, rad: Math.min(pw, ph) / 2 + 10} : null;
   const rf = (tipo === 'caja' ? Math.max(w, h) * 0.75 : r * 1.3) * pulso;
   return (
     <AbsoluteFill style={{opacity: sale}}>
-      {foco && tipo === 'caja' && (
-        // recuadro: oscurece todo menos el rectángulo marcado
-        <div style={{position: 'absolute', left: x - w / 2 - 10, top: y - h / 2 - 10, width: w + 20, height: h + 20, borderRadius: 22,
+      {foco && marco && (
+        <div style={{position: 'absolute', left: x - marco.w / 2, top: y - marco.h / 2, width: marco.w, height: marco.h, borderRadius: marco.rad,
           opacity: 0.42 * dibuja, boxShadow: '0 0 0 4000px rgba(0,0,0,.85), 0 0 40px 20px rgba(0,0,0,.6)'}} />
       )}
-      {foco && tipo !== 'caja' && (
+      {foco && !marco && (
         <AbsoluteFill style={{opacity: 0.42 * dibuja,
           background: `radial-gradient(circle at ${x}px ${y}px, transparent ${rf}px, rgba(0,0,0,.85) ${rf + 60}px)`}} />
       )}
       <svg width={width} height={height} style={{position: 'absolute', filter: brillo}}>{forma}</svg>
       {texto && (() => {
         // rótulo tipo píldora: debajo de la marca, o encima si no cabe; nunca se sale del cuadro
-        const alto = tipo === 'caja' ? h / 2 : r;
+        const alto = tipo === 'caja' ? h / 2 : pildora ? ph / 2 : r;
         const abajo = y + alto + 110 < height;
         const ancho = Math.min(620, 60 + texto.length * 26);
         const left = Math.min(Math.max(x - ancho / 2, 24), width - ancho - 24);
         const top = abajo ? y + alto + 24 : y - alto - 24 - 74;
+        const aspecto = contorno
+          ? {background: estilo.fondo, border: `4px solid ${col}`, borderRadius: 40, boxShadow: `0 0 18px ${col}88, 0 8px 18px rgba(0,0,0,.55)`, color: 'white'}
+          : {background: 'white', borderLeft: `12px solid ${col}`, borderRadius: 14, boxShadow: '0 8px 18px rgba(0,0,0,.45)', color: '#111'};
         return (
           <div style={{position: 'absolute', left, top, width: ancho, height: 74, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', transform: `scale(${pop})`, transformOrigin: abajo ? '50% 0' : '50% 100%',
-            background: 'white', borderLeft: `12px solid ${color}`, borderRadius: 14, boxShadow: '0 8px 18px rgba(0,0,0,.45)',
-            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, color: '#111', whiteSpace: 'nowrap'}}>{texto}</div>
+            justifyContent: 'center', transform: `scale(${pop})`, transformOrigin: abajo ? '50% 0' : '50% 100%', ...aspecto,
+            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, whiteSpace: 'nowrap'}}>{texto}</div>
         );
       })()}
     </AbsoluteFill>

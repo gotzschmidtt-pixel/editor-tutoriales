@@ -1964,6 +1964,8 @@ def ubicar(m, p, f, ocr, W, H):
     else:
         s['r'] = round(min(max(max(tam_w, tam_h) * (0.62 if exacta else 0.7), H * 0.045), H * 0.16))
         s['foco'] = tipo == 'circulo'
+        if exacta and tipo == 'circulo':  # tamaño del texto o botón leído en pantalla: el contorno toma su forma
+            s['w'], s['h'] = round(tam_w), round(tam_h)
     if tipo == 'flecha':
         apuntar(s, tam_w, tam_h, W, H)
     if (m.get('texto') or '').strip():
