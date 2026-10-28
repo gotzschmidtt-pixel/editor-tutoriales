@@ -1536,27 +1536,6 @@ class Manejador(BaseHTTPRequestHandler):
                                        'carpeta': '/abrir?ruta=' + urllib.parse.quote(os.path.relpath(d, RAIZ).replace('\\', '/'))})
             if ruta == '/api/etiquetas_idiomas':  # «🌐 Etiquetas en otro idioma»
                 return self.responder(estado_idiomas(carpeta(q['p']), q.get('lang', '')))
-            if ruta == '/api/idioma_previa':  # «🌐 Idiomas»: lo que se va a traducir (video, guion, voz, IA, etiquetas) y si ya está la copia
-                d = carpeta(q['p'])
-                lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8] or 'en'
-                video = next((v for v in ('FINAL.mp4', '4_musica.mp4', '3_voz.mp4', '1_montaje.mp4', 'original.mp4') if existe(d, v)), None)
-                try:
-                    bloques = [{'id': b['id'], 'texto': b['texto']} for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']
-                               if str(b.get('texto') or '').strip()]
-                except (OSError, ValueError, KeyError, TypeError):
-                    bloques = []
-                aj = leer_ajustes()
-                voz = (aj.get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang, '')
-                filas = estado_idiomas(d, lang)['filas']
-                dc = d.rstrip('\\/') + '_' + lang.upper()  # donde la deja version_idioma.py
-                return self.responder({
-                    'video': video, 'duracion': duracion_original(d, video) if video else 0,
-                    'bloques': bloques, 'letras': sum(len(b['texto']) for b in bloques), 'voz': NOMBRE_VOZ.get(voz, voz),
-                    'ia': ' · '.join(str(x) for x in (aj.get('proveedor'), aj.get('modelo')) if x),  # solo el nombre: nunca la clave
-                    'etiquetas': len(filas), 'traducidas': sum(1 for f in filas if f['trad']),
-                    'es_copia': idioma_video(d) != 'es', 'idioma_video': idioma_video(d),
-                    'copia': {'nombre': os.path.basename(dc), 'existe': existe(dc, 'guion.json'), 'voz': existe(dc, '3_voz.mp4'),
-                              'final': existe(dc, 'FINAL.mp4')}})
             if ruta == '/api/subs':  # «💬 Subtítulos»: idioma, estilo, textos y videos donde grabarlos
                 return self.responder(estado_subs(carpeta(q['p'])))
             if ruta == '/api/subs_estado':
