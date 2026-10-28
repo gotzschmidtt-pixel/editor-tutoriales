@@ -212,6 +212,7 @@
         <button onclick="ideasGuion()" title="La IA relee el guion final (con lo que se dice y se ve en tu grabación) y te deja dudas e ideas para mejorarlo. Las contestas en el editor de guion y la IA corrige solo los bloques que tocan. Gasta un pedido a la IA (solo texto), no ElevenLabs">💡 Ideas y dudas</button>
         <button onclick="revisarImagenes()" title="La IA compara cada bloque con la imagen de su tramo (comienzo, medio y final) y corrige los tramos corridos, como un reinicio que muestra ya la pantalla de inicio. Gasta pedidos a la IA con imágenes, no ElevenLabs">🔎 Revisar con imágenes</button>
         <button onclick="verTrailer()" title="El tráiler va aparte, después del video: la IA propone las mejores tomas ANTES · DURANTE · DESPUÉS, te pregunta lo que no vio claro y tú lo editas y lo armas">🎬 Tráiler</button>
+        <button onclick="importarClaude.click()" title="El .zip que te manda Claude desde la nube (guion con preguntas e ideas, etiquetas, círculos y flechas): lo revisas aquí antes de armar">📥 Importar lo de Claude</button><input type="file" id="importarClaude" accept=".zip" hidden>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
         <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
@@ -1216,6 +1217,23 @@ async function nubeClaude() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { return alert(e.message); }
   esperaNube = P; refrescar();
 }
+$('#importarClaude').onchange = async () => {  // el .zip de Claude: guion (con preguntas e ideas), etiquetas y señales para revisar
+  const f = $('#importarClaude').files[0]; $('#importarClaude').value = '';
+  if (!f) return;
+  if (!confirm(`Importo «${f.name}» en «${P}».\n\nEl guion de Claude pasa por la revisión de la app y sus preguntas e ideas quedan en «📝 Ver y editar guion»; sus etiquetas, círculos y flechas quedan como propuestas en el editor por pistas, para que digas sí, las muevas o las quites. Lo que tenías queda como .anterior.\n\nNo genera voz ni gasta créditos. ¿Seguir?`)) return;
+  let r;
+  try { r = await api(`/api/importar_claude?p=${q(P)}`, {method: 'POST', body: f}); } catch (e) { return alert(e.message); }
+  if (r.hecho.includes('guion')) {
+    try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar'})}); } catch (e) { return alert(e.message); }
+    esperaIA = {tarea: 'guion', modo: 'revisar', archivo: 'guion.json'};
+  }
+  refrescar();
+  const partes = [r.hecho.includes('guion') ? '📝 el guion (con sus preguntas e ideas): ábrelo con «Ver y editar guion» cuando termine la revisión' : '',
+    r.hecho.some(x => /etiquetas|senales/.test(x)) ? '🏷 etiquetas / 🎯 círculos y flechas: revísalos en «Editor por pistas» → «📋 Propuestas de la IA»' : '',
+    r.hecho.includes('trailer.json') ? '🎬 el tráiler: revísalo en «🎬 Tráiler»' : '', r.hecho.includes('ideas') ? '💡 sus notas e ideas: ideas_de_claude.md' : ''].filter(Boolean);
+  alert('✓ Importado:\n\n' + partes.join('\n'));
+  if (r.hecho.some(x => /etiquetas|senales/.test(x))) open('/pistas?p=' + q(P) + '&revision=1');
+};
 let esperaNube = null;
 async function finNube(e) {
   const p = esperaNube; esperaNube = null;

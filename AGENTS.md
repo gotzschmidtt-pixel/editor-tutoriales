@@ -181,6 +181,19 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
 - [ ] **Números y años escritos como se dicen** («dos mil veintiséis»), sin palabras sueltas como «ok» que la voz leería.
 - [ ] **Nada inventado:** lo dudoso va en `preguntas`.
 
+## A4b. Claude en la nube: entregar para que el autor revise en la app (pedido del autor, 28/10/2026)
+
+Cuando Claude (o cualquier IA en la nube) hace el guion desde el paquete de «☁ Hacer en la nube con Claude», **antes del
+guion final y de la voz** le devuelve al autor un `.zip` (por ejemplo `respuesta_MOTOROLA_FRP_2026.zip`) que él importa con
+«📥 Importar lo de Claude» en la app:
+- `respuesta_guion.json`: el guion (formato B2) con `"preguntas"` (dudas, de 2 a 15, con opciones) e ideas/mejoras
+  (`"tipo": "mejora"`), y `ve_inicio`/`ve_fin` en cada bloque. Respeta `para_claude_marcas.txt` (cortes importantes enteros
+  a ×1, sus señales y etiquetas).
+- `etiquetas.json` (B9) y `senales.json` (círculos y flechas), cada propuesta con `por_que` y, si no está seguro, `duda`:
+  el autor las ve en «Editor por pistas → 📋 Propuestas de la IA» y dice sí, las mueve o las quita.
+- Opcional: `trailer.json` y `ideas.md` (notas sueltas para el autor).
+El autor contesta en la app y te manda de vuelta su guion editado y sus respuestas; recién con su «sí» se hace la voz.
+
 ## A5. Sobre «hacerlo en la nube» y la velocidad
 
 - DeepSeek Harness corre los comandos en la PC del autor (modo Workspace Write = su carpeta). El modelo piensa en los

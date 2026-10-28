@@ -2084,6 +2084,39 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
+            if ruta == '/api/importar_claude':  # «📥 Importar lo de Claude»: el .zip que arma Claude en la nube para revisar aquí
+                import zipfile, io
+                d = carpeta(q['p'])
+                try:
+                    z = zipfile.ZipFile(io.BytesIO(self.rfile.read(largo)))
+                except zipfile.BadZipFile:
+                    return self.error('Ese archivo no es un .zip.')
+                nombres = {os.path.basename(n).lower(): n for n in z.namelist() if not n.endswith('/')}
+                hecho = []
+                for nombre in ('etiquetas.json', 'senales.json', 'trailer.json'):  # propuestas: las revisas en el editor por pistas
+                    if nombre in nombres:
+                        txt = z.read(nombres[nombre]).decode('utf-8-sig')
+                        try:
+                            json.loads(txt)
+                        except ValueError:
+                            return self.error(f'{nombre} del zip tiene un error de JSON.')
+                        f = os.path.join(d, nombre)
+                        if os.path.exists(f):
+                            shutil.copyfile(f, f + '.anterior')
+                        open(f, 'w', encoding='utf-8').write(txt)
+                        hecho.append(nombre)
+                guion = nombres.get('respuesta_guion.json') or nombres.get('guion.json')
+                if guion:  # el guion pasa por la misma revisión de la app que el de DeepSeek («Revisar respuesta pegada»)
+                    open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(z.read(guion))
+                    hecho.append('guion')
+                for nombre in ('para_claude_ideas.md', 'ideas.md', 'notas.md'):
+                    if nombre in nombres:
+                        open(os.path.join(d, 'ideas_de_claude.md'), 'wb').write(z.read(nombres[nombre]))
+                        hecho.append('ideas')
+                        break
+                if not hecho:
+                    return self.error('El zip no trae respuesta_guion.json, etiquetas.json, senales.json ni trailer.json.')
+                return self.responder({'ok': True, 'hecho': hecho})
             if ruta == '/api/etiquetas_idiomas':  # guarda el idioma elegido y las traducciones que escribiste
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 d = carpeta(q['p'])
