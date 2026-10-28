@@ -288,7 +288,7 @@
       </div>
       <p class="aviso">Tus capturas mandan: la IA busca en qué segundo del video están, ubica lo que marcaste y quita las suyas
       que caigan encima. Los pedidos de texto o voz («pon una flecha cuando hablo del PIN») se suman a los que elige la IA.
-      «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
+      «✨ Agregar extras» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
     <section class="panel extra" id="panelIdiomas">
@@ -342,7 +342,7 @@
       </div>
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
       si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. En «¿Dónde?» eliges
-      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. Se ponen con «✨ Agregar extras» (si subiste alguna), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelTestimonios">
@@ -359,7 +359,7 @@
       <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
       testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. En «¿Dónde?» eliges
       también inicio, medio, final o un segundo exacto. «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
-      testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
+      testimonios. Se ponen con «✨ Agregar extras» (si subiste alguno), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelModelos">
@@ -376,7 +376,7 @@
       los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
       introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
-      si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
+      si es más corto, se congela al final. Se pone con «✨ Agregar extras» (si subiste uno), después de «▶ Hacer todo». Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
     <section class="panel" id="panelAcortar">
@@ -1336,8 +1336,10 @@ async function finIA() {
 }
 async function pegar() {
   const tarea = TAREA[archivo];
-  await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
-  await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  } catch (e) { return alert(e.message); }  // antes fallaba callado (por ejemplo con otro paso corriendo)
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
 function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
@@ -1931,8 +1933,8 @@ async function impCargar() {
   try { impPintar(await api(`/api/importantes?p=${q(P)}`)); } catch (e) {}
 }
 async function impGuardar(lista) {
-  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); }
-  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; }
+  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); return true; }
+  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; return false; }
 }
 function impMarcar(cual) {  // un clic: toma el segundo del reproductor; «Termina aquí» agrega el corte enseguida
   const t = $('#impVideo').currentTime;
@@ -1953,7 +1955,7 @@ function impVer(t) { const v = $('#impVideo'); v.currentTime = t; v.play(); }
 function impAgregar() {
   const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
   if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
-  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(ok => { if (ok) $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });  // si no se guardó, lo escrito queda
 }
 // «🎞 Línea de tiempo» de Cortes importantes (como Filmora): miniaturas, regla, cabezal, zoom y tus cortes pintados encima
 const LINEA = {dur: 0, sel: null, tira: ''};
@@ -2112,6 +2114,8 @@ async function subTraducir() {
 }
 function subVista() {
   const f = $('#subFuente').value; if (!f) return;
+  const dur = Math.floor((SUB && SUB.duraciones || {})[f] || 0);  // el deslizador llegaba solo a 10:00
+  if (dur > 0) $('#subT').max = dur;
   $('#subTV').textContent = `${Math.floor($('#subT').value / 60)}:${String($('#subT').value % 60).padStart(2, '0')}`;
   $('#subImg').src = `/api/subs_vista?p=${q(P)}&f=${q(f)}&t=${$('#subT').value}&v=${Date.now()}`;
 }

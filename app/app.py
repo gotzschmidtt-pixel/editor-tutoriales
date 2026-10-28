@@ -48,7 +48,9 @@ def estado_subs(d):
     except (OSError, ValueError, KeyError):
         orig = {}
     tabla = datos['textos'].get(lang) or {}
-    return {'idioma': lang, 'estilo': datos['estilo'], 'fuentes': subtitulos.fuentes(d), 'hay_guion': bool(orig),
+    fuentes = subtitulos.fuentes(d)
+    return {'idioma': lang, 'estilo': datos['estilo'], 'fuentes': fuentes, 'hay_guion': bool(orig),
+            'duraciones': {f: duracion_original(d, f) for f in fuentes},  # para que «Segundo» llegue hasta el final del video
             'filas': [{'id': k, 'orig': v, 'trad': v if lang == 'es' else tabla.get(k, '')} for k, v in orig.items()]}
 
 
@@ -1504,7 +1506,7 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/guardados':
                 return self.responder({'guardados': lista_guardados(carpeta(q['p']))})
             if ruta == '/api/version_guion':  # el editor la anota al abrir: si cambió al guardar, otra pestaña o la app guardó antes
-                f = os.path.join(carpeta(q['p']), 'guion.json')
+                f = os.path.join(carpeta(q['p']), q.get('f') if q.get('f') in ('etiquetas.json', 'senales.json') else 'guion.json')
                 v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
                 return self.responder({'v': v})
             if ruta == '/api/importantes':  # «⭐ Cortes importantes» del proyecto y los bloques del guion que los tocan

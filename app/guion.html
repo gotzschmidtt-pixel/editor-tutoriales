@@ -190,7 +190,10 @@ async function responder(soloGuardar) {
   if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { m.textContent = 'Escribe o elige al menos una respuesta'; m.className = 'msg err'; return; }
   if (sucio && !(await sinCambiosAjenos())) return;
   try {
-    if (sucio) { await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)}); VERSION = await versionGuion(); }
+    if (sucio) {  // tus cambios sin guardar van primero, también los bloques que quitaste (como «Guardar en la app»)
+      await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
+      await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)}); VERSION = await versionGuion();
+    }
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
     sucio = false;
     if (soloGuardar) { m.textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» para que corrija el guion con tus respuestas.'; m.className = 'msg ok'; return; }
