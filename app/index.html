@@ -152,6 +152,8 @@
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
+  <button onclick="$('#abrirZip').click()" title="Abre un proyecto guardado en .zip (de otra PC, de «Guardar como» o el que te pasa Claude): queda como un proyecto más, sin pisar los tuyos">📂 Abrir proyecto</button>
+  <input type="file" id="abrirZip" accept=".zip" hidden>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
   <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
   <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
@@ -1217,6 +1219,18 @@ async function nubeClaude() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=nube`, {method: 'POST', body: JSON.stringify({mb: parseFloat(mb) || 300})}); } catch (e) { return alert(e.message); }
   esperaNube = P; refrescar();
 }
+$('#abrirZip').onchange = async () => {  // «📂 Abrir proyecto»: el .zip de un proyecto pasa a ser un proyecto más
+  const f = $('#abrirZip').files[0]; $('#abrirZip').value = '';
+  if (!f) return;
+  const b = document.querySelector('button[onclick*="abrirZip"]'), antes = b.textContent;
+  b.disabled = true; b.textContent = `📂 Abriendo (${Math.round(f.size / 1e6)} MB)…`;
+  try {
+    const r = await api(`/api/importar_proyecto?nombre=${q(f.name)}`, {method: 'POST', body: f});
+    alert(`✓ Proyecto «${r.proyecto}» abierto.` + (r.video ? '' : '\n\nOjo: no trae el video (original.mp4); súbelo en «1 · Archivos».'));
+    location.href = '/?p=' + q(r.proyecto);
+  } catch (e) { alert(e.message); }
+  b.disabled = false; b.textContent = antes;
+};
 $('#importarClaude').onchange = async () => {  // el .zip de Claude: guion (con preguntas e ideas), etiquetas y señales para revisar
   const f = $('#importarClaude').files[0]; $('#importarClaude').value = '';
   if (!f) return;

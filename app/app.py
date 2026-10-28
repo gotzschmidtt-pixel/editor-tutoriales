@@ -2099,6 +2099,44 @@ class Manejador(BaseHTTPRequestHandler):
                         os.remove(os.path.join(h, viejo))
                 open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(cuerpo)
                 return self.responder({'ok': True})
+            if ruta == '/api/importar_proyecto':  # «📂 Abrir proyecto (.zip)»: un proyecto de otra PC o de «Guardar como»
+                import zipfile
+                tmp = tempfile.mktemp(suffix='.zip')
+                try:
+                    with open(tmp, 'wb') as f:  # se baja a disco por partes: un proyecto con video pesa cientos de MB
+                        falta = largo
+                        while falta > 0:
+                            parte = self.rfile.read(min(falta, 8 << 20))
+                            if not parte:
+                                break
+                            f.write(parte)
+                            falta -= len(parte)
+                    try:
+                        z = zipfile.ZipFile(tmp)
+                    except zipfile.BadZipFile:
+                        return self.error('Ese archivo no es un .zip.')
+                    with z:
+                        nombres = [n for n in z.namelist() if not n.endswith('/')]
+                        raices = {n.split('/', 1)[0] for n in nombres}
+                        dentro = len(raices) == 1 and all('/' in n for n in nombres)  # el zip trae la carpeta del proyecto
+                        base = next(iter(raices)) if dentro else os.path.splitext(q.get('nombre') or 'proyecto')[0]
+                        base = re.sub(r'^PC2_', '', re.sub(r'[^\w\- ]', '', base)).strip() or 'proyecto'
+                        nombre, k = base, 2
+                        while os.path.exists(os.path.join(PROYECTOS, nombre)):  # nunca pisa un proyecto que ya tienes
+                            nombre, k = f'{base}_{k}', k + 1
+                        destino = os.path.join(PROYECTOS, nombre)
+                        for n in nombres:
+                            rel = n.split('/', 1)[1] if dentro else n
+                            f = os.path.realpath(os.path.join(destino, rel))
+                            if os.path.commonpath([f, os.path.realpath(destino)]) != os.path.realpath(destino):
+                                continue  # una ruta que se sale de la carpeta del proyecto no se copia
+                            os.makedirs(os.path.dirname(f), exist_ok=True)
+                            with z.open(n) as a, open(f, 'wb') as b:
+                                shutil.copyfileobj(a, b, 8 << 20)
+                finally:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                return self.responder({'ok': True, 'proyecto': nombre, 'video': existe(destino, 'original.mp4')})
             if ruta == '/api/importar_claude':  # «📥 Importar lo de Claude»: el .zip que arma Claude en la nube para revisar aquí
                 import zipfile, io
                 d = carpeta(q['p'])
