@@ -6,6 +6,8 @@ Cada bloque del guion trae "montaje": {"modo": "lento" | "congelar" | "lento+con
   "src_inicio": s, "src_fin": s, "velocidad": 0.8, "congelar_s": s, "imagen": "archivo.png" (opcional)}.
 Las pausas («congelar») ya no son una foto: repiten la escena en movimiento (ida y vuelta, algo lenta) con zoom suave,
 alrededor del cuadro más nítido del momento pedido. Con "quieto": true en el montaje del bloque, vuelve a ser un cuadro fijo.
+Si en ese tramo se ve una cara, se repite solo hacia adelante con un fundido (en reversa se nota que retrocede);
+"repetir": "adelante" o "ida_vuelta" en el montaje del bloque lo fuerza.
 --calidad menor a 1080: prueba rápida con el nombre del bloque escrito (--borrador = 720).
 --estabilizar: quita el temblor de la cámara en mano de cada tramo (vid.stab si ffmpeg lo trae; si no, deshake).
 """
@@ -22,6 +24,66 @@ from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a Elev
 
 VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
 LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note menos
+FUNDIDO = 0.4       # con una cara en la escena: se repite solo hacia adelante, con este fundido en cada vuelta
+
+# Detector de caras YuNet (OpenCV), ~230 KB: se baja una sola vez a descargas_app/modelos. Una cara en reversa se nota
+# (parece que el video retrocede); en pantallas y manos el ida y vuelta no se nota y sigue igual.
+MODELO_CARA = os.path.join(RAIZ, 'descargas_app', 'modelos', 'face_detection_yunet_2023mar.onnx')
+URL_MODELO_CARA = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
+_DETECTOR = []
+
+
+def detector_caras():
+    if not _DETECTOR:
+        _DETECTOR.append(None)
+        try:
+            import cv2
+            if not os.path.exists(MODELO_CARA):
+                import urllib.request
+                os.makedirs(os.path.dirname(MODELO_CARA), exist_ok=True)
+                datos = urllib.request.urlopen(URL_MODELO_CARA, timeout=60).read()
+                open(MODELO_CARA + '.tmp', 'wb').write(datos)
+                os.replace(MODELO_CARA + '.tmp', MODELO_CARA)
+            _DETECTOR[0] = cv2.FaceDetectorYN.create(MODELO_CARA, '', (320, 320), 0.8)
+        except Exception as e:  # sin detector, las pausas quedan como siempre (ida y vuelta)
+            print(f'(sin detector de caras: {e}; las pausas van de ida y vuelta)', flush=True)
+    return _DETECTOR[0]
+
+
+def cara_en(cap, t):
+    """¿Hay una cara (de al menos ~3 % del ancho) en el cuadro del segundo t?"""
+    import cv2
+    cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+    ok, cuadro = cap.read()
+    if not ok:
+        return False
+    h, w = cuadro.shape[:2]
+    cuadro = cv2.resize(cuadro, (640, max(1, round(h * 640 / w))))
+    det = detector_caras()
+    det.setInputSize((cuadro.shape[1], cuadro.shape[0]))
+    _, caras = det.detect(cuadro)
+    return caras is not None and any(c[2] >= 640 * 0.03 for c in caras)
+
+
+def tramo_con_cara(video, s0, s1):
+    """Si se ve una cara en algún punto de [s0, s1] (comienzo, medio o final): (hay cara al final, comienzo del pedazo
+    final que sigue igual, con o sin cara), para repetir solo ese pedazo y no mezclar la cara con la escena de al lado.
+    Si no se ve ninguna cara, None (la pausa queda como siempre)."""
+    if detector_caras() is None:
+        return None
+    import cv2
+    cap = cv2.VideoCapture(video)
+    try:
+        if not any(cara_en(cap, t) for t in (s0 + 0.1, (s0 + s1) / 2, max(s0, s1 - 0.1))):
+            return None
+        t = max(s0, s1 - 0.1)
+        al_final = cara_en(cap, t)
+        inicio = s1
+        while t >= s0 and cara_en(cap, t) == al_final:
+            inicio, t = t, t - 0.2
+        return al_final, max(s0, min(inicio, s1 - 0.6))  # al menos 0,6 s de escena para que la repetición no sea un tic
+    finally:
+        cap.release()
 
 
 EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app mientras se arma
@@ -174,8 +236,23 @@ def main():
         m, i = b['montaje'], b['id']
         lab = rotulo(f"{i}  {b.get('ancla', '')}")
         enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf]
-        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))], sort_keys=True,
-                                        default=str).encode()).hexdigest()[:12]
+        cara, ventana, tocada = False, None, False
+        if m['modo'].endswith('congelar') and not m.get('quieto') and round((m.get('congelar_s') or 0) * FPS) >= 1:
+            # el tramo que se repite en la pausa; con una cara, va solo hacia adelante («repetir»: «adelante» o
+            # «ida_vuelta» en el montaje del bloque lo fuerza)
+            v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
+            t = m.get('cuadro', mejor(*nt, *v))
+            s1 = m['src_fin'] if m['modo'] == 'lento+congelar' else min(t + VENTANA / 2, dur_original)
+            ventana = (max(0.0, s1 - VENTANA), s1)
+            if m.get('repetir') == 'adelante':
+                cara = True
+            elif m.get('repetir') != 'ida_vuelta':
+                r = tramo_con_cara(a.original, *ventana)
+                if r is not None:
+                    cara, ventana, tocada = r[0], (r[1], s1), True
+        cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
+        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []),
+                                        sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
             info = json.load(open(hecho, encoding='utf-8'))
@@ -215,12 +292,20 @@ def main():
                 # la escena se repite en movimiento (ida y vuelta, un poco lenta) en vez de una foto quieta:
                 # tras un tramo, arranca hacia atrás desde el último cuadro, así el empalme no salta
                 tras_tramo = m['modo'] == 'lento+congelar'
-                s1 = m['src_fin'] if tras_tramo else min(t + VENTANA / 2, dur_original)
-                s0 = max(0.0, s1 - VENTANA)
+                s0, s1 = ventana
                 ida = os.path.join(tmp, f'{i}_ida.mp4')
-                orden = '[rv][f]' if tras_tramo else '[f][rv]'
-                run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex',
-                     f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]", '-map', '[o]'] + enc + [ida])
+                if cara:
+                    # con una cara, en reversa se nota que el video retrocede: se repite solo hacia adelante, y el final
+                    # de cada vuelta se funde con su comienzo para que la repetición no salte
+                    L = (s1 - s0) / LENTO_ESCENA
+                    D = min(FUNDIDO, L / 3)
+                    print(i, '· pausa con cara: se repite hacia adelante (sin retroceder)', flush=True)
+                    filtro = (f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[a][b];[a]trim=start={D:.3f},setpts=PTS-STARTPTS[m];"
+                              f"[b]trim=end={D:.3f},setpts=PTS-STARTPTS[h];[m][h]xfade=transition=fade:duration={D:.3f}:offset={L - 2 * D:.3f}[o]")
+                else:
+                    orden = '[rv][f]' if tras_tramo else '[f][rv]'
+                    filtro = f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]"
+                run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex', filtro, '-map', '[o]'] + enc + [ida])
                 if a.estabilizar:
                     estabilizar(ida, enc)
                 # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen

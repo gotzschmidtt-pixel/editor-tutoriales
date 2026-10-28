@@ -268,6 +268,9 @@ Lo que fabian prefiere ya es lo que hace la app: **una «pausa» no es una foto 
 - Se reproducen **ida y vuelta** (adelante y en reversa) a **0.7×** (`LENTO_ESCENA`), en bucle, con un **zoom suave del
   6 %** que alterna acercar/alejar entre bloques.
 - Después de un tramo (`lento+congelar`), la repetición arranca hacia atrás desde el último cuadro: el empalme no salta.
+- **Con la cara del autor en la escena NO hay reversa** (pedido del autor, 28/10/2026: se nota como retroceso): la app
+  detecta la cara (YuNet de OpenCV) y repite solo hacia adelante, con un fundido de 0,4 s en cada vuelta, usando solo el
+  pedazo donde la cara sigue en pantalla. `"repetir": "adelante"` o `"ida_vuelta"` en el montaje del bloque lo fuerza.
 - Solo con `"quieto": true` en el montaje vuelve a ser un cuadro fijo (con zoom del 10 %). **No uses `quieto` salvo que
   el autor lo pida.**
 - Cuando la voz de un bloque no cabe en su tramo (el guion se alargó), la app alarga ese bloque con esta pausa en
