@@ -34,6 +34,8 @@ import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven 
 
 sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
+sys.path.insert(0, os.path.join(RAIZ, 'comprimir'))
+import comprimir  # noqa: E402  «🗜 Comprimir video»: misma calidad, mucho menos peso
 
 
 # Voz por idioma del video (idioma_video.json del proyecto): Mauricio en español, Brian en inglés (elegida por el autor
@@ -795,6 +797,24 @@ def volver_a_guardado(d, nombre):
     return respaldo
 
 
+def elegir_video_en_la_pc():
+    """La ventana de Windows para elegir un video cualquiera de la PC (para «🗜 Comprimir video»). '' si cancelas."""
+    salida = tempfile.mktemp(suffix='.txt')
+    codigo = ('import sys, tkinter as tk\nfrom tkinter import filedialog as fd\n'
+              'r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)\n'
+              'f = fd.askopenfilename(parent=r, title="Elegir el video a comprimir", '
+              'filetypes=[("Videos", "*.mp4 *.mov *.mkv *.avi *.webm *.m4v"), ("Todos", "*.*")])\n'
+              'open(sys.argv[1], "w", encoding="utf-8").write(f or "")\n')
+    try:
+        subprocess.run([sys.executable, '-c', codigo, salida], timeout=3600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return os.path.normpath(open(salida, encoding='utf-8').read().strip()) if os.path.getsize(salida) else ''
+    except (OSError, subprocess.SubprocessError):
+        raise ValueError('No se pudo abrir la ventana para elegir el video (falta tkinter en este Python).')
+    finally:
+        if os.path.exists(salida):
+            os.remove(salida)
+
+
 def elegir_en_la_pc(modo, nombre=''):
     """Abre la ventana de Windows para elegir dónde guardar (modo 'guardar') o qué archivo abrir ('abrir').
     Corre en un proceso aparte (tkinter no se lleva bien con los hilos del servidor). Devuelve la ruta o '' si cancelas."""
@@ -1401,6 +1421,13 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(estado_importantes(carpeta(q['p'])))
             if ruta == '/api/etiquetas_idiomas':  # «🌐 Etiquetas en otro idioma»
                 return self.responder(estado_idiomas(carpeta(q['p']), q.get('lang', '')))
+            if ruta == '/api/comprimir_estado':  # «🗜 Comprimir video»: cómo va
+                e = {k: v for k, v in comprimir.ESTADO.items() if k != 'pid'}
+                for k in ('entrada', 'salida'):
+                    f = e.get(k)
+                    if f and os.path.exists(f) and os.path.commonpath([os.path.realpath(f), os.path.realpath(RAIZ)]) == os.path.realpath(RAIZ):
+                        e[k + '_ver'] = '/ver?ruta=' + urllib.parse.quote(os.path.relpath(f, RAIZ).replace('\\', '/'))
+                return self.responder(e)
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
@@ -1970,6 +1997,29 @@ class Manejador(BaseHTTPRequestHandler):
                             tabla.pop(str(k), None)
                 idiomas.guardar(d, act)
                 return self.responder(estado_idiomas(d, lang))
+            if ruta == '/api/elegir_video':  # la ventana de Windows para elegir cualquier video de la PC
+                try:
+                    return self.responder({'ruta': elegir_video_en_la_pc()})
+                except ValueError as e:
+                    return self.error(str(e))
+            if ruta == '/api/comprimir':  # empieza a comprimir (en segundo plano; el avance en /api/comprimir_estado)
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                f = str(datos.get('entrada') or '').strip().strip('"')
+                if datos.get('p') and not os.path.isabs(f):  # un archivo del proyecto (FINAL.mp4…)
+                    f = os.path.join(carpeta(datos['p']), os.path.basename(f))
+                try:
+                    salida = comprimir.iniciar(f, str(datos.get('perfil') or 'youtube'), int(datos.get('alto') or 0), bool(datos.get('rapido')))
+                except ValueError as e:
+                    return self.error(str(e))
+                return self.responder({'ok': True, 'salida': salida})
+            if ruta == '/api/comprimir_cancelar':
+                comprimir.cancelar()
+                return self.responder({'ok': True})
+            if ruta == '/api/comprimir_mostrar':  # abre el Explorador con el video comprimido marcado
+                f = comprimir.ESTADO.get('salida')
+                if f and os.path.exists(f) and sys.platform == 'win32':
+                    subprocess.Popen(['explorer', '/select,', f])
+                return self.responder({'ok': True})
             if ruta == '/api/version_idioma':  # copia el proyecto con el guion traducido (no genera voz: no gasta ElevenLabs)
                 d = carpeta(q['p'])
                 lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]

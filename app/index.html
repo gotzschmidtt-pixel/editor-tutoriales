@@ -155,6 +155,7 @@
   <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
   <button onclick="abrirModulo('panelIdiomas')" title="Las etiquetas traducidas a otro idioma">🌐 Idiomas</button>
+  <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
   <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
   <button onclick="abrirModulo('panelEstilo')">📚 Alimentación</button>
   <button onclick="abrirModulo('panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
@@ -417,6 +418,28 @@
       <b>Con el link de tu canal</b> lee todos tus videos (hasta 300, los más nuevos): de cada uno sus subtítulos y solo los primeros
       3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
       La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
+    </section>
+
+    <section class="panel" id="panelComprimir">
+      <h2>🗜 Comprimir video</h2>
+      <p class="aviso">El mismo video, con la calidad que se ve igual, en mucho menos espacio, como lo deja YouTube. Sirve para
+      cualquier video de tu PC (Filmora, la app, el celular…). Deja <b>NOMBRE_comprimido.mp4</b> al lado del original, que no
+      se toca. No gasta créditos: lo hace tu PC.</p>
+      <div class="fila" style="align-items:center">
+        <input type="text" id="cmpEntrada" placeholder="Ruta del video (C:\…\video.mp4)" style="flex:1; min-width:16em">
+        <button onclick="cmpElegir()">📂 Elegir video</button>
+      </div>
+      <div class="fila" id="cmpDelProyecto" style="align-items:center"></div>
+      <div class="fila" style="align-items:center">
+        <label>Calidad <select id="cmpPerfil">
+          <option value="youtube">Como YouTube (H.264) · se ve igual, ≈ 3–5 veces más liviano · recomendado</option>
+          <option value="liviano">Más liviano (H.265) · ≈ la mitad que YouTube · algunos reproductores viejos no lo abren</option>
+          <option value="maxima">Máxima calidad (H.264) · casi sin pérdida, ahorra menos</option></select></label>
+        <label>Tamaño <select id="cmpAlto"><option value="0">El mismo</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option></select></label>
+        <label title="Con la tarjeta NVIDIA o la gráfica Intel: mucho más rápido, pesa algo más"><input type="checkbox" id="cmpRapido"> ⚡ Rápido con la gráfica</label>
+      </div>
+      <div class="fila"><button class="principal" onclick="cmpEmpezar()">🗜 Comprimir</button><button onclick="cmpCancelar()">■ Cancelar</button></div>
+      <div id="cmpAvance" style="margin-top:8px"></div>
     </section>
 
     <section class="panel" id="panelImportantes">
@@ -1725,6 +1748,7 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   if (link) { history.replaceState(null, '', '#' + link); LINK_ACTUAL = link; }
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
   if (s === '#panelImportantes') impCargar();
+  if (s === '#panelComprimir') cmpCargar();
   if (s === '#panelMarcas' && P) marcaVideoCargar($('#marcaVideoSel').value);
   if (!$(s).querySelector('.volverSolo'))
     $(s).insertAdjacentHTML('afterbegin', '<button class="volverSolo" onclick="cerrarSolo()">← Volver al proyecto</button>');
@@ -1778,6 +1802,48 @@ function impAgregar() {
   impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
 }
 function impQuitar(i) { if (confirm('¿Quitar este corte importante?')) impGuardar(IMP.filter((_, k) => k !== i)); }
+// «🗜 Comprimir video»: cualquier video, misma calidad, mucho menos peso (comprimir/comprimir.py)
+let CMP_P = '', cmpReloj = null;
+const cmpMb = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.round(b / 1e6) + ' MB';
+async function cmpCargar() {
+  const arch = P ? ((await api(`/api/estado?p=${q(P)}`)).archivos || {}) : {};
+  const del = ['FINAL.mp4', 'FINAL_720p.mp4', '4_musica.mp4', 'original.mp4'].filter(f => arch[f]);
+  $('#cmpDelProyecto').innerHTML = del.length ? '<span class="aviso">De este proyecto:</span>' + del.map(f => `<button onclick="cmpUsar('${f}')">${f}</button>`).join('') : '';
+  cmpVer();
+}
+function cmpUsar(f) { $('#cmpEntrada').value = f; CMP_P = P; }
+async function cmpElegir() {
+  try { const r = await api('/api/elegir_video', {method: 'POST', body: '{}'}); if (r.ruta) { $('#cmpEntrada').value = r.ruta; CMP_P = ''; } }
+  catch (e) { alert(e.message); }
+}
+async function cmpEmpezar() {
+  const entrada = $('#cmpEntrada').value.trim();
+  if (!entrada) return alert('Elige el video con «📂 Elegir video», o un archivo del proyecto.');
+  try {
+    await api('/api/comprimir', {method: 'POST', body: JSON.stringify({entrada, p: CMP_P && !/[\\/:]/.test(entrada) ? CMP_P : '',
+      perfil: $('#cmpPerfil').value, alto: +$('#cmpAlto').value, rapido: $('#cmpRapido').checked})});
+  } catch (e) { return alert(e.message); }
+  cmpVer();
+}
+async function cmpCancelar() { await api('/api/comprimir_cancelar', {method: 'POST', body: '{}'}); cmpVer(); }
+async function cmpVer() {
+  clearTimeout(cmpReloj);
+  let e; try { e = await api('/api/comprimir_estado'); } catch (x) { return; }
+  if (!e.entrada) { $('#cmpAvance').innerHTML = ''; return; }
+  const nombre = esc(e.salida.split(/[\\/]/).pop());
+  if (e.activo) {
+    $('#cmpAvance').innerHTML = `<p>⏳ ${esc(e.perfil)} · <b>${e.pct || 0} %</b>${e.falta_s ? ` · faltan unos ${Math.ceil(e.falta_s / 60)} min` : ''}</p>
+      <div style="height:10px;border-radius:9px;background:#ffffff14;overflow:hidden"><div style="height:100%;width:${e.pct || 0}%;background:linear-gradient(90deg,var(--rosa),var(--azul))"></div></div>`;
+    cmpReloj = setTimeout(cmpVer, 1500);
+  } else if (e.error) {
+    $('#cmpAvance').innerHTML = `<p class="msg err">✗ ${esc(e.error)}</p>`;
+  } else if (e.tam_despues) {
+    const pct = Math.round(100 - e.tam_despues * 100 / e.tam_antes);
+    $('#cmpAvance').innerHTML = `<p class="msg ok">✓ Listo: <b>${nombre}</b> · ${cmpMb(e.tam_antes)} → <b>${cmpMb(e.tam_despues)}</b> (${pct} % menos) en ${Math.max(1, Math.round(e.segundos / 60))} min</p>
+      <p class="aviso">${esc(e.salida)}</p><div class="fila">${e.salida_ver ? `<a href="${e.salida_ver}" target="_blank"><button>▶ Ver el comprimido</button></a>` : ''}
+      <button onclick="api('/api/comprimir_mostrar', {method: 'POST', body: '{}'})">📂 Mostrar en el Explorador</button></div>`;
+  }
+}
 // «🌐 Etiquetas en otro idioma»: etiquetas_idiomas.json (traducciones por idioma y con cuál se dibujan)
 let ID_LANG = 'en';
 function idPintar(r, msg) {
@@ -1826,7 +1892,7 @@ async function idUsar(lang) {
 }
 // Links directos a cada sección: http://localhost:8765/#cortes, #idiomas, #ajustes… (y ?p=PROYECTO para elegir el proyecto)
 const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
-  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas'};
+  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir'};
 let LINK_ACTUAL = '';
 function irLink() {
   const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
