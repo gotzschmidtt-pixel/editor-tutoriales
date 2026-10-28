@@ -36,6 +36,59 @@ sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 
 
+PRIVADOS = {'ajustes.json', 'ajustes.json.copia'}  # las claves no se sirven nunca
+
+
+def ruta_segura(rel):
+    """La ruta completa de algo DENTRO de la carpeta de la app (relativa, o completa pero adentro); None si se sale o es privado."""
+    rel = urllib.parse.unquote(str(rel or '')).strip().strip('"')
+    f = os.path.realpath(rel if os.path.isabs(rel) else os.path.join(RAIZ, rel))
+    raiz = os.path.realpath(RAIZ)
+    if os.path.commonpath([f, raiz]) != raiz or os.path.basename(f).lower() in PRIVADOS or not os.path.exists(f):
+        return None
+    return f
+
+
+PAGINA_ABIERTO = ('<!doctype html><meta charset="utf-8"><title>Abierto</title><body style="background:#0b0e1a;color:#e8ecff;'
+                  'font:16px system-ui;padding:40px">✓ Lo abrí en tu PC. Ya puedes cerrar esta pestaña.'
+                  '<script>setTimeout(() => window.close(), 1200)</script></body>')
+
+
+def pagina_carpeta(d):
+    """Una carpeta de la app en el navegador: escuchas los audios, ves los videos e imágenes, y la abres en el Explorador."""
+    import html
+    if os.path.isfile(d):
+        d = os.path.dirname(d)
+    rel = os.path.relpath(d, RAIZ)
+    enc = lambda p: urllib.parse.quote(os.path.relpath(p, RAIZ).replace('\\', '/'))
+    filas = []
+    for n in sorted(os.listdir(d), key=lambda x: (not os.path.isdir(os.path.join(d, x)), x.lower())):
+        p = os.path.join(d, n)
+        if n.lower() in PRIVADOS or n.startswith('.'):
+            continue
+        e, nom = os.path.splitext(n)[1].lower(), html.escape(n)
+        if os.path.isdir(p):
+            filas.append(f'<div class="f">📁 <a href="/carpeta?ruta={enc(p)}">{nom}</a></div>')
+        elif e in ('.mp3', '.wav', '.m4a', '.ogg', '.aac'):
+            filas.append(f'<div class="f">🔊 <b>{nom}</b><br><audio controls preload="none" src="/ver?ruta={enc(p)}"></audio></div>')
+        elif e in ('.mp4', '.webm', '.mov', '.mkv'):
+            filas.append(f'<div class="f">🎬 <b>{nom}</b> <span>({os.path.getsize(p) / 1e6:.0f} MB)</span><br>'
+                         f'<video controls preload="metadata" src="/ver?ruta={enc(p)}"></video></div>')
+        elif e in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
+            filas.append(f'<div class="f">🖼 <b>{nom}</b><br><img src="/ver?ruta={enc(p)}"></div>')
+        else:
+            filas.append(f'<div class="f">📄 <a href="/ver?ruta={enc(p)}" target="_blank">{nom}</a></div>')
+    arriba = '' if os.path.realpath(d) == os.path.realpath(RAIZ) else f'<a href="/carpeta?ruta={enc(os.path.dirname(d))}">⬆ Subir</a> · '
+    return f"""<!doctype html><meta charset="utf-8"><title>{html.escape(os.path.basename(d))}</title>
+<style>body{{background:#0b0e1a;color:#e8ecff;font:15px system-ui;padding:20px;max-width:1100px;margin:auto}}a{{color:#7cc4ff}}
+.f{{background:#151a2e;border:1px solid #2a3150;border-radius:10px;padding:10px 12px;margin:8px 0}}audio{{width:100%;margin-top:6px}}
+video,img{{max-width:100%;max-height:60vh;margin-top:6px;border-radius:8px}}span{{color:#9aa3c0}}
+.b{{display:inline-block;background:#ff2bd6;color:#fff;padding:8px 14px;border-radius:10px;text-decoration:none}}</style>
+<h2>📁 {html.escape(os.path.basename(d))}</h2><p style="color:#9aa3c0">{html.escape(d)}</p>
+<p>{arriba}<a class="b" href="/abrir?ruta={enc(d)}" target="_blank">📂 Abrir en el Explorador</a></p>
+{''.join(filas) or '<p>Carpeta vacía.</p>'}"""
+
+
 def estado_idiomas(d, lang=''):
     """Con qué idioma se dibujan las etiquetas y la tabla original → traducción de un idioma."""
     datos = idiomas.leer(d)
@@ -1386,6 +1439,19 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(txt.encode(), 'text/plain; charset=utf-8')
             if ruta == '/api/musica_fija':  # para escucharla desde la app
                 return self.servir(MUSICA_FIJA)
+            if ruta in ('/carpeta', '/ver', '/abrir'):  # links de un clic a carpetas y archivos de la app (los que Claude te pasa)
+                f = ruta_segura(q.get('ruta', ''))
+                if not f:
+                    return self.error('Esa ruta no está dentro de la carpeta de la app (o es privada).', 404)
+                if ruta == '/ver':
+                    return self.servir(f)
+                if ruta == '/abrir':
+                    if sys.platform == 'win32':
+                        os.startfile(f)
+                    else:
+                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f])
+                    return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
+                return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
                 sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])))
