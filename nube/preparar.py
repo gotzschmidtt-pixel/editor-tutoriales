@@ -15,8 +15,11 @@ ARCHIVOS = ['original.mp4', 'material.mp4', 'imagen.png', 'musica.mp3', 'idea.tx
             'transcripcion.json', 'transcripcion.srt', 'transcripcion.txt',
             # lo que marcaste en la app: cortes importantes, señales, subtítulos e idiomas (Claude lo respeta en la nube)
             'cortes_importantes.json', 'para_claude_marcas.json', 'para_claude_marcas.txt', 'subtitulos.json',
-            'etiquetas_idiomas.json', 'idioma_video.json']
-CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios', 'nuevos_modelos']
+            'etiquetas_idiomas.json', 'idioma_video.json',
+            # lo que la app ya miró del video: mapa de escenas, guion para leer y mejoras (así Claude no lo rehace)
+            'mapa_video.json', 'guion_para_leer.md', 'mejoras_guion.txt']
+CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios', 'nuevos_modelos',
+            'hojas_2s', 'ia_capturas', 'acciones']  # hojas de contacto, capturas de la IA y capturas de cada acción
 SECRETOS = ('clave', 'key', 'token', 'secret', 'password', 'contrase', 'elevenlabs')  # nunca viajan, estén donde estén
 SALIDA = 'para_claude'
 
