@@ -160,6 +160,7 @@
   <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
   <button onclick="abrirModulo('panelIdiomas')" title="Las etiquetas traducidas a otro idioma">🌐 Idiomas</button>
   <button onclick="abrirModulo('panelSubtitulos')" title="Subtítulos dinámicos en inglés u otro idioma, con posición y tamaño">💬 Subtítulos</button>
+  <button onclick="abrirModulo('panelShort')" title="Como «Auto Resaltar + Reencuadre 9:16» de Filmora: lo más importante del video, vertical, con subtítulos (no gasta créditos)">📱 Short</button>
   <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
   <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
   <button onclick="abrirModulo('panelEstilo')">📚 Alimentación</button>
@@ -485,6 +486,22 @@
       </div>
       <div class="fila"><button class="principal" onclick="cmpEmpezar()">🗜 Comprimir</button><button onclick="cmpCancelar()">■ Cancelar</button></div>
       <div id="cmpAvance" style="margin-top:8px"></div>
+    </section>
+    <section class="panel" id="panelShort">
+      <h2>📱 Short vertical (9:16)</h2>
+      <p class="aviso">Como «Auto Resaltar» + «Reencuadre automático» de Filmora. La app elige lo más importante del video
+      (el gancho, tus ⭐ cortes importantes, las acciones y el resultado, sin la promoción), lo pone vertical siguiendo tu cara
+      o lo que pasa en la pantalla (con zoom suave y nunca acelerado), con la misma voz del video, subtítulos grandes y tu
+      música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).</p>
+      <div class="fila" style="align-items:center">
+        <label>Duración <select id="shortDur">
+          <option value="15">15 s</option><option value="30">30 s</option><option value="45">45 s</option>
+          <option value="60" selected>60 s (YouTube Shorts)</option><option value="90">90 s (TikTok / Reels largo)</option>
+          <option value="otro">Otra…</option></select></label>
+        <button class="principal" id="shortBtn" onclick="shortHacer()">📱 Hacer Short</button>
+        <span class="msg" id="shortMsg"></span>
+      </div>
+      <div id="shortVer"></div>
     </section>
 
     <section class="panel" id="panelImportantes">
@@ -1854,6 +1871,7 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
   if (s === '#panelImportantes') impCargar();
   if (s === '#panelComprimir') cmpCargar();
+  if (s === '#panelShort') shortVer();
   if (s === '#panelSubtitulos') subCargar();
   if (s === '#panelMarcas' && P) marcaVideoCargar($('#marcaVideoSel').value);
   if (!$(s).querySelector('.volverSolo'))
@@ -2085,6 +2103,37 @@ async function subVer() {
 // «🗜 Comprimir video»: cualquier video, misma calidad, mucho menos peso (comprimir/comprimir.py)
 let CMP_P = '', cmpReloj = null;
 const cmpMb = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.round(b / 1e6) + ' MB';
+async function shortVer() {  // «📱 Short»: el último que armaste, con el porqué de cada toma
+  if (!P) return;
+  const arch = (await api(`/api/estado?p=${q(P)}`)).archivos || {};
+  let plan = null;
+  try { const r = await api(`/archivo?p=${q(P)}&f=short.json&v=${Date.now()}`); plan = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
+  if (!arch['SHORT.mp4']) { $('#shortVer').innerHTML = '<p class="vacio">Todavía no hay Short en este proyecto.</p>'; return; }
+  const seg = plan ? Math.round(plan.duracion) : '', nombre = `${P.replace(/[^\w\- ]/g, '')}_SHORT_${seg}s_${new Date().toLocaleDateString('sv')}.mp4`;
+  $('#shortVer').innerHTML = `<div class="fila" style="align-items:flex-start; gap:18px; flex-wrap:wrap">
+    <video controls preload="metadata" style="width:300px; aspect-ratio:9/16; background:#000; border-radius:12px" src="/archivo?p=${q(P)}&f=SHORT.mp4&v=${arch['SHORT.mp4'].fecha}"></video>
+    <div style="flex:1; min-width:16em"><p><b>${plan ? `${plan.tomas.length} tomas · ${seg} s` : ''}</b>
+      <a href="/archivo?p=${q(P)}&f=SHORT.mp4&nombre=${q(nombre)}" download="${nombre}"><button class="principal">⬇ Bajar el Short</button></a></p>
+      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.zoom > 1 ? 'pantalla con zoom' : 'tu cara'}<br>
+        <span class="aviso">${esc(t.por_que)}</span><br>«${esc(t.texto)}»</p>`).join('') : ''}</div></div>`;
+}
+async function shortHacer() {
+  let dur = $('#shortDur').value;
+  if (dur === 'otro') { dur = prompt('¿Cuántos segundos? (de 10 a 180)', '45'); if (!dur) return; }
+  const m = $('#shortMsg'); m.className = 'msg'; m.textContent = 'Armando el Short (unos 2 minutos)…'; $('#shortBtn').disabled = true;
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=short`, {method: 'POST', body: JSON.stringify({duracion: parseFloat(dur) || 60})});
+    for (let k = 0; k < 900; k++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const e = await api(`/api/estado?p=${q(P)}`);
+      if (e.trabajo.proyecto) { if (e.trabajo.linea) m.textContent = '… ' + e.trabajo.linea.slice(0, 120); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló: mira el registro');
+      break;
+    }
+    m.className = 'msg ok'; m.textContent = '✓ Short listo.'; await shortVer();
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+  $('#shortBtn').disabled = false;
+}
 async function cmpCargar() {
   const arch = P ? ((await api(`/api/estado?p=${q(P)}`)).archivos || {}) : {};
   const del = ['FINAL.mp4', 'FINAL_720p.mp4', '4_musica.mp4', 'original.mp4'].filter(f => arch[f]);
@@ -2178,7 +2227,8 @@ async function idUsar(lang) {
 }
 // Links directos a cada sección: http://localhost:8765/#cortes, #idiomas, #ajustes… (y ?p=PROYECTO para elegir el proyecto)
 const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
-  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir', subtitulos: '#panelSubtitulos'};
+  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir', subtitulos: '#panelSubtitulos',
+  short: '#panelShort'};
 let LINK_ACTUAL = '';
 function irLink() {
   const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
