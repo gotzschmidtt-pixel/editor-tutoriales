@@ -171,6 +171,11 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
       DFU, botones…): cada uno se muestra ENTERO, a velocidad 1, en bloques `"tipo": "critico"`; nunca se acelera, recorta
       ni salta. La app los fuerza a ×1 igual, y avisa si un bloque no los muestra. (Pedido del autor, 28/10/2026: en
       IOS27_FRP se aceleraron la entrada a Recovery y a DFU, lo más delicado del video.)
+- [ ] **Lo que el autor marcó en la app, todo junto:** `mis_proyectos/NOMBRE/para_claude_marcas.txt` (y `.json`), que deja
+      «💾 Guardar para Claude» en Cortes importantes: los cortes importantes y sus señales (círculo, flecha o recuadro con
+      segundo, video, zona en % y etiqueta). LÉELO antes de escribir el guion: los cortes van enteros a ×1 y cada etiqueta
+      se nombra en la voz cerca de su segundo. Las señales y etiquetas las pone la app sola al armar (no las copies a
+      senales.json ni a etiquetas.json).
 - [ ] **Humor:** el número del nivel, repartido a lo largo del video (no todo al inicio), nunca en pasos críticos.
 - [ ] **Sin `"quieto": true`** (la pausa es repetición en movimiento) salvo que el autor lo pida.
 - [ ] **Números y años escritos como se dicen** («dos mil veintiséis»), sin palabras sueltas como «ok» que la voz leería.
