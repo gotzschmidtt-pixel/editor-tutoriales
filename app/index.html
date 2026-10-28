@@ -688,13 +688,14 @@ async function cargarProyectos(sel) {
   $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;
+  if (!sel) sel = new URLSearchParams(location.search).get('p') || '';  // un link con ?p=PROYECTO abre ese proyecto
   if (!sel) {  // al abrir la app: siempre el último proyecto TRABAJADO (mirar otro no cuenta)
     try { sel = (await api('/api/ultimo_proyecto')).nombre; } catch (e) {}
   }
   P = sel || lista[0];
   if (!lista.includes(P)) P = lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar();
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar(); setTimeout(irLink, 800);
 }
 async function nuevo() {
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
@@ -1626,6 +1627,8 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   document.body.classList.add('solo');
   $(s).classList.add('solo-activo');
   if (boton) boton.classList.add('activo');
+  const link = Object.keys(LINKS).find(k => LINKS[k] === s);  // la dirección queda con su link, para volver con un clic
+  if (link) { history.replaceState(null, '', '#' + link); LINK_ACTUAL = link; }
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
   if (s === '#panelImportantes') impCargar();
   if (s === '#panelMarcas' && P) marcaVideoCargar($('#marcaVideoSel').value);
@@ -1715,7 +1718,27 @@ async function idUsar(lang) {
   if (!e.archivos['4_musica.mp4']) return $('#idMsg').textContent = `✓ Las etiquetas van a salir en ${r.nombres[lang] || lang} cuando armes el video.`;
   if (confirm(`Las etiquetas quedan en ${r.nombres[lang] || lang}. ¿Las vuelvo a poner ahora sobre el video? (solo se redibujan los extras; no gasta créditos)`)) insertarExtras();
 }
+// Links directos a cada sección: http://localhost:8765/#cortes, #idiomas, #ajustes… (y ?p=PROYECTO para elegir el proyecto)
+const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
+  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas'};
+let LINK_ACTUAL = '';
+function irLink() {
+  const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+  if (!h || (h === LINK_ACTUAL && LINKS[h] && $(LINKS[h]).classList.contains('solo-activo'))) return;
+  LINK_ACTUAL = h;
+  if (h === 'ajustes') return ajustesIA();
+  if (h === 'eleven') return dlgEleven.showModal();
+  const s = LINKS[h];
+  if (!s || !$(s)) return;
+  const boton = [...document.querySelectorAll('header button')].find(b => (b.getAttribute('onclick') || '').includes(`'${s}'`));
+  if (boton) { if (!$(s).classList.contains('solo-activo')) abrirSolo(s, boton); }
+  else irA(s);
+}
+addEventListener('hashchange', () => { LINK_ACTUAL = ''; irLink(); });
 function cerrarSolo() {
+  if (!document.body.classList.contains('solo')) return;  // (al cargar la página, el link todavía no se abrió: no se borra)
+  if (LINKS[location.hash.slice(1)]) history.replaceState(null, '', location.pathname + location.search);
+  LINK_ACTUAL = '';
   document.body.classList.remove('solo');
   document.querySelectorAll('.solo-activo').forEach(x => x.classList.remove('solo-activo'));
   document.querySelectorAll('header button.activo').forEach(b => b.classList.remove('activo'));
