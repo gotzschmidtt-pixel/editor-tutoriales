@@ -149,6 +149,7 @@
   <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
   <button onclick="abrirSolo('#panelMarcas', this)">🎯 Flechas y círculos</button>
   <button onclick="abrirSolo('#panelAcortar', this)">✂️ Acortar</button>
+  <button onclick="abrirSolo('#panelImportantes', this)" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
   <button onclick="abrirSolo('#panelEstilo', this)">📚 Alimentación</button>
   <button onclick="abrirSolo('#panelConocimiento', this)" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
   <span class="estado" id="estado">Sin trabajos</span>
@@ -378,6 +379,26 @@
       <b>Con el link de tu canal</b> lee todos tus videos (hasta 300, los más nuevos): de cada uno sus subtítulos y solo los primeros
       3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
       La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
+    </section>
+
+    <section class="panel" id="panelImportantes">
+      <h2>⭐ Cortes importantes</h2>
+      <p class="aviso">Los momentos delicados que el espectador tiene que ver bien (poner el teléfono en Recovery o DFU, los
+      botones que aprietas, escribir una key…). Se muestran <b>enteros y a velocidad normal</b>: la IA, el ajuste de largo,
+      la voz y «Acortar» nunca los aceleran, ni los recortan ni los saltan.</p>
+      <video id="impVideo" controls preload="metadata" style="width:100%; max-height:45vh; background:#000; border-radius:10px"></video>
+      <div class="fila" style="align-items:center">
+        <label>Desde <input type="text" id="impDesde" placeholder="5:39" style="width:5.5em"></label>
+        <button onclick="impTomar('#impDesde')" title="El segundo donde está pausado el video de arriba">⏱ Aquí</button>
+        <label>Hasta <input type="text" id="impHasta" placeholder="6:22" style="width:5.5em"></label>
+        <button onclick="impTomar('#impHasta')">⏱ Aquí</button>
+        <input type="text" id="impNota" placeholder="Qué pasa (ej.: entrar a Recovery)" style="flex:1; min-width:10em"
+          onkeydown="if (event.key === 'Enter') impAgregar()">
+        <button class="principal" onclick="impAgregar()">⭐ Agregar</button>
+      </div>
+      <div id="impLista" style="margin-top:8px"></div>
+      <p class="aviso" id="impAfectados"></p>
+      <span class="msg" id="impMsg"></span>
     </section>
 
     <section class="panel" id="panelConocimiento">
@@ -1560,10 +1581,45 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   $(s).classList.add('solo-activo');
   if (boton) boton.classList.add('activo');
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
+  if (s === '#panelImportantes') impCargar();
   if (!$(s).querySelector('.volverSolo'))
     $(s).insertAdjacentHTML('afterbegin', '<button class="volverSolo" onclick="cerrarSolo()">← Volver al proyecto</button>');
   scrollTo(0, 0);
 }
+// «⭐ Cortes importantes»: mis_proyectos/NOMBRE/cortes_importantes.json (se ven enteros y a velocidad normal)
+let IMP = [];
+const impSeg = s => { const m = String(s).trim().match(/^(?:(\d+):)?(\d+(?:[.,]\d+)?)$/); return m ? (+(m[1] || 0)) * 60 + parseFloat(m[2].replace(',', '.')) : NaN; };
+const impMs = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function impPintar(r) {
+  IMP = r.lista;
+  $('#impLista').innerHTML = IMP.length ? IMP.map((x, i) => `<div class="fila" style="align-items:center; margin:3px 0">
+      <b>⭐ ${impMs(x.inicio)} – ${impMs(x.fin)}</b> <span style="flex:1">${esc(x.nota || '')}</span>
+      <button onclick="impVer(${x.inicio})">▶ Ver</button><button onclick="impQuitar(${i})">✕ Quitar</button></div>`).join('')
+    : '<p class="aviso">Todavía no marcaste ninguno. Pausa el video donde empieza el momento delicado, pulsa «⏱ Aquí» en «Desde», luego donde termina en «Hasta», y «⭐ Agregar».</p>';
+  const a = (r.afectados || []).map(b => `${b.id} (${impMs(b.desde)}–${impMs(b.hasta)}, ×${b.velocidad})`);
+  $('#impAfectados').innerHTML = !r.hay_guion ? 'Cuando la IA escriba el guion, va a respetar estos cortes.'
+    : (a.length ? `En el guion los muestran: ${a.join(' · ')}.` : '')
+      + (r.sin_mostrar || []).map(x => `<br><b style="color:var(--rojo)">⚠ ${impMs(x.inicio)}–${impMs(x.fin)} no lo muestra ningún bloque del guion</b>: vuelve a escribir el guion con IA para que lo incluya.`).join('');
+  if (r.msg !== undefined) { $('#impMsg').className = 'msg ok'; $('#impMsg').textContent = r.msg; }
+}
+async function impCargar() {
+  if (!P) return;
+  const v = $('#impVideo'), src = `/archivo?p=${q(P)}&f=original.mp4`;
+  if (!v.src.includes(src)) v.src = src;
+  try { impPintar(await api(`/api/importantes?p=${q(P)}`)); } catch (e) {}
+}
+async function impGuardar(lista) {
+  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); }
+  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; }
+}
+function impTomar(campo) { $(campo).value = impMs($('#impVideo').currentTime); }
+function impVer(t) { const v = $('#impVideo'); v.currentTime = t; v.play(); }
+function impAgregar() {
+  const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
+  if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
+  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+}
+function impQuitar(i) { if (confirm('¿Quitar este corte importante?')) impGuardar(IMP.filter((_, k) => k !== i)); }
 function cerrarSolo() {
   document.body.classList.remove('solo');
   document.querySelectorAll('.solo-activo').forEach(x => x.classList.remove('solo-activo'));

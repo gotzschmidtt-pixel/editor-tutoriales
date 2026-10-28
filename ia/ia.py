@@ -26,6 +26,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocimientos/CONOCIMIENTO.md)
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
+import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 import numpy as np  # noqa: E402
 import hashlib, inspect, threading, time  # noqa: E402
 
@@ -439,6 +441,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
+    if tarea == 'guion' and importantes.leer(d):
+        partes.append(importantes.texto_para_ia(importantes.leer(d)))
     sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
@@ -955,7 +959,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = VEL_CRITICO if mo.get('critico') else VEL_PASO if mo.get('paso') else VEL_MAX
+                tope = 1.0 if mo.get('importante') else VEL_CRITICO if mo.get('critico') else VEL_PASO if mo.get('paso') else VEL_MAX
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -995,6 +999,13 @@ def revisar(d, tarea, datos):
             unicos.append(b)
         bloques[:] = unicos
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
+        imp = importantes.leer(d)  # «⭐ Cortes importantes»: esos bloques van a ×1 y no se recortan
+        frenados = importantes.marcar(bloques, imp)
+        if frenados:
+            avisos.append(f"{', '.join(frenados)}: tocan un corte importante que marcaste; los dejé a velocidad normal")
+        for x in importantes.sin_mostrar(bloques, imp):
+            avisos.append(f"OJO: el corte importante {importantes.mmss(x['inicio'])}–{importantes.mmss(x['fin'])}"
+                          f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1023,11 +1034,12 @@ def revisar(d, tarea, datos):
                 mo['critico'] = True
             if paso:
                 mo['paso'] = True
-            tope = VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
+            tope = 1.0 if mo.get('importante') else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                if (critico or paso) and tramo / tope > voz + RELLENO and not mo.get('unido'):
+                if (critico or paso) and tramo / tope > voz + RELLENO and not mo.get('unido') and not mo.get('importante'):
+                    # (un corte importante que marcaste se muestra entero: no se recorta)
                     # (un tramo «unido» trae la imagen de un bloque que quitaste: se muestra entero, no se recorta)
                     # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
                     # parte donde se hace
@@ -1038,7 +1050,7 @@ def revisar(d, tarea, datos):
                                   f"solo {mmss(ini)}–{mmss(ini + nuevo)}, donde se hace")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico or paso:
+                if critico or paso or mo.get('importante'):
                     mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
                     v = round(min(tope, tramo / (voz + 0.5)), 2)

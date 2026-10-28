@@ -28,6 +28,32 @@ sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  codifica con la tarjeta NVIDIA si la hay, si no con el procesador
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402  «🧠 Conocimiento»: lo aprendido de todos tus videos, en mis_conocimientos/
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
+import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
+
+
+def estado_importantes(d, aplicar=False):
+    """Los cortes importantes del proyecto y cómo quedan en el guion. Con aplicar, deja a ×1 los bloques que los tocan."""
+    lista, g = importantes.leer(d), None
+    f = os.path.join(d, 'guion.json')
+    try:
+        g = json.load(open(f, encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
+    bloques = (g.get('bloques') if isinstance(g, dict) else g) or []
+    msg = ''
+    if aplicar and bloques:
+        frenados = importantes.marcar(bloques, lista)
+        if frenados:
+            shutil.copyfile(f, f + '.antes_importantes')
+            importantes.retiempos(bloques)
+            json.dump(g, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            msg = f"Dejé a velocidad normal {', '.join(frenados)}. Vuelve a pulsar «▶ Hacer todo» para rearmar el video."
+    afectados = [{'id': b.get('id'), 'ancla': b.get('ancla', ''), 'desde': b['montaje'].get('src_inicio'),
+                  'hasta': b['montaje'].get('src_fin'), 'velocidad': b['montaje'].get('velocidad') or 1}
+                 for b in bloques if isinstance(b.get('montaje'), dict) and importantes.toca(b['montaje'], lista)]
+    return {'lista': lista, 'afectados': afectados, 'sin_mostrar': importantes.sin_mostrar(bloques, lista) if bloques else [],
+            'hay_guion': bool(bloques), 'msg': msg}
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
 MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
@@ -1283,6 +1309,8 @@ class Manejador(BaseHTTPRequestHandler):
                 f = os.path.join(carpeta(q['p']), 'guion.json')
                 v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
                 return self.responder({'v': v})
+            if ruta == '/api/importantes':  # «⭐ Cortes importantes» del proyecto y los bloques del guion que los tocan
+                return self.responder(estado_importantes(carpeta(q['p'])))
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
@@ -1818,6 +1846,19 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/pegar':
                 open(os.path.join(carpeta(q['p']), 'ia_respuesta_pegada.txt'), 'wb').write(self.rfile.read(largo))
                 return self.responder({'ok': True})
+            if ruta == '/api/importantes':  # guarda los cortes importantes y deja a ×1 los bloques del guion que los tocan
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                lista = []
+                for x in datos.get('lista') or []:
+                    try:
+                        a, b = float(x['inicio']), float(x['fin'])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if b > a:
+                        lista.append({'inicio': round(a, 2), 'fin': round(b, 2), 'nota': str(x.get('nota') or '')[:200]})
+                importantes.guardar(d, sorted(lista, key=lambda x: x['inicio']))
+                return self.responder(estado_importantes(d, aplicar=True))
             if ruta.startswith('/api/conocimiento/'):
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 que = ruta.rsplit('/', 1)[1]

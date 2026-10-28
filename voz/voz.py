@@ -114,7 +114,8 @@ def ajustar_guion(guion, carpeta):
             if resto > 0.5 and mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
                 quiere = max(0.5, tramo / (mo.get('velocidad') or 1) - resto)
-                mo['velocidad'] = round(min(1.5 if mo.get('critico') else VEL_MAX, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
+                tope = 1.0 if mo.get('importante') else 1.5 if mo.get('critico') else VEL_MAX  # «⭐ corte importante»: nunca se acelera
+                mo['velocidad'] = round(min(tope, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
             if largo_bloque(mo) < antes_b - 0.3:
                 avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
         largo = largo_bloque(mo)

@@ -30,6 +30,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
+import importantes  # noqa: E402  «⭐ Cortes importantes»: lo que no se corta ni se acelera
 
 SIN_VOZ_MIN = 1.5   # un silencio más corto es respirar: no se toca
 MARGEN = 0.3        # lo que queda a cada lado de un corte
@@ -275,6 +277,7 @@ def main():
         plan = leer_json(plan_f, None)
         if not plan:
             raise SystemExit('ERROR: todavía no hay tramos: pulsa «Buscar qué acortar» primero.')
+        plan['tramos'] = importantes.recortar(plan['tramos'], importantes.leer(d))  # por si marcaste uno después
     else:
         objetivo = a.objetivo * 60 if a.objetivo > 0 else 0
         if objetivo and objetivo >= dur:
@@ -289,7 +292,7 @@ def main():
                 tramos += no_importantes(d, aj, pal, dur, objetivo)
             except (SystemExit, Exception) as e:  # sin IA igual queda lo que encontró tu PC
                 print(f'· la IA no pudo ({e}); sigo con lo que encontré yo', flush=True)
-        tramos = sin_choques(tramos)
+        tramos = importantes.recortar(sin_choques(tramos), importantes.leer(d))  # tus «⭐ cortes importantes» no se tocan
         elegir(tramos, dur, objetivo)
         for k, c in enumerate(tramos, 1):
             c['id'] = f'A{k:02d}'

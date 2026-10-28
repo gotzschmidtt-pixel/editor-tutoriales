@@ -167,6 +167,10 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
       (por qué se hace, qué pasa si sale mal); no dejes minutos de imagen sin voz.
 - [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, elegir la opción exacta) con `"tipo": "critico"` y
       velocidad 1 (máx. 1.5).
+- [ ] **⭐ Cortes importantes del autor** (`mis_proyectos/NOMBRE/cortes_importantes.json`, los marca en la app: Recovery,
+      DFU, botones…): cada uno se muestra ENTERO, a velocidad 1, en bloques `"tipo": "critico"`; nunca se acelera, recorta
+      ni salta. La app los fuerza a ×1 igual, y avisa si un bloque no los muestra. (Pedido del autor, 28/10/2026: en
+      IOS27_FRP se aceleraron la entrada a Recovery y a DFU, lo más delicado del video.)
 - [ ] **Humor:** el número del nivel, repartido a lo largo del video (no todo al inicio), nunca en pasos críticos.
 - [ ] **Sin `"quieto": true`** (la pausa es repetición en movimiento) salvo que el autor lo pida.
 - [ ] **Números y años escritos como se dicen** («dos mil veintiséis»), sin palabras sueltas como «ok» que la voz leería.
