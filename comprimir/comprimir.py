@@ -78,15 +78,21 @@ def _correr(entrada, salida, perfil, alto, rapido):
         raise RuntimeError(' '.join(errores)[-400:] or f'ffmpeg terminó con error {proc.returncode}')
 
 
-def iniciar(entrada, perfil='youtube', alto=0, rapido=False):
-    """Empieza a comprimir en segundo plano. Devuelve la ruta de salida."""
+def iniciar(entrada, perfil='youtube', alto=0, rapido=False, salida=''):
+    """Empieza a comprimir en segundo plano. `salida` vacía = NOMBRE_comprimido.mp4 al lado. Devuelve la ruta de salida."""
     entrada = os.path.abspath(entrada)
     if not os.path.isfile(entrada):
         raise ValueError('No encuentro ese video.')
+    salida = os.path.abspath(salida) if salida else salida_de(entrada)
+    if not salida.lower().endswith('.mp4'):
+        salida += '.mp4'
+    if os.path.normcase(salida) == os.path.normcase(entrada):
+        raise ValueError('El comprimido no puede llamarse igual que el original: elige otro nombre.')
+    if not os.path.isdir(os.path.dirname(salida)):
+        raise ValueError('Esa carpeta de destino no existe.')
     with _CANDADO:
         if ESTADO.get('activo'):
             raise ValueError('Ya estoy comprimiendo otro video: espera a que termine.')
-        salida = salida_de(entrada)
         ESTADO.clear()
         ESTADO.update(activo=True, pct=0.0, entrada=entrada, salida=salida, perfil=PERFILES.get(perfil, PERFILES['youtube'])['nombre'],
                       tam_antes=os.path.getsize(entrada), tam_despues=None, error=None, falta_s=None, inicio=time.time())

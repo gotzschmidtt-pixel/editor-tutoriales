@@ -811,16 +811,20 @@ def volver_a_guardado(d, nombre):
     return respaldo
 
 
-def elegir_video_en_la_pc():
-    """La ventana de Windows para elegir un video cualquiera de la PC (para «🗜 Comprimir video»). '' si cancelas."""
+def elegir_video_en_la_pc(guardar=''):
+    """La ventana de Windows para elegir un video de la PC (para «🗜 Comprimir video»), o con `guardar` (ruta o nombre
+    sugerido) el «Guardar como…» del resultado. '' si cancelas."""
     salida = tempfile.mktemp(suffix='.txt')
-    codigo = ('import sys, tkinter as tk\nfrom tkinter import filedialog as fd\n'
+    codigo = ('import os, sys, tkinter as tk\nfrom tkinter import filedialog as fd\n'
               'r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)\n'
-              'f = fd.askopenfilename(parent=r, title="Elegir el video a comprimir", '
+              'g = sys.argv[2]\n'
+              'f = fd.asksaveasfilename(parent=r, title="Guardar el video comprimido como", initialdir=os.path.dirname(g) or None, '
+              'initialfile=os.path.basename(g), defaultextension=".mp4", filetypes=[("Video MP4", "*.mp4")]) if g else '
+              'fd.askopenfilename(parent=r, title="Elegir el video a comprimir", '
               'filetypes=[("Videos", "*.mp4 *.mov *.mkv *.avi *.webm *.m4v"), ("Todos", "*.*")])\n'
               'open(sys.argv[1], "w", encoding="utf-8").write(f or "")\n')
     try:
-        subprocess.run([sys.executable, '-c', codigo, salida], timeout=3600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        subprocess.run([sys.executable, '-c', codigo, salida, guardar], timeout=3600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         return os.path.normpath(open(salida, encoding='utf-8').read().strip()) if os.path.getsize(salida) else ''
     except (OSError, subprocess.SubprocessError):
         raise ValueError('No se pudo abrir la ventana para elegir el video (falta tkinter en este Python).')
@@ -2079,13 +2083,20 @@ class Manejador(BaseHTTPRequestHandler):
                     return self.responder({'ruta': elegir_video_en_la_pc()})
                 except ValueError as e:
                     return self.error(str(e))
+            if ruta == '/api/elegir_destino':  # «Guardar como…» de Windows para el video comprimido
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                try:
+                    return self.responder({'ruta': elegir_video_en_la_pc(guardar=str(datos.get('sugerido') or 'video_comprimido.mp4'))})
+                except ValueError as e:
+                    return self.error(str(e))
             if ruta == '/api/comprimir':  # empieza a comprimir (en segundo plano; el avance en /api/comprimir_estado)
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 f = str(datos.get('entrada') or '').strip().strip('"')
                 if datos.get('p') and not os.path.isabs(f):  # un archivo del proyecto (FINAL.mp4…)
                     f = os.path.join(carpeta(datos['p']), os.path.basename(f))
                 try:
-                    salida = comprimir.iniciar(f, str(datos.get('perfil') or 'youtube'), int(datos.get('alto') or 0), bool(datos.get('rapido')))
+                    salida = comprimir.iniciar(f, str(datos.get('perfil') or 'youtube'), int(datos.get('alto') or 0), bool(datos.get('rapido')),
+                                               str(datos.get('salida') or '').strip().strip('"'))
                 except ValueError as e:
                     return self.error(str(e))
                 return self.responder({'ok': True, 'salida': salida})

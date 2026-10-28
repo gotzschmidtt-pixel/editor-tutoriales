@@ -460,12 +460,16 @@
       <h2>🗜 Comprimir video</h2>
       <p class="aviso">El mismo video, con la calidad que se ve igual, en mucho menos espacio, como lo deja YouTube. Sirve para
       cualquier video de tu PC (Filmora, la app, el celular…). Deja <b>NOMBRE_comprimido.mp4</b> al lado del original, que no
-      se toca. No gasta créditos: lo hace tu PC.</p>
+      se toca, o donde elijas con «💾 Guardar como…». No gasta créditos: lo hace tu PC.</p>
       <div class="fila" style="align-items:center">
         <input type="text" id="cmpEntrada" placeholder="Ruta del video (C:\…\video.mp4)" style="flex:1; min-width:16em">
         <button onclick="cmpElegir()">📂 Elegir video</button>
       </div>
       <div class="fila" id="cmpDelProyecto" style="align-items:center"></div>
+      <div class="fila" style="align-items:center">
+        <input type="text" id="cmpSalida" placeholder="Guardar en: vacío = NOMBRE_comprimido.mp4 al lado del original" style="flex:1; min-width:16em">
+        <button onclick="cmpDestino()">💾 Guardar como…</button>
+      </div>
       <div class="fila" style="align-items:center">
         <label>Calidad <select id="cmpPerfil">
           <option value="youtube">Como YouTube (H.264) · se ve igual, ≈ 3–5 veces más liviano · recomendado</option>
@@ -1906,6 +1910,12 @@ async function cmpCargar() {
   cmpVer();
 }
 function cmpUsar(f) { $('#cmpEntrada').value = f; CMP_P = P; }
+async function cmpDestino() {  // «Guardar como…» de Windows: dónde y con qué nombre queda el comprimido
+  const e = $('#cmpEntrada').value.trim();
+  const sugerido = e ? e.replace(/\.[^.\\/]+$/, '') + '_comprimido.mp4' : 'video_comprimido.mp4';
+  try { const r = await api('/api/elegir_destino', {method: 'POST', body: JSON.stringify({sugerido})}); if (r.ruta) $('#cmpSalida').value = r.ruta; }
+  catch (x) { alert(x.message); }
+}
 async function cmpElegir() {
   try { const r = await api('/api/elegir_video', {method: 'POST', body: '{}'}); if (r.ruta) { $('#cmpEntrada').value = r.ruta; CMP_P = ''; } }
   catch (e) { alert(e.message); }
@@ -1915,7 +1925,7 @@ async function cmpEmpezar() {
   if (!entrada) return alert('Elige el video con «📂 Elegir video», o un archivo del proyecto.');
   try {
     await api('/api/comprimir', {method: 'POST', body: JSON.stringify({entrada, p: CMP_P && !/[\\/:]/.test(entrada) ? CMP_P : '',
-      perfil: $('#cmpPerfil').value, alto: +$('#cmpAlto').value, rapido: $('#cmpRapido').checked})});
+      perfil: $('#cmpPerfil').value, alto: +$('#cmpAlto').value, rapido: $('#cmpRapido').checked, salida: $('#cmpSalida').value.trim()})});
   } catch (e) { return alert(e.message); }
   cmpVer();
 }
