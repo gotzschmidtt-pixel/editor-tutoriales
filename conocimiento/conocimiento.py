@@ -267,7 +267,8 @@ def anotar_marca(n, tipo, texto, archivo=''):
     titulo = TIPOS_MARCA.get(tipo, TIPOS_MARCA['texto'])
     fecha = time.strftime('%Y-%m-%d')
     if tipo in ('pregunta', 'idea'):
-        nuevo = [f'- {re.sub(r"\s+", " ", texto)} ({fecha})']
+        una_linea = re.sub(r'\s+', ' ', texto)
+        nuevo = [f'- {una_linea} ({fecha})']
     else:
         nuevo = ['', f'### {archivo or "Texto"} · {fecha}', texto]
     lineas = md.rstrip('\n').split('\n')
@@ -287,11 +288,12 @@ def marca_de_proyecto(d):
     """La marca de un proyecto, por su nombre o su idea.txt (MOTOROLA_FRP_2026 → MOTOROLA). '' si no se reconoce."""
     if not d:
         return ''
-    texto = (os.path.basename(os.path.abspath(d)) + ' ' + leer(os.path.join(d, 'idea.txt'))[:2000]).lower()
-    palabras = set(re.findall(r'[a-z0-9]+', texto.replace('_', ' ')))
-    for m in marcas():
-        if any(a in palabras for a in ALIAS.get(m, [m.lower()])):
-            return m
+    # primero el nombre del proyecto (IOS27_FRP → ios, 27); si no dice la marca, su idea.txt
+    for texto, dudosas in ((os.path.basename(os.path.abspath(d)), ()), (leer(os.path.join(d, 'idea.txt'))[:2000], ('poco',))):
+        palabras = set(re.findall(r'[a-z]+|[0-9]+', texto.lower())) - set(dudosas)  # «un poco» no es Xiaomi
+        for m in marcas():
+            if any(a in palabras for a in ALIAS.get(m, [m.lower()])):
+                return m
     return ''
 
 
