@@ -441,6 +441,13 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
+    acc = momentos_accion(d) if tarea == 'guion' else []
+    if acc:
+        partes.append("MOMENTOS DE ACCIÓN (sacados de la transcripción: el autor dice lo que hace mientras lo hace). Cada uno es un "
+                      "evento: un bloque empieza en ese segundo (o 1-2 s antes) y su voz NOMBRA esa acción con sus palabras (las teclas, "
+                      "el botón, el menú, pegar, conectar…). No la adelantes a un bloque anterior ni la dejes para el siguiente, y no "
+                      "la saltes. Tienes una captura de cada uno entre las adjuntas:\n" + '\n'.join(
+                          f"- [{mmss(a)}] ({', '.join(sorted(n))}) «{f[:160]}»" for a, _, f, n in acc))
     if tarea == 'guion' and importantes.leer(d):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
     sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
@@ -824,6 +831,82 @@ def desfases(d, bloques):
     return out
 
 
+# Acciones que el autor dice en voz alta mientras las hace. En MOTOROLA_FRP_2026 el guion (hecho en trozos fijos de
+# 12-15 s) dijo «los mantenemos apretados… aparece el menú» en 2:14, sobre «Comprobando información», cuando en la
+# grabación aprieta volumen más y power en 2:44 y el menú sale en 2:53: la voz iba un bloque adelantada y la frase
+# «volumen más y power» se perdió. La revisión por palabras no lo vio porque el texto no copiaba lo que dice.
+ACCIONES = {'volumen': r'\bvol(umen)?\b', 'power': r'\bpower\b|\bencendido\b', 'botón': r'\bboton(es)?\b',
+            'tecla': r'\bteclas?\b', 'soltar': r'\bsolt', 'menú': r'\bmenu\b', 'fastboot': r'fastboot',
+            'recovery': r'recovery', 'DFU': r'\bdfu\b', 'desconectar': r'\bdesconect',
+            'pegar': r'\bpeg(a|ar|amos|as|ue|uen)\b', 'omitir': r'\bomit', 'reiniciar': r'\breinici',
+            'WiFi': r'\bwi-?fi\b', 'crear cuenta': r'\bcrea(r)? (una |nuestra |tu )?(propia |nueva )?cuenta'}
+MODOS = {'fastboot', 'recovery', 'DFU'}  # «la pantalla de fastboot» se nombra todo el rato: no marca el momento de la acción
+
+
+def nombra_accion(rx, txt):
+    """Si el texto nombra la acción como algo que se hace, no como aviso: en «no uses power, que te reinicia el equipo»
+    o «si sueltas antes…» no se aprieta power ni se reinicia nada."""
+    return any(not re.search(r'\b(no|ni|nunca|sin|si)\b', re.split(r'[.:;!?]', txt[:m.start()])[-1])
+               for m in re.finditer(rx, txt))
+
+
+def momentos_accion(d):
+    """[(segundo, fin, frase, {acciones})]: dónde dice el autor que aprieta, pega, conecta, elige… (de su transcripción).
+    Las menciones a menos de 5 s se juntan en un solo momento."""
+    palabras = pistas.palabras_video(d)
+    hits = []
+    for k, w in enumerate(palabras):
+        par = normal(w['texto'] + ' ' + (palabras[k + 1]['texto'] if k + 1 < len(palabras) else ''))
+        for nombre, rx in ACCIONES.items():
+            if re.search(rx, normal(w['texto'])) or (nombre == 'crear cuenta' and re.search(rx, par)):
+                hits.append((w['inicio'], nombre))
+    grupos = []
+    for t, nombre in hits:
+        if grupos and t - grupos[-1][1] < 5:
+            grupos[-1][1] = t
+            grupos[-1][2].add(nombre)
+        else:
+            grupos.append([t, t, {nombre}])
+    return [(a, z, ' '.join(w['texto'] for w in palabras if a - 3 <= w['inicio'] <= z + 2), acc) for a, z, acc in grupos]
+
+
+def acciones_desfasadas(d, bloques):
+    """Avisos: un bloque cuya voz nombra una acción (volumen, power, menú, pegar, omitir…) que el autor dice y hace en
+    otro momento, lejos de su tramo (la voz va adelantada o atrasada), y momentos donde el autor dice una acción que
+    ningún bloque cercano nombra (el paso se perdió)."""
+    momentos = momentos_accion(d)
+    if not momentos:
+        return []
+    out = []
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+
+    def tramo(b):
+        mo = b['montaje']
+        return mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+    for b in con_tramo:
+        if b['montaje'].get('visto'):
+            continue
+        ini, fin = tramo(b)
+        txt = normal(str(b.get('texto', '')))
+        for nombre, rx in ACCIONES.items():
+            if nombre in MODOS or not nombra_accion(rx, txt):
+                continue
+            dichos = [a for a, z, _, acc in momentos if nombre in acc]
+            if not dichos or any(ini - 8 <= a <= fin + 8 for a in dichos):
+                continue
+            x = min(dichos, key=lambda a: abs(a - (ini + fin) / 2))
+            out.append(f"{b['id']}: su voz dice «{nombre}», pero en tu grabación eso lo dices y lo haces en {mmss(x)}, lejos de "
+                       f"su tramo {mmss(ini)}–{mmss(fin)} (la voz va {'adelantada' if x > fin else 'atrasada'}): corta el bloque "
+                       f"donde se hace esa acción")
+            break
+    for a, z, frase, acc in momentos:
+        cerca = [b for b in con_tramo if tramo(b)[0] - 8 <= a and z <= tramo(b)[1] + 8]
+        if cerca and not any(re.search(ACCIONES[n], normal(str(b.get('texto', '')))) for b in cerca for n in acc):
+            out.append(f"en {mmss(a)} dices «{frase[:110]}» ({', '.join(sorted(acc))}) y ningún bloque de ese momento lo "
+                       f"nombra: falta ese paso en la voz")
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
@@ -859,6 +942,7 @@ def verificar_orden(d, bloques):
                 avisos.append(f"{b['id']}: lo que narra no iba con su imagen ({mmss(ini)}–{mmss(fin)}); lo moví a "
                               f"{mmss(nuevo)}, donde dices eso en tu grabación")
     avisos += desfases(d, bloques)
+    avisos += acciones_desfasadas(d, bloques)
     if avisos:
         txt = '\n'.join(avisos) + '\n'
     elif palabras:
@@ -3056,6 +3140,14 @@ def main():
         except (OSError, ValueError, TypeError):
             n = 14
         caps = capturas(d, max(4, min(n, 60)))
+        if a.tarea == 'guion':  # una captura en cada momento de acción (volumen, power, pegar, conectar…), además de las repartidas
+            out_ac = os.path.join(d, 'ia_capturas')
+            for s, _, frase, nombres in momentos_accion(d)[:24]:
+                try:
+                    f = sacar_cuadro(os.path.join(d, 'original.mp4'), s + 1, os.path.join(out_ac, f'accion_{s:06.1f}s.jpg'), 768)
+                    caps.append((f'segundo {s + 1:.1f}, momento de acción ({", ".join(sorted(nombres))})', f))
+                except RuntimeError as e:
+                    print(f'· {e}', flush=True)
         an = None
         if a.tarea == 'trailer':
             an = pistas.analizar(d, duracion(os.path.join(d, 'original.mp4')))

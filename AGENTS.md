@@ -179,6 +179,11 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
 - [ ] **Humor:** el número del nivel, repartido a lo largo del video (no todo al inicio), nunca en pasos críticos.
 - [ ] **Sin `"quieto": true`** (la pausa es repetición en movimiento) salvo que el autor lo pida.
 - [ ] **Números y años escritos como se dicen** («dos mil veintiséis»), sin palabras sueltas como «ok» que la voz leería.
+- [ ] **Cada acción dicha en su bloque** (pedido del autor, 28/10/2026): cuando el autor dice lo que hace («volumen más y
+      power», «no los soltamos», «aparece el menú», «pegamos la DNS», «Omitir»), el bloque cuyo tramo contiene ese segundo
+      lo nombra en la voz. La app lista esos momentos en el encargo («MOMENTOS DE ACCIÓN», con una captura de cada uno) y la
+      revisión avisa si una acción quedó en otro bloque o se perdió. (En MOTOROLA_FRP_2026 el guion dijo «los mantenemos
+      apretados… aparece el menú» sobre 2:14, cuando eso pasa en 2:44–2:55, y se perdió «volumen más y power».)
 - [ ] **Nada inventado:** lo dudoso va en `preguntas`.
 
 ## A4b. Claude en la nube: entregar para que el autor revise en la app (pedido del autor, 28/10/2026)
