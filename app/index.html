@@ -393,10 +393,15 @@
       botones que aprietas, escribir una key…). Se muestran <b>enteros y a velocidad normal</b>: la IA, el ajuste de largo,
       la voz y «Acortar» nunca los aceleran, ni los recortan ni los saltan.</p>
       <video id="impVideo" controls preload="metadata" style="width:100%; max-height:45vh; background:#000; border-radius:10px"></video>
+      <div class="fila" style="align-items:center; justify-content:center; gap:10px">
+        <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('desde')" title="Toma el segundo donde está el video ahora (sin escribir nada)">⏺ Empieza aquí</button>
+        <button class="principal" style="font-size:16px; padding:10px 22px" onclick="impMarcar('hasta')" title="Toma el segundo donde está el video ahora y agrega el corte">⏹ Termina aquí</button>
+        <span class="aviso" id="impEstado">Dale play o mueve la barra, y pulsa «Empieza aquí» y luego «Termina aquí».</span>
+      </div>
       <div class="fila" style="align-items:center">
-        <label>Desde <input type="text" id="impDesde" placeholder="5:39" style="width:5.5em"></label>
+        <label>Desde <input type="text" id="impDesde" placeholder="m:ss" style="width:5.5em"></label>
         <button onclick="impTomar('#impDesde')" title="El segundo donde está pausado el video de arriba">⏱ Aquí</button>
-        <label>Hasta <input type="text" id="impHasta" placeholder="6:22" style="width:5.5em"></label>
+        <label>Hasta <input type="text" id="impHasta" placeholder="m:ss" style="width:5.5em"></label>
         <button onclick="impTomar('#impHasta')">⏱ Aquí</button>
         <input type="text" id="impNota" placeholder="Qué pasa (ej.: entrar a Recovery)" style="flex:1; min-width:10em"
           onkeydown="if (event.key === 'Enter') impAgregar()">
@@ -1634,6 +1639,20 @@ async function impCargar() {
 async function impGuardar(lista) {
   try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); }
   catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; }
+}
+function impMarcar(cual) {  // un clic: toma el segundo del reproductor; «Termina aquí» agrega el corte enseguida
+  const t = $('#impVideo').currentTime;
+  if (!$('#impVideo').duration) return alert('Espera a que cargue el video de arriba.');
+  if (cual === 'desde') {
+    $('#impDesde').value = impMs(t); $('#impHasta').value = '';
+    $('#impEstado').textContent = `Empieza en ${impMs(t)}. Sigue el video y pulsa «⏹ Termina aquí» donde acaba.`;
+    return;
+  }
+  if (!$('#impDesde').value) return alert('Primero pulsa «⏺ Empieza aquí» donde empieza el momento.');
+  $('#impHasta').value = impMs(Math.ceil(t));  // hacia arriba: que el final del momento no quede afuera
+  if (impSeg($('#impHasta').value) <= impSeg($('#impDesde').value)) return alert('«Termina aquí» tiene que ser después de «Empieza aquí».');
+  impAgregar();
+  $('#impEstado').textContent = `Agregado. Escribe en «Qué pasa» la nota del próximo (opcional) y marca otro si quieres.`;
 }
 function impTomar(campo) { $(campo).value = impMs($('#impVideo').currentTime); }
 function impVer(t) { const v = $('#impVideo'); v.currentTime = t; v.play(); }
