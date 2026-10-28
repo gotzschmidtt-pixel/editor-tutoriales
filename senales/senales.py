@@ -10,7 +10,9 @@ Uso:
 
 senales.json: [{"bloque": "L08", "frase": "450", "tipo": "circulo", "x": 1440, "y": 712, "r": 80,
                 "dur": 3, "retraso": 0, "seguir": true, "texto": "450 °C", "foco": false}]
-  t: segundo exacto del video (las señales de tus capturas); si está, no se busca la frase.
+  t: segundo exacto del video YA MONTADO (las señales de tus capturas); si está, no se busca la frase.
+  src_t: segundo de la GRABACIÓN ORIGINAL (las que propone la IA mirando original.mp4): se pasa al segundo del video
+         montado con los tramos del guion y se afina buscando el cuadro igual (x, y son del original).
   hueco: en flechas, a cuántos píxeles del centro queda la punta (para no tapar lo señalado).
   x, y: centro en píxeles del video (1920x1080) en el instante en que arranca la señal.
   tipo: circulo | flecha | caja (caja usa "w" y "h"; flecha usa "angulo", de dónde viene).
@@ -78,6 +80,40 @@ def seguir(video, t, x, y, n, radio):
     return [(round(float(p[0]), 1), round(float(p[1]), 1)) for p in a], fiables
 
 
+def segundo_montado(bloques, src):
+    """El segundo del video montado donde se ve el segundo `src` de la grabación (None si ningún tramo lo muestra)."""
+    for b in bloques:
+        mo = b.get('montaje') or {}
+        a, z = mo.get('src_inicio'), mo.get('src_fin')
+        if a is None or z is None or not str(mo.get('modo', 'lento')).startswith('lento') or not a - 0.05 <= src <= z + 0.05:
+            continue
+        return b['inicio_min'] + (src - a) / float(mo.get('velocidad') or 1)
+    return None
+
+
+def afinar(original, video, src, t, margen=1.5):
+    """Busca cerca de t el cuadro del video montado más parecido al de la grabación en src (por si el tramo se corrió)."""
+    def gris(cap, s):
+        cap.set(cv2.CAP_PROP_POS_MSEC, max(0, s) * 1000)
+        ok, f = cap.read()
+        if not ok:
+            return None
+        g = cv2.cvtColor(cv2.resize(f, (160, 90)), cv2.COLOR_BGR2GRAY).astype(np.float32)
+        return (g - g.mean()) / (g.std() + 1e-6)
+    co, cv_ = cv2.VideoCapture(original), cv2.VideoCapture(video)
+    ref = gris(co, src)
+    if ref is None:
+        return t, 0.0
+    mejor, parecido = t, -1.0
+    for k in range(int(-margen * 10), int(margen * 10) + 1):
+        g = gris(cv_, t + k / 10)
+        if g is not None:
+            p = float((g * ref).mean())
+            if p > parecido:
+                mejor, parecido = t + k / 10, p
+    return round(mejor, 2), parecido
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--guion', required=True)
@@ -90,12 +126,22 @@ def main():
     ap.add_argument('--capa', help='solo dibuja y deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
+    bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
+    inicio = {b['id']: b['inicio_min'] for b in bloques}
+    original = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'original.mp4')
     tmp = codificar.temporal('senales')
     trabajos, colocadas = [], []
     for k, s in enumerate(json.load(open(a.senales, encoding='utf-8')), 1):
         s.setdefault('frase', s.get('texto') or 'tu captura')
-        if s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
+        if s.get('src_t') is not None:  # segundo de la grabación: se pasa al del video montado y se busca el cuadro igual
+            t0 = segundo_montado(bloques, float(s['src_t']))
+            if t0 is None:
+                print(f"AVISO: el segundo {s['src_t']} de tu grabación no sale en el video (ese tramo se recortó); salto «{s['frase']}»"); continue
+            t, parecido = afinar(original, a.video, float(s['src_t']), t0) if os.path.exists(original) else (round(t0, 2), 1.0)
+            if parecido < 0.6:  # no se encontró la misma imagen: mejor no poner un círculo en el lugar equivocado
+                print(f"AVISO: no encontré en el video la imagen de «{s['frase']}» (parecido {parecido:.2f}); la salto"); continue
+            t = round(t + s.get('retraso', 0), 2)
+        elif s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
             t = round(float(s['t']) + s.get('retraso', 0), 2)
         elif s.get('en') is not None and s.get('bloque') in inicio:  # puesta a mano en el editor por pistas: desde que empieza su bloque
             t = round(inicio[s['bloque']] + a.desfase + float(s['en']) + s.get('retraso', 0), 2)
