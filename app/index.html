@@ -155,6 +155,7 @@
   <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
   <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
   <button onclick="abrirModulo('panelIdiomas')" title="Las etiquetas traducidas a otro idioma">🌐 Idiomas</button>
+  <button onclick="abrirModulo('panelSubtitulos')" title="Subtítulos dinámicos en inglés u otro idioma, con posición y tamaño">💬 Subtítulos</button>
   <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
   <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
   <button onclick="abrirModulo('panelEstilo')">📚 Alimentación</button>
@@ -418,6 +419,41 @@
       <b>Con el link de tu canal</b> lee todos tus videos (hasta 300, los más nuevos): de cada uno sus subtítulos y solo los primeros
       3 minutos de imagen. La IA conoce así todos tus títulos y, al escribir el guion, puede recomendar tus otros videos.
       La primera vez tarda; las siguientes solo lee los videos nuevos.</p>
+    </section>
+
+    <section class="panel" id="panelSubtitulos">
+      <h2>💬 Subtítulos</h2>
+      <p class="aviso">Subtítulos bonitos en el idioma que elijas (la voz sigue igual). <b>Dinámicos</b>: la palabra que se dice se
+      resalta, como en los Shorts. Eliges posición, tamaño y colores, miras la vista previa, y los grabas en una copia del video.
+      También bajas el <b>.srt</b> para subirlo a YouTube como subtítulo aparte (sin volver a codificar).</p>
+      <div class="fila" style="align-items:center">
+        <label>Idioma <select id="subLang" onchange="subGuardar({idioma: this.value})">
+          <option value="en">English</option><option value="es">Español (el guion)</option><option value="pt">Português</option>
+          <option value="fr">Français</option><option value="it">Italiano</option><option value="de">Deutsch</option></select></label>
+        <button onclick="subTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido de texto, no gasta ElevenLabs">🌐 Traducir con IA</button>
+        <label><input type="checkbox" id="subDin" onchange="subEstilo()"> ✨ Dinámicos (palabra por palabra)</label>
+        <label><input type="checkbox" id="subFondo" onchange="subEstilo()"> Caja de fondo</label>
+      </div>
+      <div class="fila" style="align-items:center">
+        <label>Posición <select id="subPos" onchange="subEstilo()"><option value="abajo">Abajo</option><option value="medio">Al medio</option><option value="arriba">Arriba</option></select></label>
+        <label>Separación del borde <input type="range" id="subAltura" min="2" max="30" step="1" oninput="subEstilo(true)"> <span id="subAlturaV"></span></label>
+        <label>Tamaño <input type="range" id="subTam" min="3" max="12" step="0.5" oninput="subEstilo(true)"> <span id="subTamV"></span></label>
+      </div>
+      <div class="fila" style="align-items:center">
+        <label>Texto <input type="color" id="subColor" onchange="subEstilo()"></label>
+        <label>Resalte <input type="color" id="subResalte" onchange="subEstilo()"></label>
+        <label>Palabras por línea <input type="number" id="subPal" min="3" max="12" style="width:4em" onchange="subEstilo()"></label>
+      </div>
+      <div class="fila" style="align-items:center">
+        <label>Video <select id="subFuente" onchange="subVista()"></select></label>
+        <label>Segundo <input type="range" id="subT" min="0" max="600" step="1" value="5" onchange="subVista()" style="width:16em"> <span id="subTV"></span></label>
+      </div>
+      <img id="subImg" style="width:100%; border-radius:10px; background:#000; min-height:120px" alt="Vista previa">
+      <div class="fila"><button class="principal" onclick="subGrabar()">🔥 Grabar subtítulos en el video</button>
+        <a id="subSrt" href="#"><button>⬇ Bajar .srt para YouTube</button></a><span class="msg" id="subMsg"></span></div>
+      <div id="subAvance"></div>
+      <details style="margin-top:8px"><summary class="aviso">Ver y corregir los textos</summary><div id="subFilas"></div>
+        <div class="fila"><button onclick="subGuardarTextos()">💾 Guardar textos</button></div></details>
     </section>
 
     <section class="panel" id="panelComprimir">
@@ -1749,6 +1785,7 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
   if (s === '#panelImportantes') impCargar();
   if (s === '#panelComprimir') cmpCargar();
+  if (s === '#panelSubtitulos') subCargar();
   if (s === '#panelMarcas' && P) marcaVideoCargar($('#marcaVideoSel').value);
   if (!$(s).querySelector('.volverSolo'))
     $(s).insertAdjacentHTML('afterbegin', '<button class="volverSolo" onclick="cerrarSolo()">← Volver al proyecto</button>');
@@ -1802,6 +1839,63 @@ function impAgregar() {
   impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
 }
 function impQuitar(i) { if (confirm('¿Quitar este corte importante?')) impGuardar(IMP.filter((_, k) => k !== i)); }
+// «💬 Subtítulos»: subtitulos.json del proyecto (idioma, estilo, textos) — subtitulos/subtitulos.py dibuja con libass
+let SUB = null, subReloj = null, subEspera = null;
+function subPintar(r, msg) {
+  SUB = r; const e = r.estilo;
+  $('#subLang').value = r.idioma; $('#subDin').checked = e.dinamico; $('#subFondo').checked = e.fondo; $('#subPos').value = e.pos;
+  $('#subAltura').value = e.altura; $('#subTam').value = e.tam; $('#subColor').value = e.color; $('#subResalte').value = e.resalte;
+  $('#subPal').value = e.palabras; $('#subAlturaV').textContent = e.altura + ' %'; $('#subTamV').textContent = e.tam + ' %';
+  const f = $('#subFuente').value;
+  $('#subFuente').innerHTML = r.fuentes.map(x => `<option ${x === f ? 'selected' : ''}>${x}</option>`).join('');
+  $('#subSrt').href = `/api/subs_srt?p=${q(P)}`;
+  $('#subFilas').innerHTML = r.filas.map(x => `<div class="fila" style="align-items:center; margin:3px 0"><b style="width:3em">${x.id}</b>
+      <span style="flex:1; min-width:12em" class="aviso">${esc(x.orig)}</span>
+      <textarea data-id="${x.id}" rows="2" style="flex:1; min-width:12em; min-height:0" ${r.idioma === 'es' ? 'disabled' : ''}>${esc(x.trad)}</textarea></div>`).join('');
+  const faltan = r.filas.filter(x => !x.trad).length;
+  $('#subMsg').className = 'msg ' + (faltan ? 'err' : 'ok');
+  $('#subMsg').textContent = msg || (!r.hay_guion ? 'Todavía no hay guion con voz.' : faltan ? `Faltan ${faltan} bloque(s) sin traducir: pulsa «🌐 Traducir con IA».` : '');
+  subVista();
+}
+async function subCargar() { if (P) try { subPintar(await api(`/api/subs?p=${q(P)}`)); subVer(); } catch (e) {} }
+async function subGuardar(datos, msg) {
+  try { subPintar(await api(`/api/subs?p=${q(P)}`, {method: 'POST', body: JSON.stringify(datos)}), msg); } catch (e) { alert(e.message); }
+}
+function subEstilo(soloNumeros) {
+  $('#subAlturaV').textContent = $('#subAltura').value + ' %'; $('#subTamV').textContent = $('#subTam').value + ' %';
+  clearTimeout(subEspera);  // los deslizadores guardan cuando dejas de moverlos
+  subEspera = setTimeout(() => subGuardar({estilo: {dinamico: $('#subDin').checked, fondo: $('#subFondo').checked, pos: $('#subPos').value,
+    altura: +$('#subAltura').value, tam: +$('#subTam').value, color: $('#subColor').value, resalte: $('#subResalte').value,
+    palabras: +$('#subPal').value || 6}}), soloNumeros ? 500 : 0);
+}
+function subGuardarTextos() {
+  subGuardar({textos: Object.fromEntries([...document.querySelectorAll('#subFilas textarea')].map(t => [t.dataset.id, t.value]))}, '✓ Textos guardados');
+}
+async function subTraducir() {
+  if (!confirm('La IA de «⚙ Ajustes IA» traduce los bloques que faltan (un pedido de texto; no gasta ElevenLabs). ¿Seguir?')) return;
+  $('#subMsg').className = 'msg'; $('#subMsg').textContent = '⏳ Traduciendo…';
+  try { subPintar(await api(`/api/subs_traducir?p=${q(P)}`, {method: 'POST', body: '{}'}), null); } catch (e) { $('#subMsg').className = 'msg err'; $('#subMsg').textContent = e.message; }
+}
+function subVista() {
+  const f = $('#subFuente').value; if (!f) return;
+  $('#subTV').textContent = `${Math.floor($('#subT').value / 60)}:${String($('#subT').value % 60).padStart(2, '0')}`;
+  $('#subImg').src = `/api/subs_vista?p=${q(P)}&f=${q(f)}&t=${$('#subT').value}&v=${Date.now()}`;
+}
+async function subGrabar() {
+  const f = $('#subFuente').value;
+  if (!f) return alert('Primero arma el video (no hay ningún video del proyecto todavía).');
+  if (!confirm(`Grabo los subtítulos sobre ${f} en una copia nueva (${f.replace('.mp4', '')}_subs_${SUB.idioma}.mp4). Tu PC tarda unos minutos; no gasta créditos. ¿Seguir?`)) return;
+  try { await api(`/api/subs_grabar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({fuente: f})}); } catch (e) { return alert(e.message); }
+  subVer();
+}
+async function subVer() {
+  clearTimeout(subReloj);
+  let e; try { e = await api('/api/subs_estado'); } catch (x) { return; }
+  if (!e.salida) return;
+  if (e.activo) { $('#subAvance').innerHTML = `<p>⏳ Grabando subtítulos… <b>${e.pct || 0} %</b></p>`; subReloj = setTimeout(subVer, 2000); }
+  else if (e.error) $('#subAvance').innerHTML = `<p class="msg err">✗ ${esc(e.error)}</p>`;
+  else $('#subAvance').innerHTML = `<p class="msg ok">✓ Listo: <b>${esc(e.salida.split(/[\\/]/).pop())}</b>${e.ver ? ` · <a href="${e.ver}" target="_blank">▶ Verlo</a>` : ''}</p>`;
+}
 // «🗜 Comprimir video»: cualquier video, misma calidad, mucho menos peso (comprimir/comprimir.py)
 let CMP_P = '', cmpReloj = null;
 const cmpMb = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.round(b / 1e6) + ' MB';
@@ -1892,7 +1986,7 @@ async function idUsar(lang) {
 }
 // Links directos a cada sección: http://localhost:8765/#cortes, #idiomas, #ajustes… (y ?p=PROYECTO para elegir el proyecto)
 const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
-  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir'};
+  conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir', subtitulos: '#panelSubtitulos'};
 let LINK_ACTUAL = '';
 function irLink() {
   const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();

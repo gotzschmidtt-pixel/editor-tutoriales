@@ -36,6 +36,20 @@ sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 sys.path.insert(0, os.path.join(RAIZ, 'comprimir'))
 import comprimir  # noqa: E402  «🗜 Comprimir video»: misma calidad, mucho menos peso
+sys.path.insert(0, os.path.join(RAIZ, 'subtitulos'))
+import subtitulos  # noqa: E402  «💬 Subtítulos» dinámicos en cualquier idioma
+
+
+def estado_subs(d):
+    datos = subtitulos.leer(d)
+    lang = datos['idioma']
+    try:
+        orig = {b['id']: b['texto'] for b in subtitulos.bloques(d)}
+    except (OSError, ValueError, KeyError):
+        orig = {}
+    tabla = datos['textos'].get(lang) or {}
+    return {'idioma': lang, 'estilo': datos['estilo'], 'fuentes': subtitulos.fuentes(d), 'hay_guion': bool(orig),
+            'filas': [{'id': k, 'orig': v, 'trad': v if lang == 'es' else tabla.get(k, '')} for k, v in orig.items()]}
 
 
 # Voz por idioma del video (idioma_video.json del proyecto): Mauricio en español, Brian en inglés (elegida por el autor
@@ -1421,6 +1435,33 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(estado_importantes(carpeta(q['p'])))
             if ruta == '/api/etiquetas_idiomas':  # «🌐 Etiquetas en otro idioma»
                 return self.responder(estado_idiomas(carpeta(q['p']), q.get('lang', '')))
+            if ruta == '/api/subs':  # «💬 Subtítulos»: idioma, estilo, textos y videos donde grabarlos
+                return self.responder(estado_subs(carpeta(q['p'])))
+            if ruta == '/api/subs_estado':
+                e = dict(subtitulos.ESTADO)
+                if e.get('salida') and os.path.exists(e['salida']):
+                    e['ver'] = '/ver?ruta=' + urllib.parse.quote(os.path.relpath(e['salida'], RAIZ).replace('\\', '/'))
+                return self.responder(e)
+            if ruta == '/api/subs_vista':  # un cuadro del video con los subtítulos encima, para ver cómo quedan
+                d = carpeta(q['p'])
+                f = os.path.join(d, os.path.basename(q.get('f') or ''))
+                if not os.path.isfile(f):
+                    return self.error('Ese video no está en el proyecto.')
+                try:
+                    return self.servir(subtitulos.vista_previa(d, f, float(q.get('t') or 0), os.path.join(d, '.subs_vista.jpg')))
+                except subprocess.CalledProcessError:
+                    return self.error('No pude dibujar la vista previa.')
+            if ruta == '/api/subs_srt':  # el .srt para subir a YouTube como subtítulo aparte
+                d = carpeta(q['p'])
+                lang = subtitulos.leer(d)['idioma']
+                cuerpo = subtitulos.srt(d, lang).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/x-subrip; charset=utf-8')
+                self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(d)}_{lang}.srt"')
+                self.send_header('Content-Length', str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+                return
             if ruta == '/api/comprimir_estado':  # «🗜 Comprimir video»: cómo va
                 e = {k: v for k, v in comprimir.ESTADO.items() if k != 'pid'}
                 for k in ('entrada', 'salida'):
@@ -1997,6 +2038,42 @@ class Manejador(BaseHTTPRequestHandler):
                             tabla.pop(str(k), None)
                 idiomas.guardar(d, act)
                 return self.responder(estado_idiomas(d, lang))
+            if ruta == '/api/subs':  # guarda idioma, estilo y los textos que corregiste
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                act = subtitulos.leer(d)
+                if datos.get('idioma'):
+                    act['idioma'] = re.sub(r'[^a-z\-]', '', str(datos['idioma']).lower())[:8] or 'en'
+                if isinstance(datos.get('estilo'), dict):
+                    act['estilo'] = {**act['estilo'], **{k: v for k, v in datos['estilo'].items() if k in subtitulos.ESTILO}}
+                if isinstance(datos.get('textos'), dict) and act['idioma'] != 'es':
+                    tabla = act['textos'].setdefault(act['idioma'], {})
+                    for k, v in datos['textos'].items():
+                        tabla[str(k)] = str(v or '').strip()[:600]
+                subtitulos.guardar(d, act)
+                return self.responder(estado_subs(d))
+            if ruta == '/api/subs_traducir':  # la IA de Ajustes traduce los bloques que faltan (un pedido de texto)
+                d = carpeta(q['p'])
+                lang = subtitulos.leer(d)['idioma']
+                if lang == 'es':
+                    return self.error('En español se usa el guion tal cual: elige otro idioma para traducir.')
+                r = subprocess.run([PY, m('subtitulos', 'subtitulos.py'), 'traducir', '--proyecto', d, '--idioma', lang, '--ajustes', AJUSTES],
+                                   capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=900,
+                                   env=dict(os.environ, PYTHONUTF8='1'), **SIN_VENTANA)
+                ultima = (r.stdout.strip().splitlines() or [''])[-1]
+                if r.returncode != 0 or not ultima.startswith('{'):
+                    return self.error('No pude traducir: ' + ' '.join((r.stderr or r.stdout).split())[-400:])
+                return self.responder({**estado_subs(d), 'msg': f"Traduje {json.loads(ultima)['traducidos']} bloque(s)."})
+            if ruta == '/api/subs_grabar':  # graba los subtítulos en una copia del video (en segundo plano)
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                d = carpeta(q['p'])
+                f = os.path.join(d, os.path.basename(str(datos.get('fuente') or '')))
+                if not os.path.isfile(f):
+                    return self.error('Ese video no está en el proyecto.')
+                try:
+                    return self.responder({'ok': True, 'salida': subtitulos.grabar(d, f)})
+                except ValueError as e:
+                    return self.error(str(e))
             if ruta == '/api/elegir_video':  # la ventana de Windows para elegir cualquier video de la PC
                 try:
                     return self.responder({'ruta': elegir_video_en_la_pc()})
