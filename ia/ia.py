@@ -891,10 +891,10 @@ def acciones_desfasadas(d, bloques):
         for nombre, rx in ACCIONES.items():
             if nombre in MODOS or not nombra_accion(rx, txt):
                 continue
-            dichos = [a for a, z, _, acc in momentos if nombre in acc]
-            if not dichos or any(ini - 8 <= a <= fin + 8 for a in dichos):
+            dichos = [(a, z) for a, z, _, acc in momentos if nombre in acc]
+            if not dichos or any(a <= fin + 8 and z >= ini - 8 for a, z in dichos):  # el momento entero, no solo su inicio
                 continue
-            x = min(dichos, key=lambda a: abs(a - (ini + fin) / 2))
+            x = min((a for a, _ in dichos), key=lambda a: abs(a - (ini + fin) / 2))
             out.append(f"{b['id']}: su voz dice «{nombre}», pero en tu grabación eso lo dices y lo haces en {mmss(x)}, lejos de "
                        f"su tramo {mmss(ini)}–{mmss(fin)} (la voz va {'adelantada' if x > fin else 'atrasada'}): corta el bloque "
                        f"donde se hace esa acción")
