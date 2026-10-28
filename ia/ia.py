@@ -1118,7 +1118,8 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = 1.0 if mo.get('importante') else VEL_CRITICO if mo.get('critico') else VEL_PASO if mo.get('paso') else VEL_MAX
+                tope = (1.0 if mo.get('importante') or mo.get('cara') else VEL_CRITICO if mo.get('critico')
+                        else VEL_PASO if mo.get('paso') else VEL_MAX)
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -1134,6 +1135,58 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
         b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1)
         t += largo
     return t
+
+
+def caras_en_video(d, segundos):
+    """{segundo: hay cara} con el detector del montaje (YuNet). Se guarda en .caras.json (por video), así no se vuelve a mirar."""
+    orig = os.path.join(d, 'original.mp4')
+    f = os.path.join(d, '.caras.json')
+    firma = f'{os.path.getsize(orig)}:{int(os.path.getmtime(orig))}'
+    try:
+        guardado_ = json.load(open(f, encoding='utf-8'))
+        hechos = guardado_['caras'] if guardado_.get('firma') == firma else {}
+    except (OSError, ValueError, KeyError):
+        hechos = {}
+    faltan = [s for s in segundos if f'{s:.1f}' not in hechos]
+    if faltan:
+        sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+        import cv2
+        import montaje
+        if not montaje.detector_caras():
+            return {}
+        cap = cv2.VideoCapture(orig)
+        for s in sorted(faltan):
+            hechos[f'{s:.1f}'] = bool(montaje.cara_en(cap, s))
+        cap.release()
+        json.dump({'firma': firma, 'caras': hechos}, open(f, 'w', encoding='utf-8'))
+    return {s: hechos.get(f'{s:.1f}', False) for s in segundos}
+
+
+def marcar_caras(d, bloques):
+    """Pedido del autor (28/10/2026): con su cara en pantalla el tramo NUNCA se acelera (se ve raro). Marca "cara" en el
+    montaje de esos bloques; la revisión y la voz los dejan a ×1 y, si sobra imagen, recortan en vez de acelerar."""
+    lentos = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo', 'lento').startswith('lento')]
+    muestras = {}
+    for b in lentos:
+        mo = b['montaje']
+        a, z = float(mo['src_inicio']), float(mo.get('src_fin') or mo['src_inicio'] + 3)
+        n = max(3, min(12, int((z - a) / 1.5)))
+        muestras[b['id'] if 'id' in b else id(b)] = [round(a + (z - a) * (k + 0.5) / n, 1) for k in range(n)]
+    try:
+        hay = caras_en_video(d, sorted({s for l in muestras.values() for s in l}))
+    except Exception as e:  # sin detector (no se pudo bajar el modelo): se avisa y sigue como antes
+        return [f'no pude revisar dónde sale tu cara ({type(e).__name__}: {e}); revisa que no haya tramos con tu cara acelerados']
+    out = []
+    for b in lentos:
+        l = muestras[b['id'] if 'id' in b else id(b)]
+        con = sum(1 for s in l if hay.get(s))
+        if con >= max(2, len(l) * 0.3):
+            if not b['montaje'].get('cara'):
+                out.append(f"{b.get('id')}: se ve tu cara: va a velocidad normal (si sobra imagen, se recorta en vez de acelerar)")
+            b['montaje']['cara'] = True
+        else:
+            b['montaje'].pop('cara', None)
+    return out
 
 
 def revisar(d, tarea, datos):
@@ -1167,6 +1220,7 @@ def revisar(d, tarea, datos):
         for x in importantes.sin_mostrar(bloques, imp):
             avisos.append(f"OJO: el corte importante {importantes.mmss(x['inicio'])}–{importantes.mmss(x['fin'])}"
                           f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
+        avisos += marcar_caras(d, bloques)  # con tu cara en pantalla nunca se acelera
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1177,7 +1231,7 @@ def revisar(d, tarea, datos):
             if not b['texto'].strip() and mo['modo'].startswith('lento'):
                 # tramo sin voz: quitaste lo que decía y lo dejaste acelerado; va tal cual, a la velocidad que elegiste
                 mo['sin_voz'] = True
-                mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
+                mo['velocidad'] = 1.0 if mo.get('cara') else min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
                 largo = largo_bloque(mo)
                 b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = 0
                 t += largo
@@ -1195,11 +1249,13 @@ def revisar(d, tarea, datos):
                 mo['critico'] = True
             if paso:
                 mo['paso'] = True
-            tope = 1.0 if mo.get('importante') else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
+            cara = bool(mo.get('cara'))
+            tope = 1.0 if mo.get('importante') or cara else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                if (critico or paso) and tramo / tope > voz + RELLENO and not mo.get('unido') and not mo.get('importante'):
+                if (critico or paso or cara) and tramo / tope > voz + RELLENO and not mo.get('unido') and not mo.get('importante'):
+                    # (con tu cara: se recorta el tramo, nunca se acelera)
                     # (un corte importante que marcaste se muestra entero: no se recorta)
                     # (un tramo «unido» trae la imagen de un bloque que quitaste: se muestra entero, no se recorta)
                     # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
@@ -1207,11 +1263,12 @@ def revisar(d, tarea, datos):
                     nuevo = round((voz + RELLENO) * tope, 1)
                     centro = momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin'])
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)
-                    avisos.append(f"{b['id']}: paso {'clave' if critico else 'de configuración'}: en vez de acelerarlo dejé "
-                                  f"solo {mmss(ini)}–{mmss(ini + nuevo)}, donde se hace")
+                    avisos.append(f"{b['id']}: {'paso clave' if critico else 'paso de configuración' if paso else 'sale tu cara'}: "
+                                  f"en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}"
+                                  f"{', donde se hace' if critico or paso else ''}")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico or paso or mo.get('importante'):
+                if critico or paso or cara or mo.get('importante'):
                     mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
                     v = round(min(tope, tramo / (voz + 0.5)), 2)
