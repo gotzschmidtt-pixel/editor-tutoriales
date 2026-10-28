@@ -194,6 +194,43 @@ def texto_completo():
     return '\n\n'.join(p for p in partes if p) + '\n'
 
 
+# Guiones aprobados: cuando armas el video («▶ Guardar y seguir con todo»), el guion como quedó (con tus cambios) se guarda
+# en mis_conocimientos/guiones/NOMBRE.md, y la IA lee los más nuevos como ejemplo de cómo te gusta que suene.
+GUIONES = os.path.join(CARPETA, 'guiones')
+
+
+def aprender_guion(d):
+    """Guarda el texto del guion del proyecto d como ejemplo aprobado. Devuelve cuántos bloques, o 0 si no hay guion."""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return 0
+    bloques = [b for b in (g.get('bloques') or []) if isinstance(b, dict) and str(b.get('texto') or '').strip()]
+    if not bloques:
+        return 0
+    nombre = os.path.basename(os.path.abspath(d))
+    lineas = [f'# {nombre} · {time.strftime("%Y-%m-%d")}', '']
+    for b in bloques:
+        lineas.append(f"- {b.get('id')}{' (humor)' if b.get('humor') else ''}{' [paso crítico]' if b.get('tipo') == 'critico' else ''}: "
+                      + re.sub(r'\s+', ' ', b['texto']).strip())
+    os.makedirs(GUIONES, exist_ok=True)
+    escribir(os.path.join(GUIONES, re.sub(r'[^\w\-]', '_', nombre) + '.md'), '\n'.join(lineas) + '\n')
+    return len(bloques)
+
+
+def guiones_para_ia(limite=5000):
+    """Los guiones aprobados más nuevos, para que la IA imite el tono, la variedad y el humor (sin copiar datos)."""
+    if not os.path.isdir(GUIONES):
+        return ''
+    fs = sorted((os.path.join(GUIONES, f) for f in os.listdir(GUIONES) if f.endswith('.md')), key=os.path.getmtime, reverse=True)
+    t = ''
+    for f in fs[:2]:
+        t += leer(f) + '\n'
+        if len(t) >= limite:
+            break
+    return t[:limite].rsplit('\n', 1)[0] if len(t) > limite else t.strip()
+
+
 def texto_para_ia(limite=12000, d=None):
     """Lo que va dentro del pedido a la IA: primero la marca del proyecto d (si tiene algo), después lo general.
     Vacío si lo apagaste o si todavía no hay nada aprendido."""

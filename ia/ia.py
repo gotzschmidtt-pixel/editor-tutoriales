@@ -106,6 +106,8 @@ def configurar_humor(nivel):
 
 ESTILO_BASE = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
 - Entretenido y sencillo de entender, en español latino, tuteando.
+- Que no suene repetitivo: cada bloque arranca distinto (no tres veces «Ahora…», «Y listo…» o «Y como puedes ver…») y
+  sin muletillas («efectivamente», «simplemente»). Si el autor repite algo a propósito (un aviso clave), dilo con otras palabras.
 {HUMOR}
 - Nombres de botones, menús y archivos escritos tal cual aparecen en pantalla.
 - NO inventes datos: precios, pines, temperaturas, webs o nombres de archivo solo si están en la transcripción, en las capturas o en la idea del autor. Si falta un dato, escribe la frase sin él."""
@@ -454,6 +456,10 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
                       "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
+    aprobados = conocimiento.guiones_para_ia() if tarea == 'guion' and conocimiento.usar() else ''
+    if aprobados:
+        partes.append("GUIONES QUE EL AUTOR YA APROBÓ (con sus cambios). Imita su tono, cómo varía los comienzos de frase, cómo "
+                      "explica cada paso y dónde pone el humor. NO copies sus datos (modelos, precios, programas) a este video:\n" + aprobados)
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
                       f"aperturas, llamados y cierre, sin copiar datos de otros videos. El HUMOR de las reglas de estilo de más abajo "
@@ -718,6 +724,32 @@ def pasos_numerados(bloques):
     return out
 
 
+# Muletillas que hacían sonar repetitivo el guion de MOTOROLA_FRP_2026 (pedido del autor, 28/10/2026): «Y como puedes
+# ver» ×4, «Y listo» ×4, siete bloques empezando con «Ahora», «efectivamente», «Mira»…
+MULETILLAS = [r'como (puedes|pueden) (ver|observar|detallar)', r'\by listo\b', r'\befectivamente\b', r'\bsimplemente\b',
+              r'\bsin ningun (problema|temor)\b', r'\bmientras(,| tanto)\b']
+
+
+def repeticiones(bloques):
+    """Avisos de muletillas: la misma frase hecha en 3 o más bloques, o 3 o más bloques que empiezan igual."""
+    out, textos = [], [(b.get('id'), normal(str(b.get('texto', '')))) for b in bloques]
+    for rx in MULETILLAS:
+        ids = [i for i, t in textos if re.search(rx, t)]
+        if len(ids) >= 3:
+            m = next(re.search(rx, t).group(0) for i, t in textos if re.search(rx, t))
+            out.append(f"repetido: «{m}» sale en {len(ids)} bloques ({', '.join(ids)}); cámbialo en algunos para que no suene repetitivo")
+    inicios = {}
+    for i, t in textos:
+        p = re.findall(r'[a-zñ]+', t)[:2]
+        if p:
+            clave = p[0] if p[0] in ('ahora', 'mira', 'bueno', 'entonces', 'luego', 'despues') else ' '.join(p)
+            inicios.setdefault(clave, []).append(i)
+    for clave, ids in inicios.items():
+        if len(ids) >= 3:
+            out.append(f"repetido: {len(ids)} bloques empiezan con «{clave}…» ({', '.join(ids)}); varía cómo arranca cada uno")
+    return out
+
+
 def problemas(bloques, total, con_saltos=True):
     """Lo que el guion revisado todavía hace mal y la app no puede arreglar sola sin cambiar textos: saltos atrás, escenas
     repetidas, demasiado video sin voz y humor mal repartido. Sirve para avisarte y para pedirle a la IA que lo corrija."""
@@ -729,7 +761,7 @@ def problemas(bloques, total, con_saltos=True):
         sin_voz = 1 - palabras / PALABRAS_POR_S / total
         out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
                    f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
-    return out + pasos_numerados(bloques) + huecos_humor(bloques)
+    return out + pasos_numerados(bloques) + huecos_humor(bloques) + repeticiones(bloques)
 
 
 def momento_dicho(d, texto, ini, fin):

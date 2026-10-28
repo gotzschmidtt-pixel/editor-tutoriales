@@ -1257,6 +1257,11 @@ def correr(proyecto, pasos, opciones):
             informes.append(informe_paso(d, proyecto, paso, info, ejec, 'ok', log))  # solo si hubo llamadas fallidas o rechazadas
             shutil.rmtree(env['CACHE_IA'], ignore_errors=True)  # el paso terminó: sus respuestas guardadas ya no hacen falta
             hechos.append(info['nombre'])
+            if paso == 'voz':  # armaste la voz: el guion quedó aprobado y sirve de ejemplo para los próximos
+                try:
+                    conocimiento.aprender_guion(d)
+                except Exception as e:
+                    log.write(f'· no pude guardar el guion como ejemplo ({type(e).__name__}: {e})\n')
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
         import traceback
