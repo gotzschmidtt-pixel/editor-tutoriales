@@ -38,6 +38,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'comprimir'))
 import comprimir  # noqa: E402  «🗜 Comprimir video»: misma calidad, mucho menos peso
 sys.path.insert(0, os.path.join(RAIZ, 'subtitulos'))
 import subtitulos  # noqa: E402  «💬 Subtítulos» dinámicos en cualquier idioma
+sys.path.insert(0, os.path.join(RAIZ, 'celular'))
+import celular  # noqa: E402  «📱 Usar desde el celular»: apagado por defecto, con PIN, Wi‑Fi de casa o Tailscale
 
 
 def estado_subs(d):
@@ -1439,14 +1441,60 @@ class Manejador(BaseHTTPRequestHandler):
     def error(self, msg, codigo=400):
         self.responder({'error': msg}, codigo=codigo)
 
+    def puerta(self):
+        """«📱 Celular»: desde tu PC todo sigue igual. Desde otra dirección solo se entra con el acceso activado, desde el
+        Wi‑Fi de casa o Tailscale y con el PIN. Devuelve True si ya contestó (y el pedido no sigue)."""
+        ip = self.client_address[0]
+        if celular.es_local(ip):
+            return False
+        aj = leer_ajustes()
+        if not (celular.activo(aj) and celular.red_permitida(ip) and celular.host_valido(self.headers.get('Host'))):
+            self.error('acceso desde otro aparato apagado', 403)
+            return True
+        ruta, q = self.q()
+        if ruta in celular.SOLO_PC:
+            self.error('esto se cambia solo en la app del PC', 403)
+            return True
+        if ruta in celular.LIBRES or celular.autorizado(aj, self.headers.get('Cookie')):
+            return False
+        if self.command == 'GET' and not ruta.startswith('/api/'):
+            self.send_response(302)
+            self.send_header('Location', '/celular?volver=' + urllib.parse.quote(self.path, safe=''))
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+        else:
+            self.error('falta el PIN del celular: recarga la página', 401)
+        return True
+
+    def mismo_origen(self):
+        """Otra página abierta en el navegador no puede borrar, detener ni cambiar tus claves."""
+        origen = urllib.parse.urlparse(self.headers.get('Origin') or '').hostname
+        host = (self.headers.get('Host') or '').split(':')[0]
+        if celular.es_local(self.client_address[0]):
+            return host in ('localhost', '127.0.0.1', '[::1]', '') and origen in (None, 'localhost', '127.0.0.1', '::1')
+        return origen is None or origen == host  # el celular ya pasó por puerta(): mismo nombre que la página
+
     def q(self):
         u = urllib.parse.urlparse(self.path)
         return u.path, {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
 
     def do_GET(self):
+        if self.puerta():
+            return
         ruta, q = self.q()
         LATIDO[0] = time.time()
         try:
+            if ruta == '/celular':
+                return self.responder(celular.pagina_pin(q.get('volver') or '/').encode(), 'text/html; charset=utf-8')
+            if ruta == '/manifest.webmanifest':
+                return self.responder(json.dumps(celular.MANIFIESTO).encode(), 'application/manifest+json')
+            if ruta == '/icono.png':
+                return self.responder(open(os.path.join(RAIZ, 'celular', 'icono.png'), 'rb').read(), 'image/png')
+            if ruta == '/api/celular':  # solo desde el PC (puerta() lo bloquea desde el celular)
+                c = celular.config(leer_ajustes())
+                return self.responder({'activo': bool(c.get('activo')), 'pin_puesto': bool(c.get('pin_hash')),
+                                       'escuchando': ESCUCHA[0] != '127.0.0.1', 'puerto': PUERTO,
+                                       'direcciones': celular.direcciones(PUERTO)})
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/pistas':  # el editor por pistas, en su propia pestaña
@@ -1673,6 +1721,7 @@ class Manejador(BaseHTTPRequestHandler):
                 k = clave_eleven()
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 aj['ruta'] = AJUSTES
+                aj.pop('celular', None)  # el PIN se ve y se cambia solo en «📱 Celular»
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
@@ -1713,15 +1762,41 @@ class Manejador(BaseHTTPRequestHandler):
                 largo -= len(trozo)
 
     def do_POST(self):
+        if self.puerta():
+            return
         ruta, q = self.q()
-        origen = self.headers.get('Origin') or ''
-        host = (self.headers.get('Host') or '').split(':')[0]
-        if host not in ('localhost', '127.0.0.1', '[::1]', '') or origen and urllib.parse.urlparse(origen).hostname not in ('localhost', '127.0.0.1', '::1'):
-            # otra página abierta en el navegador no puede borrar, detener ni cambiar tus claves
+        if not self.mismo_origen():
             return self.error('pedido rechazado: solo la propia app puede cambiar cosas', 403)
         LATIDO[0] = time.time()
         largo = int(self.headers.get('Content-Length', 0))
         try:
+            if ruta == '/api/celular/entrar':  # la pantalla del PIN en el celular
+                datos = urllib.parse.parse_qs(self.rfile.read(min(largo, 4096)).decode(errors='replace'))
+                volver = (datos.get('volver') or ['/'])[0]
+                cookie, aviso = celular.entrar(leer_ajustes(), self.client_address[0], (datos.get('pin') or [''])[0])
+                if not cookie:
+                    return self.responder(celular.pagina_pin(volver, aviso).encode(), 'text/html; charset=utf-8', 401)
+                self.send_response(303)
+                self.send_header('Set-Cookie', cookie)
+                self.send_header('Location', volver if volver.startswith('/') and not volver.startswith('//') else '/')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            if ruta == '/api/celular':  # «📱 Celular» en la app del PC: activar, apagar o cambiar el PIN
+                nuevo = json.loads(self.rfile.read(largo) or b'{}')
+                aj = leer_ajustes()
+                c = dict(celular.config(aj))
+                if nuevo.get('pin'):
+                    celular.nuevo_pin(c, str(nuevo['pin']))
+                if 'activo' in nuevo:
+                    if nuevo['activo'] and not c.get('pin_hash'):
+                        return self.error('Primero elige un PIN de al menos 6 números.')
+                    c['activo'] = bool(nuevo['activo'])
+                aj['celular'] = c
+                tmp = AJUSTES + '.tmp'
+                json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                os.replace(tmp, AJUSTES)
+                return self.responder({'ok': True, 'reiniciar': c.get('activo', False) != (ESCUCHA[0] != '127.0.0.1')})
             if ruta == '/api/reiniciar':  # después de actualizar la app: abre la copia nueva y cierra esta
                 with CANDADO:
                     if TRABAJO['proyecto']:
@@ -1989,6 +2064,7 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
+                nuevo.pop('celular', None)  # eso va por /api/celular, solo desde el PC
                 viejo = leer_ajustes()
                 for k in ('clave', 'elevenlabs'):  # una clave enmascarada o vacía no reemplaza la guardada
                     if k in nuevo and (not nuevo[k] or nuevo[k].startswith('••••')):
@@ -2499,11 +2575,16 @@ class Servidor(ThreadingHTTPServer):
         super().server_bind()
 
 
+ESCUCHA = ['127.0.0.1']  # «📱 Celular» activado: '0.0.0.0', para que el celular llegue por el Wi‑Fi o Tailscale
+
+
 def abrir_servidor():
     import urllib.request
+    if celular.activo(leer_ajustes()):
+        ESCUCHA[0] = '0.0.0.0'
     for intento in range(20):
         try:
-            return Servidor(('127.0.0.1', PUERTO), Manejador)
+            return Servidor((ESCUCHA[0], PUERTO), Manejador)
         except OSError:
             if intento == 0:
                 print('Ya hay otra copia de la app abierta: le pido que se cierre…', flush=True)

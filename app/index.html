@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de tutoriales</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#06070c">
 <style>
   :root {
     --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
@@ -168,6 +169,7 @@
   <button onclick="abrirModulo('panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
+  <button id="btnCelular" onclick="abrirCelular()" title="Usa la app desde tu celular (APK o Chrome), en casa por Wi‑Fi o afuera con datos móviles. Apagado por defecto, con PIN">📲 Celular</button>
   <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
 </header>
 
@@ -784,6 +786,16 @@
   <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarEleven()" title="Vacío = comprueba la clave guardada. No gasta créditos">🔍 Comprobar clave</button><span id="clPrueba" class="aviso" style="align-self:center"></span></div>
   <p class="aviso" id="clRuta">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
   <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
+</dialog>
+
+<dialog id="dlgCelular">
+  <h3>📲 Usar la app desde el celular</h3>
+  <p class="aviso">Tu PC sigue haciendo todo el trabajo: el celular solo la controla. Tiene que quedar prendida con la app abierta.
+    Solo entran el Wi‑Fi de casa y <b>Tailscale</b> (para usarla con datos móviles, sin abrir puertos del router), y siempre con PIN.</p>
+  <label>PIN (al menos 6 números) <input type="password" id="celPin" inputmode="numeric" placeholder="déjalo vacío para no cambiarlo"></label>
+  <label class="aviso"><input type="checkbox" id="celActivo"> Activar el acceso desde el celular</label>
+  <div id="celInfo" class="aviso"></div>
+  <div class="fila"><button class="principal" onclick="guardarCelular()">Guardar</button><button onclick="dlgCelular.close()">Cerrar</button></div>
 </dialog>
 
 <dialog id="dlgAjustes">
@@ -2848,6 +2860,27 @@ async function actualizarApp() {
   catch (e) { alert(e.message); }
   refrescar();
 }
+// «📲 Celular»: solo se ve y se cambia desde la app del PC
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) $('#btnCelular').hidden = true;
+async function abrirCelular() {
+  const c = await api('/api/celular');
+  $('#celActivo').checked = c.activo; $('#celPin').value = '';
+  const dirs = c.direcciones.map(d => `<li><b>${esc(d.tipo)}:</b> <code>${esc(d.url)}</code></li>`).join('');
+  $('#celInfo').innerHTML = (c.activo && !c.escuchando ? '<p class="msg err">Reinicia la app para que el celular pueda entrar.</p>' : '')
+    + (c.pin_puesto ? '' : '<p>Todavía no elegiste PIN.</p>')
+    + (dirs ? `<p>En el celular (APK o Chrome) usa:</p><ul>${dirs}</ul>` : '<p>No encontré la red del PC: revisa el Wi‑Fi.</p>')
+    + '<p>Con datos móviles: instala Tailscale en el PC y en el celular con la misma cuenta, y usa la dirección «Tailscale» (100.x.x.x). '
+    + 'Windows te preguntará si deja entrar a Python: marca <b>Redes privadas y públicas</b>.</p>';
+  dlgCelular.showModal();
+}
+async function guardarCelular() {
+  try {
+    const r = await api('/api/celular', {method: 'POST', body: JSON.stringify({pin: $('#celPin').value.trim(), activo: $('#celActivo').checked})});
+    if (r.reiniciar && confirm('Listo. Hay que reiniciar la app para que el cambio valga. ¿La reinicio ahora?')) { dlgCelular.close(); return reiniciarApp(); }
+    abrirCelular();
+  } catch (e) { alert(e.message); }
+}
+
 async function reiniciarApp() {
   if (reiniciando) return; reiniciando = true;
   try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
