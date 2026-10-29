@@ -1886,6 +1886,7 @@ class Manejador(BaseHTTPRequestHandler):
                 c = celular.config(leer_ajustes())
                 return self.responder({'activo': bool(c.get('activo')), 'pin_puesto': bool(c.get('pin_hash')),
                                        'escuchando': ESCUCHA[0] != '127.0.0.1', 'puerto': PUERTO,
+                                       'con_windows': os.path.exists(arranque_windows()),
                                        'direcciones': celular.direcciones(PUERTO)})
             if ruta == '/':
                 return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
@@ -2228,6 +2229,8 @@ class Manejador(BaseHTTPRequestHandler):
                     if nuevo['activo'] and not c.get('pin_hash'):
                         return self.error('Primero elige un PIN de al menos 6 números.')
                     c['activo'] = bool(nuevo['activo'])
+                if 'con_windows' in nuevo:
+                    poner_arranque(bool(nuevo['con_windows']))
                 aj['celular'] = c
                 tmp = AJUSTES + '.tmp'
                 json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -3091,8 +3094,35 @@ def retomar_cola():
             threading.Timer(5, avanzar_cola).start()
 
 
+def arranque_windows():
+    """El archivo que Windows abre al prender el PC (carpeta «Inicio» del usuario)."""
+    return os.path.join(os.environ.get('APPDATA', ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup',
+                        'Estudio de tutoriales.bat')
+
+
+def poner_arranque(si):
+    """«Abrir la app sola al prender el PC»: así el celular la encuentra después de un reinicio o un corte de luz."""
+    f = arranque_windows()
+    if not si:
+        if os.path.exists(f):
+            os.remove(f)
+        return
+    with open(f, 'w', encoding='mbcs' if sys.platform == 'win32' else 'utf-8', newline='') as a:
+        a.write(f'@echo off\r\ncd /d "{RAIZ}"\r\nset SIN_NAVEGADOR=1\r\nstart "Estudio" /min "{PY}" app\\app.py\r\n')
+
+
+def mantener_despierto():
+    """Con «📲 Celular» activado el PC no se suspende mientras la app está abierta (la pantalla sí puede apagarse).
+    No cambia la configuración de energía de Windows: vale solo mientras corre la app."""
+    if sys.platform == 'win32' and celular.activo(leer_ajustes()):
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        print('📲 Celular activado: el PC no se va a suspender mientras la app esté abierta.', flush=True)
+
+
 def main():
     srv = abrir_servidor()
+    mantener_despierto()
     retomar_cola()
     threading.Thread(target=biblio_semanal, daemon=True).start()
     url = f'http://localhost:{PUERTO}'
@@ -3110,7 +3140,7 @@ def vigilar():
         time.sleep(15)
         with CANDADO:
             ocupado = bool(TRABAJO['proyecto'])
-        if not ocupado and time.time() - LATIDO[0] > 180:
+        if not ocupado and time.time() - LATIDO[0] > 180 and not celular.activo(leer_ajustes()):  # el celular la usa de lejos
             os._exit(0)
 
 

@@ -840,6 +840,7 @@
     Solo entran el Wi‑Fi de casa y <b>Tailscale</b> (para usarla con datos móviles, sin abrir puertos del router), y siempre con PIN.</p>
   <label>PIN (al menos 6 números) <input type="password" id="celPin" inputmode="numeric" placeholder="déjalo vacío para no cambiarlo"></label>
   <label class="aviso"><input type="checkbox" id="celActivo"> Activar el acceso desde el celular</label>
+  <label class="aviso" title="Si el PC se reinicia o hay un corte de luz, la app vuelve a abrirse sola (minimizada) y el celular la encuentra"><input type="checkbox" id="celWindows"> Abrir la app sola al prender el PC</label>
   <div id="celInfo" class="aviso"></div>
   <div class="fila"><button class="principal" onclick="guardarCelular()">Guardar</button><button onclick="dlgCelular.close()">Cerrar</button></div>
   <h3>🔔 Avisos al celular</h3>
@@ -2974,13 +2975,14 @@ async function actualizarApp() {
 if (!['localhost', '127.0.0.1'].includes(location.hostname)) $('#btnCelular').hidden = true;
 async function abrirCelular() {
   const c = await api('/api/celular');
-  $('#celActivo').checked = c.activo; $('#celPin').value = '';
+  $('#celActivo').checked = c.activo; $('#celWindows').checked = c.con_windows; $('#celPin').value = '';
   const dirs = c.direcciones.map(d => `<li><b>${esc(d.tipo)}:</b> <code>${esc(d.url)}</code></li>`).join('');
   $('#celInfo').innerHTML = (c.activo && !c.escuchando ? '<p class="msg err">Reinicia la app para que el celular pueda entrar.</p>' : '')
     + (c.pin_puesto ? '' : '<p>Todavía no elegiste PIN.</p>')
     + (dirs ? `<p>En el celular (APK o Chrome) usa:</p><ul>${dirs}</ul>` : '<p>No encontré la red del PC: revisa el Wi‑Fi.</p>')
     + '<p>Con datos móviles: instala Tailscale en el PC y en el celular con la misma cuenta, y usa la dirección «Tailscale» (100.x.x.x). '
-    + 'Windows te preguntará si deja entrar a Python: marca <b>Redes privadas y públicas</b>.</p>';
+    + 'Windows te preguntará si deja entrar a Python: marca <b>Redes privadas y públicas</b>.</p>'
+    + (c.activo ? '<p>Mientras la app esté abierta el PC no se suspende, y cerrar la ventana del navegador no la apaga.</p>' : '');
   dlgCelular.showModal(); verAvisos();
 }
 async function verAvisos() {
@@ -3028,7 +3030,7 @@ async function colaAccion(accion, id) {
 
 async function guardarCelular() {
   try {
-    const r = await api('/api/celular', {method: 'POST', body: JSON.stringify({pin: $('#celPin').value.trim(), activo: $('#celActivo').checked})});
+    const r = await api('/api/celular', {method: 'POST', body: JSON.stringify({pin: $('#celPin').value.trim(), activo: $('#celActivo').checked, con_windows: $('#celWindows').checked})});
     if (r.reiniciar && confirm('Listo. Hay que reiniciar la app para que el cambio valga. ¿La reinicio ahora?')) { dlgCelular.close(); return reiniciarApp(); }
     abrirCelular();
   } catch (e) { alert(e.message); }
