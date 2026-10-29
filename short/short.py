@@ -5,8 +5,9 @@ Uso (desde la carpeta del proyecto): python short.py --proyecto . --duracion 60
 1. Elige las tomas: el gancho del inicio y los bloques del guion con tus ⭐ cortes importantes, las acciones (volumen, power,
    pegar, Connect, paso cuatro, Omitir…) y el resultado (sin candado, crear cuenta), sin la parte de promoción (comentarios,
    suscribirse, grupo, WhatsApp de soporte), hasta llenar la duración. Deja el plan con el porqué de cada toma en short.json.
-2. Reencuadra a 9:16 siguiendo lo importante: tu cara si sales (cuadro completo en alto), y si no, lo que se mueve o cambia en
-   la pantalla (cursor, botón, celular) con un zoom suave; donde marcaste un círculo, encuadra esa zona. Nunca acelera.
+2. Reencuadra a 9:16 siguiendo lo importante: tu cara si sales (cuadro completo en alto); si no, el teléfono (el detector de
+   deteccion/ lo ve aunque tenga la pantalla negra) con el zoom justo para que entre entero; si no hay teléfono, lo que se
+   mueve o cambia en la pantalla (cursor, botón) con un zoom suave. Donde marcaste un círculo, encuadra esa zona. Nunca acelera.
 3. Voz: las mismas voces del video (voz/Lxx.mp3), así que no gasta créditos. Con --voz-nueva usa el guion propio del Short
    (short_guion.json: tomas con src_inicio, texto y por_que, escrito para el Short, con más gancho) y genera esa voz con
    ElevenLabs en voz_short/ (gasta ~1 crédito por letra; lo que no cambió se reutiliza). Subtítulos grandes y tu música fija.
@@ -19,12 +20,15 @@ import argparse, json, os, re, subprocess, sys
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA o Intel si la hay
+import deteccion  # noqa: E402  ve el teléfono aunque tenga la pantalla negra
 
 W, H = 1920, 1080          # el original
 SW, SH = 1080, 1920        # el Short
 PASO_SEG = 0.5             # cada cuánto se mira dónde está lo importante
 ZOOM_PANTALLA = 1.2        # sin cara: un poco más cerca de lo que se mueve (sin cortar el teléfono)
+ZOOM_TELEFONO = 1.4        # con el teléfono a la vista: lo más cerca que se acerca, siempre que el teléfono entre entero
 MIN_TOMA = 7.0             # con la voz nueva (frases cortas): cada toma dura al menos esto, para ver la acción entera
 MUSICA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')
 
@@ -199,8 +203,12 @@ def marcas_autor(d):
     return out
 
 
-def seguir(cap, s0, largo, marcas):
-    """Dónde mirar en cada momento del tramo: [(t relativo, cx, cy)] y el zoom (1 con tu cara, más cerca en pantallas).
+def seguir(cap, s0, largo, marcas, memoria=None):
+    """Dónde mirar en cada momento del tramo: [(t relativo, cx, cy)], el zoom (1 con tu cara, más cerca en pantallas) y
+    qué se sigue ('cara', 'telefono' o 'pantalla').
+
+    Si el detector ve el teléfono en buena parte del tramo, se sigue al teléfono (aunque su pantalla esté negra, como en
+    fastboot) con el zoom justo para que entre entero.
 
     Lo importante en un tutorial es lo que CAMBIA respecto del fondo: el teléfono en la mano, su pantalla, la ventana del
     programa. El fondo (la mesa, el cubo de Motorola, el cartel «Frp») queda igual en todo el tramo, así que se saca con la
@@ -208,7 +216,7 @@ def seguir(cap, s0, largo, marcas):
     import cv2, numpy as np
     import montaje
     det = montaje.detector_caras()
-    cuadros, caras = [], []
+    cuadros, caras, telefonos = [], [], []
     n = max(2, int(largo / PASO_SEG) + 1)
     for i in range(n):
         t = min(largo, i * PASO_SEG)
@@ -227,17 +235,22 @@ def seguir(cap, s0, largo, marcas):
                 cara = ((c[0] + c[2] / 2) * 3, (c[1] + c[3] / 2) * 3)
         cuadros.append((t, cv2.GaussianBlur(cv2.cvtColor(chico, cv2.COLOR_BGR2GRAY), (5, 5), 0)))
         caras.append(cara)
+        telefonos.append(deteccion.telefono(memoria.ver(s0 + t, f)) if memoria else None)
     if not cuadros:
-        return [(0.0, W / 2, H / 2)], 1.0
+        return [(0.0, W / 2, H / 2)], 1.0, 'pantalla'
+    con_cara = sum(1 for c in caras if c) >= max(1, len(caras) * 0.4)
+    con_tel = not con_cara and sum(1 for c in telefonos if c) >= max(1, len(telefonos) * 0.4)
     fondo = np.median(np.stack([g for _, g in cuadros]), axis=0).astype(np.uint8)
     puntos = []
-    for (t, g), cara in zip(cuadros, caras):
+    for (t, g), cara, tel in zip(cuadros, caras, telefonos):
         punto = (cara[0], cara[1], 'cara') if cara else None
         if punto is None:
             for tm, x, y in marcas:  # tu círculo manda en su segundo (±1,5 s)
                 if abs(tm - (s0 + t)) <= 1.5:
                     punto = (x, y, 'marca')
-        if punto is None:
+        if punto is None and tel:  # el teléfono que ve el detector
+            punto = (tel[0] + tel[2] / 2, tel[1] + tel[3] / 2, 'telefono')
+        if punto is None and not con_tel:  # sin teléfono a la vista: lo que cambia en la pantalla
             bordes = cv2.dilate(cv2.Canny(g, 40, 120), np.ones((3, 3), np.uint8)).astype(np.float32)
             cambia = cv2.dilate((cv2.absdiff(g, fondo) > 18).astype(np.uint8), np.ones((15, 15), np.uint8))
             if cambia.mean() > 0.03:  # hay algo que se mueve sobre el fondo (el teléfono en la mano)
@@ -252,10 +265,21 @@ def seguir(cap, s0, largo, marcas):
             if pico > 3:
                 punto = (px * 3, py * 3, 'pantalla')
         puntos.append((t, punto))
-    con_cara = sum(1 for c in caras if c) >= max(1, len(caras) * 0.4)
     zoom = 1.0 if con_cara else ZOOM_PANTALLA
     # se suaviza (sin saltos bruscos): mediana de los últimos 2 s y un acercamiento lento
     import statistics
+    if con_tel:  # el zoom justo para que el teléfono entre entero, con un poco de aire alrededor
+        cajas = [c for c in telefonos if c]
+        alto, ancho = statistics.median(c[3] for c in cajas), statistics.median(c[2] for c in cajas)
+        zoom = round(max(1.0, min(ZOOM_TELEFONO, H / (alto * 1.15), H * 9 / 16 / (ancho * 1.1))), 2)
+        cajas = []  # lo que tiene que quedar adentro en cada momento: tu cara, tu círculo o el teléfono
+        for (t, _), cara, tel, (_, p) in zip(cuadros, caras, telefonos, puntos):
+            if p and p[2] != 'telefono':
+                lado = 300 if p[2] == 'cara' else 200
+                cajas.append((t, [p[0] - lado / 2, p[1] - lado / 2, lado, lado]))
+            else:
+                cajas.append((t, tel))
+        return contener(cajas, H / zoom * 9 / 16, H / zoom), zoom, 'telefono'
     validos = [p for _, p in puntos if p and (not con_cara or p[2] == 'cara')]
     cx, cy = (statistics.median(p[0] for p in validos), statistics.median(p[1] for p in validos)) if validos else (W / 2, H / 2)
     ultimos, out = [], []
@@ -265,7 +289,31 @@ def seguir(cap, s0, largo, marcas):
             mx, my = statistics.median(q[0] for q in ultimos), statistics.median(q[1] for q in ultimos)
             cx += max(-45, min(45, (mx - cx) * 0.25)); cy += max(-35, min(35, (my - cy) * 0.25))
         out.append((t, cx, cy))
-    return out, zoom
+    return out, zoom, 'cara' if con_cara else 'telefono' if con_tel else 'pantalla'
+
+
+def contener(cajas, cw, ch, aire=0.04):
+    """[(t, cx, cy)] del recuadro de cw×ch que deja entera cada caja [(t, [x, y, ancho, alto] o None)], moviéndose solo
+    cuando la caja se saldría: así el teléfono nunca queda cortado y el cuadro no baila. Si una caja es más grande que el
+    recuadro, se centra en ella."""
+    conocidas = [i for i, (_, c) in enumerate(cajas) if c]
+    if not conocidas:
+        return [(t, W / 2, H / 2) for t, _ in cajas]
+    out, cx, cy = [], None, None
+    for i, (t, c) in enumerate(cajas):
+        x, y, w, h = c or cajas[min(conocidas, key=lambda j: abs(j - i))][1]  # sin caja en ese momento: la más cercana
+        mx, my = cw * aire, ch * aire
+        lox, hix = x + w + mx - cw / 2, x - mx + cw / 2
+        loy, hiy = y + h + my - ch / 2, y - my + ch / 2
+        if lox > hix:  # no entra a lo ancho: al centro, sin moverse por unos píxeles de diferencia
+            lox = hix = x + w / 2 if cx is None or abs(cx - x - w / 2) > cw * aire else cx
+        if loy > hiy:
+            loy = hiy = y + h / 2 if cy is None or abs(cy - y - h / 2) > ch * aire else cy
+        if cx is None:
+            cx, cy = (lox + hix) / 2, (loy + hiy) / 2
+        cx, cy = min(max(cx, lox), hix), min(max(cy, loy), hiy)
+        out.append((t, cx, cy))
+    return out
 
 
 def expr(claves, i_val, lo, hi):
@@ -352,6 +400,7 @@ def main():
     for c in tomas:
         print(f"· {c['id']} ({c['voz']:.1f} s): {c['por_que']}", flush=True)
     marcas = marcas_autor(d)
+    memoria = deteccion.Memoria(orig)
     tmp = codificar.temporal('short')
     retraso = 0.15
     cap = cv2.VideoCapture(orig)
@@ -359,15 +408,16 @@ def main():
     for i, c in enumerate(tomas):
         largo = round(max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0), 2)  # que se alcance a ver la acción
         s0 = min(c['src_inicio'], max(0.0, dur_video - largo - 0.1))
-        claves, zoom = seguir(cap, s0, largo, marcas)
+        claves, zoom, encuadre = seguir(cap, s0, largo, marcas, memoria)
         ch = round(H / zoom / 2) * 2
         cw = round(ch * 9 / 16 / 2) * 2
         cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
-        c.update(largo=largo, src_inicio=round(s0, 2), zoom=zoom)
+        c.update(largo=largo, src_inicio=round(s0, 2), zoom=zoom, encuadre=encuadre)
         vf = (f"crop={cw}:{ch}:x='{expr(cl, 1, 0, W - cw)}':y='{expr(cl, 2, 0, H - ch)}',"
               f'scale={SW}:{SH},setsar=1,fps=30,format=yuv420p')
         p = os.path.join(tmp, f'p{i:02d}.mp4')
-        print(f"· armo {c['id']} ({'tu cara' if zoom == 1 else 'pantalla, con zoom'})…", flush=True)
+        que = {'cara': 'tu cara', 'telefono': f'el teléfono, zoom ×{zoom:g}'}.get(encuadre, 'pantalla, con zoom')
+        print(f"· armo {c['id']} ({que})…", flush=True)
         codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{largo:.3f}', '-i', orig,
                        '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
                        '-filter_complex', f'[0:v]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
@@ -376,6 +426,7 @@ def main():
                        '-c:a', 'aac', '-b:a', '160k', p], check=True)
         partes.append(p)
     cap.release()
+    memoria.guardar()
     if extras.get('testimonio') and extras.get('testimonio_archivo') and os.path.exists(os.path.join(d, extras['testimonio_archivo'])):
         print('· testimonio…', flush=True)
         p = os.path.join(tmp, 'testimonio.mp4')
@@ -405,7 +456,7 @@ def main():
                    a.salida], check=True, cwd=d)
     total = duracion(os.path.join(d, a.salida))  # con el testimonio y el cierre
     json.dump({'duracion_pedida': a.duracion, 'duracion': round(total, 1), 'formato': '9:16',
-               'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'por_que', 'texto')} for c in tomas]},
+               'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'encuadre', 'por_que', 'texto')} for c in tomas]},
               open(os.path.join(d, 'short.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)

@@ -288,7 +288,7 @@
       </div>
       <p class="aviso">Tus capturas mandan: la IA busca en qué segundo del video están, ubica lo que marcaste y quita las suyas
       que caigan encima. Los pedidos de texto o voz («pon una flecha cuando hablo del PIN») se suman a los que elige la IA.
-      «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
+      «✨ Agregar extras» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
     <section class="panel extra" id="panelIdiomas">
@@ -342,7 +342,7 @@
       </div>
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
       si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. En «¿Dónde?» eliges
-      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. Se ponen con «✨ Agregar extras» (si subiste alguna), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelTestimonios">
@@ -359,7 +359,7 @@
       <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
       testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. En «¿Dónde?» eliges
       también inicio, medio, final o un segundo exacto. «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
-      testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
+      testimonios. Se ponen con «✨ Agregar extras» (si subiste alguno), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelModelos">
@@ -376,7 +376,7 @@
       los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
       introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
-      si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
+      si es más corto, se congela al final. Se pone con «✨ Agregar extras» (si subiste uno), después de «▶ Hacer todo». Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
     <section class="panel" id="panelAcortar">
@@ -515,10 +515,11 @@
           <option value="60" selected>60 s (YouTube Shorts)</option><option value="90">90 s (TikTok / Reels largo)</option><option value="120">2 min</option><option value="180">3 min (máximo de YouTube Shorts)</option>
           <option value="otro">Personalizada (escribe los segundos)</option></select></label>
         <label id="shortSegL" hidden><input type="number" id="shortSeg" min="10" max="180" step="1" value="40" style="width:5.5em"> segundos</label>
-        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
+        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva" onchange="$('#shortDurAviso').hidden = !this.checked"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
         <button class="principal" id="shortBtn" onclick="shortHacer()">📱 Hacer Short</button>
         <span class="msg" id="shortMsg"></span>
       </div>
+      <p class="aviso" id="shortDurAviso" hidden>Con la voz nueva, el largo lo da el guion del Short (short_guion.json), no la duración elegida.</p>
       <details id="shortExtras" style="margin:6px 0 10px" open><summary><b>➕ Agregar al final del Short</b></summary>
         <div class="fila" style="align-items:center"><label><input type="checkbox" id="sxTest"> 🎥 Testimonio</label>
           <span class="aviso">tu video (un cliente, un antes y después…), en vertical, entero</span>
@@ -968,10 +969,20 @@ function pintarPasos(pasos, t, fallo) {
 }
 async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuántos bloques y caracteres de voz
   let c;
-  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { return true; }
+  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { c = {desconocido: true}; }
+  if (c.desconocido) return confirm('No pude calcular cuánta voz falta generar. Las voces que falten se hacen con ElevenLabs '
+    + '(~1 crédito por letra); las que ya están se reutilizan. ¿Seguir?');
   if (!c.caracteres) return true;
   return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
     + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+}
+async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del proyecto, el paso «Música» genera una pista nueva (gasta)
+  let e;
+  try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) { e = null; }
+  if (e && (e.musica_fija || e.archivos['musica.mp3'])) return true;
+  return confirm((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
+    + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
+    + 'Queda guardada en el proyecto y no se vuelve a pagar.\n\n¿Seguir? (Cancelar = no hago nada todavía)');
 }
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
@@ -1015,12 +1026,13 @@ async function volverAGuardado(nombre) {
 }
 async function ejecutar(paso) {
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
+  if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
-    const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
+    const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
   if (paso === 'transcribir') {
@@ -1338,8 +1350,10 @@ async function finIA() {
 }
 async function pegar() {
   const tarea = TAREA[archivo];
-  await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
-  await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  } catch (e) { return alert(e.message); }  // antes fallaba callado (por ejemplo con otro paso corriendo)
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
 function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
@@ -1933,8 +1947,8 @@ async function impCargar() {
   try { impPintar(await api(`/api/importantes?p=${q(P)}`)); } catch (e) {}
 }
 async function impGuardar(lista) {
-  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); }
-  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; }
+  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); return true; }
+  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; return false; }
 }
 function impMarcar(cual) {  // un clic: toma el segundo del reproductor; «Termina aquí» agrega el corte enseguida
   const t = $('#impVideo').currentTime;
@@ -1955,7 +1969,7 @@ function impVer(t) { const v = $('#impVideo'); v.currentTime = t; v.play(); }
 function impAgregar() {
   const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
   if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
-  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(ok => { if (ok) $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });  // si no se guardó, lo escrito queda
 }
 // «🎞 Línea de tiempo» de Cortes importantes (como Filmora): miniaturas, regla, cabezal, zoom y tus cortes pintados encima
 const LINEA = {dur: 0, sel: null, tira: ''};
@@ -2114,6 +2128,8 @@ async function subTraducir() {
 }
 function subVista() {
   const f = $('#subFuente').value; if (!f) return;
+  const dur = Math.floor((SUB && SUB.duraciones || {})[f] || 0);  // el deslizador llegaba solo a 10:00
+  if (dur > 0) $('#subT').max = dur;
   $('#subTV').textContent = `${Math.floor($('#subT').value / 60)}:${String($('#subT').value % 60).padStart(2, '0')}`;
   $('#subImg').src = `/api/subs_vista?p=${q(P)}&f=${q(f)}&t=${$('#subT').value}&v=${Date.now()}`;
 }
@@ -2150,7 +2166,7 @@ async function shortVer() {  // «📱 Short»: el último que armaste, con el p
     <video controls preload="metadata" style="width:300px; aspect-ratio:9/16; background:#000; border-radius:12px" src="/archivo?p=${q(P)}&f=SHORT.mp4&v=${arch['SHORT.mp4'].fecha}"></video>
     <div style="flex:1; min-width:16em"><p><b>${plan ? `${plan.tomas.length} tomas · ${seg} s` : ''}</b>
       <a href="/archivo?p=${q(P)}&f=SHORT.mp4&nombre=${q(nombre)}" download="${nombre}"><button class="principal">⬇ Bajar el Short</button></a></p>
-      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.zoom > 1 ? 'pantalla con zoom' : 'tu cara'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
+      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.encuadre === 'telefono' ? 'sigue al teléfono' : t.encuadre === 'cara' || (!t.encuadre && t.zoom <= 1) ? 'tu cara' : 'pantalla con zoom'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
         <span class="aviso">${esc(t.por_que)}</span><br>«${esc(t.texto)}»</p>`).join('') : ''}</div></div>`;
 }
 let SX = {};
@@ -2859,6 +2875,8 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
+  soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
   refrescar();
 }
@@ -2871,13 +2889,20 @@ let reiniciando = false, PAGINA = null;
 function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
   const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
 }
-async function actualizarProyecto() {
+async function actualizarProyecto() {  // reutiliza transcripción, guion y voces; rehace el resto y vuelve a poner los extras que tenía
+  if (!confirm(`¿Actualizar «${P}»?\n\nBorro los videos hechos (FINAL.mp4 y los de cada paso) y las fallas viejas, y vuelvo a hacer el video `
+    + 'con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y '
+    + 'tráiler que tenía se vuelven a poner al final.')) return;
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
   soltarVideo();
-  try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
+  let r;
+  try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true})}); }
+  catch (e) { alert(e.message); }
+  refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
