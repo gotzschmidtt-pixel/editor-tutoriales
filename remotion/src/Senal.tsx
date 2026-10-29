@@ -108,6 +108,7 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: 
         const alto = tipo === 'caja' ? h / 2 : pildora ? ph / 2 : r;
         const abajo = y + alto + 110 < height;
         const ancho = Math.min(620, 60 + texto.length * 26);
+        const letra = Math.min(40, Math.floor((ancho - 48) / (texto.length * 0.6))); // un rótulo largo achica la letra en vez de salirse de la píldora
         const left = Math.min(Math.max(x - ancho / 2, 24), width - ancho - 24);
         const top = abajo ? y + alto + 24 : y - alto - 24 - 74;
         const aspecto = contorno
@@ -116,7 +117,7 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: 
         return (
           <div style={{position: 'absolute', left, top, width: ancho, height: 74, display: 'flex', alignItems: 'center',
             justifyContent: 'center', transform: `scale(${pop})`, transformOrigin: abajo ? '50% 0' : '50% 100%', ...aspecto,
-            fontFamily: estilo.fuente, fontWeight: 900, fontSize: 40, whiteSpace: 'nowrap'}}>{texto}</div>
+            fontFamily: estilo.fuente, fontWeight: 900, fontSize: letra, whiteSpace: 'nowrap'}}>{texto}</div>
         );
       })()}
     </AbsoluteFill>

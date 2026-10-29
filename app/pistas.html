@@ -122,8 +122,25 @@ let L = null, GUION = null, SEL = null, PPS = 12;
 const CAMBIOS = {textos: new Set(), extras: false, subs: false, musica: false, estructura: false};
 const TIPOS_ETI = ['web', 'archivo', 'dato', 'precio', 'pin', 'consejo'], TIPOS_SEN = ['circulo', 'flecha', 'caja'];
 
+// lo que había en cada archivo al abrir: si otra pestaña (la vista previa, el editor de guion) o la app guardó después, no se pisa
+const ARCHIVOS = ['guion.json', 'etiquetas.json', 'senales.json'];
+let VERSIONES = {};
+const versionDe = async f => { try { return (await api(`/api/version_guion?p=${q(P)}&f=${f}`)).v; } catch (e) { return null; } };
+async function anotarVersiones() { for (const f of ARCHIVOS) VERSIONES[f] = await versionDe(f); }
+async function sinCambiosAjenos(fs) {
+  for (const f of fs) {
+    const v = await versionDe(f);
+    if (VERSIONES[f] != null && v != null && v !== VERSIONES[f]) {
+      alert(`«${f}» cambió desde que abriste esta pestaña (lo guardó la vista previa, otra pestaña, la app o Claude). No guardo para `
+        + 'no pisar ese cambio.\n\nPulsa F5 para ver la versión nueva y vuelve a hacer tu cambio.');
+      return false;
+    }
+  }
+  return true;
+}
 async function cargar() {
   $('#nombre').textContent = P;
+  await anotarVersiones();  // antes de leer: un cambio que llegue mientras cargo también se detecta
   try {
     L = await api(`/api/linea?p=${q(P)}`);
     GUION = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`));
@@ -463,6 +480,8 @@ function marcar() {
 // ---------- guardar y armar ----------
 const limpio = x => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith('_')));
 async function guardar() {
+  const tocan = [...(CAMBIOS.extras ? ['etiquetas.json', 'senales.json'] : []), ...(CAMBIOS.textos.size || CAMBIOS.estructura ? ['guion.json'] : [])];
+  if (!(await sinCambiosAjenos(tocan))) return false;
   try {
     if (CAMBIOS.extras) {
       await api(`/api/json?p=${q(P)}&f=etiquetas.json`, {method: 'POST', body: JSON.stringify(L.etiquetas.map(limpio), null, 1)});
@@ -481,6 +500,7 @@ async function guardar() {
     if (CAMBIOS.subs) await api(`/api/subtitulos?p=${q(P)}`, {method: 'POST', body: JSON.stringify(L.subtitulos)});
     if (CAMBIOS.musica) await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({musica_volumen: L.musica.volumen})});
   } catch (e) { $('#msg').textContent = '✗ ' + e.message; $('#msg').className = 'msg err'; return false; }
+  await anotarVersiones();  // lo que acabo de guardar pasa a ser la versión conocida
   const rehacer = CAMBIOS.textos.size > 0 || CAMBIOS.musica || CAMBIOS.estructura;
   PENDIENTE_REHACER = PENDIENTE_REHACER || rehacer;
   CAMBIOS.textos.clear(); CAMBIOS.extras = CAMBIOS.subs = CAMBIOS.musica = CAMBIOS.estructura = false;

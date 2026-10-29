@@ -75,6 +75,7 @@ def ejecucion():
 SECRETOS = [
     (re.compile(r'sk-ant-[A-Za-z0-9_\-]{6,}'), 'sk-ant-[REDACTADO]'),
     (re.compile(r'sk-[A-Za-z0-9_\-]{12,}'), 'sk-[REDACTADO]'),
+    (re.compile(r'sk_[A-Za-z0-9]{20,}'), 'sk_[REDACTADO]'),  # las de ElevenLabs
     (re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}'), r'\1[REDACTADO]'),
     (re.compile(r'(?i)(x-api-key|xi-api-key|api[_-]?key|authorization|password|contrase\w*|token)(["\']?\s*[:=]\s*["\']?)[^\s"\',}]{4,}'),
      r'\1\2[REDACTADO]'),

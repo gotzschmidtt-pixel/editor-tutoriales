@@ -138,8 +138,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--guion', required=True)
     ap.add_argument('--salida', required=True)
-    ap.add_argument('--voz', default='94zOad0g7T7K4oa7zhDq', help='id de voz de ElevenLabs (por defecto Mauricio)')
-    ap.add_argument('--idioma', default='es', help='idioma de la voz (es, en…): el de la versión del video')
+    ap.add_argument('--voz', default=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq',
+                    help='id de voz de ElevenLabs (por defecto Mauricio, o la del idioma del proyecto que pasa la app)')
+    ap.add_argument('--idioma', default=os.environ.get('VOZ_IDIOMA') or 'es', help='idioma de la voz (es, en…): el de la versión del video')
     ap.add_argument('--modelo', default='eleven_v4')
     ap.add_argument('--estabilidad', type=float, default=0.5)
     ap.add_argument('--costo', action='store_true', help='solo dice qué bloques generaría y cuántos caracteres (no gasta)')

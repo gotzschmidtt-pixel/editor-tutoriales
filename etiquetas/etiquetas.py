@@ -16,6 +16,7 @@ etiquetas.json: [{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo":
 Además entran las etiquetas que el autor escribió en sus capturas de «🎯 Flechas y círculos» (marcas_senales/marcas.json),
 en el segundo de la captura.
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
+Van abajo a la izquierda; si ahí taparían el teléfono o tu cara y a la derecha no, van abajo a la derecha (deteccion/).
 """
 import argparse, json, os, shutil, subprocess, sys, unicodedata
 
@@ -27,6 +28,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'capas'))
 import capas  # noqa: E402  con --capa: se pega junto con flechas y tarjetas en una sola pasada
 sys.path.insert(0, AQUI)
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
+sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
+import deteccion  # noqa: E402  dónde está el teléfono, para no taparlo
 FPS = 25
 
 
@@ -34,14 +37,18 @@ def normal(c):
     return ''.join(x for x in unicodedata.normalize('NFD', c.lower()) if unicodedata.category(x) != 'Mn')
 
 
-def buscar(al, frase):
-    """Segundo (relativo al bloque) en que empieza `frase` dentro de la alineación."""
+def buscar(al, frase, original=None):
+    """Segundo (relativo al bloque) en que empieza `frase` dentro de la alineación. En una versión traducida la frase
+    sigue en español: si no está en la voz nueva y está en el texto `original` del bloque, va en el mismo punto relativo."""
     chars = [normal(c) for c in al['characters']]
     texto = ''.join(chars)
     # índice de carácter de texto normalizado -> índice en la alineación
     mapa = [i for i, c in enumerate(chars) for _ in c]
     pos = texto.find(normal(frase))
     if pos < 0:
+        k = normal(original).find(normal(frase)) if original else -1
+        if k >= 0 and al.get('character_end_times_seconds'):
+            return round(k / max(1, len(normal(original))) * al['character_end_times_seconds'][-1], 2)
         return None
     return al['character_start_times_seconds'][mapa[pos]]
 
@@ -106,6 +113,31 @@ def agrupar(items, max_pila=3):
     return grupos
 
 
+def lado_libre(video, ini, dur, items):
+    """'izquierda' (como siempre) o 'derecha' si, mientras está la pila, a la izquierda taparía el teléfono o tu cara y a
+    la derecha mucho menos. Mira el comienzo, el medio y el final con el detector (gratis, en tu PC); tiene que pasar en
+    al menos dos de los tres, para no cambiar de lado por un cuadro suelto."""
+    if deteccion.disponible() is None:
+        return 'izquierda'
+    import cv2
+    ancho = min(1100, max(150 + 27 * len(str(i.get('texto') or '')) for i in items))  # la píldora más larga (letra de 50 px)
+    alto = len(items) * 122  # cada píldora con su espacio
+    zonas = {'izquierda': [80, 1080 - 110 - alto, ancho, alto], 'derecha': [1920 - 80 - ancho, 1080 - 110 - alto, ancho, alto]}
+    tapadas = 0
+    cap = cv2.VideoCapture(video)
+    for s in (ini + 0.3, ini + dur / 2, ini + max(0.3, dur - 0.5)):
+        cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
+        ok, f = cap.read()
+        if not ok:
+            continue
+        k = 1920 / f.shape[1]  # las etiquetas se dibujan en 1920×1080
+        cosas = [o['caja'] for o in deteccion.objetos(f) if o['que'] == 'telefono' and o['conf'] >= 0.4] + deteccion.caras(f)
+        tapa = {lado: sum(deteccion.solape(z, [v * k for v in c]) for c in cosas) for lado, z in zonas.items()}
+        tapadas += tapa['izquierda'] > 0.25 and tapa['derecha'] < tapa['izquierda'] * 0.5
+    cap.release()
+    return 'derecha' if tapadas >= 2 else 'izquierda'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--guion', required=True)
@@ -119,6 +151,7 @@ def main():
 
     bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
     inicio = {b['id']: b['inicio_min'] for b in bloques}
+    original = {b['id']: b.get('texto_original') for b in bloques}  # versión traducida: el texto en español de cada bloque
     items = de_capturas(os.path.dirname(os.path.abspath(a.guion)), bloques)
     for e in json.load(open(a.etiquetas, encoding='utf-8')):
         if e.get('t') is not None:  # con su segundo exacto en el video
@@ -132,7 +165,7 @@ def main():
             print(f"AVISO: el bloque {e.get('bloque')} ya no está en el guion, salto «{e.get('texto')}»")
             continue
         al = json.load(open(f_al, encoding='utf-8'))
-        t = buscar(al, e['frase'])
+        t = buscar(al, e['frase'], original.get(e['bloque']))
         if t is None:
             print(f"AVISO: no encontré «{e['frase']}» en {e['bloque']}, la salto")
             continue
@@ -158,7 +191,10 @@ def main():
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
         carpeta = os.path.join(tmp, f'g{k:02d}')
-        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista)],
+        lado = lado_libre(a.video, g['ini'], total, g['items'])
+        for i in g['items']:
+            i['lado'] = lado
+        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista), lado],
                            cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace',
                            env=codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp')))
         if r.returncode != 0:  # se muestra lo que dijo Node, no solo «exit status 1»
@@ -171,7 +207,8 @@ def main():
         ins += piezas[-1]['args']
         filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
-        print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']))
+        print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']) + ('  (a la derecha: a la izquierda tapaba el teléfono)'
+                                                                                      if lado == 'derecha' else ''))
     tiempos = os.path.splitext(a.salida)[0] + '.etiquetas_tiempos.json'
     if a.capa:  # se pega después junto con flechas y tarjetas: una sola codificación
         capas.guardar(a.capa, piezas, borrar=tmp, crf=20)

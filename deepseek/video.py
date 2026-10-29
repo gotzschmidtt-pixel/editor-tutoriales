@@ -6,7 +6,7 @@ sus mismos pasos y parámetros. Este script habla con la app (http://localhost:8
 
 Uso (desde la carpeta editor-tutoriales):
   python deepseek/video.py preparar "C:\\ruta\\video.mp4" --nombre "Mi video" [--idea "datos seguros del video"]
-      crea el proyecto, sube el video, transcribe (Scribe si la app tiene la clave de ElevenLabs; si no, Whisper) y deja el encargo:
+      crea el proyecto, sube el video, transcribe (Whisper; Scribe de ElevenLabs solo con --confirmo-creditos) y deja el encargo:
       ia_prompt_guion.txt, ia_capturas/ (capturas, mapa y hojas), hojas_2s/ (un cuadro cada 2 s, 30 por hoja) y acciones/
       (cuadros grandes cada 0,5 s donde el autor dice que hace algo)
   python deepseek/video.py entregar guion respuesta.json --nombre "Mi video"
@@ -321,10 +321,14 @@ def main():
         if a.idea:
             api('/api/json', cuerpo=a.idea.encode('utf-8'), p=p, f='idea.txt')
         if not os.path.exists(os.path.join(d, 'transcripcion.srt')):
-            # Scribe de ElevenLabs si la app tiene la clave (unos $0,05 por video de 14 min): en IOS27_FRP acertó DFU, ECID,
-            # 3uTools y Bypass Hello Screen, que Whisper escribía mal y corrían los tramos. Sin clave, Whisper en esta PC.
-            print('Transcribo tu voz (ElevenLabs Scribe si la app tiene la clave; si no, Whisper en esta PC)…', flush=True)
-            correr(p, 'transcribir', {'motor': 'auto'})
+            # Scribe de ElevenLabs (gasta créditos) solo si el autor lo aprobó con --confirmo-creditos: en IOS27_FRP acertó DFU,
+            # ECID, 3uTools y Bypass Hello Screen, que Whisper escribía mal y corrían los tramos. Si no, Whisper en esta PC, gratis.
+            if a.confirmo_creditos:
+                print('Transcribo tu voz (ElevenLabs Scribe si la app tiene la clave; si no, Whisper en esta PC)…', flush=True)
+            else:
+                print('Transcribo tu voz con Whisper en esta PC (gratis). Para usar ElevenLabs Scribe, más preciso pero gasta '
+                      'créditos, pregúntale al autor y repite con --confirmo-creditos.', flush=True)
+            correr(p, 'transcribir', {'motor': 'auto' if a.confirmo_creditos else 'whisper'})
         print('Armo el encargo del guion (capturas, mapa del video y hojas)…', flush=True)
         correr(p, 'ia', {'tarea': 'guion', 'modo': 'prompt'})
         out, n = hojas_2s(d)

@@ -211,6 +211,7 @@
       <div class="fila">
         <button class="principal grande" id="todo" title="Arma el video: voz, cortes, subtítulos y música. Los extras se agregan después, cuando el guion te guste.">▶ Hacer todo</button>
         <button onclick="abrirExtras()" title="Etiquetas, flechas, tarjetas, testimonios, nuevos modelos y tráiler, sobre el video ya hecho">✨ Agregar extras</button>
+        <button onclick="window.open('/vista?p=' + q(P), 'vista_' + P)" title="Diapositivas: cada etiqueta y círculo sobre su cuadro, para aprobar, editar o quitar antes de ponerlos">👀 Diapositivas (etiquetas y círculos)</button>
         <button onclick="window.open('/pistas?p=' + q(P))" title="Cada pieza en su pista: video, voz por bloque, música, subtítulos, etiquetas y flechas. Mueve, cambia o borra y vuelve a armar">🎚 Editor por pistas</button>
         <button id="detener">■ Detener</button>
         <button id="verGuion" onclick="verGuion()" title="Abre el editor de guion en otra pestaña: cada bloque con su imagen, los avisos de la app y las preguntas de la IA">📝 Ver guion</button>
@@ -289,33 +290,41 @@
       </div>
       <p class="aviso">Tus capturas mandan: la IA busca en qué segundo del video están, ubica lo que marcaste y quita las suyas
       que caigan encima. Los pedidos de texto o voz («pon una flecha cuando hablo del PIN») se suman a los que elige la IA.
-      «Hacer todo» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
+      «✨ Agregar extras» y «Actualizar» también los usan. Lo mejor es capturar del video ya montado (con voz).</p>
     </section>
 
     <section class="panel extra" id="panelIdiomas">
-      <h2>🌐 Idiomas</h2>
-      <p class="aviso">Aquí hay dos cosas distintas: <b>① el video completo en otro idioma</b> (guion, voz y etiquetas traducidos, en una
-      copia del proyecto) y <b>② solo las etiquetas traducidas</b> sobre tu video en español.</p>
+      <h2>🌐 Tu video en otro idioma</h2>
+      <p class="aviso">Arriba ves el video que se traduce y su guion al lado (español → traducción). Tu video en español no se toca:
+      se crea una copia (por ejemplo MOTOROLA_FRP_2026_EN) con los mismos tramos, cortes, círculos y etiquetas, y con la voz en
+      ese idioma (inglés: Brian). La voz recién se genera cuando pulsas «▶ Hacer todo» en la copia.</p>
       <div class="fila" style="align-items:center">
         <label>Idioma <select id="idLang" onchange="idCargar(this.value)"></select></label>
-        <input type="text" id="idOtro" placeholder="otro código (ej.: ru, ar)" style="width:11em" onchange="this.value && idCargar(this.value.trim().toLowerCase())">
+        <input type="text" id="idOtro" placeholder="otro código (ej.: pt, fr)" style="width:11em" onchange="this.value && idCargar(this.value.trim().toLowerCase())">
+        <span class="aviso" id="idEstado"></span>
       </div>
-      <h3 style="margin:16px 0 6px">① 🎬 El video completo en este idioma</h3>
-      <div id="idPrevia"></div>
-      <p class="aviso">Crea una copia del proyecto (por ejemplo MOTOROLA_FRP_2026_EN) con el guion traducido por la IA: mismos tramos,
-      cortes importantes, flechas y etiquetas (traducidas). No gasta ElevenLabs: revisas el guion traducido y la voz se hace cuando
-      pulsas «▶ Hacer todo» en la copia (te muestra antes cuántos créditos usa). Tu video en español no se toca.</p>
-      <div class="fila" id="idVersionFila"><button class="principal" onclick="idVersion()">🌐 Hacer versión en este idioma</button><span class="msg" id="idVerMsg"></span></div>
-      <details id="idEtiq" style="margin-top:16px">
-        <summary style="cursor:pointer"><b>② 🏷 Solo las etiquetas traducidas</b> <span class="aviso">(la voz sigue en español)</span> <span class="aviso" id="idEtiqCuenta"></span></summary>
-        <p class="aviso">Las mismas etiquetas (las de la IA y las de tus capturas), traducidas: no se hacen de nuevo. Al cambiar de
-        idioma solo se vuelven a dibujar las etiquetas; la voz, el montaje y la música no se tocan. A la izquierda el texto en español,
-        a la derecha su traducción (vacía = sale en español).</p>
-        <div class="fila"><button onclick="idTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido corto, solo texto. No gasta ElevenLabs">🌐 Traducir con IA las que faltan</button></div>
+      <div class="fila" style="align-items:flex-start; gap:16px; flex-wrap:wrap; margin-top:8px">
+        <div style="flex:0 0 420px; max-width:100%">
+          <video id="idVideo" controls preload="metadata" style="width:100%; border-radius:10px; background:#000"></video>
+          <p class="aviso" id="idVideoNota"></p>
+        </div>
+        <div style="flex:1; min-width:18em; max-height:330px; overflow:auto; border:1px solid var(--borde); border-radius:10px; padding:6px 10px" id="idGuion"></div>
+      </div>
+      <div class="fila" style="align-items:center; margin-top:8px">
+        <button class="principal" onclick="idVersion()" id="idBtnVersion">🌐 Crear la versión (traduce la IA de Ajustes)</button>
+        <span class="aviso" id="idQuien"></span>
+        <span class="msg" id="idVerMsg"></span>
+      </div>
+      <details style="margin-top:14px"><summary><b>🏷 Solo las etiquetas en otro idioma</b> (avanzado: el video sigue con la voz en español)</summary>
+        <p class="aviso">Cada etiqueta (las de la IA y las de tus capturas) con su traducción. Sirve solo si quieres el video en español
+        con las etiquetas en otro idioma. Vacío = va el texto original.</p>
+        <div class="fila" style="align-items:center">
+          <button onclick="idTraducir()" title="La IA de «⚙ Ajustes IA» traduce lo que falta: un pedido corto, solo texto. No gasta ElevenLabs">🌐 Traducir las que faltan con IA</button>
+        </div>
         <div id="idFilas" style="margin-top:8px"></div>
         <div class="fila" style="align-items:center">
           <button onclick="idGuardar()">💾 Guardar traducciones</button>
-          <button class="principal" onclick="idUsar()" title="Las etiquetas se dibujan en este idioma y se vuelven a poner sobre el video">🎬 Poner las etiquetas en este idioma</button>
+          <button onclick="idUsar()" title="Las etiquetas se dibujan en este idioma y se vuelven a poner sobre el video">🎬 Poner las etiquetas en este idioma</button>
           <button onclick="idUsar('es')">↩ Volver al español</button>
           <span class="msg" id="idMsg"></span>
         </div>
@@ -335,7 +344,7 @@
       </div>
       <p class="aviso">Momento «auto»: la tarjeta entra cuando la voz habla de comentar o de WhatsApp (lo busca en los subtítulos);
       si no lo dice, las de comentarios van al comienzo y las de WhatsApp cerca del final. En «¿Dónde?» eliges
-      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. «Hacer todo» las pone solo si subiste alguna.</p>
+      también inicio, medio, final o un segundo exacto. Nunca se pisan entre ellas y el video dura lo mismo. Se ponen con «✨ Agregar extras» (si subiste alguna), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelTestimonios">
@@ -352,7 +361,7 @@
       <p class="aviso">Momento «auto»: entra justo después de la frase en que la voz habla de clientes, opiniones, confianza o
       testimonios (lo busca en los subtítulos); si no lo dice, va antes de la despedida. En «¿Dónde?» eliges
       también inicio, medio, final o un segundo exacto. «Desde» y «Hasta» recortan el testimonio (vacío = entero). El video final dura lo que suman los
-      testimonios. «Hacer todo» los pone solo si subiste alguno.</p>
+      testimonios. Se ponen con «✨ Agregar extras» (si subiste alguno), después de «▶ Hacer todo».</p>
     </section>
 
     <section class="panel extra" id="panelModelos">
@@ -369,7 +378,7 @@
       los lee en tu video, o tu PC lee el texto de pantalla si no hay IA. «Frase»: vacío = la IA la escribe con tu estilo.
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
       introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
-      si es más corto, se congela al final. «Hacer todo» lo pone solo si subiste uno. Usa un poco de crédito de ElevenLabs.</p>
+      si es más corto, se congela al final. Se pone con «✨ Agregar extras» (si subiste uno), después de «▶ Hacer todo». Usa un poco de crédito de ElevenLabs.</p>
     </section>
 
     <section class="panel" id="panelAcortar">
@@ -503,12 +512,12 @@
       o lo que pasa en la pantalla (con zoom suave y nunca acelerado), con la misma voz del video, subtítulos grandes y tu
       música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).</p>
       <div class="fila" style="align-items:center">
-        <label>Duración <select id="shortDur" onchange="shortDuracion()">
+        <label>Duración <select id="shortDur" onchange="$('#shortSegL').hidden = this.value !== 'otro'; if (this.value === 'otro') $('#shortSeg').focus()">
           <option value="15">15 s</option><option value="30">30 s</option><option value="45">45 s</option>
           <option value="60" selected>60 s (YouTube Shorts)</option><option value="90">90 s (TikTok / Reels largo)</option><option value="120">2 min</option><option value="180">3 min (máximo de YouTube Shorts)</option>
-          <option value="otro">Otra (tú pones los segundos)…</option></select></label>
-        <label id="shortSegL" hidden><input type="number" id="shortSeg" min="10" max="180" step="1" value="45" style="width:5.5em"> segundos <span class="aviso">(de 10 a 180)</span></label>
-        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva" onchange="shortDuracion()"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
+          <option value="otro">Personalizada (escribe los segundos)</option></select></label>
+        <label id="shortSegL" hidden><input type="number" id="shortSeg" min="10" max="180" step="1" value="40" style="width:5.5em"> segundos</label>
+        <label class="aviso" id="shortVozNuevaL" hidden title="Usa el guion propio del Short (short_guion.json, más corto y con gancho) y genera esa voz con ElevenLabs: ~1 crédito por letra; las frases que no cambian se reutilizan"><input type="checkbox" id="shortVozNueva" onchange="$('#shortDurAviso').hidden = !this.checked"> 🎙 Voz nueva del Short (<span id="shortLetras"></span> letras ≈ créditos)</label>
         <button class="principal" id="shortBtn" onclick="shortHacer()">📱 Hacer Short</button>
         <span class="msg" id="shortMsg"></span>
       </div>
@@ -958,10 +967,20 @@ function pintarPasos(pasos, t, fallo) {
 }
 async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuántos bloques y caracteres de voz
   let c;
-  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { return true; }
+  try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { c = {desconocido: true}; }
+  if (c.desconocido) return confirm('No pude calcular cuánta voz falta generar. Las voces que falten se hacen con ElevenLabs '
+    + '(~1 crédito por letra); las que ya están se reutilizan. ¿Seguir?');
   if (!c.caracteres) return true;
   return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
     + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+}
+async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del proyecto, el paso «Música» genera una pista nueva (gasta)
+  let e;
+  try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) { e = null; }
+  if (e && (e.musica_fija || e.archivos['musica.mp3'])) return true;
+  return confirm((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
+    + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
+    + 'Queda guardada en el proyecto y no se vuelve a pagar.\n\n¿Seguir? (Cancelar = no hago nada todavía)');
 }
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
@@ -1005,12 +1024,13 @@ async function volverAGuardado(nombre) {
 }
 async function ejecutar(paso) {
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
+  if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
-    const pr = prompt('No hay pista de música. Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller):');
+    const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
     if (pr === null) return; if (pr) op.prompt = pr;
   }
   if (paso === 'transcribir') {
@@ -1328,8 +1348,10 @@ async function finIA() {
 }
 async function pegar() {
   const tarea = TAREA[archivo];
-  await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
-  await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: $('#editor').value});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea, modo: 'revisar'})});
+  } catch (e) { return alert(e.message); }  // antes fallaba callado (por ejemplo con otro paso corriendo)
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
 function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
@@ -1923,8 +1945,8 @@ async function impCargar() {
   try { impPintar(await api(`/api/importantes?p=${q(P)}`)); } catch (e) {}
 }
 async function impGuardar(lista) {
-  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); }
-  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; }
+  try { impPintar(await api(`/api/importantes?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lista})})); return true; }
+  catch (e) { $('#impMsg').className = 'msg err'; $('#impMsg').textContent = e.message; return false; }
 }
 function impMarcar(cual) {  // un clic: toma el segundo del reproductor; «Termina aquí» agrega el corte enseguida
   const t = $('#impVideo').currentTime;
@@ -1945,7 +1967,7 @@ function impVer(t) { const v = $('#impVideo'); v.currentTime = t; v.play(); }
 function impAgregar() {
   const a = impSeg($('#impDesde').value), b = impSeg($('#impHasta').value);
   if (!(a >= 0) || !(b > a)) return alert('Pon «Desde» y «Hasta» (minuto:segundo, como 5:39), y que «Hasta» sea después de «Desde».');
-  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(() => { $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });
+  impGuardar([...IMP, {inicio: a, fin: b, nota: $('#impNota').value.trim()}]).then(ok => { if (ok) $('#impDesde').value = $('#impHasta').value = $('#impNota').value = ''; });  // si no se guardó, lo escrito queda
 }
 // «🎞 Línea de tiempo» de Cortes importantes (como Filmora): miniaturas, regla, cabezal, zoom y tus cortes pintados encima
 const LINEA = {dur: 0, sel: null, tira: ''};
@@ -2104,6 +2126,8 @@ async function subTraducir() {
 }
 function subVista() {
   const f = $('#subFuente').value; if (!f) return;
+  const dur = Math.floor((SUB && SUB.duraciones || {})[f] || 0);  // el deslizador llegaba solo a 10:00
+  if (dur > 0) $('#subT').max = dur;
   $('#subTV').textContent = `${Math.floor($('#subT').value / 60)}:${String($('#subT').value % 60).padStart(2, '0')}`;
   $('#subImg').src = `/api/subs_vista?p=${q(P)}&f=${q(f)}&t=${$('#subT').value}&v=${Date.now()}`;
 }
@@ -2133,8 +2157,6 @@ async function shortVer() {  // «📱 Short»: el último que armaste, con el p
   let sg = null;
   if (arch['short_guion.json']) try { const r = await api(`/archivo?p=${q(P)}&f=short_guion.json&v=${Date.now()}`); sg = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
   $('#shortVozNuevaL').hidden = !sg;
-  if (!sg) $('#shortVozNueva').checked = false;
-  shortDuracion();
   if (sg) $('#shortLetras').textContent = sg.tomas.reduce((n, t) => n + t.texto.length, 0);
   if (!arch['SHORT.mp4']) { $('#shortVer').innerHTML = '<p class="vacio">Todavía no hay Short en este proyecto.</p>'; return; }
   const seg = plan ? Math.round(plan.duracion) : '', nombre = `${P.replace(/[^\w\- ]/g, '')}_SHORT_${seg}s_${new Date().toLocaleDateString('sv')}.mp4`;
@@ -2142,20 +2164,14 @@ async function shortVer() {  // «📱 Short»: el último que armaste, con el p
     <video controls preload="metadata" style="width:300px; aspect-ratio:9/16; background:#000; border-radius:12px" src="/archivo?p=${q(P)}&f=SHORT.mp4&v=${arch['SHORT.mp4'].fecha}"></video>
     <div style="flex:1; min-width:16em"><p><b>${plan ? `${plan.tomas.length} tomas · ${seg} s` : ''}</b>
       <a href="/archivo?p=${q(P)}&f=SHORT.mp4&nombre=${q(nombre)}" download="${nombre}"><button class="principal">⬇ Bajar el Short</button></a></p>
-      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.zoom > 1 ? 'pantalla con zoom' : 'tu cara'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
+      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.encuadre === 'telefono' ? 'sigue al teléfono' : t.encuadre === 'cara' || (!t.encuadre && t.zoom <= 1) ? 'tu cara' : 'pantalla con zoom'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
         <span class="aviso">${esc(t.por_que)}</span><br>«${esc(t.texto)}»</p>`).join('') : ''}</div></div>`;
-}
-function shortDuracion() {  // «Otra…» muestra la casilla de segundos; con la voz nueva el largo lo pone su guion
-  const voz = $('#shortVozNueva').checked;
-  $('#shortSegL').hidden = $('#shortDur').value !== 'otro' || voz;
-  $('#shortDur').disabled = voz;
-  $('#shortDurAviso').hidden = !voz;
 }
 async function shortHacer() {
   let dur = $('#shortDur').value;
   if (dur === 'otro') {
-    dur = parseFloat($('#shortSeg').value);
-    if (!(dur >= 10 && dur <= 180)) { $('#shortSeg').focus(); return alert('Pon de 10 a 180 segundos.'); }
+    dur = Math.round(parseFloat($('#shortSeg').value));
+    if (!(dur >= 10 && dur <= 180)) { $('#shortMsg').className = 'msg err'; $('#shortMsg').textContent = 'Escribe entre 10 y 180 segundos.'; return; }
   }
   const voz = $('#shortVozNueva').checked;
   if (voz && !confirm(`La voz nueva del Short gasta ElevenLabs: unos ${$('#shortLetras').textContent} créditos (las frases que no cambiaron se reutilizan, no gastan). ¿Seguir?`)) return;
@@ -2229,32 +2245,34 @@ function idPintar(r, msg) {
       <input type="text" data-orig="${esc(f.orig)}" value="${esc(f.trad)}" placeholder="traducción (vacío = va el original)" style="flex:1; min-width:12em"></div>`).join('')
     : '<p class="aviso">Todavía no hay etiquetas en este proyecto (ni de la IA ni de tus capturas).</p>';
   $('#idActual').textContent = 'Ahora las etiquetas se dibujan en: ' + (r.nombres[r.idioma] || r.idioma) + '.';
-  const hechas = r.filas.filter(f => f.trad).length;
-  $('#idEtiqCuenta').textContent = r.filas.length ? `· ${r.filas.length} etiquetas, ${hechas} traducidas` : '· todavía no hay etiquetas';
   if (msg !== undefined) { $('#idMsg').className = 'msg ok'; $('#idMsg').textContent = msg; }
+  idVista(r.lang, r.nombres[r.lang] || r.lang);
 }
-async function idCargar(lang) { if (!P) return; try { idPintar(await api(`/api/etiquetas_idiomas?p=${q(P)}&lang=${q(lang || '')}`)); idPrevia(); } catch (e) {} }
-async function idPrevia() {  // ① lo que se va a traducir: el video, el guion, la voz, la IA, las etiquetas y si ya está la copia
-  let r; try { r = await api(`/api/idioma_previa?p=${q(P)}&lang=${q(ID_LANG)}`); } catch (e) { return; }
-  const nombre = $('#idLang').selectedOptions[0]?.textContent.replace(' ✓', '') || ID_LANG;
-  const c = r.copia, abrir = `/?p=${q(c.nombre)}`;
-  $('#idVersionFila').hidden = r.es_copia || c.existe;
-  const copia = r.es_copia ? `<p class="msg ok">Este proyecto ya es una versión traducida (${esc(r.idioma_video)}): la voz sale en ese idioma cuando pulses «▶ Hacer todo».</p>`
-    : c.existe ? `<p><b>La copia ya existe:</b> ${esc(c.nombre)} · guion traducido ✓ · voz ${c.voz ? '✓' : 'todavía no'} · video final ${c.final ? '✓' : 'todavía no'}<br>
-        <a href="/guion?p=${q(c.nombre)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="${abrir}" target="_blank">🎬 Abrir la copia</a></p>`
-    : `<p class="aviso">Todavía no hiciste la versión en ${esc(nombre)}.</p>`;
-  const vid = r.video ? `<video controls preload="metadata" style="width:320px; max-width:100%; aspect-ratio:16/9; background:#000; border-radius:10px" src="/archivo?p=${q(P)}&f=${q(r.video)}"></video>` : '';
-  $('#idPrevia').innerHTML = `<div class="fila" style="align-items:flex-start; gap:16px; flex-wrap:wrap">${vid}
-    <div style="flex:1; min-width:16em">
-      <p><b>Video:</b> ${r.video ? `${esc(r.video)} · ${mmss(r.duracion)}` : 'todavía no hay video armado (se traduce el guion igual)'}</p>
-      <p><b>Guion:</b> ${r.bloques.length} bloques · ${r.letras.toLocaleString('es')} letras → voz en ${esc(nombre)} con <b>${esc(r.voz || 'la voz de ⚙ Ajustes')}</b>:
-        ≈ ${r.letras.toLocaleString('es')} créditos de ElevenLabs (recién en la copia, al pulsar «▶ Hacer todo», y te los muestra antes)</p>
-      <p><b>Traduce:</b> ${r.ia ? `la IA de ⚙ Ajustes IA (${esc(r.ia)}), un pedido de texto` : '<span class="msg err">no hay IA configurada en ⚙ Ajustes IA</span>'}</p>
-      <p><b>Etiquetas:</b> ${r.etiquetas} · ${r.traducidas} ya traducidas a ${esc(nombre)}${r.etiquetas > r.traducidas ? ' (las que faltan las traduce la misma IA)' : ''}</p>
-      ${copia}</div></div>
-    ${r.bloques.length ? `<details style="margin:6px 0"><summary style="cursor:pointer">📝 Ver el guion que se va a traducir (${r.bloques.length} bloques)</summary>
-      ${r.bloques.map(b => `<p style="margin:4px 0"><b>${esc(b.id)}</b> ${esc(b.texto)}</p>`).join('')}</details>` : ''}`;
+async function idVista(lang, nombre) {  // el video que se traduce, su guion al lado y si ya existe la copia en ese idioma
+  const copia = `${P}_${lang.toUpperCase()}`;
+  let e = {}, orig = null, trad = null, aj = {};
+  try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) {}
+  const arch = e.archivos || {}, vid = ['FINAL.mp4', '4_musica.mp4', '3_voz.mp4', 'original.mp4'].find(f => arch[f]);
+  const v = $('#idVideo');
+  if (vid && !v.src.includes(`f=${vid}`)) v.src = `/archivo?p=${q(P)}&f=${vid}&v=${arch[vid].fecha}`;
+  $('#idVideoNota').textContent = vid ? `Se traduce este video: ${vid}` : 'Todavía no hay video armado.';
+  try { const r = await api(`/api/json?p=${q(P)}&f=guion.json`); orig = typeof r === 'string' ? JSON.parse(r) : r; } catch (x) {}
+  try { const r = await api(`/api/json?p=${q(copia)}&f=guion.json`); trad = typeof r === 'string' ? (r ? JSON.parse(r) : null) : r; } catch (x) {}
+  try { aj = (await api('/api/ajustes')).ajustes || {}; } catch (x) {}
+  const t2 = Object.fromEntries(((trad || {}).bloques || []).map(b => [b.id, b.texto]));
+  $('#idGuion').innerHTML = orig ? `<table style="width:100%; border-collapse:collapse; font-size:13px">
+    <tr><th style="text-align:left; width:3em"></th><th style="text-align:left">Español</th><th style="text-align:left">${esc(nombre)}</th></tr>` +
+    orig.bloques.map(b => `<tr style="border-top:1px solid var(--borde); vertical-align:top"><td><b>${esc(b.id)}</b></td>
+      <td style="padding:4px 8px 4px 0">${esc(b.texto)}</td><td style="padding:4px 0; ${t2[b.id] ? '' : 'opacity:.5'}">${t2[b.id] ? esc(t2[b.id]) : '(sin traducir todavía)'}</td></tr>`).join('') + '</table>'
+    : '<p class="aviso">Todavía no hay guion en este proyecto.</p>';
+  const letras = Object.values(t2).reduce((n, s) => n + s.length, 0) || (orig ? orig.bloques.reduce((n, b) => n + (b.texto || '').length, 0) : 0);
+  $('#idEstado').innerHTML = trad
+    ? `✓ Ya existe <b>${esc(copia)}</b>: <a href="/guion?p=${q(copia)}" target="_blank">📝 revisar el guion</a> · <a href="/?p=${q(copia)}" target="_blank">🎬 abrir y armar</a> · voz ≈ ${letras.toLocaleString('es')} créditos`
+    : `Todavía no hay versión en ${esc(nombre)}. La voz costaría ≈ ${letras.toLocaleString('es')} créditos de ElevenLabs (cuando la armes).`;
+  $('#idBtnVersion').disabled = !!trad;
+  $('#idQuien').textContent = trad ? '' : `Traduce: ${aj.proveedor || 'la IA de «⚙ Ajustes IA»'} (unos centavos, solo texto). O pídeselo a Claude en el chat: lo traduce sin gastar esa IA.`;
 }
+async function idCargar(lang) { if (!P) return; try { idPintar(await api(`/api/etiquetas_idiomas?p=${q(P)}&lang=${q(lang || '')}`)); } catch (e) {} }
 function idTabla() { return Object.fromEntries([...document.querySelectorAll('#idFilas input[data-orig]')].map(i => [i.dataset.orig, i.value.trim()])); }
 async function idGuardar(extra) {
   try { const r = await api(`/api/etiquetas_idiomas?p=${q(P)}`, {method: 'POST', body: JSON.stringify({lang: ID_LANG, traducciones: idTabla(), ...(extra || {})})}); idPintar(r, '✓ Guardado'); return r; }
@@ -2277,7 +2295,6 @@ async function idVersion() {
     $('#idVerMsg').innerHTML = `✓ Lista: <b>${esc(r.proyecto)}</b> (voz ${esc(r.voz)}, unos ${r.caracteres.toLocaleString('es')} caracteres de voz)`
       + (r.sin_traducir.length ? ` · sin traducir: ${esc(r.sin_traducir.join(', '))}` : '')
       + ` · <a href="/guion?p=${q(r.proyecto)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="/?p=${q(r.proyecto)}" target="_blank">🎬 Abrir el proyecto</a>`;
-    idPrevia();
   } catch (e) { $('#idVerMsg').className = 'msg err'; $('#idVerMsg').textContent = e.message; }
 }
 async function idUsar(lang) {
@@ -2830,6 +2847,8 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
+  soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
   refrescar();
 }
@@ -2842,13 +2861,20 @@ let reiniciando = false, PAGINA = null;
 function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
   const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
 }
-async function actualizarProyecto() {
+async function actualizarProyecto() {  // reutiliza transcripción, guion y voces; rehace el resto y vuelve a poner los extras que tenía
+  if (!confirm(`¿Actualizar «${P}»?\n\nBorro los videos hechos (FINAL.mp4 y los de cada paso) y las fallas viejas, y vuelvo a hacer el video `
+    + 'con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y '
+    + 'tráiler que tenía se vuelven a poner al final.')) return;
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
   soltarVideo();
-  try { await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  await ejecutar('todo');  // reutiliza transcripción, guion y voces; rehace el resto
+  let r;
+  try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true})}); }
+  catch (e) { alert(e.message); }
+  refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios y tu video de nuevos modelos.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
