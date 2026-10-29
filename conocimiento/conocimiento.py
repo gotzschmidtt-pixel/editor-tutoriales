@@ -64,7 +64,14 @@ def escribir(f, texto):
     asegurar()
     tmp = f + '.tmp'
     open(tmp, 'w', encoding='utf-8').write(texto)
-    os.replace(tmp, f)
+    for intento in range(20):  # Windows: si el archivo está abierto un instante (antivirus, otra ventana), espera y reintenta
+        try:
+            os.replace(tmp, f)
+            return
+        except PermissionError:
+            if intento == 19:
+                raise
+            time.sleep(0.5)
 
 
 def usar():
