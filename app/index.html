@@ -2785,9 +2785,21 @@ function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus númer
     ${vs.map(v => `<div class="fila" style="margin:4px 0; align-items:center">${v.archivo
       ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirVersion('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
          <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
-      : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>`}</div>`).join('')}
+      : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>
+         <label class="aviso">Reintentar con <select id="vm_${esc(v.id)}" data-ia="${esc(v.id)}" class="modeloReintento"><option>${esc(v.modelo)}</option></select></label>`}</div>`).join('')}
     ${buenas.length < vs.length ? `<div class="fila"><button onclick="reintentarVersiones()" title="Solo las IAs que fallaron escriben su guion otra vez, con el mismo encargo. Tu guion actual no cambia. Se paga un guion a cada una.">🔁 Reintentar las que fallaron (${vs.length - buenas.length})</button></div>` : ''}
     ${buenas.length > 1 ? `<div class="fila"><button onclick="combinarVersiones()" title="Tu IA principal arma un guion con lo mejor de cada versión. No vuelve a mirar el video: es un pedido más.">🧩 Combinar lo mejor de las ${buenas.length}</button><span class="msg" id="msgVers"></span></div>` : ''}</div>`;
+  vs.filter(v => !v.archivo).forEach(v => modelosReintento(v.id, v.modelo));
+}
+async function modelosReintento(id, actual) {  // los modelos que tu cuenta puede usar, con la clave guardada (no gasta tokens)
+  const ia = TRES_IAS.find(x => x[0] === id), sel = $('#vm_' + id);
+  if (!ia || !sel) return;
+  try {
+    const r = await api('/api/probar_ia', {method: 'POST', body: JSON.stringify({ia: id, url: ia[2], tipo: ia[3], proveedor: ia[3] ? 'Claude' : '', clave: ''})});
+    const ms = (r.modelos || []).filter(m => !/embed|tts|audio|whisper|dall-e|image|imagen|veo|moderation|realtime|transcribe|search|aqa|babbage|davinci/i.test(m));
+    if (!ms.includes(actual)) ms.unshift(actual);
+    sel.innerHTML = ms.map(m => `<option${m === actual ? ' selected' : ''}>${esc(m)}</option>`).join('');
+  } catch (e) { /* sin lista: queda el modelo de antes */ }
 }
 async function elegirVersion(id) {
   if (!confirm('¿Usar esta versión como tu guion? Lo que cambiaste en la actual sin guardar se pierde (la actual queda como guion.json.anterior).')) return;
@@ -2795,7 +2807,14 @@ async function elegirVersion(id) {
   verGuionAqui();
 }
 async function reintentarVersiones() {
-  if (!confirm('Las IAs que fallaron van a escribir su guion otra vez (se paga un guion a cada una). Si falló por falta de saldo, cárgalo antes. Tu guion actual no cambia. ¿Seguir?')) return;
+  const elegidos = [...document.querySelectorAll('.modeloReintento')].map(s => [s.dataset.ia, s.value]);
+  if (!confirm('Van a escribir su guion otra vez: ' + elegidos.map(([i, m]) => `${i} con ${m}`).join(', ') +
+               '.\nSe paga un guion a cada una. Si falló por falta de saldo, cárgalo antes. Tu guion actual no cambia. ¿Seguir?')) return;
+  try {  // el modelo elegido queda guardado para esa IA en «⚙ Ajustes IA» (las claves no viajan: van enmascaradas)
+    const ias = (await api('/api/ajustes')).ajustes.ias_guion || {};
+    for (const [i, m] of elegidos) ias[i] = {...(ias[i] || {}), modelo: m};
+    await api('/api/ajustes', {method: 'POST', body: JSON.stringify({ias_guion: ias})});
+  } catch (e) { return alert('No pude guardar los modelos elegidos: ' + e.message); }
   dlgGuion.close();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({reintentar: true})}); } catch (e) { alert(e.message); }
   refrescar();
