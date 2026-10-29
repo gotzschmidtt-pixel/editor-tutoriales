@@ -1738,6 +1738,24 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.error('Primero conecta YouTube (arriba, «1 · Tu canal»).')
             threading.Thread(target=canal_aprender, daemon=True).start()
             return self.responder({'ok': True})
+        if ruta == '/api/youtube/respuestas':  # «💬 Responder comentarios»: la IA propone, tú apruebas cada una
+            c = yt_config()
+            com = youtube.sin_responder(c, youtube.canal(c)['id'], maximo=int(json.loads(self.rfile.read(largo) or b'{}').get('maximo') or 25))
+            if c.get('_cambio'):
+                yt_guardar(c)
+            if not com:
+                return self.responder({'respuestas': [], 'comentarios': []})
+            r = yt_ia(os.path.join(PROYECTOS, '.canal'), 'respuestas', {'comentarios': com})
+            por_id = {x.get('id'): x for x in r.get('respuestas') or [] if isinstance(x, dict)}
+            return self.responder({'comentarios': [dict(x, **{k: por_id.get(x['id'], {}).get(k) for k in ('respuesta', 'no_responder', 'duda')})
+                                                   for x in com]})
+        if ruta == '/api/youtube/responder':  # publicar UNA respuesta que el autor aprobó (botón «Publicar respuesta»)
+            datos = json.loads(self.rfile.read(largo) or b'{}')
+            c = yt_config()
+            rid = youtube.responder(c, datos.get('id'), datos.get('texto'))
+            if c.get('_cambio'):
+                yt_guardar(c)
+            return self.responder({'ok': True, 'id': rid})
         if ruta == '/api/youtube/ideas':  # temas para los próximos videos, de todo el canal
             c = yt_config()
             videos = youtube.mis_videos(c)

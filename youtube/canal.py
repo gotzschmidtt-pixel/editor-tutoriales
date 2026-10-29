@@ -276,6 +276,29 @@ def escribir_informe(a):
     conocimiento.escribir(INFORME, '\n'.join(L) + '\n')
 
 
+DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+
+
+def mejor_dia(c, dias=120):
+    """Qué día de la semana se ven más tus videos (promedio de los últimos 120 días). La hora exacta YouTube no la da por
+    la API: está en YouTube Studio → Estadísticas → Audiencia → «Cuándo están tus espectadores en YouTube»."""
+    hasta = time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400))
+    desde = time.strftime('%Y-%m-%d', time.localtime(time.time() - dias * 86400))
+    r = youtube.pedir(c, 'GET', youtube.ANALYTICS, {'ids': 'channel==MINE', 'startDate': desde, 'endDate': hasta,
+                                                    'dimensions': 'day', 'metrics': 'views', 'sort': 'day'})
+    por = collections.defaultdict(list)
+    for dia, vistas in r.get('rows') or []:
+        por[time.strptime(dia, '%Y-%m-%d').tm_wday].append(vistas)
+    prom = {d: sum(v) / len(v) for d, v in por.items() if v}
+    if not prom:
+        return None
+    orden = sorted(prom, key=lambda d: -prom[d])
+    media = sum(prom.values()) / len(prom)
+    return {'mejor': DIAS[orden[0]], 'segundo': DIAS[orden[1]] if len(orden) > 1 else '',
+            'por_dia': {DIAS[d]: round(prom[d]) for d in range(7) if d in prom},
+            'diferencia_pct': round((prom[orden[0]] / media - 1) * 100) if media else 0}
+
+
 def aprender(c, avance=print):
     """Todo el proceso: baja lo que falta, hace las cuentas y escribe ESTADISTICAS_CANAL.md. Devuelve el análisis."""
     os.makedirs(CARPETA, exist_ok=True)
@@ -287,6 +310,14 @@ def aprender(c, avance=print):
     n = _curvas(c, videos, avance)
     json.dump(videos, open(DATOS, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     a = analizar(videos)
+    try:
+        a['mejor_dia'] = mejor_dia(c)
+    except youtube.ErrorYT as e:
+        avance(f'· no pude leer las vistas por día: {e}')
+    if a.get('mejor_dia'):
+        m = a['mejor_dia']
+        a['reglas'].append(f"Tu público mira más los {m['mejor']} y los {m['segundo']} ({m['diferencia_pct']} % más que el "
+                           'promedio): programa los videos para publicarse el día antes o temprano ese día.')
     escribir_informe(a)
     json.dump(a, open(os.path.join(CARPETA, 'analisis.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     avance(f'Listo: {a["videos"]} videos analizados ({n} curvas nuevas). Informe en {INFORME}')

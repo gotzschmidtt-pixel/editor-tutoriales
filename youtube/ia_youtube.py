@@ -84,7 +84,24 @@ Devuelve este JSON con 10 ideas, de la más pedida a la menos:
               "pedidos": 4, "busquedas": ["la sugerencia que coincide"], "ya_hecho": "título de tu video parecido, si existe"}}]}}"""
 
 
-TAREAS = {'metadatos': metadatos, 'aprender': aprender, 'ideas': ideas}
+def respuestas(e):
+    return f"""Respondes los comentarios del canal de tutoriales del autor, como si fueras él. {REGLAS}
+Respuestas cortas (1 a 3 frases), cercanas, tuteando y con buena onda. Si preguntan por un modelo o versión que no está en el
+conocimiento, no prometas que sirve: invita a escribir al WhatsApp o a la web del autor (están en el conocimiento). Si el
+comentario es spam, un insulto o no hace falta contestar (un «gracias» suelto se contesta con un agradecimiento corto),
+márcalo con "no_responder": true. Nada de links que no estén en el conocimiento.
+
+CONOCIMIENTO DEL CANAL (procesos, respuestas confirmadas, páginas):
+{e.get('conocimiento', '')[:7000]}
+
+COMENTARIOS SIN RESPONDER (id, autor, texto):
+{json.dumps([[x['id'], x['autor'], x['texto']] for x in e.get('comentarios', [])], ensure_ascii=False)}
+
+Devuelve este JSON, uno por comentario:
+{{"respuestas": [{{"id": "el id del comentario", "respuesta": "...", "no_responder": false, "duda": "si no estás seguro de algo, qué revisar; si no, vacío"}}]}}"""
+
+
+TAREAS = {'metadatos': metadatos, 'aprender': aprender, 'ideas': ideas, 'respuestas': respuestas}
 
 
 def main():
@@ -98,6 +115,8 @@ def main():
         sys.exit('ERROR: hace falta una IA en «⚙ Ajustes IA».')
     carpeta = os.path.join(a.proyecto, 'youtube')
     e = json.load(open(os.path.join(carpeta, f'entrada_{a.tarea}.json'), encoding='utf-8'))
+    if a.tarea == 'respuestas':
+        e['conocimiento'] = conocimiento.texto_para_ia(7000)
     if a.tarea == 'metadatos':
         e['conocimiento'] = conocimiento.texto_para_ia(6000, a.proyecto)
         try:  # «📊 Todo tu canal»: qué títulos y palabras funcionan en tu canal, con números

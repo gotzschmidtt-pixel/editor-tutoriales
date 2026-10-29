@@ -103,6 +103,14 @@
     <div id="canalRes"></div>
   </section>
 
+  <section><h2>💬 Responder comentarios</h2>
+    <p class="ayuda">Junta los comentarios más nuevos de tu canal que nadie respondió y la IA te propone una respuesta para cada uno,
+      con lo que sabe de tu canal. <b>Nada se publica solo</b>: corriges el texto si quieres y pulsas «✅ Publicar respuesta» en cada uno.
+      Gasta un pedido a la IA por tanda.</p>
+    <div class="fila"><button onclick="buscarRespuestas()" id="btnResp">💬 Buscar comentarios sin responder</button><span id="msgResp" class="msg"></span></div>
+    <div id="listaResp"></div>
+  </section>
+
   <section><h2>4 · Ideas para los próximos videos</h2>
     <p class="ayuda">Junta lo que piden en los comentarios de todo el canal con lo que la gente busca en YouTube.</p>
     <div class="fila"><button onclick="ideas()" id="btnIdeas">💡 Buscar ideas</button><span id="msgIdeas" class="msg"></span></div>
@@ -259,6 +267,32 @@ async function ideas() {
   catch (x) { $('#msgIdeas').textContent = x.message; $('#msgIdeas').className = 'msg err'; }
   $('#btnIdeas').disabled = false;
 }
+let RESP = [];
+async function buscarRespuestas() {
+  $('#btnResp').disabled = true; $('#msgResp').textContent = 'Leo los comentarios y la IA prepara las respuestas…'; $('#msgResp').className = 'msg';
+  try {
+    RESP = (await api('/api/youtube/respuestas', {method: 'POST', body: '{}'})).comentarios || [];
+    $('#msgResp').textContent = RESP.length ? `${RESP.length} comentarios sin responder` : 'No hay comentarios sin responder 🎉';
+    pintarRespuestas();
+  } catch (x) { $('#msgResp').textContent = x.message; $('#msgResp').className = 'msg err'; }
+  $('#btnResp').disabled = false;
+}
+function pintarRespuestas() {
+  $('#listaResp').innerHTML = RESP.map((x, k) => `<div class="tarjeta" style="border:1px solid var(--borde); border-radius:10px; padding:10px; margin:8px 0${x.hecha ? '; opacity:.5' : ''}">
+    <div class="ayuda"><b>${esc(x.autor)}</b> · ${esc(x.fecha)} · <a href="https://www.youtube.com/watch?v=${esc(x.video)}&lc=${esc(x.id)}" target="_blank">ver en YouTube</a></div>
+    <p style="margin:6px 0">${esc(x.texto)}</p>
+    ${x.no_responder ? '<p class="ayuda">La IA sugiere no responder este (spam o no hace falta).</p>' : ''}
+    ${x.duda ? `<p class="ayuda">⚠️ ${esc(x.duda)}</p>` : ''}
+    <textarea id="resp_${k}" rows="3" style="width:100%" ${x.hecha ? 'disabled' : ''}>${esc(x.respuesta || '')}</textarea>
+    <div class="fila">${x.hecha ? '<span class="ok">✅ Publicada</span>' : `<button class="principal" onclick="publicarRespuesta(${k})">✅ Publicar respuesta</button>
+      <button onclick="RESP[${k}].hecha = 'omitida'; pintarRespuestas()">Omitir</button>`}<span class="msg" id="msgR_${k}"></span></div></div>`).join('');
+}
+async function publicarRespuesta(k) {
+  const texto = $('#resp_' + k).value.trim();
+  if (!texto) return;
+  try { await api('/api/youtube/responder', {method: 'POST', body: JSON.stringify({id: RESP[k].id, texto})}); RESP[k].hecha = true; RESP[k].respuesta = texto; pintarRespuestas(); }
+  catch (x) { $('#msgR_' + k).textContent = x.message; $('#msgR_' + k).className = 'msg err'; }
+}
 async function verCanal() {
   const r = await api('/api/youtube/canal'), a = r.analisis;
   $('#btnCanal').disabled = r.corriendo;
@@ -268,6 +302,9 @@ async function verCanal() {
     const pct = x => x == null ? '?' : Math.round(x * 100) + ' %';
     $('#canalRes').innerHTML = `<p><b>${a.videos}</b> videos (${a.largos} largos, ${a.shorts} Shorts) · ${Number(a.vistas).toLocaleString('es')} vistas
       · a los 30 s queda el <b>${pct(a.quedan_30s)}</b> · se mira en promedio el <b>${a.visto_pct ? Math.round(a.visto_pct) + ' %' : '?'}</b></p>
+      ${a.mejor_dia ? `<p>📅 <b>Mejor día para publicar:</b> ${esc(a.mejor_dia.mejor)} (y ${esc(a.mejor_dia.segundo)}): tu público mira
+        ${a.mejor_dia.diferencia_pct} % más que el promedio. <span class="ayuda">La hora exacta: YouTube Studio → Estadísticas → Audiencia →
+        «Cuándo están tus espectadores en YouTube».</span></p>` : ''}
       <h3>Reglas que ya usa la IA</h3><ol>${a.reglas.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
       <h3>Tus mejores videos (vistas por día)</h3><ol>${a.mejores.map(v => `<li><a href="https://youtu.be/${esc(v.id)}" target="_blank">${esc(v.titulo)}</a>
         <span class="ayuda">· ${v.por_dia}/día · se mira el ${v.visto_pct ?? '?'} %</span></li>`).join('')}</ol>

@@ -238,6 +238,37 @@ def comentarios(c, vid=None, canal_id=None, maximo=300):
     return out[:maximo]
 
 
+def sin_responder(c, canal_id, maximo=40, revisar=300):
+    """Los comentarios más nuevos del canal que nadie respondió todavía (ni tú ni otros)."""
+    out, token, vistos = [], None, 0
+    while len(out) < maximo and vistos < revisar:
+        p = {'part': 'snippet', 'maxResults': 100, 'order': 'time', 'textFormat': 'plainText', 'allThreadsRelatedToChannelId': canal_id}
+        if token:
+            p['pageToken'] = token
+        r = pedir(c, 'GET', API + '/commentThreads', p)
+        for x in r.get('items', []):
+            vistos += 1
+            s = x['snippet']['topLevelComment']['snippet']
+            if x['snippet'].get('totalReplyCount', 0) or s.get('authorChannelId', {}).get('value') == canal_id:
+                continue
+            out.append({'id': x['snippet']['topLevelComment']['id'], 'video': x['snippet'].get('videoId'),
+                        'autor': s.get('authorDisplayName', ''), 'texto': s.get('textDisplay', '')[:600],
+                        'fecha': s.get('publishedAt', '')[:10], 'likes': s.get('likeCount', 0)})
+        token = r.get('nextPageToken')
+        if not token:
+            break
+    return out[:maximo]
+
+
+def responder(c, comentario_id, texto):
+    """Publica tu respuesta a un comentario (la app lo hace solo cuando pulsas «Publicar respuesta»)."""
+    texto = (texto or '').strip()
+    if not texto:
+        raise ErrorYT('La respuesta está vacía.')
+    r = pedir(c, 'POST', API + '/comments', {'part': 'snippet'}, cuerpo={'snippet': {'parentId': comentario_id, 'textOriginal': texto[:9000]}})
+    return r.get('id')
+
+
 def sugerencias(consulta):
     """Lo que la gente escribe en el buscador de YouTube empezando por esa frase (gratis, sin cuota)."""
     url = 'https://suggestqueries.google.com/complete/search?' + urllib.parse.urlencode({'client': 'firefox', 'ds': 'yt', 'q': consulta, 'hl': 'es'})
