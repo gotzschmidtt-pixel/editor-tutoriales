@@ -77,6 +77,9 @@
   <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
   <button onclick="revisarOrtografia()" title="Revisa tildes y ortografía de todos los bloques con LanguageTool (gratis; manda el texto del guion a languagetool.org). Tú eliges qué cambiar">🔤 Ortografía</button>
   <button onclick="bajarWord()">⬇ Word</button>
+  <label class="chip" title="Muestra u oculta la emoción de ElevenLabs de cada bloque, entre corchetes como la recibe la voz"><input type="checkbox" id="verEmo" checked
+    onchange="document.body.classList.toggle('sinEmo', !this.checked); try { localStorage.verEmo = this.checked ? '1' : '0'; } catch (e) {}"> 😀 [emociones]</label>
+  <style>body.sinEmo .emoChip { display: none }</style>
   <button id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
   <button class="principal" id="btnSeguir" onclick="seguir()" title="Guarda lo que cambiaste y arma el video: voz con ElevenLabs (gasta créditos, solo en los bloques nuevos o cambiados), montaje, subtítulos y música">▶ Guardar y seguir con todo</button>
 </header>
@@ -294,8 +297,8 @@ function pintar() {
         ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}</div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span>
-        <label class="chip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀
-          <input list="emociones" class="emo" data-i="${i}" value="${esc(b.emocion || '')}" placeholder="como siempre" style="width:8.5em; background:transparent; border:0; color:inherit; font:inherit"></label></div>
+        <label class="chip emoChip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀 [
+          <input list="emociones" class="emo" data-i="${i}" value="${esc(b.emocion || '')}" placeholder="como siempre" style="width:8.5em; background:transparent; border:0; color:inherit; font:inherit">]</label></div>
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
@@ -492,6 +495,7 @@ async function guardarBloque(i) {  // el 💾 de cada bloque: guarda todo el gui
   const h = $('#b' + i + ' .guardarAqui');
   if (h) { h.disabled = false; h.textContent = ok ? '✓ Guardado' : '✗ No se guardó (mira arriba)'; }
 }
+try { if (localStorage.verEmo === '0') { $('#verEmo').checked = false; document.body.classList.add('sinEmo'); } } catch (e) {}
 addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
 cargar();
 </script>
