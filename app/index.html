@@ -664,6 +664,9 @@
           <textarea id="marcaTexto" rows="14" style="width:100%; margin-top:6px; font: 13px/1.4 Consolas, monospace" oninput="$('#marcaMsg').textContent = 'Sin guardar'"></textarea>
           <div class="fila"><button onclick="marcaGuardar()">💾 Guardar cambios de la marca</button></div></details>
       </div>
+      <h3 style="margin:16px 0 6px">📚 Guiones de las IAs (por marca y procedimiento)</h3>
+      <p class="aviso">Todo guion que escribió una IA, aunque no lo hayas elegido. La IA del próximo video del mismo módulo ve cómo lo resolvieron.</p>
+      <div id="guionesIA" class="aviso">Cargando…</div>
       <h3 style="margin:16px 0 6px">🌐 General (todas las marcas)</h3>
       <div class="aviso" id="conoRutas"></div>
       <label class="aviso" style="display:block;margin-top:6px"><input type="checkbox" id="conoUsar" onchange="conoUsar()"> Pasárselo a la IA cuando escribe</label>
@@ -1926,7 +1929,17 @@ function pintarConocimiento(r, msg) {
   $('#conoAprSum').textContent = `Aprendido de ${r.proyectos} proyecto(s) · ${n} nota(s) tuyas`;
   if (msg !== undefined) { $('#conoMsg').className = 'msg ok'; $('#conoMsg').textContent = msg; }
 }
-async function cargarConocimiento() { try { pintarConocimiento(await api('/api/conocimiento')); } catch (e) {} marcaVer(''); }
+async function cargarConocimiento() { try { pintarConocimiento(await api('/api/conocimiento')); } catch (e) {} marcaVer(''); cargarGuionesIA(); }
+async function cargarGuionesIA() {
+  let r = {modulos: []};
+  try { r = await api(`/api/conocimiento/guiones_ia?p=${q(P || '')}`); } catch (e) {}
+  $('#guionesIA').innerHTML = !r.modulos.length ? 'Todavía no hay: se llenan solos cada vez que una IA escribe un guion.' :
+    r.modulos.map(m => `<details ${m.modulo === r.este ? 'open' : ''} style="margin:6px 0"><summary><b>${esc(m.modulo)}</b>${m.modulo === r.este ? ' · este proyecto' : ''} · ${m.guiones.length} guion(es)</summary>
+      <div class="aviso">📂 ${esc(m.carpeta)}</div>
+      ${m.guiones.map(g => `<div class="fila" style="margin:3px 0; align-items:center"><a href="${g.ver}" target="_blank"><button>📄 ${esc(g.proyecto)} · ${esc(g.ia)}</button></a>
+        <span class="aviso">${esc(g.modelo)}${g.fecha ? ' · ' + esc(g.fecha) : ''}</span>
+        <a href="${g.ver_json}" target="_blank" class="aviso">JSON</a></div>`).join('')}</details>`).join('');
+}
 // «🏷 Por marca»: mis_conocimientos/marcas/MOTOROLA.md, APPLE.md… (preguntas o dudas, ideas o mejoras, textos y .txt)
 let MARCA = '';
 function pintarMarca(r, msg) {

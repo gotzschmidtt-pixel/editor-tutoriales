@@ -2099,6 +2099,13 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'aprendi.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/aprendizaje':  # las reglas sacadas de tus correcciones, tu perfil y lo que le llega a la IA
                 return self.responder(aprendizaje.resumen())
+            if ruta == '/api/conocimiento/guiones_ia':  # «📚 Guiones de las IAs»: cada módulo con sus versiones, para leerlas
+                ver = lambda f: '/ver?ruta=' + urllib.parse.quote(os.path.relpath(f, RAIZ).replace('\\', '/'))
+                mods = conocimiento.lista_guiones_ia()
+                for m in mods:
+                    for g in m['guiones']:
+                        g['ver'], g['ver_json'] = ver(g['md']), ver(g['json'])
+                return self.responder({'modulos': mods, 'este': conocimiento.modulo_de_proyecto(carpeta(q['p'])) if q.get('p') else ''})
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
                 return self.responder(self._marca(q.get('m') or '', q.get('p') or ''))
             if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
@@ -2216,6 +2223,10 @@ class Manejador(BaseHTTPRequestHandler):
             return self.error('no existe', 404)
         tam = os.path.getsize(f)
         tipo = mimetypes.guess_type(f)[0] or 'application/octet-stream'
+        if f.lower().endswith(('.md', '.txt', '.srt')):
+            tipo = 'text/plain; charset=utf-8'  # el navegador lo muestra (un .md lo bajaba) y con tildes bien
+        elif tipo == 'application/json':
+            tipo = 'application/json; charset=utf-8'
         rango = self.headers.get('Range')
         ini, fin = 0, tam - 1
         if rango:

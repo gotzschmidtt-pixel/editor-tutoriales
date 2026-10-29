@@ -336,6 +336,24 @@ def archivar_guion_ia(d, ia, modelo, datos):
         return ''
 
 
+def lista_guiones_ia():
+    """[{modulo, carpeta, guiones: [{proyecto, ia, modelo, fecha, md, json}]}] para verlos en «🧠 Conocimiento», lo más nuevo primero."""
+    out = []
+    for m in sorted(os.listdir(GUIONES_IA)) if os.path.isdir(GUIONES_IA) else []:
+        c = os.path.join(GUIONES_IA, m)
+        if not os.path.isdir(c):
+            continue
+        gs = []
+        for f in sorted((x for x in os.listdir(c) if x.endswith('.md')), key=lambda x: os.path.getmtime(os.path.join(c, x)), reverse=True):
+            meta = _json(os.path.join(c, f[:-3] + '.json')) or {}
+            partes = f[:-3].split('__')
+            gs.append({'proyecto': meta.get('proyecto') or partes[0], 'ia': meta.get('ia') or (partes[1] if len(partes) > 1 else ''),
+                       'modelo': meta.get('modelo') or '', 'fecha': meta.get('fecha') or '', 'md': os.path.join(c, f),
+                       'json': os.path.join(c, f[:-3] + '.json')})
+        out.append({'modulo': m, 'carpeta': c, 'guiones': gs})
+    return out
+
+
 def guiones_ia_para_ia(d, limite=3000):
     """Cómo lo escribieron las IAs en OTROS proyectos del mismo módulo (el más nuevo de cada uno), para aprender del
     procedimiento. Los del mismo proyecto no van: serían ejemplo de sí mismo."""
