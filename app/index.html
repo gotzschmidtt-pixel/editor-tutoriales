@@ -545,6 +545,20 @@
         <span class="msg" id="shortMsg"></span>
       </div>
       <p class="aviso" id="shortDurAviso" hidden>Con la voz nueva, el largo lo da el guion del Short (short_guion.json), no la duración elegida.</p>
+      <details id="shortExtras" style="margin:6px 0 10px" open><summary><b>➕ Agregar al final del Short</b></summary>
+        <div class="fila" style="align-items:center"><label><input type="checkbox" id="sxTest"> 🎥 Testimonio</label>
+          <span class="aviso">tu video (un cliente, un antes y después…), en vertical, entero</span>
+          <input type="file" id="sxTestArch" accept="video/*" hidden onchange="sxSubir('testimonio', this)">
+          <button onclick="$('#sxTestArch').click()">📂 Elegir video</button><span class="aviso" id="sxTestNom"></span></div>
+        <div class="fila" style="align-items:center"><label><input type="checkbox" id="sxPag"> 🌐 Mis páginas</label>
+          <input type="text" id="sxPagTxt" placeholder="vacío = las de «Mis páginas» (separa con ·)" style="flex:1; min-width:16em"></div>
+        <div class="fila" style="align-items:center"><label><input type="checkbox" id="sxFin"> 📺 Ver el video completo</label>
+          <input type="text" id="sxFinTxt" placeholder="¿Quieres ver el proceso completo? Mira el video entero en el canal 👆" style="flex:1; min-width:16em"></div>
+        <div class="fila" style="align-items:center"><span class="aviso">Audio propio para el cierre (opcional; si no, va solo el texto con música):</span>
+          <input type="file" id="sxAudArch" accept="audio/*" hidden onchange="sxSubir('audio', this)">
+          <button onclick="$('#sxAudArch').click()">🎙 Elegir audio</button><span class="aviso" id="sxAudNom"></span>
+          <button onclick="sxGuardar(true)" title="Se guarda solo al pulsar «📱 Hacer Short», pero puedes guardarlo antes">💾 Guardar</button><span class="msg" id="sxMsg"></span></div>
+      </details>
       <div id="shortVer"></div>
     </section>
 
@@ -1959,7 +1973,7 @@ function abrirSolo(s, boton) {  // un panel solo, a pantalla completa, con «←
   if (s === '#panelConocimiento') marcaVer(MARCA);  // al día con el proyecto abierto (marca «· este proyecto»)
   if (s === '#panelImportantes') impCargar();
   if (s === '#panelComprimir') cmpCargar();
-  if (s === '#panelShort') shortVer();
+  if (s === '#panelShort') { shortVer(); sxCargar(); }
   if (s === '#panelSubtitulos') subCargar();
   if (s === '#panelMarcas' && P) marcaVideoCargar($('#marcaVideoSel').value);
   if (!$(s).querySelector('.volverSolo'))
@@ -2211,7 +2225,33 @@ async function shortVer() {  // «📱 Short»: el último que armaste, con el p
       ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.encuadre === 'telefono' ? 'sigue al teléfono' : t.encuadre === 'cara' || (!t.encuadre && t.zoom <= 1) ? 'tu cara' : 'pantalla con zoom'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
         <span class="aviso">${esc(t.por_que)}</span><br>«${esc(t.texto)}»</p>`).join('') : ''}</div></div>`;
 }
+let SX = {};
+async function sxCargar() {
+  try { const r = await api(`/archivo?p=${q(P)}&f=short_extras.json&v=${Date.now()}`); SX = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) { SX = {}; }
+  $('#sxTest').checked = !!SX.testimonio; $('#sxPag').checked = !!SX.paginas; $('#sxFin').checked = !!SX.final;
+  $('#sxPagTxt').value = SX.paginas_texto || ''; $('#sxFinTxt').value = SX.final_texto || '';
+  $('#sxTestNom').textContent = SX.testimonio_archivo ? '✓ ' + SX.testimonio_archivo.split('/').pop() : '';
+  $('#sxAudNom').textContent = SX.final_audio ? '✓ ' + SX.final_audio.split('/').pop() : '';
+}
+async function sxGuardar(aviso) {
+  const datos = {testimonio: $('#sxTest').checked, paginas: $('#sxPag').checked, final: $('#sxFin').checked,
+    paginas_texto: $('#sxPagTxt').value.trim(), final_texto: $('#sxFinTxt').value.trim() || $('#sxFinTxt').placeholder,
+    testimonio_archivo: SX.testimonio_archivo || '', final_audio: SX.final_audio || ''};
+  if (datos.testimonio && !datos.testimonio_archivo) throw new Error('Elige el video del testimonio (📂 Elegir video) o desmarca «Testimonio».');
+  SX = await api(`/api/short_extras?p=${q(P)}`, {method: 'POST', body: JSON.stringify(datos)});
+  if (aviso) { $('#sxMsg').className = 'msg ok'; $('#sxMsg').textContent = '✓ Guardado'; }
+}
+async function sxSubir(tipo, input) {
+  const f = input.files[0]; input.value = ''; if (!f) return;
+  const m = $('#sxMsg'); m.className = 'msg'; m.textContent = `Subiendo ${f.name}…`;
+  try {
+    const r = await api(`/api/short_extra_subir?p=${q(P)}&tipo=${tipo}&nombre=${q(f.name)}`, {method: 'POST', body: f});
+    if (tipo === 'testimonio') { SX.testimonio_archivo = r.archivo; $('#sxTest').checked = true; } else { SX.final_audio = r.archivo; $('#sxFin').checked = true; }
+    await sxGuardar(); await sxCargar(); m.className = 'msg ok'; m.textContent = '✓ ' + f.name;
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
 async function shortHacer() {
+  try { await sxGuardar(); } catch (e) { $('#shortMsg').className = 'msg err'; $('#shortMsg').textContent = e.message; return; }
   let dur = $('#shortDur').value;
   if (dur === 'otro') {
     dur = Math.round(parseFloat($('#shortSeg').value));

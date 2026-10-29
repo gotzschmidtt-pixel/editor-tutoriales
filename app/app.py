@@ -2654,6 +2654,33 @@ class Manejador(BaseHTTPRequestHandler):
                         os.remove(os.path.join(h, viejo))
                 open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(cuerpo)
                 return self.responder({'ok': True})
+            if ruta == '/api/short_extras':  # «📱 Short»: qué extras van al final (testimonio, páginas, ver el video completo)
+                d = carpeta(q['p'])
+                x = json.loads(self.rfile.read(largo) or b'{}')
+                limpio = {k: bool(x.get(k)) for k in ('testimonio', 'paginas', 'final')}
+                limpio.update({k: str(x.get(k) or '')[:300] for k in ('paginas_texto', 'final_texto')})
+                for k in ('testimonio_archivo', 'final_audio'):  # solo archivos subidos a short_extras/
+                    v = str(x.get(k) or '')
+                    limpio[k] = v if re.fullmatch(r'short_extras/[\w\-. ]+', v) and existe(d, v) else ''
+                limpio['final_dur'] = max(2.0, min(15.0, float(x.get('final_dur') or 4)))
+                json.dump(limpio, open(os.path.join(d, 'short_extras.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True, **limpio})
+            if ruta == '/api/short_extra_subir':  # sube el video de testimonio o el audio del cierre del Short
+                d = carpeta(q['p'])
+                tipo = q.get('tipo')
+                ext = os.path.splitext(q.get('nombre') or '')[1].lower()
+                if tipo not in ('testimonio', 'audio') or ext not in ((VIDEOS if tipo == 'testimonio' else {'.mp3', '.wav', '.m4a', '.ogg', '.aac', '.opus', '.webm'})):
+                    return self.error('Ese tipo de archivo no sirve aquí (video para el testimonio, audio para el cierre).')
+                os.makedirs(os.path.join(d, 'short_extras'), exist_ok=True)
+                rel = f'short_extras/{tipo}{ext}'
+                with open(os.path.join(d, rel), 'wb') as fh:
+                    falta = largo
+                    while falta > 0:
+                        parte = self.rfile.read(min(falta, 8 << 20))
+                        if not parte:
+                            break
+                        fh.write(parte); falta -= len(parte)
+                return self.responder({'ok': True, 'archivo': rel})
             if ruta == '/api/vista_extras':  # dibuja las diapositivas de la vista previa (todas, o solo q['solo'] = «senal:2»)
                 d = carpeta(q['p'])
                 solo = re.sub(r'[^a-z:0-9]', '', q.get('solo', ''))

@@ -11,6 +11,8 @@ Uso (desde la carpeta del proyecto): python short.py --proyecto . --duracion 60
 3. Voz: las mismas voces del video (voz/Lxx.mp3), así que no gasta créditos. Con --voz-nueva usa el guion propio del Short
    (short_guion.json: tomas con src_inicio, texto y por_que, escrito para el Short, con más gancho) y genera esa voz con
    ElevenLabs en voz_short/ (gasta ~1 crédito por letra; lo que no cambió se reutiliza). Subtítulos grandes y tu música fija.
+4. Extras al final (short_extras.json, se eligen en el módulo): 🎥 un testimonio (tu video, ajustado a vertical), 🌐 tus
+   páginas en pantalla y 📺 el cierre «mira el video completo» con tu texto y, si subiste uno, tu audio.
 Deja SHORT.mp4 en la carpeta del proyecto.
 """
 import argparse, json, os, re, subprocess, sys
@@ -103,6 +105,85 @@ def voz_nueva(d):
     return [{'k': i, 'id': x['id'], 'voz': round(duracion(os.path.join(d, 'voz_short', f"{x['id']}.mp3")), 2), 'puntos': 0,
              'por_que': x.get('por_que', ''), 'src_inicio': float(x['src_inicio']), 'texto': x['texto'], 'carpeta': 'voz_short'}
             for i, x in enumerate(sg['tomas'])]
+
+
+FUENTES = [r'C:\Windows\Fonts\ariblk.ttf', r'C:\Windows\Fonts\arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']
+
+
+def leer_extras(d):
+    try:
+        x = json.load(open(os.path.join(d, 'short_extras.json'), encoding='utf-8'))
+        return x if isinstance(x, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def paginas_del_autor():
+    """Las webs de «Mis páginas» (solo nombre y dirección; nada más de los ajustes)."""
+    try:
+        r = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('paginas', [])
+        return [str(x.get('url')).strip() for x in r if isinstance(x, dict) and str(x.get('url') or '').strip()]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def parte_testimonio(d, archivo, salida):
+    """Tu video de testimonio en 9:16: entero al medio y, detrás, el mismo video ampliado y borroso (sin barras negras)."""
+    f = os.path.join(d, archivo)
+    vf = (f'[0:v]split[a][b];[a]scale={SW}:{SH}:force_original_aspect_ratio=increase,crop={SW}:{SH},boxblur=24:2[fondo];'
+          f'[b]scale={SW}:{SH}:force_original_aspect_ratio=decrease[fr];[fondo][fr]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v]')
+    tiene_audio = bool(subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', f],
+                                      capture_output=True, text=True).stdout.strip())
+    entradas = ['-i', f] + ([] if tiene_audio else ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo'])
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
+                  ['-filter_complex', vf + f';[{0 if tiene_audio else 1}:a]aresample=44100,aformat=channel_layouts=stereo[au]',
+                   '-map', '[v]', '-map', '[au]', '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+                   '-c:a', 'aac', '-b:a', '160k', salida], check=True)
+
+
+def parte_final(d, ultimo, cfg, paginas, salida):
+    """La tarjeta del cierre: el último cuadro del Short oscurecido, con «mira el video completo» y/o tus páginas, y tu audio."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+    fuente = lambda n: next((ImageFont.truetype(f, n) for f in FUENTES if os.path.exists(f)), ImageFont.load_default())
+    png = salida + '.png'
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-sseof', '-0.2', '-i', ultimo, '-frames:v', '1', png], check=True)
+    img = Image.open(png).convert('RGB').filter(ImageFilter.GaussianBlur(18))
+    img = Image.blend(img, Image.new('RGB', img.size, (8, 8, 16)), 0.55)
+    dib = ImageDraw.Draw(img)
+
+    def partir(texto, f, ancho):
+        lineas, actual = [], ''
+        for p in texto.split():
+            prueba = (actual + ' ' + p).strip()
+            if dib.textlength(prueba, font=f) <= ancho:
+                actual = prueba
+            else:
+                lineas.append(actual); actual = p
+        return lineas + ([actual] if actual else [])
+    y = 560
+    texto = str(cfg.get('final_texto') or '').strip() if cfg.get('final') else ''
+    texto = ''.join(c for c in texto if ord(c) < 0x2190).strip()  # la letra no trae emojis (saldrían como cuadraditos)
+    if texto:
+        f = fuente(76)
+        for ln in partir(texto, f, SW - 140):
+            dib.text((SW / 2, y), ln, font=f, fill='white', anchor='mm', stroke_width=4, stroke_fill='black'); y += 100
+        y += 40
+    if paginas:
+        f = fuente(58)
+        for p in paginas:
+            w = dib.textlength(p, font=f) + 80
+            dib.rounded_rectangle([SW / 2 - w / 2, y - 48, SW / 2 + w / 2, y + 48], radius=48, fill='white')
+            dib.text((SW / 2, y), p, font=f, fill=(17, 17, 17), anchor='mm'); y += 130
+    img.save(png)
+    audio = os.path.join(d, cfg['final_audio']) if cfg.get('final') and cfg.get('final_audio') and os.path.exists(os.path.join(d, cfg['final_audio'])) else None
+    dur = max(3.0, (duracion(audio) + 0.6) if audio else float(cfg.get('final_dur') or 4))
+    entradas = ['-loop', '1', '-t', f'{dur:.2f}', '-i', png] + (['-i', audio] if audio else ['-f', 'lavfi', '-t', f'{dur:.2f}', '-i', 'anullsrc=r=44100:cl=stereo'])
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
+                  ['-filter_complex', f"[0:v]scale={SW}:{SH},zoompan=z='min(zoom+0.0006,1.06)':d=1:s={SW}x{SH}:fps=30,format=yuv420p[v];"
+                   f'[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{dur:.2f}[au]',
+                   '-map', '[v]', '-map', '[au]', '-t', f'{dur:.2f}', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+                   '-c:a', 'aac', '-b:a', '160k', salida], check=True)
+    return dur
 
 
 def marcas_autor(d):
@@ -301,10 +382,18 @@ def main():
     orig = os.path.join(d, 'original.mp4')
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
     dur_video = duracion(orig)
+    extras = leer_extras(d)
+    reservado = 0.0  # lo que ocupan el testimonio y el cierre: sale de la duración que pediste
+    if extras.get('testimonio') and extras.get('testimonio_archivo') and os.path.exists(os.path.join(d, extras['testimonio_archivo'])):
+        reservado += duracion(os.path.join(d, extras['testimonio_archivo']))
+    if extras.get('final') or extras.get('paginas'):
+        reservado += float(extras.get('final_dur') or 4)
     if a.voz_nueva:
         tomas = voz_nueva(d)
     else:
-        tomas = elegir(d, g, a.duracion, dur_video)
+        if reservado:
+            print(f'· {reservado:.0f} s son del testimonio y el cierre: elijo tomas para {max(10, a.duracion - reservado):.0f} s', flush=True)
+        tomas = elegir(d, g, max(10.0, a.duracion - reservado), dur_video)
     if not tomas:
         raise SystemExit('ERROR: no encontré tomas con voz para el Short (falta generar la voz del video).')
     print(f'Elegí {len(tomas)} tomas para un Short de {a.duracion:.0f} s:', flush=True)
@@ -338,6 +427,17 @@ def main():
         partes.append(p)
     cap.release()
     memoria.guardar()
+    if extras.get('testimonio') and extras.get('testimonio_archivo') and os.path.exists(os.path.join(d, extras['testimonio_archivo'])):
+        print('· testimonio…', flush=True)
+        p = os.path.join(tmp, 'testimonio.mp4')
+        parte_testimonio(d, extras['testimonio_archivo'], p)
+        partes.append(p)
+    paginas = ([x.strip() for x in str(extras.get('paginas_texto') or '').split('·') if x.strip()] or paginas_del_autor()) if extras.get('paginas') else []
+    if (extras.get('final') and (extras.get('final_texto') or extras.get('final_audio'))) or paginas:
+        print('· cierre (ver el video completo / páginas)…', flush=True)
+        p = os.path.join(tmp, 'final.mp4')
+        parte_final(d, partes[-1], extras, paginas, p)
+        partes.append(p)
     lista = os.path.join(tmp, 'lista.txt')
     open(lista, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in partes))
     junto = os.path.join(tmp, 'junto.mp4')
@@ -354,7 +454,7 @@ def main():
                   ['-filter_complex', f'[0:v]ass=short_subs.ass[v];{audio}', '-map', '[v]', '-map', '[a]',
                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart',
                    a.salida], check=True, cwd=d)
-    total = sum(c['largo'] for c in tomas)
+    total = duracion(os.path.join(d, a.salida))  # con el testimonio y el cierre
     json.dump({'duracion_pedida': a.duracion, 'duracion': round(total, 1), 'formato': '9:16',
                'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'encuadre', 'por_que', 'texto')} for c in tomas]},
               open(os.path.join(d, 'short.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
