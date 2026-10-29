@@ -2915,9 +2915,25 @@ def ias_del_guion(ajustes):
     return out
 
 
-def guion_varias(d, ajustes, ias, texto, caps, todo_ia):
+def versiones_fallidas(d, ajustes):
+    """«🔁 Reintentar las que fallaron»: (versiones de antes, [(id, ajustes)] de las IAs que no entregaron guion y tienen
+    modelo y clave). Las que fallaron se piden otra vez aunque ya no esté tildado «varias IAs a la vez»."""
+    f = os.path.join(d, 'versiones_guion.json')
+    previas = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else []
+    fallidas = {v['id'] for v in previas if not v.get('archivo') or not os.path.exists(os.path.join(d, v['archivo']))}
+    if not fallidas:
+        raise SystemExit('ERROR: no hay versiones que hayan fallado para reintentar.')
+    ias = [(i, aj) for i, aj in ias_del_guion({**ajustes, 'tres_ia': True}) if i in fallidas]
+    if not ias:
+        raise SystemExit('ERROR: las IAs que fallaron no tienen modelo y clave en «⚙ Ajustes IA».')
+    return previas, ias
+
+
+def guion_varias(d, ajustes, ias, texto, caps, todo_ia, previas=None):
     """Cada IA escribe su guion a la vez y cada uno pasa por los mismos controles (largo, humor, tiempos). Quedan todos
-    en guion_<ia>.json; el de tu IA principal (o el primero que salió bien) pasa a ser guion.json. Devuelve (datos, avisos)."""
+    en guion_<ia>.json; el de tu IA principal (o el primero que salió bien) pasa a ser guion.json. Devuelve (datos, avisos).
+    Con `previas` (reintentar las que fallaron) las versiones nuevas se suman a las de antes, la elegida no cambia y
+    devuelve (None, avisos): tu guion.json queda como está."""
     res = {}
 
     def una(ide, aj):
@@ -2961,6 +2977,20 @@ def guion_varias(d, ajustes, ias, texto, caps, todo_ia):
         else:
             v['error'] = x['error']
         versiones.append(v)
+    if previas is not None:
+        nuevas = {v['id']: v for v in versiones}
+        orden = list(IAS_GUION)
+        versiones = sorted([v for v in previas if v['id'] not in nuevas] + list(nuevas.values()),
+                           key=lambda v: orden.index(v['id']) if v['id'] in orden else len(orden))
+        for v in versiones:
+            v['elegida'] = bool(v.get('elegida')) and v['id'] not in nuevas
+        json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        listas = [v['nombre'] for v in nuevas.values() if 'archivo' in v]
+        avisos = ([f"{', '.join(listas)} sumó su versión: elígela o combínalas en «🗂 Vista rápida» (tu guion actual no cambió)"]
+                  if listas else []) + [f"{v['nombre']} tampoco esta vez entregó guion ({v['error'][:120]})" for v in nuevas.values() if 'error' in v]
+        if not listas:
+            raise SystemExit('ERROR: ' + ' · '.join(avisos))
+        return None, avisos
     buenas = [v for v in versiones if 'archivo' in v]
     if not buenas:
         raise SystemExit('ERROR: ninguna IA entregó el guion. ' + ' · '.join(f"{v['nombre']}: {v['error']}" for v in versiones))
@@ -3319,6 +3349,8 @@ def main():
     ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
     ap.add_argument('--forzar', action='store_true', help='con --revisar-imagen: revisa otra vez cada bloque contra su imagen')
     ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
+    ap.add_argument('--reintentar-varias', action='store_true',
+                    help='tarea guion: solo las IAs que no entregaron su versión la escriben otra vez; tu guion.json no cambia')
     ap.add_argument('--ideas', action='store_true', help='tarea guion: la IA relee el guion final y deja dudas e ideas en preguntas_guion.json')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
     ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
@@ -3354,6 +3386,11 @@ def main():
     if a.tarea == 'guion' and a.ideas:
         ideas_guion(d, json.load(open(a.ajustes, encoding='utf-8')))
         return
+    reintento = None
+    if a.tarea == 'guion' and a.reintentar_varias:  # se revisa antes de mirar el video: si no hay nada que reintentar, no tarda
+        reintento = versiones_fallidas(d, json.load(open(a.ajustes, encoding='utf-8')))
+        print('Reintento ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in reintento[1])
+              + ' con el mismo encargo; las versiones que ya tienes no se tocan.', flush=True)
     mapa, todo_ia = None, False
     avisos_humor = []
     if a.tarea == 'guion' and a.ajustar_humor:  # «🎚 Ajustar el humor»: el guion que ya tienes, sin rehacerlo
@@ -3430,7 +3467,7 @@ def main():
         if estilo and a.tarea in ('guion', 'trailer'):
             print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
         mapa = None
-        todo_ia = a.tarea == 'guion' and a.modo == 'api' and aj.get('todo_ia') and not (a.ajustar_largo or a.respuestas)
+        todo_ia = a.tarea == 'guion' and a.modo == 'api' and aj.get('todo_ia') and not (a.ajustar_largo or a.respuestas or reintento)
         if todo_ia:  # la IA analiza el video ella misma; tu PC no elige cuadros ni lee texto
             mapa, vistos = mapa_ia(d, aj)
             caps = [(f'segundo {t:.1f} del video original', f) for t, f in vistos[::max(1, len(vistos) // 14)][:14]]
@@ -3449,7 +3486,8 @@ def main():
             progreso(0, 'Miro el video entero (mapa de pantallas)…')
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
-                mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
+                # al reintentar, el mapa que ya está guardado: no gasta pedidos y el encargo sale igual que la primera vez
+                mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas or reintento) else None)
             except Exception as e:
                 print(f'· no pude armar el mapa del video ({e}); sigo sin él', flush=True)
             if mapa and not (a.ajustar_largo or a.respuestas):
@@ -3498,6 +3536,14 @@ def main():
                 print('·', x)
             open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
             print(f'Guardado guion.json ajustado de largo (el anterior quedó como guion.json.anterior)')
+            return
+        if reintento:  # «🔁 Reintentar las que fallaron»: suman su versión; guion.json no cambia
+            tramo(35, 100)
+            progreso(0, 'Las IAs que fallaron escriben su guion otra vez…')
+            _, avisos = guion_varias(d, ajustes, reintento[1], texto, caps, False, previas=reintento[0])
+            for x in avisos:
+                print('·', x)
+            progreso(100, 'Listo')
             return
         varias = ias_del_guion(ajustes) if a.tarea == 'guion' else []
         if len(varias) > 1:  # «✍️ Guion con 3 IAs a la vez»

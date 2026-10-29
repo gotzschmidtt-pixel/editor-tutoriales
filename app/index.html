@@ -2786,12 +2786,19 @@ function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus númer
       ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirVersion('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
          <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
       : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>`}</div>`).join('')}
+    ${buenas.length < vs.length ? `<div class="fila"><button onclick="reintentarVersiones()" title="Solo las IAs que fallaron escriben su guion otra vez, con el mismo encargo. Tu guion actual no cambia. Se paga un guion a cada una.">🔁 Reintentar las que fallaron (${vs.length - buenas.length})</button></div>` : ''}
     ${buenas.length > 1 ? `<div class="fila"><button onclick="combinarVersiones()" title="Tu IA principal arma un guion con lo mejor de cada versión. No vuelve a mirar el video: es un pedido más.">🧩 Combinar lo mejor de las ${buenas.length}</button><span class="msg" id="msgVers"></span></div>` : ''}</div>`;
 }
 async function elegirVersion(id) {
   if (!confirm('¿Usar esta versión como tu guion? Lo que cambiaste en la actual sin guardar se pierde (la actual queda como guion.json.anterior).')) return;
   try { await api(`/api/elegir_version?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
   verGuionAqui();
+}
+async function reintentarVersiones() {
+  if (!confirm('Las IAs que fallaron van a escribir su guion otra vez (se paga un guion a cada una). Si falló por falta de saldo, cárgalo antes. Tu guion actual no cambia. ¿Seguir?')) return;
+  dlgGuion.close();
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({reintentar: true})}); } catch (e) { alert(e.message); }
+  refrescar();
 }
 async function combinarVersiones() {
   if (!confirm('Tu IA principal va a armar un guion con lo mejor de cada versión (un pedido más, sin volver a mirar el video). ¿Seguir?')) return;
