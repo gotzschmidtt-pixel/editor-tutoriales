@@ -157,7 +157,10 @@ nunca tras un rechazo explícito, permisos o facturación). Con `"diagnostico_gu
 ## Instalar en tu PC (Windows)
 
 1. Descarga el zip del código y descomprímelo, por ejemplo en `C:\editor-tutoriales`.
-2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, Chromium y Remotion, y te pide tu API key de ElevenLabs.
+2. Doble clic en `instalar.bat`. Instala Python, Node.js y ffmpeg (con winget), las librerías, los modelos que trabajan en tu PC
+   (`instalador/bajar_todo.py`: Whisper, detector de objetos y caras, Real-ESRGAN, DeepFilterNet y RNNoise), Chromium y Remotion
+   con su navegador, te pide tu API key de ElevenLabs y pregunta si quieres la IA en tu PC (Ollama) y Tailscale.
+   La lista completa de lo que instala y dónde queda está en `INSTALADO.txt`.
 
 **Llevar la app a otra PC.** Todo lo que la app descarga queda en `descargas_app/` (librerías de Python, modelos de Whisper,
 y lo que guarde `guardar_para_otra_pc.bat`: ffmpeg, los instaladores de Python y Node, el navegador de las etiquetas y, si
