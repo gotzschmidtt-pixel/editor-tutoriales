@@ -60,6 +60,9 @@ def _cambios_texto(antes, despues):
         x, y = ' '.join(a[i1:i2]), ' '.join(b[j1:j2])
         if _clave(x) == _clave(y) or (not _clave(x) and not _clave(y)):
             continue  # solo puntuación o mayúsculas
+        if op in ('delete', 'insert') and len(_clave(x or y).split()) >= 2 and (
+                _clave(x) in _clave(despues) if op == 'delete' else _clave(y) in _clave(antes)):
+            continue  # la frase solo cambió de lugar dentro del texto: no la quitaste ni la agregaste
         out.append(({'replace': 'cambio', 'delete': 'quito', 'insert': 'agrego'}[op], x, y))
     return out
 
@@ -410,7 +413,7 @@ def aprender_historial(proyectos):
         hecho = set(json.load(open(marca, encoding='utf-8')))
     except (OSError, ValueError):
         hecho = set()
-    n = 0
+    n, vistos = 0, set()
     for p in sorted(os.listdir(proyectos)) if os.path.isdir(proyectos) else []:
         h = os.path.join(proyectos, p, 'historial_guion')
         if p.startswith(('_', '.')) or not os.path.isdir(h):
@@ -423,6 +426,10 @@ def aprender_historial(proyectos):
                 continue
             hecho.add(k)
             try:
+                firma = hashlib.sha1(open(a, 'rb').read() + b'|' + open(b, 'rb').read()).hexdigest()
+                if firma in vistos:  # el mismo par en otra copia del proyecto (p. ej. la versión _EN): una sola vez
+                    continue
+                vistos.add(firma)
                 n += registrar(os.path.join(proyectos, p), 'guion.json', open(a, encoding='utf-8').read(), open(b, encoding='utf-8').read(),
                                'historial')
             except OSError:
