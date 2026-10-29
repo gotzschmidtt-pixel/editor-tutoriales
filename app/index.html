@@ -681,6 +681,7 @@
         <button onclick="conoAprender(true)">🧠 Aprender de todos</button>
         <a href="/api/conocimiento/bajar" download="CONOCIMIENTO.md"><button title="Todo en un solo archivo, para subirlo al chat de Claude, DeepSeek o ChatGPT">⬇ Bajar para otra IA</button></a>
         <button onclick="conoAbrir()">📂 Abrir carpeta</button>
+        <button onclick="$('#conoMsg').textContent = 'Sincronizando…'; conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
         <span class="msg" id="conoMsg"></span>
       </div>
       <details style="margin-top:8px"><summary class="aviso" id="conoAprSum">Aprendido de los proyectos</summary>

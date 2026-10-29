@@ -2367,9 +2367,14 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error('Hay un paso trabajando. Espera a que termine o detenlo antes de actualizar.')
                 try:
-                    return self.responder(actualizar_app())
+                    r = actualizar_app()
                 except (RuntimeError, OSError, ValueError) as e:
                     return self.error(str(e))
+                try:  # tus conocimientos viajan aparte, por tu repositorio privado (si no se puede, la app igual quedó al día)
+                    r['mensaje'] += '\n' + conocimiento.sincronizar(leer_ajustes().get('repo_conocimiento'))
+                except Exception as e:
+                    r['mensaje'] += f'\nConocimientos: {e}'
+                return self.responder(r)
             if ruta == '/api/salir':
                 with CANDADO:
                     if TRABAJO['proyecto']:
@@ -3090,6 +3095,8 @@ class Manejador(BaseHTTPRequestHandler):
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 que = ruta.rsplit('/', 1)[1]
                 try:
+                    if que == 'sincronizar':  # «🔄 Sincronizar»: el repositorio privado de conocimientos, entre tus PCs
+                        return self.responder({**conocimiento.resumen(), 'msg': conocimiento.sincronizar(leer_ajustes().get('repo_conocimiento'))})
                     if que == 'guardar':
                         conocimiento.escribir(conocimiento.PRINCIPAL, str(datos.get('texto') or ''))
                     elif que == 'anotar':

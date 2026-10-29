@@ -357,6 +357,55 @@ def guiones_ia_para_ia(d, limite=3000):
     return t[:limite].rsplit('\n', 1)[0] if len(t) > limite else t.strip()
 
 
+# «🔄 Sincronizar conocimientos» (pedido del autor, 29/10/2026): mis_conocimientos es su propio repositorio de git,
+# PRIVADO (el de la app es público), y cada PC sube y baja lo suyo. Los .md y .txt se juntan línea por línea (las notas
+# de las dos PCs quedan); en un .json cambiado en las dos PCs queda el de esta PC y el de la otra al lado (.otra_pc.json).
+REPO_CONOCIMIENTO = 'https://github.com/gotzschmidtt-pixel/GUIONES-IA.git'
+ATRIBUTOS = '*.md merge=union\n*.txt merge=union\n*.json merge=otra_pc\n'
+
+
+def _git(*args, timeout=300):
+    import subprocess
+    r = subprocess.run(['git', '-c', 'user.name=Estudio', '-c', 'user.email=estudio@localhost', *args], cwd=CARPETA,
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
+                       **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def sincronizar(url=None):
+    """Sube lo de esta PC y baja lo de la otra. Devuelve un mensaje; lanza ValueError si no se pudo."""
+    import socket
+    url = url or REPO_CONOCIMIENTO
+    os.makedirs(CARPETA, exist_ok=True)
+    if not os.path.isdir(os.path.join(CARPETA, '.git')):
+        _git('init', '-q', '-b', 'main')
+        _git('remote', 'add', 'origin', url)
+    if leer(os.path.join(CARPETA, '.gitattributes')) != ATRIBUTOS:
+        escribir(os.path.join(CARPETA, '.gitattributes'), ATRIBUTOS)
+    if '*.otra_pc.json' not in leer(os.path.join(CARPETA, '.gitignore')):
+        escribir(os.path.join(CARPETA, '.gitignore'), leer(os.path.join(CARPETA, '.gitignore')).rstrip('\n') + '\n*.otra_pc.json\n')
+    _git('config', 'merge.otra_pc.driver', 'cp %B %P.otra_pc.json; true')  # git ya pone %P entre comillas
+    antes = set(f for _, _, fs in os.walk(CARPETA) for f in fs if f.endswith('.otra_pc.json'))
+    _git('add', '-A')
+    if _git('diff', '--cached', '--quiet')[0]:
+        _git('commit', '-q', '-m', f"Conocimientos desde {socket.gethostname()} · {time.strftime('%Y-%m-%d %H:%M')}")
+    c, out = _git('fetch', '-q', 'origin', 'main')
+    remoto = c == 0
+    if not remoto and 'couldn\'t find remote ref' not in out.lower():
+        raise ValueError(f'No pude bajar los conocimientos de GitHub (revisa internet o conecta tu cuenta de GitHub): {out[-200:]}')
+    if remoto:
+        c, out = _git('merge', '-q', '--no-edit', '--allow-unrelated-histories', 'FETCH_HEAD')
+        if c:
+            _git('merge', '--abort')
+            raise ValueError(f'No pude juntar los conocimientos de las dos PCs; no cambié nada: {out[-200:]}')
+    c, out = _git('push', '-q', 'origin', 'HEAD:main')
+    if c:
+        raise ValueError(f'No pude subir los conocimientos a GitHub (conecta tu cuenta de GitHub en esta PC): {out[-200:]}')
+    otras = [f for _, _, fs in os.walk(CARPETA) for f in fs if f.endswith('.otra_pc.json') and f not in antes]
+    return ('✓ Conocimientos al día en las dos PCs.' + (f' Ojo: {len(otras)} archivo(s) cambiaron en las dos PCs; el de la otra quedó '
+                                                        f'al lado como .otra_pc.json.' if otras else ''))
+
+
 def _parecido(d, f):
     """Qué tanto se parece el guion aprobado f al proyecto d: la misma marca pesa más, después las palabras en común."""
     nombre = os.path.basename(f)[:-3]
