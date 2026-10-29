@@ -379,7 +379,10 @@ def sincronizar(url=None):
     os.makedirs(CARPETA, exist_ok=True)
     if not os.path.isdir(os.path.join(CARPETA, '.git')):
         _git('init', '-q', '-b', 'main')
-        _git('remote', 'add', 'origin', url)
+    # un remoto propio («estudio»): si la carpeta ya era un clon de otro repositorio, su «origin» no se toca
+    if _git('remote', 'get-url', 'estudio')[1] != url:
+        _git('remote', 'remove', 'estudio')
+        _git('remote', 'add', 'estudio', url)
     if leer(os.path.join(CARPETA, '.gitattributes')) != ATRIBUTOS:
         escribir(os.path.join(CARPETA, '.gitattributes'), ATRIBUTOS)
     if '*.otra_pc.json' not in leer(os.path.join(CARPETA, '.gitignore')):
@@ -389,7 +392,7 @@ def sincronizar(url=None):
     _git('add', '-A')
     if _git('diff', '--cached', '--quiet')[0]:
         _git('commit', '-q', '-m', f"Conocimientos desde {socket.gethostname()} · {time.strftime('%Y-%m-%d %H:%M')}")
-    c, out = _git('fetch', '-q', 'origin', 'main')
+    c, out = _git('fetch', '-q', 'estudio', 'main')
     remoto = c == 0
     if not remoto and 'couldn\'t find remote ref' not in out.lower():
         raise ValueError(f'No pude bajar los conocimientos de GitHub (revisa internet o conecta tu cuenta de GitHub): {out[-200:]}')
@@ -398,7 +401,7 @@ def sincronizar(url=None):
         if c:
             _git('merge', '--abort')
             raise ValueError(f'No pude juntar los conocimientos de las dos PCs; no cambié nada: {out[-200:]}')
-    c, out = _git('push', '-q', 'origin', 'HEAD:main')
+    c, out = _git('push', '-q', 'estudio', 'HEAD:main')
     if c:
         raise ValueError(f'No pude subir los conocimientos a GitHub (conecta tu cuenta de GitHub en esta PC): {out[-200:]}')
     otras = [f for _, _, fs in os.walk(CARPETA) for f in fs if f.endswith('.otra_pc.json') and f not in antes]
