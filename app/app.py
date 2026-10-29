@@ -1918,7 +1918,8 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/latido':
                 return self.responder({'ok': True})
             if ruta == '/api/proyectos':
-                return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x))))
+                # las carpetas que empiezan con «_» son pruebas de Claude o DeepSeek (_prueba_…): no se muestran en la lista
+                return self.responder(sorted(x for x in os.listdir(PROYECTOS) if os.path.isdir(os.path.join(PROYECTOS, x)) and not x.startswith(('_', '.'))))
             if ruta == '/api/ultimo_proyecto':  # el último proyecto trabajado: el que tiene el archivo más reciente
                 return self.responder(ultimo_proyecto())
             if ruta == '/api/estado':
