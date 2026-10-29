@@ -10,6 +10,7 @@ import argparse, json, math, os, re, sys
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'senales'))
 sys.path.insert(0, os.path.join(RAIZ, 'etiquetas'))
+sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 from PIL import Image, ImageDraw, ImageFilter, ImageFont  # noqa: E402
@@ -156,12 +157,13 @@ def pildora(dib, x, y, alto_marca, texto, W, H):
     dib.text((left + 36, top + 37), texto, font=f, fill=(17, 17, 17), anchor='lm')
 
 
-def etiqueta(dib, e, W, H):
+def etiqueta(dib, e, W, H, lado='izquierda'):
     """La píldora de abajo a la izquierda (como etiquetas/plantilla.html): ícono, título chico y el dato grande."""
     ft, fx = fuente(24), fuente(44)
     tit, txt = str(e.get('titulo') or '').upper(), str(e.get('texto') or '')
     ancho = int(max(dib.textlength(tit, font=ft), dib.textlength(txt, font=fx))) + 130
-    left, alto = 80, 104
+    alto = 104
+    left = W - 80 - ancho if lado == 'derecha' else 80  # a la derecha cuando a la izquierda taparía el teléfono o tu cara
     top = H - 110 - alto
     dib.rounded_rectangle([left - 3, top - 3, left + ancho + 3, top + alto + 3], radius=60, fill=(255, 45, 149))
     dib.rounded_rectangle([left, top, left + ancho, top + alto], radius=58, fill=(20, 17, 36))
@@ -224,7 +226,14 @@ def main():
         dib = ImageDraw.Draw(img)
         if t is not None and not aviso:
             if clase == 'etiqueta':
-                etiqueta(dib, x, W, H)
+                lado = 'izquierda'
+                try:  # el mismo lado que va a elegir el armado (solo si el detector ya está en la PC: aquí no se baja nada)
+                    import deteccion, etiquetas as et
+                    if os.path.exists(deteccion.MODELO):
+                        lado = et.lado_libre(video, t, float(x.get('dur', 4)), [x])
+                except Exception:
+                    pass
+                etiqueta(dib, x, W, H, lado)
             elif ESTILO == 'contorno':  # el mismo estilo que va a tener el video
                 img = contorno(img, x)
             elif x.get('tipo') == 'flecha':
