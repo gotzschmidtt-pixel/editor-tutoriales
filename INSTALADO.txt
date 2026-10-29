@@ -97,6 +97,9 @@ OPCIONALES (instalar.bat pregunta al final)
   móviles, fuera del Wi-Fi de casa. En el celular se instala desde Play Store.
 - APK de Android (android\Estudio.apk, 25 KB): abre el estudio en el celular y
   graba video para subirlo. Pasos en android\LEEME.md.
+- Abrir la app sola al prender el PC: deja un archivo en la carpeta Inicio de
+  Windows. Se quita con la casilla de "Celular" en la app. Con "Celular" activado
+  el PC no se suspende mientras la app está abierta.
 - LM Studio: la app también funciona con él si lo instalas aparte (lmstudio.ai).
 
 ======================================================================
@@ -104,5 +107,8 @@ LO QUE QUEDA EN TU PC
 ======================================================================
 - Estudio.exe y el icono "Estudio de tutoriales" en el escritorio (crear_exe.bat).
 - La app se abre en http://localhost:8765
+- "Lo que aprendí" (http://localhost:8765/aprendi): las reglas que la app saca de
+  tus correcciones, tu perfil de estilo y lo que ya contestaste. Vive en
+  mis_conocimientos\aprendizaje y viaja con la carpeta mis_conocimientos.
 - Tus carpetas: mis_proyectos, mis_estilos, mis_musica, mis_conocimientos,
   mis_sonidos y descargas_app. "Actualizar la app" no las reemplaza.

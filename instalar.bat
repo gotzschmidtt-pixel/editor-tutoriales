@@ -46,8 +46,23 @@ choice /m "Instalar la IA en tu PC (Ollama, funciona sin internet, pesa de 3 a 8
 if not errorlevel 2 call "%~dp0instalar_ia_local.bat"
 choice /m "Instalar Tailscale (usar la app desde el celular con datos moviles, fuera del Wi-Fi de casa)"
 if not errorlevel 2 winget install -e --id Tailscale.Tailscale --accept-package-agreements --accept-source-agreements
+if exist "%ProgramFiles%\Tailscale\tailscale-ipn.exe" echo Tailscale: abrelo y entra con tu cuenta (la misma que en el celular).
+choice /m "Abrir la app sola al prender el PC (para usarla desde el celular aunque el PC se reinicie)"
+if not errorlevel 2 call :arranque
+echo En la app, boton "Celular": elige tu PIN y marca Activar para usarla desde el telefono.
 echo El APK para el celular esta en android\Estudio.apk (pasos en android\LEEME.md).
 echo.
 echo Creando Estudio.exe (la app con su propia ventana)...
 call "%~dp0crear_exe.bat"
+exit /b
+
+:arranque
+rem el mismo archivo que crea la casilla "Abrir la app sola al prender el PC" de la app
+set "INI=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Estudio de tutoriales.bat"
+for /f "delims=" %%p in ('where python 2^>nul') do if not defined PYA set "PYA=%%p"
+> "%INI%" echo @echo off
+>> "%INI%" echo cd /d "%~dp0"
+>> "%INI%" echo set SIN_NAVEGADOR=1
+>> "%INI%" echo start "Estudio" /min "%PYA%" app\app.py
+echo La app se abrira sola al prender el PC (se quita en la app: Celular).
 exit /b
