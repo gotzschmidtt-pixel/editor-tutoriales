@@ -543,6 +543,17 @@ Escribe el guion por bloques. Cada bloque tiene:
 - Pasos de configuración o comprobación (seleccionar, activar, verificar, entrar en ajustes): velocidad 2 como máximo,
   para que se vea qué se toca.
 - Sin muletillas sueltas como «ok» o «bueno» al comienzo o al final de un bloque.
+- "emocion" (opcional): cómo lo dice la voz, en una o dos palabras en español. Usa toda la variedad que le quede a cada
+  momento, como una persona real que cuenta lo que hace: "intrigado" o "pícaro" en el gancho, "entusiasmado", "alegre",
+  "orgulloso" o "emocionado" en el resultado, "sorprendido" cuando algo sale más fácil de lo esperado, "calmado",
+  "serio" o "susurra" en un paso delicado o de riesgo, "aliviado" cuando por fin funciona, "confiado" al explicar, y
+  sonidos como "ríe", "se ríe bajito" o "suspira" (estos pocas veces, una o dos por video, donde de verdad tiene gracia
+  o se espera). Se pueden juntar dos: "ríe, alegre". Varía: no repitas la misma emoción en dos bloques seguidos ni la
+  uses en todos; los bloques sin emoción salen con la voz de siempre. No escribas la emoción dentro de "texto".
+- AVISO LEGAL Y DE RIESGO: si el video quita una cuenta (FRP, cuenta Google, iCloud, MDM), hace un bypass, abre el equipo,
+  suelda o flashea, en el bloque donde empieza ese proceso la voz dice UNA frase corta y natural de cuidado, por ejemplo
+  «hazlo solo en un equipo tuyo o con permiso del dueño» o «si no tienes práctica soldando, esto puede dañar la placa».
+  Una sola vez en todo el guion, sin sonar a abogado (ayuda a que YouTube no limite el video).
 - PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
   tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
   para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".

@@ -38,6 +38,10 @@ sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
+import sonidos  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+import pronunciacion  # noqa: E402  FRP, DFU… dichos como en el resto del video
 
 VOZ_ID = os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq'  # Mauricio, o la del idioma de la versión
 IDIOMA = os.environ.get('VOZ_IDIOMA', '')
@@ -55,7 +59,7 @@ def duracion(f):
 
 def voz(texto, destino):
     body = json.dumps({'text': texto, 'model_id': 'eleven_v4', 'voice_settings': {'stability': 0.5},
-                       **({'language_code': IDIOMA} if IDIOMA else {})}).encode()
+                       **({'language_code': IDIOMA} if IDIOMA else {}), **pronunciacion.para_pedido(texto, CLAVE)}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{VOZ_ID}?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', **CLAVE})
     open(destino, 'wb').write(urllib.request.urlopen(req, timeout=120).read())
@@ -128,6 +132,10 @@ def main():
     if filtros:
         filtros.append(f"[x]atrim=0:{total},loudnorm=I=-15:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]")
         ff(ins + ['-filter_complex', ';'.join(filtros), '-map', '[a]', '-ar', '48000', os.path.join(PUB, 'audio.wav')])
+        props['audio'] = 'trailer/audio.wav'
+    sfx = sonidos.del_trailer(clips, os.path.dirname(os.path.abspath(a.salida)))  # golpe en los sellos (si activaste los sonidos)
+    if sfx:
+        sonidos.superponer(os.path.join(PUB, 'audio.wav'), sfx, total)
         props['audio'] = 'trailer/audio.wav'
 
     tmp_node = codificar.temporal('trailer_node')

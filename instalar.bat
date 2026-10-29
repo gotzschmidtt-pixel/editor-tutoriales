@@ -24,6 +24,7 @@ rem y queda una copia en descargas_app para la próxima PC
 python -m pip download --disable-pip-version-check -q -r requirements.txt -d "%D%\paquetes"
 echo Detector de telefono, laptop, manos y caras (35 MB, gratis, una sola vez)...
 python deteccion\deteccion.py --bajar
+echo Real-ESRGAN (45 MB) y DeepFilterNet (27 MB) se bajan solos la primera vez que los uses en «Audio e imagen».
 echo.
 echo 3/5 Etiquetas (Playwright + Chromium)...
 call npm install

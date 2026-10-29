@@ -43,6 +43,8 @@ import celular  # noqa: E402  «📱 Usar desde el celular»: apagado por defect
 import flujo  # noqa: E402  aviso al celular, «🌙 Cola de noche» y gastos del mes
 sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
 import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retención, comentarios e ideas
+sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
+import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
 
 
 def estado_subs(d):
@@ -505,6 +507,8 @@ def ultimo_video(d, hasta):
 
 def comandos(paso, d, op):
     """Lista de comandos (cada uno una lista de argumentos) para un paso. cwd = carpeta del proyecto."""
+    if paso in mejoras.IDS:
+        return mejoras.comandos(paso, d, op, PY, AJUSTES)
     g = ['--guion', 'guion.json']
     if paso == 'transcribir':
         motor = op.get('motor', 'scribe')
@@ -661,7 +665,7 @@ PASOS = [
     {'id': 'acortar', 'nombre': 'Acortar la grabación', 'necesita': ['original.mp4'], 'produce': 'acortado.mp4', 'oculto': True},
     {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
-]
+] + mejoras.PASOS
 TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
 # «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
 # así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
@@ -1897,6 +1901,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'vista.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/trailer':  # el módulo del tráiler, aparte del video: proponer, contestar, editar y armar
                 return self.responder(open(os.path.join(AQUI, 'trailer.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/mejoras':  # «🎛 Audio e imagen», en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'mejoras.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta.startswith('/api/mejoras/'):
+                return mejoras.get(self, ruta, q, carpeta(q['p']))
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
                 d = carpeta(q['p'])
                 t = round(max(0.0, float(q.get('t') or 0)), 1)
@@ -2232,6 +2240,8 @@ class Manejador(BaseHTTPRequestHandler):
                 subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
                                  **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
                 return self.responder({'ok': True})
+            if ruta.startswith('/api/mejoras/'):
+                return mejoras.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta == '/api/actualizar_app':
                 with CANDADO:
                     if TRABAJO['proyecto']:
