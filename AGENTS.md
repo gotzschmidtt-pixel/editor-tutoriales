@@ -20,6 +20,7 @@ La app (botón «🧠 Conocimiento») se lo pasa sola a la IA cuando escribe el 
 - `mis_conocimientos\LO_QUE_APRENDI.md`: las correcciones que el autor hace siempre en la app («🧠 Lo que aprendí»).
 - `mis_conocimientos\transcripciones\`: lo que dice el autor en cada video del canal («📚 Biblioteca»), para su forma de hablar.
 Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_conocimiento/`. Cúmplelos sin que te lo pidan.
+- Para preguntar las estadísticas al momento (solo lee, no cambia nada): `python youtube/consultar.py canal | recientes N | video LINK | busquedas DIAS | fuentes DIAS | paises DIAS`.
 
 ## Decisiones del autor (28 y 29/10/2026)
 
