@@ -10,6 +10,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -155,8 +156,14 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
                 if (archivos != null) archivos.onReceiveValue(null);
                 archivos = cb;
-                try {
-                    startActivityForResult(p.createIntent(), ELEGIR_ARCHIVO);  // subir un video grabado en el celular
+                try {  // subir un video o una foto del celular, o grabar un video en el momento
+                    Intent elegir = Intent.createChooser(p.createIntent(), "Subir al proyecto");
+                    String tipos = android.text.TextUtils.join(",", p.getAcceptTypes());
+                    java.util.List<Intent> camara = new java.util.ArrayList<>();
+                    if (tipos.isEmpty() || tipos.contains("video") || tipos.contains("*"))
+                        camara.add(new Intent(MediaStore.ACTION_VIDEO_CAPTURE));
+                    elegir.putExtra(Intent.EXTRA_INITIAL_INTENTS, camara.toArray(new Intent[0]));
+                    startActivityForResult(elegir, ELEGIR_ARCHIVO);
                 } catch (Exception e) {
                     archivos = null;
                     return false;

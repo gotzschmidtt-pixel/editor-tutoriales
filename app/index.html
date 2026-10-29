@@ -146,6 +146,26 @@
   .voz-vieja { background: #ff4d6d22; border: 1px solid var(--rojo); color: #ffc2cc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
   .voz-vieja b { color: var(--rojo); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
+  /* 📱 en el celular (APK o Chrome): botones de arriba en una tira que se desliza, todo en una columna y botones fáciles de tocar */
+  @media (max-width: 700px) {
+    header { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+    header > * { flex: none; }
+    header h1 { font-size: 16px; }
+    .pestanas { overflow-x: auto; padding: 8px 12px 0; }
+    .pestanas > * { flex: none; }
+    main { padding: 12px; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+    main > div, section.panel { min-width: 0; }
+    button, select { min-height: 40px; }
+    .paso { flex-wrap: wrap; }
+    .paso .acc { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+    .pista { flex-wrap: wrap; }
+    .pista .datos { grid-template-columns: 1fr; }
+    dialog { width: 100vw; max-width: 100vw; max-height: 100dvh; margin: 0; border-radius: 0; padding: 14px; }
+    img, video, canvas, table { max-width: 100%; }
+    pre, code { white-space: pre-wrap; word-break: break-word; }
+    select, input:not([type=checkbox]):not([type=radio]) { max-width: 100%; }
+    label, .aviso, p { max-width: 100%; overflow-wrap: anywhere; }
+  }
 </style>
 </head>
 <body>
