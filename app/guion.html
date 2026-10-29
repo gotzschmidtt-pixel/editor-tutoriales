@@ -157,13 +157,35 @@ async function verMejoras() {  // lo que la app corrigió o avisa al revisar el 
   try { rv = await api(`/api/revision_guion?p=${q(P)}`); } catch (e) {}
   const l = rv.mejoras || [];
   $('#mejoras').innerHTML = `<details class="panel"${l.length && l.length <= 8 ? ' open' : ''}><summary>${l.length ? `🔎 Lo que la app corrigió o te avisa (${l.length})` : '✓ La app revisó el guion: no tuvo que corregir nada'}</summary>
-    ${l.length ? `<ul>${l.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`;
+    ${l.length ? `<ul>${l.map(x => `<li>${conSegundos(x)}</li>`).join('')}</ul>` : ''}</details>`;
+}
+// los segundos que nombra la IA o la revisión («la captura de 439.9», «en 7:18», «en 458») se tocan para ver ese cuadro de tu grabación
+function conSegundos(txt) {
+  return esc(txt).replace(/(^|[^\w#.:])(\d{1,2}:\d{2}(?:\.\d)?|\d{1,4}\.\d|(?<=\b(?:en|de|a|y|hasta|entre|segundo|segundos|el|del|al) )\d{2,4})(?![\w.:]*\d)(?!\s*(?:%|×|x\b|bloques|palabras|MB|GB))/gi, (m, antes, s, i, todo) => {
+    const p = s.split(':'), t = p.length > 1 ? +p[0] * 60 + +p[1] : +s;
+    const largo = /(dura|estimada|unos|largo|busco)\s*$/i.test(todo.slice(Math.max(0, i - 20), i + antes.length));  // una duración, no un momento
+    return t > 0 && !largo && t < 4 * 3600 ? `${antes}<a href="#" class="seg" title="Ver el cuadro de tu grabación en ${esc(s)}" onclick="verSegundo(${t}, '${esc(s)}'); return false">${esc(s)}</a>` : m;
+  });
+}
+function verSegundo(t, como) {
+  let d = document.getElementById('verSeg');
+  if (!d) {
+    d = document.createElement('div');
+    d.id = 'verSeg';
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99;gap:10px;cursor:zoom-out';
+    d.onclick = () => d.remove();
+    document.body.appendChild(d);
+  }
+  d.innerHTML = `<img src="/api/cuadro?p=${q(P)}&t=${t}" style="max-width:94vw;max-height:84vh;border-radius:8px" alt="">
+    <div class="msg">Tu grabación en ${esc(como)} (${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}) · toca para cerrar ·
+      <a href="#" onclick="event.stopPropagation(); verSegundo(${Math.max(0, t - 1)}, '${esc(como)} −1 s'); return false">◀ 1 s antes</a> ·
+      <a href="#" onclick="event.stopPropagation(); verSegundo(${t + 1}, '${esc(como)} +1 s'); return false">1 s después ▶</a></div>`;
 }
 let PREGUNTAS = [];
 async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json): datos que no vio claros e ideas para mejorar
   try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
-  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
+  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${conSegundos(x.pregunta)}</div>
     <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
     ${x.sugerida ? `<div class="opciones"><button title="Ya contestaste una pregunta casi igual en ${esc(x.sugerida_de || 'otro video')}: tócala para usar esa respuesta" onclick="this.closest('.pregunta').querySelector('input').value = this.dataset.r" data-r="${esc(x.sugerida)}">🧠 Ya lo contestaste en ${esc(x.sugerida_de || 'otro video')}: «${esc(x.sugerida)}»</button></div>` : ''}
     <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
