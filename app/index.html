@@ -786,6 +786,7 @@
   <div class="fila"><button class="principal" onclick="guardarGuion(true)">✓ Guardar y seguir con todo</button>
     <button onclick="guardarGuion(false)">Guardar</button>
     <button onclick="abrirEditorGuion()" title="El mismo guion en una pestaña nueva, a pantalla completa, con la imagen de cada bloque">↗ Abrir en pestaña grande</button>
+    <button id="btnCombinarAbajo" hidden onclick="combinarVersiones()" title="Tu IA principal arma un guion con lo mejor de cada versión (las ves arriba, en «Versiones de cada IA»)">🧩 Combinar versiones</button>
     <button onclick="otroGuion()" title="La IA escribe otro guion. El análisis del video ya está hecho y no se repite.">🔄 Otro guion</button>
     <button onclick="ajustarHumor()" title="Mide cuántos bloques tienen chiste y quita los que sobran para el nivel que elijas. Solo cambian esos bloques.">🎚 Ajustar humor</button>
     <button onclick="dlgGuion.close()">Cerrar</button><span class="msg" id="msgGuion"></span></div>
@@ -2780,12 +2781,14 @@ async function verGuionAqui() {
 }
 function verVersiones(vs) {  // «3 IAs a la vez»: cada versión con sus números, para elegirla o combinarlas
   const buenas = vs.filter(v => v.archivo);
+  $('#btnCombinarAbajo').hidden = buenas.length < 2;
   if (!vs.length) { $('#versionesGuion').innerHTML = ''; return; }
   $('#versionesGuion').innerHTML = `<div class="preguntas"><b>✍️ Versiones de cada IA</b>
     <p class="aviso">Ves la marcada con ✓. Cambiar de versión guarda la actual como guion.json.anterior.</p>
     ${vs.map(v => `<div class="fila" style="margin:4px 0; align-items:center">${v.archivo
       ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirVersion('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
-         <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
+         <span class="aviso">${esc(v.modelo)} · ${v.bloques} bloques · ${v.palabras} palabras${v.humor ? ' · ' + esc(v.humor) : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>
+         <a class="boton" href="/archivo?p=${q(P)}&f=${q(v.archivo)}" download="${esc(P + ' - ' + v.archivo)}" title="Para mejorarlo en Claude Code u otra IA y volver a subirlo con «⬆ Importar editado»">⬇ JSON</a>`
       : `<span class="aviso">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no entregó guion: ${esc(v.error || '')}</span>
          <label class="aviso">Reintentar con <select id="vm_${esc(v.id)}" data-ia="${esc(v.id)}" class="modeloReintento"><option>${esc(v.modelo)}</option></select></label>`}</div>`).join('')}
     ${buenas.length < vs.length ? `<div class="fila"><button onclick="reintentarVersiones()" title="Solo las IAs que fallaron escriben su guion otra vez, con el mismo encargo. Tu guion actual no cambia. Se paga un guion a cada una.">🔁 Reintentar las que fallaron (${vs.length - buenas.length})</button></div>` : ''}
