@@ -107,6 +107,17 @@
   .volverSolo { display: none; margin-bottom: 10px; }
   body.solo .volverSolo { display: inline-block; }
   header button.activo { border-color: var(--rosa); background: #ff2bd626; }
+  /* los 4 menús de arriba (Proyecto, Editar, Publicar, Ajustes): cada uno despliega sus botones */
+  details.menu { position: relative; }
+  details.menu > summary { list-style: none; cursor: pointer; padding: 8px 14px; border: 1px solid var(--borde); border-radius: 10px;
+    background: var(--panel2); user-select: none; white-space: nowrap; }
+  details.menu > summary::-webkit-details-marker { display: none; }
+  details.menu > summary::after { content: ' ▾'; color: var(--suave); }
+  details.menu[open] > summary { border-color: var(--rosa); background: #ff2bd626; }
+  details.menu .lista { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: flex; flex-direction: column; gap: 6px;
+    min-width: 230px; padding: 10px; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; box-shadow: 0 12px 30px #000a; }
+  details.menu .lista button { text-align: left; white-space: nowrap; }
+  header .estado { margin-left: auto; }
   /* cada módulo en su propia pestaña del navegador (/?p=PROYECTO&modulo=panelX): solo ese panel, sin el resto */
   body.modulo header > :not(h1):not(#proyecto) { display: none; }
   body.modulo #proyecto { pointer-events: none; opacity: .8; }
@@ -148,7 +159,8 @@
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
   /* 📱 en el celular (APK o Chrome): botones de arriba en una tira que se desliza, todo en una columna y botones fáciles de tocar */
   @media (max-width: 700px) {
-    header { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+    header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    details.menu .lista { position: fixed; left: 12px; right: 12px; top: auto; min-width: 0; }
     header > * { flex: none; }
     header h1 { font-size: 16px; }
     .pestanas { overflow-x: auto; padding: 8px 12px 0; }
@@ -172,28 +184,37 @@
 <header>
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
-  <button id="nuevo">+ Nuevo proyecto</button>
-  <button onclick="$('#abrirZip').click()" title="Abre un proyecto guardado en .zip (de otra PC, de «Guardar como» o el que te pasa Claude): queda como un proyecto más, sin pisar los tuyos">📂 Abrir proyecto</button>
-  <input type="file" id="abrirZip" accept=".zip" hidden>
   <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
-  <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
-  <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
-  <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
-  <button onclick="abrirModulo('panelIdiomas')" title="Las etiquetas traducidas a otro idioma">🌐 Idiomas</button>
-  <button onclick="abrirModulo('panelSubtitulos')" title="Subtítulos dinámicos en inglés u otro idioma, con posición y tamaño">💬 Subtítulos</button>
-  <button onclick="window.open('/vista?p=' + q(P), 'vista_' + P)" title="Una diapositiva por cada etiqueta y círculo, sobre el cuadro exacto: apruébalas, edítalas o quítalas ANTES de ponerlas (no gasta nada)">👀 Vista previa</button>
-  <button onclick="abrirModulo('panelShort')" title="Como «Auto Resaltar + Reencuadre 9:16» de Filmora: lo más importante del video, vertical, con subtítulos (no gasta créditos)">📱 Short</button>
-  <button onclick="window.open('/mejoras?p=' + q(P), 'mejoras_' + P)" title="Pronunciación, voz con emoción, efectos de sonido, limpiar la voz, zoom en la PC, color, pantalla del celular, revisión del final, varios Shorts, miniatura y avisos de cuidado">🎛 Audio e imagen</button>
-  <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
-  <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
-  <button onclick="abrirModulo('panelEstilo')">📚 Alimentación</button>
-  <button onclick="abrirModulo('panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
+  <details class="menu"><summary title="Nuevo, abrir, guardar, comprimir y la cola de la noche">📁 Proyecto</summary><div class="lista">
+    <button id="nuevo">+ Nuevo proyecto</button>
+    <button onclick="$('#abrirZip').click()" title="Abre un proyecto guardado en .zip (de otra PC, de «Guardar como» o el que te pasa Claude): queda como un proyecto más, sin pisar los tuyos">📂 Abrir proyecto</button>
+    <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
+    <button onclick="abrirCola()" title="Deja varios proyectos en fila y la app los arma uno detrás del otro (de noche). También: lo gastado este mes en voz e IA">🌙 Cola y gastos</button>
+    <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
+  </div></details>
+  <input type="file" id="abrirZip" accept=".zip" hidden>
+  <details class="menu"><summary title="Vista previa, flechas y círculos, cortes, acortar, audio e imagen, subtítulos e idiomas">✏️ Editar</summary><div class="lista">
+    <button onclick="window.open('/vista?p=' + q(P), 'vista_' + P)" title="Una diapositiva por cada etiqueta y círculo, sobre el cuadro exacto: apruébalas, edítalas o quítalas ANTES de ponerlas (no gasta nada)">👀 Vista previa</button>
+    <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
+    <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
+    <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
+    <button onclick="window.open('/mejoras?p=' + q(P), 'mejoras_' + P)" title="Pronunciación, voz con emoción, efectos de sonido, limpiar la voz, zoom en la PC, color, pantalla del celular, revisión del final, varios Shorts, miniatura y avisos de cuidado">🎛 Audio e imagen</button>
+    <button onclick="abrirModulo('panelSubtitulos')" title="Subtítulos dinámicos en inglés u otro idioma, con posición y tamaño">💬 Subtítulos</button>
+    <button onclick="abrirModulo('panelIdiomas')" title="Las etiquetas traducidas a otro idioma">🌐 Idiomas</button>
+  </div></details>
+  <details class="menu"><summary title="El Short y YouTube">📤 Publicar</summary><div class="lista">
+    <button onclick="abrirModulo('panelShort')" title="Como «Auto Resaltar + Reencuadre 9:16» de Filmora: lo más importante del video, vertical, con subtítulos (no gasta créditos)">📱 Short</button>
+    <button onclick="P ? window.open('/youtube?p=' + q(P), 'youtube_' + P) : alert('Abre primero un proyecto.')" title="Publica el video en tu canal (título, descripción, capítulos, subtítulos, miniatura), aprende de su retención y comentarios, y busca ideas para los próximos">▶️ YouTube</button>
+  </div></details>
+  <details class="menu"><summary title="Claves, celular, lo que aprende la app y actualizar">⚙ Ajustes</summary><div class="lista">
+    <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
+    <button id="btnCelular" onclick="abrirCelular()" title="Usa la app desde tu celular (APK o Chrome), en casa por Wi‑Fi o afuera con datos móviles. Apagado por defecto, con PIN">📲 Celular</button>
+    <button onclick="abrirModulo('panelEstilo')">📚 Alimentación</button>
+    <button onclick="abrirModulo('panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
+    <button onclick="window.open('/aprendi', 'aprendi')" title="Las reglas que la app saca de tus correcciones, tu perfil de estilo y lo que le llega a la IA">🧠 Lo que aprendí</button>
+    <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
+  </div></details>
   <span class="estado" id="estado">Sin trabajos</span>
-  <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
-  <button onclick="P ? window.open('/youtube?p=' + q(P), 'youtube_' + P) : alert('Abre primero un proyecto.')" title="Publica el video en tu canal (título, descripción, capítulos, subtítulos, miniatura), aprende de su retención y comentarios, y busca ideas para los próximos">▶️ YouTube</button>
-  <button onclick="abrirCola()" title="Deja varios proyectos en fila y la app los arma uno detrás del otro (de noche). También: lo gastado este mes en voz e IA">🌙 Cola y gastos</button>
-  <button id="btnCelular" onclick="abrirCelular()" title="Usa la app desde tu celular (APK o Chrome), en casa por Wi‑Fi o afuera con datos móviles. Apagado por defecto, con PIN">📲 Celular</button>
-  <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
 </header>
 
 <div id="sinProyecto" class="vacio" hidden>
@@ -937,6 +958,11 @@ async function nuevo() {
   await cargarProyectos(r.nombre);
 }
 $('#nuevo').onclick = nuevo;
+document.querySelectorAll('details.menu').forEach(m => {
+  m.addEventListener('toggle', () => { if (m.open) document.querySelectorAll('details.menu[open]').forEach(o => { if (o !== m) o.open = false; }); });
+  m.querySelector('.lista').addEventListener('click', e => { if (e.target.closest('button')) m.open = false; });
+});
+document.addEventListener('click', e => { if (!e.target.closest('details.menu')) document.querySelectorAll('details.menu[open]').forEach(o => o.open = false); });
 $('#proyecto').onchange = e => cargarProyectos(e.target.value);
 
 const SUBIENDO = {};  // tipo -> {pc, texto}: la página se repinta cada 2 s y no debe borrar el avance de la subida
@@ -2549,6 +2575,7 @@ async function verEleven() {
   $('#clRuta').textContent = 'Se guarda solo en tu PC, en ' + aj.ruta + '. Nadie más la ve.';
   $('#btnEleven').textContent = k ? '🔑 ElevenLabs ✓' : '🔑 Clave ElevenLabs';
   $('#btnEleven').style.borderColor = k ? '' : 'var(--rojo)';
+  $('#btnEleven').closest('details').querySelector('summary').style.borderColor = k ? '' : 'var(--rojo)';  // sin clave: el menú también avisa
   $('#clEstado').textContent = k ? `Guardada: ${k}. Pega otra solo si quieres cambiarla.` : 'Todavía no hay clave guardada.';
   return k;
 }
