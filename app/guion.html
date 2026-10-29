@@ -294,7 +294,7 @@ function pintar() {
         <span class="chip" id="aviso${i}"></span></div>
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
-        <div class="acciones"><button class="guardarAqui" onclick="guardar()" hidden>💾 Guardar cambios</button>
+        <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button>
           ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
   }).join('') + (porLugar[G.bloques.length] || []).join('');
@@ -309,7 +309,7 @@ function avisos() {
     total += Math.max(v, l);
     const cambio = b.texto !== ORIGINAL[b.id];
     $('#b' + i).classList.toggle('cambiado', cambio);
-    const g = $('#b' + i + ' .guardarAqui'); if (g) g.hidden = !cambio;
+    const g = $('#b' + i + ' .guardarAqui'); if (g) { g.classList.toggle('principal', cambio); g.textContent = cambio ? '💾 Guardar cambios' : '💾 Guardar'; }
     if (!el) return;
     const pal = b.texto.trim().split(/\s+/).filter(Boolean).length;
     if (!pal) { el.className = 'chip'; el.textContent = `sin voz · ${l.toFixed(0)} s de imagen`; return; }
@@ -476,6 +476,13 @@ async function guardar() {
   } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
   b.disabled = false;
   return true;
+}
+async function guardarBloque(i) {  // el 💾 de cada bloque: guarda todo el guion y avisa ahí mismo, sin subir hasta arriba
+  const g = $('#b' + i + ' .guardarAqui');
+  if (g) { g.disabled = true; g.textContent = 'Guardando…'; }
+  const ok = await guardar();
+  const h = $('#b' + i + ' .guardarAqui');
+  if (h) { h.disabled = false; h.textContent = ok ? '✓ Guardado' : '✗ No se guardó (mira arriba)'; }
 }
 addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
 cargar();
