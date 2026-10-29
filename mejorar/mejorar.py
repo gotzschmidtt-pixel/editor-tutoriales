@@ -25,6 +25,14 @@ SIN_VENTANA = {'creationflags': 0x08000000} if sys.platform == 'win32' else {}
 _FALLO = []  # si ya falló en este proceso, no se vuelve a intentar en cada cuadro
 
 
+def carpeta_tmp():
+    """Los archivos de paso van en descargas_app/tmp y no en el Temp de Windows: en PC1 el antivirus no deja que
+    DeepFilterNet ni Real-ESRGAN escriban en Temp («Acceso denegado», «encode image failed»)."""
+    d = os.path.join(RAIZ, 'descargas_app', 'tmp')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def programa(bajar=True):
     """La ruta del programa (lo baja la primera vez), o None si no se pudo."""
     for raiz, _, archivos in os.walk(CARPETA) if os.path.isdir(CARPETA) else []:
@@ -78,14 +86,21 @@ def imagen(entrada, salida=None, modelo='realesrgan-x4plus', mismo_tamano=True):
     if original is None:
         return None
     h, w = original.shape[:2]
-    tmp = tempfile.mkdtemp(prefix='esrgan_')
+    tmp = tempfile.mkdtemp(prefix='esrgan_', dir=carpeta_tmp())
     try:
         fuente = os.path.join(tmp, 'in.png')
         grande = os.path.join(tmp, 'out.png')
         cv2.imwrite(fuente, original)
-        # -t 256: en tiras chicas, para que entre en tarjetas de 2 GB (GTX 1050)
-        r = subprocess.run([exe, '-i', fuente, '-o', grande, '-n', modelo, '-t', '256', '-f', 'png'],
-                           cwd=os.path.dirname(exe), capture_output=True, text=True, timeout=600, **SIN_VENTANA)
+        # en tiras chicas, para que entre en tarjetas de 2 GB: en la GTX 1050 de PC1 256 se queda sin memoria
+        # («vkQueueSubmit failed -4») y 100 anda; si igual falla, prueba más chico
+        for tira in ('256', '100', '32'):
+            r = subprocess.run([exe, '-i', fuente, '-o', grande, '-n', modelo, '-t', tira, '-f', 'png'],
+                               cwd=os.path.dirname(exe), capture_output=True, text=True, timeout=600, **SIN_VENTANA)
+            prueba = cv2.imread(grande) if r.returncode == 0 and os.path.exists(grande) else None
+            if prueba is not None and prueba.mean() > 2:  # sin memoria, a veces sale negra aunque «termine bien»
+                break
+            if os.path.exists(grande):
+                os.remove(grande)
         im = cv2.imread(grande) if r.returncode == 0 and os.path.exists(grande) else None
         if im is None:
             _FALLO.append(1)

@@ -21,6 +21,14 @@ RNN_URL = 'https://raw.githubusercontent.com/GregorR/rnnoise-models/master/somno
 SIN_VENTANA = {'creationflags': 0x08000000} if sys.platform == 'win32' else {}
 
 
+def carpeta_tmp():
+    """Los archivos de paso van en descargas_app/tmp y no en el Temp de Windows: en PC1 el antivirus no deja que
+    DeepFilterNet ni Real-ESRGAN escriban en Temp («Acceso denegado», «encode image failed»)."""
+    d = os.path.join(RAIZ, 'descargas_app', 'tmp')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def bajar(url, destino, que):
     if os.path.exists(destino):
         return destino
@@ -67,7 +75,7 @@ def ff(args):
 
 def limpiar_audio(entrada, wav_salida, motor='pc'):
     """Deja en wav_salida (48 kHz) el audio limpio de `entrada`. Devuelve qué motor se usó."""
-    tmp = tempfile.mkdtemp(prefix='limpiar_')
+    tmp = tempfile.mkdtemp(prefix='limpiar_', dir=carpeta_tmp())
     try:
         if motor == 'eleven':
             sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
@@ -99,8 +107,15 @@ def limpiar_audio(entrada, wav_salida, motor='pc'):
                 ff(['-i', hecho, '-af', 'highpass=f=60,loudnorm=I=-16:TP=-1.5', '-ar', '48000', '-ac', '2', wav_salida])
                 return 'DeepFilterNet (en tu PC)'
             print(f'· DeepFilterNet no pudo ({(r.stderr or r.stdout)[-200:]}); uso el filtro de ffmpeg', flush=True)
-        ff(['-i', entrada, '-vn', '-af', filtro_ffmpeg(), '-ar', '48000', '-ac', '2', wav_salida])
-        return 'filtro de ruido de ffmpeg'
+        # el RNNoise de ffmpeg 9 a veces se cae (se cierra sin aviso, código 0xC0000005): se reintenta y, si sigue, va
+        # sin RNNoise (afftdn solo limpia un poco menos)
+        for intento, filtro in enumerate((filtro_ffmpeg(), filtro_ffmpeg(), 'highpass=f=70,afftdn=nf=-25:nr=14,loudnorm=I=-16:TP=-1.5')):
+            try:
+                ff(['-i', entrada, '-vn', '-af', filtro, '-ar', '48000', '-ac', '2', wav_salida])
+                return 'filtro de ruido de ffmpeg' + (' (sin RNNoise)' if intento == 2 else '')
+            except subprocess.CalledProcessError:
+                if intento == 2:
+                    raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -114,7 +129,7 @@ def limpiar_video(entrada, salida=None, motor='pc', respaldo=True):
     if not tiene_audio(fuente):
         print(f'· {os.path.basename(entrada)} no tiene audio: nada que limpiar', flush=True)
         return None
-    tmp = tempfile.mkdtemp(prefix='limpiar_v_')
+    tmp = tempfile.mkdtemp(prefix='limpiar_v_', dir=carpeta_tmp())
     try:
         wav = os.path.join(tmp, 'limpio.wav')
         que = limpiar_audio(fuente, wav, motor)
