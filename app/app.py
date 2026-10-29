@@ -44,6 +44,7 @@ import celular  # noqa: E402  «📱 Usar desde el celular»: apagado por defect
 import flujo  # noqa: E402  aviso al celular, «🌙 Cola de noche» y gastos del mes
 sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
 import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retención, comentarios e ideas
+import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de todos tus videos → reglas para la IA
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
 
@@ -1384,6 +1385,39 @@ def biblio_semanal():
         print(f'· biblioteca semanal: {type(e).__name__}: {e}', flush=True)
 
 
+CANAL_YT = {'corriendo': False, 'log': []}
+
+
+def canal_aprender():
+    """«📊 Aprender de todo mi canal»: en segundo plano (tarda unos minutos la primera vez)."""
+    if CANAL_YT['corriendo']:
+        return
+    CANAL_YT.update(corriendo=True, log=[], error='')
+    try:
+        c = yt_config()
+        canal_yt.aprender(c, lambda x: CANAL_YT['log'].append(x))
+        if c.get('_cambio'):
+            yt_guardar(c)
+    except Exception as e:
+        CANAL_YT['error'] = str(e)
+        CANAL_YT['log'].append(f'✗ {e}')
+    finally:
+        CANAL_YT['corriendo'] = False
+
+
+def canal_semanal():
+    """Una vez por semana, al abrir la app: si YouTube está conectado, vuelve a aprender de todo el canal (gratis)."""
+    try:
+        if not (yt_config().get('token') or {}).get('refresh'):
+            return
+        a = canal_yt.ultimo()
+        if a and time.time() - time.mktime(time.strptime(a['fecha'], '%Y-%m-%d %H:%M')) < 7 * 86400:
+            return
+        canal_aprender()
+    except Exception as e:
+        print(f'· canal semanal: {type(e).__name__}: {e}', flush=True)
+
+
 def yt_config():
     return dict(youtube.config(leer_ajustes()))
 
@@ -1699,6 +1733,11 @@ class Manejador(BaseHTTPRequestHandler):
             c.pop('token', None)
             yt_guardar(c)
             return self.responder({'ok': True})
+        if ruta == '/api/youtube/canal':  # «📊 Aprender de todo mi canal» (en segundo plano)
+            if not (yt_config().get('token') or {}).get('refresh'):
+                return self.error('Primero conecta YouTube (arriba, «1 · Tu canal»).')
+            threading.Thread(target=canal_aprender, daemon=True).start()
+            return self.responder({'ok': True})
         if ruta == '/api/youtube/ideas':  # temas para los próximos videos, de todo el canal
             c = yt_config()
             videos = youtube.mis_videos(c)
@@ -1816,6 +1855,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(RAIZ, 'celular', 'icono.png'), 'rb').read(), 'image/png')
             if ruta == '/youtube':  # «▶️ YouTube»: publicar, aprender de las estadísticas e ideas, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'youtube.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/youtube/canal':  # cómo va «📊 Aprender de todo mi canal» y el último resultado
+                return self.responder({'corriendo': CANAL_YT['corriendo'], 'log': CANAL_YT['log'][-12:], 'error': CANAL_YT.get('error', ''),
+                                       'analisis': canal_yt.ultimo(), 'informe': canal_yt.INFORME})
             if ruta == '/api/youtube/estado':
                 c = yt_config()
                 r = {'cliente': bool(c.get('cliente')), 'conectado': bool((c.get('token') or {}).get('refresh')),
@@ -3145,6 +3187,7 @@ def main():
     mantener_despierto()
     retomar_cola()
     threading.Thread(target=biblio_semanal, daemon=True).start()
+    threading.Thread(target=canal_semanal, daemon=True).start()
     url = f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):

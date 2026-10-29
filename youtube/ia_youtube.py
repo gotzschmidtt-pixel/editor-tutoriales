@@ -100,6 +100,11 @@ def main():
     e = json.load(open(os.path.join(carpeta, f'entrada_{a.tarea}.json'), encoding='utf-8'))
     if a.tarea == 'metadatos':
         e['conocimiento'] = conocimiento.texto_para_ia(6000, a.proyecto)
+        try:  # «📊 Todo tu canal»: qué títulos y palabras funcionan en tu canal, con números
+            import canal
+            e['conocimiento'] = (canal.texto_para_ia() + '\n\n' + e['conocimiento']).strip()
+        except Exception:
+            pass
     print(f'Pido a la IA ({aj["modelo"]}): {a.tarea}…', flush=True)
     try:
         r = ia.extraer_json(ia.llamar(aj, TAREAS[a.tarea](e), []))

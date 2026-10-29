@@ -94,6 +94,15 @@
     <div id="aprendido"></div>
   </section>
 
+  <section><h2>📊 Aprender de todo tu canal</h2>
+    <p class="ayuda">Lee las estadísticas de <b>todos</b> tus videos (vistas, cuánto se mira, retención segundo a segundo, suscriptores)
+      y saca reglas con los números de tu canal: cuánta gente se va al inicio, dónde se cae la retención, qué duración y qué palabras
+      de título funcionan mejor. La IA las cumple al escribir el guion, el tráiler y el título. <b>Gratis</b> (no usa IA) y se
+      actualiza sola una vez por semana. La primera vez tarda unos minutos.</p>
+    <div class="fila"><button onclick="canalAprender()" id="btnCanal">📊 Aprender de todo mi canal</button><span id="msgCanal" class="msg"></span></div>
+    <div id="canalRes"></div>
+  </section>
+
   <section><h2>4 · Ideas para los próximos videos</h2>
     <p class="ayuda">Junta lo que piden en los comentarios de todo el canal con lo que la gente busca en YouTube.</p>
     <div class="fila"><button onclick="ideas()" id="btnIdeas">💡 Buscar ideas</button><span id="msgIdeas" class="msg"></span></div>
@@ -128,7 +137,12 @@ async function conexion() {
   CONECTADO = e.conectado;
   if (e.conectado && e.canal) {
     c.innerHTML = `<p class="ok">✅ Conectado a <b>${esc(e.canal.titulo)}</b> · ${Number(e.canal.suscriptores || 0).toLocaleString('es')} suscriptores · ${esc(e.canal.videos)} videos</p>`
-      + (enPC ? '<button onclick="desconectar()">Desconectar</button>' : '');
+      + (enPC ? '<button onclick="desconectar()">Desconectar</button> <button onclick="$(\'#clienteNuevo\').click()" title="Si cambiaste el secreto del cliente en Google Cloud: sube el JSON nuevo y vuelve a conectar">🔁 Cambiar el JSON del cliente</button>'
+        + '<input type="file" id="clienteNuevo" accept=".json,application/json" hidden> <span id="msgClienteNuevo" class="msg"></span>' : '');
+    if (enPC) $('#clienteNuevo').onchange = async ev => {
+      try { await api('/api/youtube/cliente', {method: 'POST', body: await ev.target.files[0].text()}); conexion(); }
+      catch (x) { $('#msgClienteNuevo').textContent = x.message; $('#msgClienteNuevo').className = 'msg err'; }
+    };
   } else if (e.conectado) {
     c.innerHTML = `<p class="err">${esc(e.error || 'No pude leer el canal.')}</p>` + (enPC ? '<button onclick="conectar()">Conectar otra vez</button>' : '');
   } else if (!enPC) {
@@ -245,6 +259,29 @@ async function ideas() {
   catch (x) { $('#msgIdeas').textContent = x.message; $('#msgIdeas').className = 'msg err'; }
   $('#btnIdeas').disabled = false;
 }
+async function verCanal() {
+  const r = await api('/api/youtube/canal'), a = r.analisis;
+  $('#btnCanal').disabled = r.corriendo;
+  $('#msgCanal').textContent = r.corriendo ? (r.log.slice(-1)[0] || 'Empezando…') : (r.error || (a ? `Actualizado el ${a.fecha}` : ''));
+  $('#msgCanal').className = 'msg' + (r.error ? ' err' : '');
+  if (a) {
+    const pct = x => x == null ? '?' : Math.round(x * 100) + ' %';
+    $('#canalRes').innerHTML = `<p><b>${a.videos}</b> videos (${a.largos} largos, ${a.shorts} Shorts) · ${Number(a.vistas).toLocaleString('es')} vistas
+      · a los 30 s queda el <b>${pct(a.quedan_30s)}</b> · se mira en promedio el <b>${a.visto_pct ? Math.round(a.visto_pct) + ' %' : '?'}</b></p>
+      <h3>Reglas que ya usa la IA</h3><ol>${a.reglas.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+      <h3>Tus mejores videos (vistas por día)</h3><ol>${a.mejores.map(v => `<li><a href="https://youtu.be/${esc(v.id)}" target="_blank">${esc(v.titulo)}</a>
+        <span class="ayuda">· ${v.por_dia}/día · se mira el ${v.visto_pct ?? '?'} %</span></li>`).join('')}</ol>
+      ${a.duracion.length ? `<h3>Duración</h3><ul>${a.duracion.map(x => `<li>${esc(x.tramo)}: ${x.por_dia} vistas/día · se mira el ${x.visto_pct} % <span class="ayuda">(${x.videos} videos)</span></li>`).join('')}</ul>` : ''}
+      ${a.marcas.length ? `<h3>Por marca</h3><ul>${a.marcas.map(x => `<li>${esc(x.marca)}: ${x.por_dia} vistas/día · se mira el ${x.visto_pct} % <span class="ayuda">(${x.videos} videos)</span></li>`).join('')}</ul>` : ''}
+      <p class="ayuda">Todo el informe: <code>${esc(r.informe)}</code></p>`;
+  }
+  if (r.corriendo) setTimeout(verCanal, 3000);
+}
+async function canalAprender() {
+  try { await api('/api/youtube/canal', {method: 'POST'}); verCanal(); }
+  catch (x) { $('#msgCanal').textContent = x.message; $('#msgCanal').className = 'msg err'; }
+}
+verCanal().catch(() => {});
 async function verBiblio() {
   const b = await api('/api/biblioteca'), a = b.ajustes || {};
   const costo = b.precio ? ` (unos US$ ${Math.max(0.01, b.letras_pendientes / 4 / 1e6 * b.precio[0] * 1.15).toFixed(2)} con tu IA)` : '';

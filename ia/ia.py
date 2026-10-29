@@ -459,6 +459,14 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
     aprobados = conocimiento.guiones_para_ia(d=d) if tarea == 'guion' and conocimiento.usar() else ''
     aprendido = aprendizaje.texto_para_ia() if tarea == 'guion' else ''
+    try:  # «📊 Todo tu canal»: retención y títulos de todos tus videos (YouTube Analytics), con sus reglas
+        sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
+        import canal as canal_yt
+        del_canal = canal_yt.texto_para_ia() if tarea in ('guion', 'trailer') else ''
+    except Exception:
+        del_canal = ''
+    if del_canal:
+        partes.append(del_canal)
     if aprendido:  # «🧠 Lo que aprendí»: lo que el autor corrige siempre en la app y su perfil de estilo
         partes.append(aprendido)
     if aprobados:
