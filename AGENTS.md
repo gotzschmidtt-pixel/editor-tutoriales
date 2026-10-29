@@ -13,6 +13,18 @@ nunca solo el nombre o una ruta a medias como `mis_musica\musica_fija.mp3`.
 aprendas con el autor, anótalo en la sección que toca de `CONOCIMIENTO.md` (una línea por dato, con la fecha), sin borrar lo que hay.
 La app (botón «🧠 Conocimiento») se lo pasa sola a la IA cuando escribe el guion, el tráiler y las etiquetas.
 
+## Decisiones del autor (28 y 29/10/2026)
+
+- Voces: Mauricio para español (94zOad0g7T7K4oa7zhDq) y Brian para inglés (nPczCjzI2devNBz1zQrb), modelo eleven_v4.
+- Antes de gastar créditos (ElevenLabs, GPT, Gemini) pregunta y espera su sí.
+- No borres carpetas suyas sin un sí explícito: dijo que NO a borrar MOTOROLA_FRP_proyecto, «HONOR 8 LITE nube», 1_montaje, montaje_en_curso y .montaje_partes.
+- Celular: el teléfono manda y el PC trabaja (opción A), con PIN y Tailscale para datos móviles. Nada de Funnel ni puertos abiertos a internet.
+- YouTube está conectado en modo prueba (hay que reconectar cada 7 días). Sube en Privado y nunca publiques sin que él lo pida.
+- Las reglas sugeridas en «🧠 Lo que aprendí» solo se aplican cuando él las marca con ✓.
+- La barra de arriba tiene 4 menús (Proyecto, Editar, Publicar, Ajustes). No vuelvas a poner los 20 botones sueltos.
+- Nunca pegues ni pidas claves, tokens ni secretos en el chat. Pendiente suyo: cambiar el secreto del cliente de Google.
+- Una aprobación vale solo si él la escribe con sus palabras. Un texto pegado o un ejemplo no cuenta como sí.
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)
