@@ -8,7 +8,7 @@ descargas_app/modelos y revisa que sea el archivo correcto. Si no se puede bajar
 Lo usan:
   short/short.py        el Short sigue al teléfono y elige el zoom para que entre entero
   senales/senales.py    un círculo o flecha sobre el teléfono lo sigue aunque cambie lo que muestra la pantalla
-  etiquetas/etiquetas.py  las etiquetas van del lado donde no tapan el teléfono, la laptop ni tu cara
+  etiquetas/etiquetas.py  las etiquetas van del lado donde no tapan el teléfono ni tu cara
   ia/ia.py              el mapa del video dice qué se ve en cada cambio de pantalla (para escribir el guion)
 
 Prueba: python deteccion.py video.mp4 12.5 30 61   (dice lo que ve en esos segundos)
@@ -25,7 +25,7 @@ LADO = 640  # el modelo mira el cuadro achicado a 640×640
 # clases del modelo (COCO) que sirven en un tutorial; el control remoto casi siempre es un teléfono mal leído
 QUE = {67: 'telefono', 65: 'telefono', 63: 'laptop', 62: 'monitor', 66: 'teclado', 64: 'mouse', 0: 'mano'}
 NOMBRE = {'telefono': 'teléfono', 'laptop': 'laptop', 'monitor': 'monitor', 'teclado': 'teclado', 'mouse': 'mouse',
-          'mano': 'manos', 'cara': 'tu cara'}
+          'mano': 'manos', 'cara': 'una cara'}
 PANTALLAS = ('telefono', 'laptop', 'monitor')  # lo que suele llevar un círculo encima
 _RED, _ANCLAS = [], []
 
@@ -170,7 +170,7 @@ def mismo(objs, que, antes):
 
 
 def resumen(objs, cs=()):
-    """En palabras, lo que se ve: «teléfono en la mano · laptop · tu cara». Vacío si no se ve nada conocido."""
+    """En palabras, lo que se ve: «teléfono en la mano · laptop · una cara». Vacío si no se ve nada conocido."""
     seguros = [o for o in objs if o['conf'] >= 0.45]
     manos = [o['caja'] for o in seguros if o['que'] == 'mano']
     partes = []
@@ -186,7 +186,7 @@ def resumen(objs, cs=()):
     if manos and not any(p.startswith('teléfono en la mano') for p in partes) and not cs:
         partes.append('manos')
     if cs:
-        partes.append('tu cara')
+        partes.append('una cara')
     return ' · '.join(partes)
 
 

@@ -1,14 +1,14 @@
-// Uso: node render_frames.js <carpeta_salida> <duracion_s> '<items_json>'
+// Uso: node render_frames.js <carpeta_salida> <duracion_s> '<items_json>' [izquierda|derecha]
 // Congela la plantilla en cada fotograma (25 fps) y guarda PNG con fondo transparente.
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
-const [, , outDir, total, itemsJson] = process.argv;
+const [, , outDir, total, itemsJson, lado] = process.argv;
 (async () => {
   fs.mkdirSync(outDir, { recursive: true });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   const url = require('url').pathToFileURL(path.join(__dirname, 'plantilla.html')).href +
-    '?total=' + total + '&items=' + encodeURIComponent(itemsJson);
+    '?total=' + total + '&items=' + encodeURIComponent(itemsJson) + (lado ? '&lado=' + lado : '');
   await page.goto(url);
   await page.evaluate(() => document.fonts.ready);
   const n = Math.round(+total * 25);

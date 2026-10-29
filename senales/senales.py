@@ -1,8 +1,9 @@
 """Flechas, círculos y recuadros animados sobre las partes importantes, en el momento en que la voz las nombra.
 
 Cada señal se coloca en un punto del cuadro; si la cámara o la pieza se mueven, la señal
-las sigue (seguimiento óptico con OpenCV). Si el objeto se pierde de vista, la señal se apaga
-antes de tiempo en vez de quedar flotando en el lugar equivocado.
+las sigue (seguimiento óptico con OpenCV). Si está sobre un teléfono, una laptop o un monitor, además queda
+pegada a ese objeto (deteccion/): aunque cambie lo que muestra su pantalla, vuelve a su mismo lugar del objeto.
+Si el objeto se pierde de vista, la señal se apaga antes de tiempo en vez de quedar flotando en el lugar equivocado.
 
 Uso:
   python3 senales.py --guion guion.json --voz voz_v4 --senales senales.json \
@@ -31,12 +32,21 @@ import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el pr
 from etiquetas import buscar  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'capas'))
 import capas  # noqa: E402  con --capa: se pega junto con etiquetas y tarjetas en una sola pasada
+sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
+import deteccion  # noqa: E402  el teléfono, la laptop o el monitor que hay debajo de la señal
 
 FPS = 25
+MIRAR_CADA = 5   # cada cuántos cuadros de la señal se vuelve a buscar el objeto de debajo (0,2 s)
+SIN_VER = 15     # si el objeto no se ve por más de esto (0,6 s), ya no se usa para corregir
+CORTE = 30       # diferencia media entre dos cuadros (achicados, 0 a 255) desde la que es otra toma: la señal termina ahí
 
 
 def seguir(video, t, x, y, n, radio):
-    """Sigue el punto (x, y) durante n cuadros desde el segundo t. Devuelve posiciones y cuántos cuadros fueron fiables."""
+    """Sigue el punto (x, y) durante n cuadros desde el segundo t. Devuelve posiciones y cuántos cuadros fueron fiables.
+
+    Si el punto cae sobre un teléfono, una laptop o un monitor, se busca ese objeto cada 0,2 s: cuando el seguimiento
+    óptico se pierde (un dedo tapa el botón) o se va con lo que cambia en la pantalla (otra pantalla, un desplazamiento),
+    la señal vuelve al mismo lugar del objeto en vez de apagarse o quedar flotando."""
     cap = cv2.VideoCapture(video)
     cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
     ok, f = cap.read()
@@ -45,8 +55,16 @@ def seguir(video, t, x, y, n, radio):
     prev = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
     mask = np.zeros_like(prev)
     rr = int(max(radio * 1.6, 60))
-    cv2.circle(mask, (int(x), int(y)), rr, 255, -1)
-    p0 = cv2.goodFeaturesToTrack(prev, 60, 0.01, 6, mask=mask)
+
+    def puntos_en(g, px, py):
+        mask[:] = 0; cv2.circle(mask, (int(px), int(py)), rr, 255, -1)
+        return cv2.goodFeaturesToTrack(g, 60, 0.01, 6, mask=mask)
+
+    p0 = puntos_en(prev, x, y)
+    objeto, rescates = deteccion.debajo(deteccion.objetos(f), x, y), []
+    if objeto:  # dónde queda el punto dentro del objeto (0 a 1), para volver ahí si el seguimiento se pierde
+        caja, visto, cajas = objeto['caja'], 0, {0: objeto['caja']}
+        rel = ((x - caja[0]) / caja[2], (y - caja[1]) / caja[3])
     pos, fiables, cx, cy = [(x, y)], n, float(x), float(y)
     vf, leidos = cap.get(cv2.CAP_PROP_FPS) or FPS, 0  # el video armado puede ir a 30 cuadros por segundo; la señal, a FPS
     for k in range(1, n):
@@ -57,24 +75,47 @@ def seguir(video, t, x, y, n, radio):
         if not ok:
             break
         g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
-        if p0 is None or len(p0) < 5:
-            fiables = min(fiables, k); pos.append((cx, cy)); prev = g; continue
-        p1, st, _ = cv2.calcOpticalFlowPyrLK(prev, g, p0, None, winSize=(31, 31), maxLevel=4)
-        bueno = st.reshape(-1) == 1
-        if bueno.sum() < 5:
-            fiables = min(fiables, k); pos.append((cx, cy)); prev = g; p0 = None; continue
-        d = np.median((p1[bueno] - p0[bueno]).reshape(-1, 2), axis=0)
-        cx, cy = cx + float(d[0]), cy + float(d[1])
-        if not (0 <= cx < g.shape[1] and 0 <= cy < g.shape[0]):
+        if cv2.absdiff(cv2.resize(prev, (64, 36)), cv2.resize(g, (64, 36))).mean() > CORTE:
+            fiables = min(fiables, k)  # cambió la toma: lo señalado ya no está ahí, la señal termina en el corte
+            break
+        perdido = p0 is None or len(p0) < 5
+        if not perdido:
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(prev, g, p0, None, winSize=(31, 31), maxLevel=4)
+            bueno = st.reshape(-1) == 1
+            if bueno.sum() < 5:
+                perdido, p0 = True, None
+            else:
+                d = np.median((p1[bueno] - p0[bueno]).reshape(-1, 2), axis=0)
+                cx, cy = cx + float(d[0]), cy + float(d[1])
+                p0 = p1[bueno].reshape(-1, 1, 2)
+                if k % 10 == 0:  # renueva puntos alrededor de la posición actual
+                    nuevo = puntos_en(g, cx, cy)
+                    if nuevo is not None and len(nuevo) >= 5:
+                        p0 = nuevo.astype(np.float32)
+        if objeto:
+            if k % MIRAR_CADA == 0:
+                nueva = deteccion.mismo(deteccion.objetos(f), objeto['que'], caja)
+                if nueva:
+                    caja, visto, cajas[k] = nueva, k, nueva
+            ax, ay = caja[0] + rel[0] * caja[2], caja[1] + rel[1] * caja[3]
+            lejos = ((cx - ax) ** 2 + (cy - ay) ** 2) ** 0.5 > 0.12 * min(caja[2], caja[3])
+            if k - visto <= SIN_VER and (perdido or lejos):  # vuelve a su lugar del objeto y sigue desde ahí
+                cx, cy, perdido = ax, ay, False
+                rescates.append(k)
+                nuevo = puntos_en(g, cx, cy)
+                p0 = nuevo.astype(np.float32) if nuevo is not None and len(nuevo) >= 5 else None
+        if perdido or not (0 <= cx < g.shape[1] and 0 <= cy < g.shape[0]):
             fiables = min(fiables, k)
         pos.append((cx, cy))
-        p0 = p1[bueno].reshape(-1, 1, 2)
-        if k % 10 == 0:  # renueva puntos alrededor de la posición actual
-            mask[:] = 0; cv2.circle(mask, (int(cx), int(cy)), rr, 255, -1)
-            nuevo = cv2.goodFeaturesToTrack(g, 60, 0.01, 6, mask=mask)
-            if nuevo is not None and len(nuevo) >= 5:
-                p0 = nuevo.astype(np.float32)
         prev = g
+    if rescates:  # lo rescatado, con el objeto en su lugar de ese momento (entre una búsqueda y la siguiente)
+        vistas = sorted(cajas)
+        for k in rescates:
+            a = max([v for v in vistas if v <= k], default=vistas[0])
+            b = min([v for v in vistas if v >= k], default=a)
+            u = 0 if b == a or b - k > SIN_VER else (k - a) / (b - a)
+            c = [cajas[a][i] + (cajas[b][i] - cajas[a][i]) * u for i in range(4)]
+            pos[k] = (c[0] + rel[0] * c[2], c[1] + rel[1] * c[3])
     while len(pos) < n:
         pos.append(pos[-1])
     # suavizado para que no tiemble

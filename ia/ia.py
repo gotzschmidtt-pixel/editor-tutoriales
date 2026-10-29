@@ -2518,6 +2518,8 @@ def mapa_video(d, ajustes=None):
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
         if viejo.get('firma') == firma and (viejo.get('vision') or not vision):
+            if lo_que_se_ve(d, viejo['cuadros']):  # un mapa de antes del detector: se completa y se guarda
+                json.dump(viejo, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return viejo['cuadros']
     except (OSError, ValueError, AttributeError):
         pass
@@ -2558,8 +2560,32 @@ Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {
                     mapa[i]['pantalla'] = str(x.get('pantalla') or '')[:120]
                     mapa[i]['accion'] = str(x.get('accion') or '')[:120]
         vision = bool(hechos)
+    lo_que_se_ve(d, mapa)
     json.dump({'firma': firma, 'vision': vision, 'cuadros': mapa}, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return mapa
+
+
+def lo_que_se_ve(d, mapa):
+    """Suma a cada cuadro del mapa lo que ve el detector de deteccion/ («teléfono en la mano · laptop», «una cara»), gratis y
+    en tu PC: así la IA que escribe sin mirar imágenes sabe igual qué muestra cada momento. Devuelve si agregó algo."""
+    faltan = [m for m in mapa if 'se_ve' not in m]
+    if not faltan:
+        return False
+    sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
+    import cv2
+    import deteccion
+    if deteccion.disponible() is None:
+        return False
+    orig = os.path.join(d, 'original.mp4')
+    print(f'Miro qué se ve en {len(faltan)} cuadros del mapa (teléfono, laptop, caras), en tu PC…', flush=True)
+    memoria, cap = deteccion.Memoria(orig), cv2.VideoCapture(orig)
+    for m in faltan:
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(m['t']) * 1000)
+        ok, f = cap.read()
+        m['se_ve'] = deteccion.resumen(memoria.ver(float(m['t']), f), deteccion.caras(f)) if ok else ''
+    cap.release()
+    memoria.guardar()
+    return True
 
 
 IA_CUADROS = 240  # «Todo con IA»: cuadros como máximo que mira la IA (uno cada 2 s, o más espaciados en videos largos)
@@ -2658,6 +2684,7 @@ def autorrevision(d, ajustes, texto, datos):
 
 def texto_mapa(mapa):
     return '\n'.join(f"[{mmss(m['t'])}] " + ' · '.join(x for x in (m.get('pantalla'), m.get('accion'),
+                                                                     m.get('se_ve') and f"se ve: {m['se_ve']}",
                                                                      m.get('texto') and f"se lee: {m['texto']}") if x)
                      for m in mapa)
 
