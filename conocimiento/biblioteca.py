@@ -326,6 +326,7 @@ def sumar(d, r, quien=''):
     """Lo que contestó una IA: términos al diccionario, procesos y preguntas a «🧠 Conocimiento» (sin repetir)."""
     notas = 0
     firma = f' [{quien}]' if quien else ''
+    md = conocimiento.leer(conocimiento.VIDEOS) or conocimiento.PLANTILLA_VIDEOS  # aparte de tu CONOCIMIENTO.md
     for t in (r.get('terminos') or []) if isinstance(r, dict) else []:
         nombre = (t.get('termino') or '').strip()
         if not nombre or len(nombre) > 60:
@@ -341,10 +342,13 @@ def sumar(d, r, quien=''):
                 x['oido_como'].append(t['oido_como'][:60])
     for p in (r.get('procesos') or []) if isinstance(r, dict) else []:
         if p.get('nombre') and p.get('pasos'):
-            notas += conocimiento.anotar('proceso', f"{p['nombre']}: {p['pasos']} (video «{p.get('video', '')}»){firma}")[1]
+            md, n = conocimiento.anotar('proceso', f"{p['nombre']}: {p['pasos']} (video «{p.get('video', '')}»){firma}", md)
+            notas += n
     for p in (r.get('preguntas') or []) if isinstance(r, dict) else []:
         if p.get('pregunta'):
-            notas += conocimiento.anotar('pregunta', p['pregunta'] + (f" → {p['respuesta']}" if p.get('respuesta') else '') + firma)[1]
+            md, n = conocimiento.anotar('pregunta', p['pregunta'] + (f" → {p['respuesta']}" if p.get('respuesta') else '') + firma, md)
+            notas += n
+    conocimiento.escribir(conocimiento.VIDEOS, md)
     return notas
 
 

@@ -47,6 +47,48 @@ PLANTILLA = """# Conocimiento del canal
 """
 
 
+# Lo que las IAs sacan al leer tus videos («📚 Biblioteca»): miles de procesos y preguntas. Va aparte de CONOCIMIENTO.md
+# (que queda con tus reglas y datos, cortos) y a la IA le llega solo lo que tiene que ver con el video nuevo.
+VIDEOS = os.path.join(CARPETA, 'APRENDIDO_DE_VIDEOS.md')
+PLANTILLA_VIDEOS = ('# Aprendido de tus videos\n\n> Lo sacan las IAs al leer las transcripciones de tus videos («📚 Biblioteca»). '
+                    'Entre corchetes, qué IA lo encontró. A la IA le llega solo lo que tiene que ver con cada video nuevo.\n\n'
+                    '## Procesos\n\n## Preguntas\n')
+
+
+def _palabras_clave(t):
+    import unicodedata
+    t = unicodedata.normalize('NFD', str(t or '').lower())
+    t = ''.join(c for c in t if unicodedata.category(c) != 'Mn')
+    return set(w for w in re.findall(r'[a-z0-9]{4,}', t)) - {'para', 'como', 'esto', 'este', 'esta', 'tiene', 'cuenta', 'video',
+                                                               'videos', 'tambien', 'puede', 'hacer', 'donde', 'cuando', 'luego'}
+
+
+def texto_videos_para_ia(d, limite=4000):
+    """De lo aprendido de tus videos, las notas que más tienen que ver con el proyecto d (su marca, su idea y lo que dices)."""
+    md = leer(VIDEOS)
+    if not md or not d:
+        return ''
+    marca = marca_de_proyecto(d)
+    consulta = _palabras_clave(os.path.basename(os.path.abspath(d)) + ' ' + leer(os.path.join(d, 'idea.txt')) + ' '
+                               + leer(os.path.join(d, 'transcripcion.txt'))[:5000])
+    alias = set(ALIAS.get(marca, [marca.lower()])) if marca else set()
+    notas = []
+    for x in md.split('\n'):
+        if not x.startswith('- '):
+            continue
+        p = _palabras_clave(x)
+        puntos = len(p & consulta) + (4 if alias and p & alias else 0)
+        if puntos >= 3:
+            notas.append((puntos, x))
+    notas.sort(key=lambda n: -n[0])
+    t = ''
+    for _, x in notas:
+        if len(t) + len(x) > limite:
+            break
+        t += x + '\n'
+    return t.strip()
+
+
 def asegurar():
     os.makedirs(CARPETA, exist_ok=True)
     if not os.path.exists(PRINCIPAL):
@@ -277,7 +319,10 @@ def _texto_conocimiento(limite, d):
     marca = texto_marca_para_ia(d)
     if marca:
         marca = f'SOBRE ESTA MARCA ({marca_de_proyecto(d)}), lo más importante para este video:\n' + marca[:limite // 2]
-    t = '\n\n'.join(p for p in (marca, general) if p)
+    videos = texto_videos_para_ia(d, limite // 3)
+    if videos:
+        videos = 'DE TUS VIDEOS ANTERIORES (procesos y preguntas que las IAs sacaron de lo que dices; los más parecidos a este video):\n' + videos
+    t = '\n\n'.join(p for p in (marca, general, videos) if p)
     if not t:
         return ''
     t += '\n'
