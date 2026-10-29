@@ -273,8 +273,14 @@ def aprender(ajustes_f):
     notas = 0
     for k, lote in enumerate(lotes(vs), 1):
         log(f'[{k}] {len(lote)} videos…')
-        for nombre, r in pedir_a_todas(ia, ias, PEDIDO + ''.join(t for _, t in lote)):
+        if not ias:
+            log('· ninguna IA puede seguir (clave, permiso o saldo): los videos que faltan quedan para la próxima vez.')
+            break
+        respuestas = pedir_a_todas(ia, ias, PEDIDO + ''.join(t for _, t in lote))
+        for nombre, r in respuestas:
             notas += sumar(d, r, nombre if len(ias) > 1 else '')
+        if not respuestas:  # ninguna contestó: este grupo no cuenta como leído y se vuelve a intentar la próxima vez
+            continue
         guardar_diccionario(d)
         e = estado()
         e['aprendidos'] = sorted(set(e.get('aprendidos', [])) | {v['id'] for v, _ in lote})
@@ -308,9 +314,12 @@ def pedir_a_todas(ia, ias, texto):
             return nombre, ia.extraer_json(ia.llamar(aj2, texto, []))
         except Exception as x:  # una IA que falla no frena a las otras
             log(f'· {nombre} no pudo con este grupo: {x}')
+            if getattr(x, 'permanente', False):  # clave, permiso, saldo o política: no se le vuelve a pedir en esta lectura
+                log(f'· {nombre} queda fuera hasta la próxima lectura (el error no se arregla repitiendo).')
+                ias.remove(par)
             return nombre, None
     with ThreadPoolExecutor(len(ias)) as hilos:
-        return [(n, r) for n, r in hilos.map(una, ias) if isinstance(r, dict)]
+        return [(n, r) for n, r in hilos.map(una, list(ias)) if isinstance(r, dict)]
 
 
 def sumar(d, r, quien=''):
