@@ -282,6 +282,76 @@ def guiones_para_ia(limite=5000, d=None):
         t += leer(f) + '\n'
         if len(t) >= limite:
             break
+    t = t[:limite].rsplit('\n', 1)[0] if len(t) > limite else t.strip()
+    otros = guiones_ia_para_ia(d) if d else ''
+    if otros:
+        t += (f'\n\nCÓMO LO ESCRIBIERON LAS IAs EN OTROS VIDEOS DEL MISMO PROCEDIMIENTO («{modulo_de_proyecto(d)}», sin aprobar: '
+              'sirven para ver qué pasos y explicaciones hacen falta, no para copiar sus datos):\n' + otros)
+    return t.strip()
+
+
+# «📚 Guiones de las IAs» (pedido del autor, 29/10/2026): TODO guion que escribe una IA (GPT, Claude, DeepSeek, la
+# combinación…) se guarda, aunque no lo elijas, en un módulo por marca y procedimiento (mis_conocimientos/guiones_ia/
+# «honor google»/), porque costó créditos y enseña cómo se explica ese desbloqueo. La IA del próximo guion del mismo
+# módulo ve cómo lo resolvieron antes (sin copiar datos).
+GUIONES_IA = os.path.join(CARPETA, 'guiones_ia')
+PROCEDIMIENTOS = [('google', r'\bfrp\b|cuenta (de )?google|google account|verifica tu cuenta'), ('icloud', r'icloud|hello|bloqueo de activaci'),
+                  ('mdm', r'\bmdm\b'), ('bootloader', r'bootloader|desbloquear el arranque'), ('imei', r'\bimei\b'),
+                  ('red', r'liberar|sim ?lock|operadora'), ('pantalla', r'patr[oó]n|contrase[ñn]a de pantalla|pin de pantalla')]
+
+
+def modulo_de_proyecto(d):
+    """«honor google»: la marca y el procedimiento del proyecto (por su nombre, su idea y su transcripción)."""
+    marca = (marca_de_proyecto(d) or 'otras').lower()
+    texto = ' '.join([os.path.basename(os.path.abspath(d)), leer(os.path.join(d, 'idea.txt'))[:3000],
+                      leer(os.path.join(d, 'transcripcion.txt'))[:8000]]).lower()
+    cuenta = [(len(re.findall(p, texto)), n) for n, p in PROCEDIMIENTOS]
+    n, proc = max(cuenta)
+    return f"{marca} {proc if n else 'general'}"
+
+
+def archivar_guion_ia(d, ia, modelo, datos):
+    """Guarda una versión del guion de una IA en su módulo. Nunca frena el guion: si algo falla, devuelve ''."""
+    try:
+        bloques = datos.get('bloques') if isinstance(datos, dict) else datos
+        if not bloques:
+            return ''
+        carpeta = os.path.join(GUIONES_IA, modulo_de_proyecto(d))
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = re.sub(r'[^\w\-]', '_', os.path.basename(os.path.abspath(d)))
+        base = os.path.join(carpeta, f"{nombre}__{re.sub(r'[^\w\-.]', '_', ia)}__{time.strftime('%Y%m%d_%H%M%S')}")
+        with open(base + '.json', 'w', encoding='utf-8') as f:
+            json.dump({'proyecto': os.path.basename(os.path.abspath(d)), 'ia': ia, 'modelo': modelo,
+                       'fecha': time.strftime('%Y-%m-%d %H:%M'), 'guion': datos}, f, ensure_ascii=False, indent=1)
+        lineas = [f"# {os.path.basename(os.path.abspath(d))} · {ia} ({modelo}) · {time.strftime('%Y-%m-%d')}", '']
+        for b in bloques:
+            if isinstance(b, dict) and str(b.get('texto') or '').strip():
+                lineas.append(f"- {b.get('id')}{' [paso crítico]' if b.get('tipo') == 'critico' else ''}"
+                              f"{' (' + str(b.get('ancla'))[:60] + ')' if b.get('ancla') else ''}: " + re.sub(r'\s+', ' ', b['texto']).strip())
+        escribir(base + '.md', '\n'.join(lineas) + '\n')
+        return base + '.md'
+    except Exception:
+        return ''
+
+
+def guiones_ia_para_ia(d, limite=3000):
+    """Cómo lo escribieron las IAs en OTROS proyectos del mismo módulo (el más nuevo de cada uno), para aprender del
+    procedimiento. Los del mismo proyecto no van: serían ejemplo de sí mismo."""
+    carpeta = os.path.join(GUIONES_IA, modulo_de_proyecto(d))
+    if not os.path.isdir(carpeta):
+        return ''
+    yo = re.sub(r'[^\w\-]', '_', os.path.basename(os.path.abspath(d)))
+    fs = sorted((os.path.join(carpeta, f) for f in os.listdir(carpeta) if f.endswith('.md') and not f.startswith(yo + '__')),
+                key=os.path.getmtime, reverse=True)
+    t, vistos = '', set()
+    for f in fs:
+        proyecto = os.path.basename(f).split('__')[0]
+        if proyecto in vistos:
+            continue
+        vistos.add(proyecto)
+        t += leer(f) + '\n'
+        if len(t) >= limite:
+            break
     return t[:limite].rsplit('\n', 1)[0] if len(t) > limite else t.strip()
 
 

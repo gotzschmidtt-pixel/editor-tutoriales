@@ -2974,6 +2974,7 @@ def guion_varias(d, ajustes, ias, texto, caps, todo_ia, previas=None):
             v.update(archivo=f'guion_{ide}.json', bloques=len(bloques), palabras=sum(len(str(b.get('texto', '')).split()) for b in bloques),
                      humor=texto_medida(m) if m else '', preguntas=x['preguntas'], avisos=x['avisos'])
             json.dump(datos, open(os.path.join(d, v['archivo']), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            conocimiento.archivar_guion_ia(d, ide, aj['modelo'], datos)  # «📚 Guiones de las IAs»: aunque no la elijas
         else:
             v['error'] = x['error']
         versiones.append(v)
@@ -3422,6 +3423,7 @@ def main():
             os.replace(destino, destino + '.anterior')
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         json.dump(datos, open(os.path.join(d, 'guion_combinado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        conocimiento.archivar_guion_ia(d, 'combinado', ajustes.get('modelo') or '', datos)
         avisos = ['guion combinado con lo mejor de cada versión (también quedó en guion_combinado.json)'] + avisos_humor + avisos
         for x in avisos:
             print('·', x)
@@ -3618,6 +3620,15 @@ def main():
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    if a.tarea == 'guion' and ((a.modo == 'api' and not os.path.exists(os.path.join(d, 'versiones_guion.json')))
+                               or (a.modo == 'revisar' and not a.sin_variar)):
+        # «📚 Guiones de las IAs»: el de una sola IA (los de varias ya se guardaron) o el que pegaste de una IA de chat
+        try:
+            aj_ = json.load(open(a.ajustes, encoding='utf-8'))
+        except (OSError, ValueError):
+            aj_ = {}
+        conocimiento.archivar_guion_ia(d, (aj_.get('proveedor') or 'ia').split(' ')[0] if a.modo == 'api' else 'chat',
+                                       aj_.get('modelo') or '' if a.modo == 'api' else '', datos)
     for x in avisos:
         print('·', x)
     if a.tarea == 'guion':  # lo que la app corrigió, para mostrártelo antes de seguir
