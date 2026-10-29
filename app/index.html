@@ -915,6 +915,10 @@
   <div id="ajTresIAs" class="aviso"></div>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
+  <p class="aviso">🔑 <b>Pasar las claves a tu otra PC</b>, por el Wi‑Fi de casa o Tailscale (nunca por GitHub ni internet abierto). En la PC que las tiene,
+    activa «📱 Celular» con un PIN y pulsa «📤 Prestar»; en la otra, «📥 Traer» con la dirección que aparece y ese PIN.</p>
+  <div class="fila"><button type="button" onclick="prestarClaves()">📤 Prestar mis claves (5 min)</button>
+    <button type="button" onclick="traerClaves()">📥 Traer claves de la otra PC</button><span id="ajPrestamo" class="aviso" style="align-self:center"></span></div>
   <div class="fila"><button class="principal" onclick="guardarAjustes()">Guardar</button><button onclick="dlgAjustes.close()">Cancelar</button></div>
 </dialog>
 
@@ -2569,6 +2573,25 @@ async function guardarAjustes() {
   const listas = TRES_IAS.filter(([id]) => $('#ajTM_' + id).value.trim()).length;
   if ($('#ajTres').checked && listas < 2) alert('Para el guion con varias IAs pon el modelo (y la clave) de al menos dos. Mientras tanto se usa solo tu IA principal.');
   dlgAjustes.close(); quienIA();
+}
+async function prestarClaves() {
+  try {
+    const r = await api('/api/claves/prestar', {method: 'POST', body: '{}'});
+    $('#ajPrestamo').textContent = r.direcciones.length
+      ? `Abierto ${r.minutos} min, para un solo pedido. En la otra PC pulsa «📥 Traer» y pon ${r.direcciones.map(d => d.url).join(' o ')} y tu PIN de «📱 Celular».`
+      : 'Abierto, pero esta PC no está en una red de casa ni en Tailscale: activa «📱 Celular» y reinicia la app.';
+  } catch (x) { $('#ajPrestamo').textContent = '✗ ' + x.message; }
+}
+async function traerClaves() {
+  const dir = prompt('Dirección de la otra PC (la que muestra «📤 Prestar» allá, por ejemplo http://192.168.1.20:8765):');
+  if (!dir) return;
+  const pin = prompt('PIN de «📱 Celular» de la otra PC:');
+  if (!pin) return;
+  try {
+    const r = await api('/api/claves/traer', {method: 'POST', body: JSON.stringify({direccion: dir, pin})});
+    alert('✓ Claves traídas: ' + (r.traidas.join(', ') || 'ninguna') + '.\nLas que tenías antes quedaron en app/ajustes.json.copia.');
+    dlgAjustes.close(); quienIA(); verEleven();
+  } catch (x) { alert('✗ ' + x.message); }
 }
 async function quienIA() { const a = (await api('/api/ajustes')).ajustes; $('#iaQuien').textContent = a.modelo ? `· ${a.proveedor} · ${a.modelo}` : '· sin configurar'; }
 quienIA();

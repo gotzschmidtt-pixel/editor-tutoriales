@@ -700,6 +700,9 @@ FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
 TRABAJO = {'proyecto': None, 'paso': None, 'proc': None, 'inicio': None, 'cola': [], 'plan': [], 'i': 0, 'inicio_total': None}
 RESULTADO = {}  # proyecto -> cómo terminó la última tanda (para la barra de progreso)
 CANDADO = threading.Lock()
+# «📤 Prestar mis claves a otra PC»: se abre desde este PC por 5 minutos, para un solo pedido con el PIN de «📱 Celular»
+PRESTAMO = {'hasta': 0.0, 'fallos': 0}
+CLAVES = ('proveedor', 'url', 'modelo', 'clave', 'imagenes', 'tipo', 'json', 'elevenlabs', 'ias_guion')
 
 
 def leer_ajustes():
@@ -2611,6 +2614,61 @@ class Manejador(BaseHTTPRequestHandler):
                 json.dump(viejo, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 os.replace(tmp, AJUSTES)
                 return self.responder({'ok': True})
+            if ruta == '/api/claves/prestar':
+                if celular.es_local(self.client_address[0]):  # en este PC: abre el préstamo 5 minutos
+                    PRESTAMO.update(hasta=time.time() + 300, fallos=0)
+                    return self.responder({'ok': True, 'minutos': 5, 'direcciones': celular.direcciones(PUERTO)})
+                datos = json.loads(self.rfile.read(min(largo, 4096)) or b'{}')  # la otra PC (ya pasó por puerta(): red de casa o Tailscale)
+                if time.time() > PRESTAMO['hasta']:
+                    return self.error('En la otra PC no está abierto «📤 Prestar mis claves» (dura 5 minutos): púlsalo allá y vuelve a probar.', 403)
+                aj = leer_ajustes()
+                cookie, aviso = celular.entrar(aj, self.client_address[0], str(datos.get('pin') or ''))
+                if not cookie:
+                    PRESTAMO['fallos'] += 1
+                    if PRESTAMO['fallos'] >= 3:  # 3 PIN equivocados: se cierra y hay que volver a abrirlo en el PC
+                        PRESTAMO['hasta'] = 0.0
+                    return self.error(aviso, 401)
+                PRESTAMO['hasta'] = 0.0  # un solo uso
+                return self.responder({'claves': {k: aj[k] for k in CLAVES if k in aj}})
+            if ruta == '/api/claves/traer':  # «📥 Traer claves de la otra PC»: por el Wi‑Fi de casa o Tailscale, nunca por GitHub
+                if not celular.es_local(self.client_address[0]):
+                    return self.error('esto se hace solo en la app del PC', 403)
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                dire = (datos.get('direccion') or '').strip().rstrip('/')
+                if '://' not in dire:
+                    dire = 'http://' + dire
+                u = urllib.parse.urlparse(dire)
+                if u.scheme != 'http' or not u.hostname or not celular.host_valido(u.hostname):
+                    return self.error('Pon la dirección de la otra PC en tu red (por ejemplo http://192.168.1.20:8765) o su nombre de Tailscale.')
+                dire = f'http://{u.hostname}:{u.port or PUERTO}'
+                pedido = urllib.request.Request(dire + '/api/claves/prestar', data=json.dumps({'pin': str(datos.get('pin') or '')}).encode(),
+                                                headers={'Content-Type': 'application/json'}, method='POST')
+                try:
+                    with urllib.request.urlopen(pedido, timeout=15) as r:
+                        claves = json.load(r).get('claves') or {}
+                except urllib.error.HTTPError as e:
+                    try:
+                        msg = json.load(e).get('error')
+                    except ValueError:
+                        msg = ''
+                    if e.code == 403 and msg == 'acceso desde otro aparato apagado':
+                        msg = 'En la otra PC activa «📱 Celular» con un PIN (y reinicia la app allá).'
+                    return self.error(f'La otra PC dijo: {msg or e}')
+                except (urllib.error.URLError, OSError) as e:
+                    return self.error(f'No encontré la app en {dire} ({e}). En la otra PC activa «📱 Celular» con un PIN, '
+                                      'reinicia la app allá y revisa que las dos estén en el mismo Wi‑Fi o en Tailscale.')
+                if not claves:
+                    return self.error('La otra PC no tiene claves guardadas.')
+                if os.path.exists(AJUSTES):
+                    shutil.copy2(AJUSTES, AJUSTES + '.copia')  # las de antes, por si acaso (tampoco se sirven nunca)
+                aj = leer_ajustes()
+                aj.update({k: claves[k] for k in CLAVES if k in claves})
+                tmp = AJUSTES + '.tmp'
+                json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                os.replace(tmp, AJUSTES)
+                traidas = (['IA principal'] if claves.get('clave') else []) + (['ElevenLabs'] if claves.get('elevenlabs') else []) + \
+                    [i for i, x in (claves.get('ias_guion') or {}).items() if isinstance(x, dict) and x.get('clave')]
+                return self.responder({'ok': True, 'traidas': traidas})
             if ruta == '/api/probar_ia':  # comprueba que la clave API del proveedor funcione, sin gastar tokens
                 datos = json.loads(self.rfile.read(largo) or b'{}')
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
