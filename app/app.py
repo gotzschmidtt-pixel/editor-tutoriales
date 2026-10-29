@@ -1032,9 +1032,9 @@ def actualizar_app():
     """«⬇ Actualizar la app»: baja la versión nueva de GitHub y la copia ENCIMA de esta misma carpeta. Tus proyectos,
     estilos y claves no se tocan, y lo que se reemplaza queda antes en un respaldo (descargas_app/respaldo_app_*.zip)."""
     import io, zipfile
-    if os.path.isdir(os.path.join(RAIZ, '.git')):
-        raise RuntimeError('Esta carpeta es un clon de git: actualízala con «git pull».')
     rama = leer_ajustes().get('rama_app') or RAMA_APP
+    if os.path.isdir(os.path.join(RAIZ, '.git')):
+        return actualizar_git(rama)
     url = f'https://codeload.github.com/gotzschmidtt-pixel/editor-tutoriales/zip/refs/heads/{urllib.parse.quote(rama)}'
     try:
         datos = urllib.request.urlopen(url, timeout=120).read()
@@ -1076,6 +1076,40 @@ def actualizar_app():
             escribir_bytes(destino, contenido)
     return {'ok': True, 'cambiados': len(cambian), 'respaldo': os.path.relpath(respaldo, RAIZ),
             'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta. Tus proyectos y claves siguen igual.'}
+
+
+def actualizar_git(rama):
+    """«⬇ Actualizar la app» cuando la carpeta es un clon de git (como en la laptop): baja la rama de GitHub y deja la
+    carpeta igual a ella. Lo que se hubiera cambiado solo en esta PC no se pierde: los commits quedan en la rama
+    respaldo_app_<fecha> y los archivos tocados sin commit en un «git stash» con ese mismo nombre."""
+    def git(*args):
+        r = subprocess.run(['git', *args], cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180)
+        if r.returncode:
+            raise RuntimeError(f"git {args[0]} falló: {(r.stderr or r.stdout).strip()[-300:]}")
+        return r.stdout.strip()
+    try:
+        git('fetch', 'origin', rama)
+    except FileNotFoundError:
+        raise RuntimeError('Esta carpeta es un clon de git, pero git no está instalado en esta PC.')
+    except RuntimeError as e:
+        raise RuntimeError(f'No pude bajar la versión nueva de GitHub (revisa tu internet). {e}')
+    remota = f'origin/{rama}'
+    cambian = [x for x in git('diff', '--name-only', 'HEAD', remota).splitlines() if x]
+    tocados = git('status', '--porcelain', '--untracked-files=no')
+    if not cambian and not tocados:
+        return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+    marca = 'respaldo_app_' + time.strftime('%Y%m%d_%H%M%S')
+    avisos = []
+    if git('rev-list', '--count', f'{remota}..HEAD') != '0':  # commits hechos solo en esta PC
+        git('branch', marca, 'HEAD')
+        avisos.append(f'tus cambios de esta PC quedaron en la rama {marca}')
+    if tocados:
+        git('-c', 'user.name=Estudio', '-c', 'user.email=estudio@localhost', 'stash', 'push', '-m', marca)
+        avisos.append(f'los archivos que habías cambiado quedaron guardados en «git stash» ({marca})')
+    git('checkout', '-q', '-B', rama, remota)
+    return {'ok': True, 'cambiados': len(cambian),
+            'mensaje': f'Actualicé {len(cambian)} archivo(s) desde GitHub. Tus proyectos y claves siguen igual.'
+                       + (' Ojo: ' + '; '.join(avisos) + '.' if avisos else '')}
 
 
 def ultimo_proyecto():
