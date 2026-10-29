@@ -2152,7 +2152,7 @@ async function shortVer() {  // «📱 Short»: el último que armaste, con el p
     <video controls preload="metadata" style="width:300px; aspect-ratio:9/16; background:#000; border-radius:12px" src="/archivo?p=${q(P)}&f=SHORT.mp4&v=${arch['SHORT.mp4'].fecha}"></video>
     <div style="flex:1; min-width:16em"><p><b>${plan ? `${plan.tomas.length} tomas · ${seg} s` : ''}</b>
       <a href="/archivo?p=${q(P)}&f=SHORT.mp4&nombre=${q(nombre)}" download="${nombre}"><button class="principal">⬇ Bajar el Short</button></a></p>
-      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.zoom > 1 ? 'pantalla con zoom' : 'tu cara'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
+      ${plan ? plan.tomas.map(t => `<p><b>${esc(t.id)}</b> · ${mmss(t.src_inicio)} de tu grabación · ${t.largo.toFixed(1)} s · ${t.encuadre === 'telefono' ? 'sigue al teléfono' : t.encuadre === 'cara' || (!t.encuadre && t.zoom <= 1) ? 'tu cara' : 'pantalla con zoom'}${t.id.startsWith('S') ? ' · voz nueva' : ''}<br>
         <span class="aviso">${esc(t.por_que)}</span><br>«${esc(t.texto)}»</p>`).join('') : ''}</div></div>`;
 }
 async function shortHacer() {
