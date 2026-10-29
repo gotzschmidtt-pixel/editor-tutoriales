@@ -307,6 +307,8 @@ def modulo_de_proyecto(d):
                       leer(os.path.join(d, 'transcripcion.txt'))[:8000]]).lower()
     cuenta = [(len(re.findall(p, texto)), n) for n, p in PROCEDIMIENTOS]
     n, proc = max(cuenta)
+    if marca == 'apple' and proc == 'google':
+        proc = 'icloud'  # en un iPhone «FRP» es el bloqueo de activación de iCloud, no una cuenta Google
     return f"{marca} {proc if n else 'general'}"
 
 
