@@ -287,7 +287,7 @@ async function pronRehacer() {
 async function emoGuardar() {
   const emociones = {};
   document.querySelectorAll('#emoTabla input[data-id]').forEach(i => emociones[i.dataset.id] = i.value.trim());
-  try { await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})}); aviso('#emoMsg', '✓ Guardado. Se usa al generar la voz.', 'ok'); }
+  try { await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})}); aviso('#emoMsg', '✓ Guardado. Solo los bloques que cambiaste se rehacen al pulsar «Generar voz» (el costo se ve antes).', 'ok'); }
   catch (e) { aviso('#emoMsg', e.message, 'err'); }
 }
 function sonTipos() { edicion({sonidos_tipos: [...document.querySelectorAll('#sonTipos input:checked')].map(i => i.value)}); }

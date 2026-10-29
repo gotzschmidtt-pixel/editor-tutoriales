@@ -94,8 +94,14 @@ def vigente(carpeta, b, a):
             hecha, ahora = json.load(open(meta, encoding='utf-8')), firma(b, a)
         except ValueError:
             return False
-        if 'pron' not in hecha:  # hecha antes de «🗣 Pronunciación»: sirve igual (rehacerla es «Rehacer con la pronunciación nueva»)
+        # una voz ya hecha no se rehace sola (no gasta) porque cambie el diccionario o porque la IA le ponga otra emoción:
+        # solo si lo pediste en «🎛 Audio e imagen» («Rehacer con la pronunciación nueva» o cambiando la emoción del bloque)
+        if hecha.get('pron') != ['(antes del diccionario)']:
+            hecha.pop('pron', None)
             ahora.pop('pron', None)
+        if not hecha.pop('rehacer_emocion', False):
+            hecha.pop('emocion', None)
+            ahora.pop('emocion', None)
         return hecha == ahora
     try:  # voces de antes de este cambio: el texto dicho está en la alineación de ElevenLabs
         al = json.load(open(os.path.join(carpeta, f"{b['id']}.align.json"), encoding='utf-8'))

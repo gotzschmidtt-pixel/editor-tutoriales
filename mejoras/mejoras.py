@@ -239,6 +239,9 @@ def post(h, ruta, q, largo, d):
         for b in g.get('bloques', []):
             if b.get('id') in cambios:
                 v = re.sub(r'[\[\]]', '', str(cambios[b['id']] or '')).strip()[:30]
+                meta = os.path.join(d, 'voz', f"{b['id']}.voz.json")
+                if v != (b.get('emocion') or '') and os.path.exists(meta):  # la cambiaste vos: esa voz se rehace con «Generar voz»
+                    _escribir(meta, dict(_leer(os.path.join(d, 'voz'), f"{b['id']}.voz.json", {}) or {}, rehacer_emocion=True))
                 if v:
                     b['emocion'] = v
                 else:
