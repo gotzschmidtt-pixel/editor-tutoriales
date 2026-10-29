@@ -7,7 +7,7 @@ modelo o la estabilidad); si no, se reutiliza y no gasta créditos dos veces.
 Después mide cuánto dura de verdad cada voz y, si no cabe en su bloque, alarga el bloque en guion.json con una pausa
 congelada al final y corre los bloques siguientes. Así la voz nunca se monta encima de la del bloque siguiente.
 """
-import argparse, base64, sys, json, os, shutil, subprocess, time, urllib.error, urllib.request
+import argparse, base64, sys, json, os, re, shutil, subprocess, time, urllib.error, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -25,6 +25,7 @@ def _clave():
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from texto_voz import texto_voz  # noqa: E402
+import pronunciacion  # noqa: E402  «🗣 Pronunciación»: FRP, DFU, IMEI… siempre dichos igual
 
 _K, FUENTE_CLAVE = _clave()
 CLAVE = {'xi-api-key': _K} if _K else {}
@@ -36,12 +37,50 @@ MARGEN = 0.4   # aire al final, antes del bloque siguiente
 
 def pendientes(bloques, carpeta, a):
     """[(id, caracteres)] de los bloques cuya voz hay que generar (lo que gastaría ElevenLabs)."""
-    return [(b['id'], len(texto_voz(b['texto']))) for b in bloques
+    return [(b['id'], len(texto_pedido(b, a))) for b in bloques
             if str(b.get('texto') or '').strip() and not vigente(carpeta, b, a)]
 
 
+# las voces nuevas de ElevenLabs entienden etiquetas de emoción entre corchetes ([emocionado], [susurra]…): no se leen,
+# cambian cómo se dice. Van en "emocion" del bloque (la pone la IA del guion o la eliges en «🎛 Audio e imagen»)
+CON_EMOCION = ('eleven_v3', 'eleven_v4')
+
+
+SIN_EMOCION = {'', 'neutral', 'neutro', 'normal', 'ninguna', 'ninguno', 'none', 'no'}
+_EMOCION_ON = {}
+
+
+def emocion_activa(guion):
+    """«😀 Voz con emoción» del proyecto (edicion.json: "emocion_voz", sí por defecto)."""
+    if guion not in _EMOCION_ON:
+        try:
+            e = json.load(open(os.path.join(os.path.dirname(os.path.abspath(guion)), 'edicion.json'), encoding='utf-8'))
+            _EMOCION_ON[guion] = e.get('emocion_voz', True) is not False
+        except (OSError, ValueError, AttributeError):
+            _EMOCION_ON[guion] = True
+    return _EMOCION_ON[guion]
+
+
+def emocion(b, a):
+    e = re.sub(r'[\[\]]', '', str(b.get('emocion') or '')).strip()[:30]
+    if e.lower() in SIN_EMOCION or not a.modelo.startswith(CON_EMOCION) or not emocion_activa(a.guion):
+        return ''
+    return e
+
+
+def texto_pedido(b, a):
+    e = emocion(b, a)
+    return (f'[{e}] ' if e else '') + texto_voz(b['texto'])
+
+
 def firma(b, a):
-    return {'texto': b['texto'], 'voz': a.voz, 'modelo': a.modelo, 'estabilidad': a.estabilidad}
+    f = {'texto': b['texto'], 'voz': a.voz, 'modelo': a.modelo, 'estabilidad': a.estabilidad}
+    pron = pronunciacion.firma_bloque(b['texto'])
+    if pron:  # solo si le toca alguna palabra: las voces de antes del diccionario no se rehacen solas (no gastan)
+        f['pron'] = pron
+    if emocion(b, a):
+        f['emocion'] = emocion(b, a)
+    return f
 
 
 def vigente(carpeta, b, a):
@@ -52,9 +91,12 @@ def vigente(carpeta, b, a):
     meta = os.path.join(carpeta, f"{b['id']}.voz.json")
     if os.path.exists(meta):
         try:
-            return json.load(open(meta, encoding='utf-8')) == firma(b, a)
+            hecha, ahora = json.load(open(meta, encoding='utf-8')), firma(b, a)
         except ValueError:
             return False
+        if 'pron' not in hecha:  # hecha antes de «🗣 Pronunciación»: sirve igual (rehacerla es «Rehacer con la pronunciación nueva»)
+            ahora.pop('pron', None)
+        return hecha == ahora
     try:  # voces de antes de este cambio: el texto dicho está en la alineación de ElevenLabs
         al = json.load(open(os.path.join(carpeta, f"{b['id']}.align.json"), encoding='utf-8'))
         return ''.join(al['characters']).strip() in (b['texto'].strip(), texto_voz(b['texto']))
@@ -158,8 +200,10 @@ def main():
             continue
         if os.path.exists(mp3):
             print(b['id'], 'cambió el texto: genero la voz de nuevo', flush=True)
-        body = json.dumps({'text': texto_voz(b['texto']), 'model_id': a.modelo, 'language_code': a.idioma,
-                           'voice_settings': {'stability': a.estabilidad}}).encode()
+        pedido = texto_pedido(b, a)
+        body = json.dumps({'text': pedido, 'model_id': a.modelo, 'language_code': a.idioma,
+                           'voice_settings': {'stability': a.estabilidad},
+                           **pronunciacion.para_pedido(b['texto'], CLAVE, lambda x: print(x, flush=True))}).encode()
         req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{a.voz}/with-timestamps?output_format=mp3_44100_128',
                                      data=body, headers={'Content-Type': 'application/json', **CLAVE})
         r = None
@@ -176,7 +220,12 @@ def main():
                 print(b['id'], f"se cortó la conexión ({e.reason}); reintento {intento + 2} de 3...", flush=True)
                 time.sleep(2 * (intento + 1))
         open(mp3, 'wb').write(base64.b64decode(r['audio_base64']))
-        json.dump(r.get('alignment'), open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
+        al = r.get('alignment')
+        corte = len(pedido) - len(texto_voz(b['texto']))
+        if al and corte and ''.join(al['characters'][:corte]) == pedido[:corte]:
+            # la etiqueta de emoción no se dice: fuera de los tiempos, así subtítulos y etiquetas ven solo el texto
+            al = {k: v[corte:] for k, v in al.items()}
+        json.dump(al, open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)
     for x in ajustar_guion(a.guion, a.salida):

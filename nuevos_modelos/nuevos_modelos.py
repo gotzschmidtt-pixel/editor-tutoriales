@@ -120,7 +120,9 @@ def voz(frase, carpeta, voz_id=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq
     mp3, al = os.path.join(carpeta, f'voz_{clave}.mp3'), os.path.join(carpeta, f'voz_{clave}.align.json')
     if os.path.exists(mp3) and os.path.exists(al):
         return mp3, json.load(open(al, encoding='utf-8'))
-    body = json.dumps({'text': frase, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': 0.5}}).encode()
+    import pronunciacion  # FRP, DFU… dichos como en el resto del video
+    body = json.dumps({'text': frase, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': 0.5},
+                       **pronunciacion.para_pedido(frase, vz.CLAVE)}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{voz_id}/with-timestamps?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', **vz.CLAVE})
     try:

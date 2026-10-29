@@ -54,6 +54,17 @@ for b in d['bloques']:
         i = corte
         while i < L and ch[i] == ' ':
             i += 1
+carpeta = os.path.dirname(os.path.abspath(guion))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'sonidos'))
+import sonidos  # noqa: E402  «🔊 Efectos de sonido»: clic en los botones, whoosh en los cortes (si los activaste)
+if sonidos.activo(carpeta):
+    ev = [e for e in sonidos.plan(carpeta) if e['t'] < total]
+    e_in, e_fl, e_lab = sonidos.filtros(ev, k + 1, sonidos.ajustes(carpeta)['volumen'])
+    if e_lab:
+        ins += e_in
+        flt += e_fl
+        labs.append(e_lab)
+        print(f'· {len(ev)} efectos de sonido', flush=True)
 flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,apad[aout]")
 subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                ['-filter_complex', ';'.join(flt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',

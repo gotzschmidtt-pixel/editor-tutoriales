@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'mejorar'))
+import mejorar  # noqa: E402  «✨ Mejorar imagen» (Real-ESRGAN) en las pausas quietas, si lo pediste
 from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a ElevenLabs
 
 
@@ -231,6 +233,7 @@ def main():
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
     os.makedirs(cache, exist_ok=True)
     usadas = set()
+    proyecto = os.path.dirname(os.path.abspath(a.salida))
     base_huella = [2, alto, crf, FPS, a.estabilizar, huella_archivo(a.original), huella_archivo(a.imagen)]
     for b in d['bloques']:
         m, i = b['montaje'], b['id']
@@ -251,7 +254,8 @@ def main():
                 if r is not None:
                     cara, ventana, tocada = r[0], (r[1], s1), True
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
-        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []),
+        nitido = bool(m.get('quieto') and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
+        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
@@ -284,6 +288,8 @@ def main():
             if m.get('quieto'):  # cuadro fijo con zoom lento (como antes)
                 png = os.path.join(tmp, f'{i}.png')
                 run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
+                if nitido:
+                    mejorar.si_quieres(png, proyecto)
                 z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
                 # zoompan mueve el recorte de a 1 píxel entero: sobre una imagen 4 veces más grande el zoom sale suave, sin temblar
                 run(['-i', png, '-vf', f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps={FPS},format=yuv420p{lab}",

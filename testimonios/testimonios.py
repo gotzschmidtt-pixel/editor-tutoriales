@@ -131,8 +131,10 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad, idioma='es'):
     if not clave:
         raise SystemExit('ERROR: para narrar los testimonios con tu voz principal falta la clave de ElevenLabs. '
                          'Pulsa «🔑 Clave ElevenLabs» arriba a la derecha, pégala y guarda.')
-    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': idioma,
-                       'voice_settings': {'stability': estabilidad}}).encode()
+    sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+    import pronunciacion  # FRP, DFU… dichos como en el resto del video
+    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': estabilidad},
+                       **pronunciacion.para_pedido(texto, {'xi-api-key': clave})}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', 'xi-api-key': clave})
     datos = None

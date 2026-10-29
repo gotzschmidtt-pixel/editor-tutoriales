@@ -26,6 +26,18 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
 | `transcripcion/` | Voz a texto con tiempos por palabra: Scribe (en línea) o Whisper (en tu PC, sin internet). Saca .txt, .srt y .json. |
+| `mejoras/` + `app/mejoras.html` | **🎛 Audio e imagen** (botón arriba en la app, se abre en su pestaña): junta los módulos de abajo. |
+| `voz/pronunciacion.py` | 🗣 Diccionario de pronunciación (FRP → «efe erre pe»…) que se sube a ElevenLabs; lo usan todas las voces. La lista está en `mis_conocimientos/pronunciacion.json`. |
+| `sonidos/` | 🔊 Efectos de sonido: clic en los botones (eventos del guion), whoosh en los cortes, éxito en el resultado y golpe en los sellos del tráiler. Hechos en tu PC o con ElevenLabs Sound Effects (`mis_sonidos/`). |
+| `limpieza/` | 🎙 Limpia la voz grabada (DeepFilterNet gratis en tu PC, RNNoise de ffmpeg, o el aislador de ElevenLabs). |
+| `zoom_pc/` | 🖱 Zoom automático en grabaciones de la PC: acerca donde haces clic y no se confunde con el scroll. |
+| `mejorar/` | ✨ Real-ESRGAN (ncnn, en la tarjeta, sin PyTorch) para las pausas quietas y la miniatura. |
+| `color/` | 🎨 Color parejo entre tomas y tomas oscuras aclaradas, antes del montaje. |
+| `pantalla/` | 📱 Endereza la pantalla del celular grabada con cámara y 📲 sincroniza una grabación de scrcpy o QuickTime; las dos ponen insertos en los pasos para leer. |
+| `revision/` | 🔎 Revisa FINAL.mp4: silencios, negro, imagen quieta y, con la IA, lo que un espectador notaría. |
+| `short/varios.py` | 📱 De 2 a 5 Shorts por video, sin repetir tomas, con título y día de publicación. |
+| `miniatura/` | 🖼 Tres miniaturas 1280×720 (problema, resultado, contigo) con el teléfono recortado y tu texto. |
+| `avisos/` | ⚖ Frase de cuidado en videos de FRP, bypass o soldadura (la IA la escribe; si falta, va como etiqueta). |
 | `proyectos/pico2/` | Los scripts del video «Cómo soldar la Pico 2»: guion por bloques, voz v4, video estirado a 7 min. Tienen rutas de ese proyecto; sirven de ejemplo. |
 
 ## Flujo
