@@ -191,6 +191,8 @@ def texto_completo():
             t = _sin_comentarios(leer(_ruta_marca(m)))
             if _normal(t) != _normal(_sin_comentarios(_plantilla_marca(m))):
                 partes.append(t)
+    for f in ('LO_QUE_APRENDI.md', 'ESTADISTICAS_CANAL.md'):  # tus correcciones y las estadísticas de todo el canal
+        partes.append(leer(os.path.join(CARPETA, f)).strip())
     return '\n\n'.join(p for p in partes if p) + '\n'
 
 

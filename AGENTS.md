@@ -13,6 +13,14 @@ nunca solo el nombre o una ruta a medias como `mis_musica\musica_fija.mp3`.
 aprendas con el autor, anótalo en la sección que toca de `CONOCIMIENTO.md` (una línea por dato, con la fecha), sin borrar lo que hay.
 La app (botón «🧠 Conocimiento») se lo pasa sola a la IA cuando escribe el guion, el tráiler y las etiquetas.
 
+**Aprende también del canal (léelos antes del guion, el tráiler y el título):**
+- `mis_conocimientos\ESTADISTICAS_CANAL.md`: las estadísticas de TODOS los videos del canal (YouTube Analytics): cuánta gente se
+  va en los primeros 30 s, dónde cae la retención, qué duración, palabras de título y marcas funcionan mejor, y sus reglas. Lo
+  arma la app sola cada semana («▶️ YouTube» → «📊 Aprender de todo tu canal»).
+- `mis_conocimientos\LO_QUE_APRENDI.md`: las correcciones que el autor hace siempre en la app («🧠 Lo que aprendí»).
+- `mis_conocimientos\transcripciones\`: lo que dice el autor en cada video del canal («📚 Biblioteca»), para su forma de hablar.
+Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_conocimiento/`. Cúmplelos sin que te lo pidan.
+
 ## Decisiones del autor (28 y 29/10/2026)
 
 - Voces: Mauricio para español (94zOad0g7T7K4oa7zhDq) y Brian para inglés (nPczCjzI2devNBz1zQrb), modelo eleven_v4.

@@ -241,7 +241,19 @@ def recalcular():
     out += [r for r in viejas.values() if r.get('estado') == 'mia']  # las que escribiste tú a mano
     out.sort(key=lambda r: (r.get('estado') != 'mia', -r.get('veces', 0)))
     _guardar_reglas(out)
+    escribir_md()
     return out
+
+
+MD = os.path.join(conocimiento.CARPETA, 'LO_QUE_APRENDI.md')
+
+
+def escribir_md():
+    """Lo mismo que ve la IA de la app, en un archivo de texto para Claude (paquete de la nube), DeepSeek o cualquier IA."""
+    t = texto_para_ia(8000)
+    conocimiento.escribir(MD, '# Lo que la app aprendió de las correcciones del autor\n\n'
+                          '> Reglas sacadas de sus ediciones en la app (las aprueba o rechaza en «🧠 Lo que aprendí»). Cúmplelas.\n\n'
+                          + (t or '(todavía nada aprobado)') + '\n')
 
 
 def activa(r):
@@ -276,6 +288,7 @@ def cambiar(accion, rid='', texto=''):
         else:
             raise ValueError('Acción desconocida.')
     _guardar_reglas(rs)
+    escribir_md()
     return rs
 
 
