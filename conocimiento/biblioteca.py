@@ -312,7 +312,7 @@ def pedir_a_todas(ia, ias, texto):
         nombre, aj2 = par
         try:
             return nombre, ia.extraer_json(ia.llamar(aj2, texto, []))
-        except Exception as x:  # una IA que falla no frena a las otras
+        except (Exception, SystemExit) as x:  # una IA que falla (o corta su respuesta) no frena a las otras
             log(f'· {nombre} no pudo con este grupo: {x}')
             if getattr(x, 'permanente', False):  # clave, permiso, saldo o política: no se le vuelve a pedir en esta lectura
                 log(f'· {nombre} queda fuera hasta la próxima lectura (el error no se arregla repitiendo).')
