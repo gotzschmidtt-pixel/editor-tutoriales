@@ -218,17 +218,32 @@ def aprender_guion(d):
     return len(bloques)
 
 
-def guiones_para_ia(limite=5000):
-    """Los guiones aprobados más nuevos, para que la IA imite el tono, la variedad y el humor (sin copiar datos)."""
+def guiones_para_ia(limite=5000, d=None):
+    """Los guiones aprobados que más se parecen al proyecto d (misma marca, mismas palabras; si no hay d, los más nuevos),
+    para que la IA imite el tono, la variedad y el humor (sin copiar datos)."""
     if not os.path.isdir(GUIONES):
         return ''
     fs = sorted((os.path.join(GUIONES, f) for f in os.listdir(GUIONES) if f.endswith('.md')), key=os.path.getmtime, reverse=True)
+    if d:
+        fs.sort(key=lambda f: -_parecido(d, f))
     t = ''
     for f in fs[:2]:
         t += leer(f) + '\n'
         if len(t) >= limite:
             break
     return t[:limite].rsplit('\n', 1)[0] if len(t) > limite else t.strip()
+
+
+def _parecido(d, f):
+    """Qué tanto se parece el guion aprobado f al proyecto d: la misma marca pesa más, después las palabras en común."""
+    nombre = os.path.basename(f)[:-3]
+    if os.path.basename(os.path.abspath(d)) == nombre:
+        return -1  # el mismo proyecto no es ejemplo de sí mismo
+    marca = marca_de_proyecto(d)
+    puntos = 3.0 if marca and marca_de_proyecto(os.path.join(os.path.dirname(os.path.abspath(d)), nombre)) == marca else 0.0
+    mio = set(re.findall(r'[a-záéíóúñ0-9]{4,}', (leer(os.path.join(d, 'idea.txt')) + leer(os.path.join(d, 'transcripcion.txt'))[:6000]).lower()))
+    suyo = set(re.findall(r'[a-záéíóúñ0-9]{4,}', leer(f).lower()))
+    return puntos + (len(mio & suyo) / (1 + len(suyo)) ** 0.5 if mio and suyo else 0)
 
 
 def texto_para_ia(limite=12000, d=None):

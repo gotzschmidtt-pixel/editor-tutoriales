@@ -165,6 +165,7 @@ async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
   const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
     <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
+    ${x.sugerida ? `<div class="opciones"><button title="Ya contestaste una pregunta casi igual en ${esc(x.sugerida_de || 'otro video')}: tócala para usar esa respuesta" onclick="this.closest('.pregunta').querySelector('input').value = this.dataset.r" data-r="${esc(x.sugerida)}">🧠 Ya lo contestaste en ${esc(x.sugerida_de || 'otro video')}: «${esc(x.sugerida)}»</button></div>` : ''}
     <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
   const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
   $('#preguntas').innerHTML = !pend.length ? '' : `<div class="panel preg"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''}</b>

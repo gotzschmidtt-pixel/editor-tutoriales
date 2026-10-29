@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  codifica con la tarjeta NVIDIA si la hay, si no con el procesador
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402  «🧠 Conocimiento»: lo aprendido de todos tus videos, en mis_conocimientos/
+import aprendizaje  # noqa: E402  «🧠 Lo que aprendí»: reglas sacadas de cada corrección tuya en el editor
 sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 
@@ -1993,6 +1994,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(e)
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
+            if ruta == '/aprendi':  # «🧠 Lo que aprendí», en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'aprendi.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/aprendizaje':  # las reglas sacadas de tus correcciones, tu perfil y lo que le llega a la IA
+                return self.responder(aprendizaje.resumen())
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
                 return self.responder(self._marca(q.get('m') or '', q.get('p') or ''))
             if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
@@ -2219,6 +2224,16 @@ class Manejador(BaseHTTPRequestHandler):
                 if acc == 'empezar':
                     threading.Thread(target=avanzar_cola, daemon=True).start()
                 return self.responder({'ok': True, 'andando': bool(c.get('andando')), 'items': c['items']})
+            if ruta == '/api/aprendizaje':  # «🧠 Lo que aprendí»: aprobar, rechazar, corregir, agregar una regla o aprender del historial
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                try:
+                    if datos.get('accion') == 'historial':
+                        n = aprendizaje.aprender_historial(PROYECTOS)
+                        return self.responder(dict(aprendizaje.resumen(), nuevas=n))
+                    aprendizaje.cambiar(datos.get('accion', ''), datos.get('id', ''), datos.get('texto', ''))
+                except ValueError as e:
+                    return self.error(str(e))
+                return self.responder(aprendizaje.resumen())
             if ruta == '/api/celular':  # «📱 Celular» en la app del PC: activar, apagar o cambiar el PIN
                 nuevo = json.loads(self.rfile.read(largo) or b'{}')
                 aj = leer_ajustes()
@@ -2298,6 +2313,11 @@ class Manejador(BaseHTTPRequestHandler):
                     except json.JSONDecodeError as e:
                         return self.error(f'JSON con error en la línea {e.lineno}, columna {e.colno}: {e.msg}. '
                                           'Si pegaste la respuesta de una IA, usa «Revisar respuesta pegada».')
+                if f in aprendizaje.MIRA and existe(carpeta(q['p']), f):  # «🧠 Lo que aprendí»: lo que cambiaste a mano
+                    try:
+                        aprendizaje.registrar(carpeta(q['p']), f, open(os.path.join(carpeta(q['p']), f), encoding='utf-8').read(), txt)
+                    except Exception as e:
+                        print(f'· no pude aprender de tu edición ({type(e).__name__}: {e})', flush=True)
                 if f == 'guion.json' and existe(carpeta(q['p']), f):  # cada versión del guion queda guardada para volver atrás
                     h = os.path.join(carpeta(q['p']), 'historial_guion')
                     os.makedirs(h, exist_ok=True)

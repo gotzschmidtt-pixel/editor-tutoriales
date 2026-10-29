@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
 import diagnostico  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocimientos/CONOCIMIENTO.md)
+import aprendizaje  # noqa: E402  «🧠 Lo que aprendí»: reglas sacadas de tus correcciones
 sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 import numpy as np  # noqa: E402
@@ -456,7 +457,10 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
                       "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
-    aprobados = conocimiento.guiones_para_ia() if tarea == 'guion' and conocimiento.usar() else ''
+    aprobados = conocimiento.guiones_para_ia(d=d) if tarea == 'guion' and conocimiento.usar() else ''
+    aprendido = aprendizaje.texto_para_ia() if tarea == 'guion' else ''
+    if aprendido:  # «🧠 Lo que aprendí»: lo que el autor corrige siempre en la app y su perfil de estilo
+        partes.append(aprendido)
     if aprobados:
         partes.append("GUIONES QUE EL AUTOR YA APROBÓ (con sus cambios). Imita su tono, cómo varía los comienzos de frase, cómo "
                       "explica cada paso y dónde pone el humor. NO copies sus datos (modelos, precios, programas) a este video:\n" + aprobados)
@@ -2833,6 +2837,10 @@ def guardar_preguntas(d, lista, tarea='guion'):
     """Lo que la IA pregunta al terminar el guion (o el tráiler), para que el autor lo conteste: los datos clave que no vio
     claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»). En el tráiler, lo que ya contestaste se conserva."""
     out = normalizar_preguntas(lista)
+    try:  # ④ lo que ya contestaste en otro video aparece como respuesta sugerida (tú decides si la usas)
+        aprendizaje.sugerir_respuestas(d, out)
+    except Exception:
+        pass
     f = os.path.join(d, ARCHIVO_PREGUNTAS[tarea])
     if tarea == 'trailer':
         try:
