@@ -15,7 +15,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
-import hashlib, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
+import glob, hashlib, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +41,8 @@ import subtitulos  # noqa: E402  «💬 Subtítulos» dinámicos en cualquier id
 sys.path.insert(0, os.path.join(RAIZ, 'celular'))
 import celular  # noqa: E402  «📱 Usar desde el celular»: apagado por defecto, con PIN, Wi‑Fi de casa o Tailscale
 import flujo  # noqa: E402  aviso al celular, «🌙 Cola de noche» y gastos del mes
+sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
+import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retención, comentarios e ideas
 
 
 def estado_subs(d):
@@ -1334,6 +1336,111 @@ def correr(proyecto, pasos, opciones):
         threading.Thread(target=al_terminar, args=(proyecto,), daemon=True).start()
 
 
+YT = {}  # «▶️ YouTube»: avance de la subida de cada proyecto
+
+
+def yt_config():
+    return dict(youtube.config(leer_ajustes()))
+
+
+def yt_guardar(c):
+    c.pop('_cambio', None)
+    aj = leer_ajustes()
+    aj['youtube'] = c
+    tmp = AJUSTES + '.tmp'
+    json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    os.replace(tmp, AJUSTES)
+
+
+def yt_srt_final(d):
+    """Los subtítulos en español que van con FINAL.mp4 (los del tráiler ya vienen corridos)."""
+    if existe(d, 'FINAL.srt') and existe(d, 'FINAL.mp4') and os.path.getmtime(os.path.join(d, 'FINAL.srt')) >= os.path.getmtime(os.path.join(d, 'FINAL.mp4')) - 5:
+        return os.path.join(d, 'FINAL.srt')
+    f = srt_de(d, ultimo_video(d, None))
+    return os.path.join(d, f) if existe(d, f) else None
+
+
+def yt_bloques(d):
+    """Los bloques del guion con el segundo en que empiezan en FINAL.mp4."""
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')) if existe(d, 'guion.json') else {'bloques': []}
+    f = yt_srt_final(d)
+    inicios = youtube.inicio_bloques(g.get('bloques', []), open(f, encoding='utf-8', errors='replace').read() if f else '')
+    return [{'id': b['id'], 's': round(inicios[b['id']], 1), 'texto': b.get('texto', '')} for b in g.get('bloques', []) if b['id'] in inicios]
+
+
+def yt_ia(d, tarea, entrada):
+    os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
+    json.dump(entrada, open(os.path.join(d, 'youtube', f'entrada_{tarea}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', DIAG_DIR=os.path.join(d, 'diagnosticos'),
+               DIAG_RUN=time.strftime('%Y%m%d_%H%M%S_youtube'))
+    r = subprocess.run([PY, m('youtube', 'ia_youtube.py'), '--proyecto', d, '--tarea', tarea, '--ajustes', AJUSTES],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', env=env, timeout=600)
+    if r.returncode:
+        raise youtube.ErrorYT((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'la IA no contestó')
+    return json.load(open(os.path.join(d, 'youtube', f'{tarea}.json'), encoding='utf-8'))
+
+
+def yt_publicar(p, op):
+    """Sube FINAL.mp4 con todo lo que tiene el proyecto. Lo que falla después de subir el video (subtítulos, miniatura,
+    comentario) no frena el resto: queda anotado en los avisos."""
+    d = carpeta(p)
+    est = YT[p] = {'estado': 'subiendo', 'avance': 0, 'avisos': []}
+    try:
+        c = yt_config()
+        meta = json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8'))
+        titulo = (meta.get('titulo') or (meta.get('titulos') or [{}])[meta.get('elegido') or 0].get('titulo') or '').strip()
+        if not titulo:
+            raise youtube.ErrorYT('Falta el título: pulsa «✨ Proponer» o escribe uno.')
+        desc = meta.get('descripcion', '').strip()
+        if meta.get('capitulos_texto'):
+            desc += '\n\n' + meta['capitulos_texto'].strip()
+        if meta.get('advertencia'):
+            desc += '\n\n⚠️ ' + meta['advertencia'].strip()
+        vid = youtube.subir_video(c, os.path.join(d, 'FINAL.mp4'),
+                                  {'titulo': titulo, 'descripcion': desc, 'etiquetas': meta.get('etiquetas', []),
+                                   'privacidad': op.get('privacidad', 'private'), 'publicar_en': op.get('publicar_en')},
+                                  lambda x: est.update(avance=round(x * 100)))
+        est.update(avance=100, estado='detalles', id=vid)
+        json.dump({'id': vid, 'url': f'https://youtu.be/{vid}', 'titulo': titulo, 'cuando': time.strftime('%Y-%m-%d %H:%M')},
+                  open(os.path.join(d, 'youtube', 'publicado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        if op.get('subtitulos', True):
+            f = yt_srt_final(d)
+            try:
+                if f:
+                    youtube.subir_subtitulos(c, vid, 'es', 'Español', open(f, encoding='utf-8', errors='replace').read())
+                cortes = existe(d, '8_testimonios.mp4') or existe(d, '9_modelos.mp4')
+                otros = [x for x in (subtitulos.leer(d).get('textos') or {}) if x != 'es']
+                if otros and cortes:
+                    est['avisos'].append('Los subtítulos en otros idiomas no se subieron: con testimonios o nuevos modelos sus tiempos no coinciden.')
+                elif otros:
+                    corre = duracion_original(d, 'trailer.mp4') if existe(d, 'trailer.mp4') and edicion(d).get('trailer_donde', 'inicio') == 'inicio' else 0
+                    for lang in otros:
+                        youtube.subir_subtitulos(c, vid, lang, lang, subtitulos.srt(d, lang, corre))
+            except Exception as e:
+                est['avisos'].append(f'Subtítulos: {e}')
+        mini = sorted(glob.glob(os.path.join(d, 'miniatura*.jpg')) + glob.glob(os.path.join(d, 'miniatura*.png')), key=os.path.getmtime)
+        if op.get('miniatura', True) and mini:
+            try:
+                youtube.subir_miniatura(c, vid, mini[-1])
+            except Exception as e:
+                est['avisos'].append(f'Miniatura: {e}')
+        elif op.get('miniatura', True):
+            est['avisos'].append('No había miniatura en el proyecto: súbela en esta página o ponla en YouTube Studio.')
+        if op.get('comentario', True) and meta.get('comentario', '').strip():
+            try:
+                youtube.comentar(c, vid, meta['comentario'].strip())
+                est['avisos'].append('El comentario quedó publicado: fíjalo en YouTube (⋮ → Fijar). La API no deja fijarlo.')
+            except Exception as e:
+                est['avisos'].append(f'Comentario: {e}')
+        if c.get('_cambio'):
+            yt_guardar(c)
+        est['estado'] = 'listo'
+        flujo.avisar(leer_ajustes(), f'▶️ {p}: subido a YouTube', f'https://youtu.be/{vid}', f'https://youtu.be/{vid}')
+    except Exception as e:
+        est.update(estado='fallo', msg=str(e))
+        flujo.avisar(leer_ajustes(), f'▶️ {p}: no se pudo subir', str(e), url_celular(), fallo=True)
+
+
 def url_celular():
     """La dirección con que el celular abre la app (Tailscale primero: anda en casa y afuera), o '' si está apagado."""
     if ESCUCHA[0] == '127.0.0.1':
@@ -1535,6 +1642,117 @@ class Manejador(BaseHTTPRequestHandler):
             return host in ('localhost', '127.0.0.1', '[::1]', '') and origen in (None, 'localhost', '127.0.0.1', '::1')
         return origen is None or origen == host  # el celular ya pasó por puerta(): mismo nombre que la página
 
+    def youtube_post(self, ruta, q, largo):
+        """«▶️ YouTube»: lo que cambia algo (conectar, proponer, publicar, aprender)."""
+        if ruta == '/api/youtube/cliente':
+            c = yt_config()
+            youtube.guardar_cliente(c, self.rfile.read(min(largo, 20000)).decode('utf-8', errors='replace'))
+            yt_guardar(c)
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/desconectar':
+            c = yt_config()
+            c.pop('token', None)
+            yt_guardar(c)
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/ideas':  # temas para los próximos videos, de todo el canal
+            c = yt_config()
+            videos = youtube.mis_videos(c)
+            com = youtube.comentarios(c, canal_id=youtube.canal(c)['id'], maximo=400)
+            semillas = []
+            for v in sorted(videos, key=lambda x: -x['vistas'])[:8]:
+                w = ' '.join(v['titulo'].split()[:3])
+                if w.lower() not in semillas:
+                    semillas.append(w.lower())
+            busq = {s_: youtube.sugerencias(s_) for s_ in semillas}
+            if c.get('_cambio'):
+                yt_guardar(c)
+            d = os.path.join(PROYECTOS, '.canal')
+            return self.responder(yt_ia(d, 'ideas', {'mis_videos': videos, 'comentarios': com, 'busquedas': busq}))
+        d = carpeta(q['p'])
+        if ruta == '/api/youtube/proponer':
+            if not existe(d, 'guion.json'):
+                return self.error('Este proyecto no tiene guion todavía.')
+            c = yt_config()
+            videos = []
+            if (c.get('token') or {}).get('refresh'):
+                try:
+                    videos = sorted(youtube.mis_videos(c), key=lambda x: -x['vistas'])[:40]
+                except youtube.ErrorYT:
+                    pass
+                if c.get('_cambio'):
+                    yt_guardar(c)
+            bloques = yt_bloques(d)
+            if not bloques:  # sin video final todavía: los tiempos del guion
+                g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+                bloques = [{'id': b['id'], 's': b.get('inicio_min', 0), 'texto': b.get('texto', '')} for b in g.get('bloques', [])]
+            idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
+            r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', [])})
+            r['titulo'] = ((r.get('titulos') or [{}])[r.get('elegido') or 0] or {}).get('titulo', '')
+            r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
+            json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            return self.responder(r)
+        if ruta == '/api/youtube/guardar':  # lo que corregiste a mano: título, descripción, capítulos, etiquetas, comentario
+            nuevo = json.loads(self.rfile.read(largo) or b'{}')
+            os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
+            f = os.path.join(d, 'youtube', 'metadatos.json')
+            viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
+            viejo.update({k: nuevo[k] for k in ('titulo', 'descripcion', 'capitulos_texto', 'etiquetas', 'comentario', 'advertencia') if k in nuevo})
+            json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/miniatura':
+            ext = '.png' if (self.headers.get('Content-Type') or '').endswith('png') else '.jpg'
+            datos = self.rfile.read(largo)
+            if len(datos) > 2 * 1024 * 1024:
+                return self.error('La miniatura pesa más de 2 MB, el máximo de YouTube.')
+            open(os.path.join(d, 'miniatura_subida' + ext), 'wb').write(datos)
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/publicar':
+            if not existe(d, 'FINAL.mp4'):
+                return self.error('Todavía no hay FINAL.mp4: termina el video primero.')
+            if (YT.get(q['p']) or {}).get('estado') in ('subiendo', 'detalles'):
+                return self.error('Ya se está subiendo.')
+            if not existe(d, os.path.join('youtube', 'metadatos.json')):
+                return self.error('Falta el título y la descripción: pulsa «✨ Proponer».')
+            op = json.loads(self.rfile.read(largo) or b'{}')
+            YT[q['p']] = {'estado': 'subiendo', 'avance': 0, 'avisos': []}
+            threading.Thread(target=yt_publicar, args=(q['p'], op), daemon=True).start()
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/vincular':  # un video que ya subiste a mano: para aprender de su retención y comentarios
+            vid = youtube.id_de(json.loads(self.rfile.read(largo) or b'{}').get('url'))
+            c = yt_config()
+            v = youtube.video(c, vid)
+            if c.get('_cambio'):
+                yt_guardar(c)
+            os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
+            json.dump({'id': vid, 'url': f'https://youtu.be/{vid}', 'titulo': v['titulo'], 'cuando': v['publicado'][:10]},
+                      open(os.path.join(d, 'youtube', 'publicado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            return self.responder({'ok': True, 'video': v})
+        if ruta == '/api/youtube/aprender':  # retención por bloque + preguntas de los comentarios → «🧠 Conocimiento»
+            f = os.path.join(d, 'youtube', 'publicado.json')
+            if not os.path.exists(f):
+                return self.error('Primero vincula el video de YouTube de este proyecto (o publícalo desde aquí).')
+            vid = json.load(open(f, encoding='utf-8'))['id']
+            c = yt_config()
+            v = youtube.video(c, vid)
+            curva = youtube.retencion(c, vid)
+            com = youtube.comentarios(c, vid=vid, maximo=300)
+            if c.get('_cambio'):
+                yt_guardar(c)
+            bloques = yt_bloques(d)
+            por_bloque = []
+            for b in bloques:
+                if curva and v['segundos']:
+                    x = min(curva, key=lambda f_: abs(f_['t'] - b['s'] / v['segundos']))
+                    por_bloque.append({'bloque': b['id'], 'segundo': b['s'], 'texto': b['texto'][:160],
+                                       'mira': round(x['mira'], 3), 'relativa': round(x['relativa'], 3)})
+            if not curva:
+                return self.error('YouTube todavía no tiene la retención de este video (tarda uno o dos días, y hace falta que lo vea gente).')
+            r = yt_ia(d, 'aprender', {'retencion_bloques': por_bloque, 'comentarios': com})
+            r['curva'], r['bloques'], r['video'] = curva, por_bloque, v
+            json.dump(r, open(os.path.join(d, 'youtube', 'aprender.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            return self.responder(r)
+        return self.error('no encontrado', 404)
+
     def q(self):
         u = urllib.parse.urlparse(self.path)
         return u.path, {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
@@ -1551,6 +1769,55 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(json.dumps(celular.MANIFIESTO).encode(), 'application/manifest+json')
             if ruta == '/icono.png':
                 return self.responder(open(os.path.join(RAIZ, 'celular', 'icono.png'), 'rb').read(), 'image/png')
+            if ruta == '/youtube':  # «▶️ YouTube»: publicar, aprender de las estadísticas e ideas, en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'youtube.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/api/youtube/estado':
+                c = yt_config()
+                r = {'cliente': bool(c.get('cliente')), 'conectado': bool((c.get('token') or {}).get('refresh')),
+                     'redirect': f'http://127.0.0.1:{PUERTO}/api/youtube/volver', 'ia': bool(leer_ajustes().get('modelo'))}
+                if r['conectado'] and q.get('canal'):
+                    try:
+                        r['canal'] = youtube.canal(c)
+                    except youtube.ErrorYT as e:
+                        r['error'] = str(e)
+                    if c.get('_cambio'):
+                        yt_guardar(c)
+                return self.responder(r)
+            if ruta == '/api/youtube/conectar':  # solo desde el PC: Google vuelve a 127.0.0.1
+                c = yt_config()
+                if not c.get('cliente'):
+                    return self.error('Primero sube el JSON del cliente OAuth (ver la guía).')
+                url = youtube.url_permiso(c, f'http://127.0.0.1:{PUERTO}/api/youtube/volver')
+                yt_guardar(c)
+                self.send_response(302)
+                self.send_header('Location', url)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            if ruta == '/api/youtube/volver':
+                c = yt_config()
+                try:
+                    if q.get('error'):
+                        raise youtube.ErrorYT('No diste el permiso en Google (' + q['error'] + ').')
+                    youtube.canjear(c, q.get('code'), q.get('state'), f'http://127.0.0.1:{PUERTO}/api/youtube/volver')
+                    yt_guardar(c)
+                    msg = '✅ YouTube quedó conectado. Ya puedes cerrar esta pestaña y volver a la app.'
+                except youtube.ErrorYT as e:
+                    yt_guardar(c)
+                    msg = '❌ ' + str(e)
+                return self.responder(f'<!doctype html><meta charset="utf-8"><body style="background:#06070c;color:#fff;font:20px system-ui;'
+                                      f'display:grid;place-items:center;height:90vh"><p>{msg}</p><script>try{{opener&&opener.postMessage("youtube","*")}}catch(e){{}}</script>'.encode(),
+                                      'text/html; charset=utf-8')
+            if ruta == '/api/youtube/proyecto':
+                d = carpeta(q['p'])
+                leer_yt = lambda f: json.load(open(os.path.join(d, 'youtube', f), encoding='utf-8')) if existe(d, os.path.join('youtube', f)) else None
+                mini = sorted(glob.glob(os.path.join(d, 'miniatura*.jpg')) + glob.glob(os.path.join(d, 'miniatura*.png')), key=os.path.getmtime)
+                return self.responder({'final': existe(d, 'FINAL.mp4'), 'metadatos': leer_yt('metadatos.json'), 'publicado': leer_yt('publicado.json'),
+                                       'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']),
+                                       'miniatura': os.path.basename(mini[-1]) if mini else ''})
+            if ruta == '/api/youtube/ideas':
+                f = os.path.join(PROYECTOS, '.canal', 'youtube', 'ideas.json')
+                return self.responder(json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {})
             if ruta == '/api/avisos':
                 a = flujo.avisos(leer_ajustes())
                 return self.responder({'activo': bool(a.get('activo')), 'tema': a.get('tema', ''), 'servidor': a.get('servidor') or 'https://ntfy.sh'})
@@ -1770,6 +2037,7 @@ class Manejador(BaseHTTPRequestHandler):
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 aj['ruta'] = AJUSTES
                 aj.pop('celular', None)  # el PIN se ve y se cambia solo en «📱 Celular»
+                aj.pop('youtube', None)  # el permiso de YouTube no sale de tu PC
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
@@ -1830,6 +2098,11 @@ class Manejador(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 return
+            if ruta.startswith('/api/youtube/'):
+                try:
+                    return self.youtube_post(ruta, q, largo)
+                except youtube.ErrorYT as e:
+                    return self.error(str(e))
             if ruta == '/api/avisos':  # aviso al celular con ntfy: activar, tema nuevo o mandar uno de prueba
                 nuevo = json.loads(self.rfile.read(largo) or b'{}')
                 aj = leer_ajustes()
@@ -2159,6 +2432,7 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
                 nuevo.pop('celular', None)  # eso va por /api/celular, solo desde el PC
+                nuevo.pop('youtube', None)
                 viejo = leer_ajustes()
                 for k in ('clave', 'elevenlabs'):  # una clave enmascarada o vacía no reemplaza la guardada
                     if k in nuevo and (not nuevo[k] or nuevo[k].startswith('••••')):

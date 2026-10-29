@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#06070c">
+<style>
+  :root {
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  input:not([type]), input[type=text], input[type=url], input[type=datetime-local], select, textarea { background-color: var(--panel2); color: var(--texto);
+    border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; width: 100%; font: inherit; }
+  textarea { min-height: 7em; resize: vertical; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
+  button { cursor: pointer; border-radius: 10px; padding: 9px 14px; font: inherit; font-weight: 600; color: var(--texto);
+    background: var(--panel2); border: 1px solid var(--borde); min-height: 40px; }
+  button:hover { border-color: var(--azul); }
+  button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-bottom: 1px solid var(--borde);
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px 16px 80px; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  label { display: block; margin: 10px 0 4px; color: var(--suave); font-size: 14px; }
+  .ayuda { color: var(--suave); font-size: 14px; overflow-wrap: anywhere; }
+  .fila { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .msg { font-size: 14px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .titulo { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; }
+  .titulo small { color: var(--suave); display: block; }
+  .barra { height: 10px; background: var(--panel2); border-radius: 6px; overflow: hidden; margin-top: 8px; }
+  .barra div { height: 100%; background: linear-gradient(90deg, var(--rosa), var(--azul)); transition: width .4s; }
+  .ret { display: grid; grid-template-columns: 3.5em 1fr 3em; gap: 4px 8px; align-items: center; font-size: 13px; }
+  .ret .b { height: 12px; border-radius: 4px; background: var(--azul); }
+  .ret .b.mal { background: var(--rojo); }
+  ol li, ul li { margin-bottom: 6px; }
+  code { background: var(--panel2); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+  img.mini { max-width: 260px; width: 100%; border-radius: 8px; display: block; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header><h1>▶️ <b>YouTube</b> · <span id="nombre"></span></h1></header>
+<main>
+  <section id="conexion"><h2>1 · Tu canal</h2><div id="conexionCuerpo" class="ayuda">Revisando…</div></section>
+
+  <section><h2>2 · Publicar este video</h2>
+    <p class="ayuda">La IA de «⚙ Ajustes IA» propone 5 títulos con el estilo de tus videos más vistos, la descripción con tus páginas,
+      los capítulos (salen de los bloques del guion, con el segundo exacto del video final), las etiquetas y el comentario para fijar.
+      Corrige lo que quieras y publica.</p>
+    <div class="fila"><button onclick="proponer()" id="btnProponer">✨ Proponer con IA</button><span id="msgProponer" class="msg"></span></div>
+    <div id="meta" hidden>
+      <label>Título (elige uno o escribe el tuyo, hasta 100 letras)</label>
+      <div id="titulos"></div>
+      <input type="text" id="titulo" maxlength="100">
+      <label>Descripción</label><textarea id="descripcion" style="min-height:10em"></textarea>
+      <label>Capítulos (van al final de la descripción; el primero en 0:00, al menos 3)</label><textarea id="capitulos"></textarea>
+      <label>Aviso (va al final)</label><input type="text" id="advertencia">
+      <label>Etiquetas (separadas por coma)</label><input type="text" id="etiquetas">
+      <label>Comentario para fijar</label><textarea id="comentario" style="min-height:4em"></textarea>
+      <div class="fila"><button onclick="guardar()">💾 Guardar cambios</button><span id="msgGuardar" class="msg"></span></div>
+    </div>
+    <label>Miniatura (JPG o PNG, hasta 2 MB)</label>
+    <div id="miniInfo" class="ayuda"></div>
+    <input type="file" id="miniArchivo" accept="image/jpeg,image/png">
+    <label>Cómo se publica</label>
+    <select id="privacidad">
+      <option value="private">Privado (lo revisas y lo publicas tú en YouTube)</option>
+      <option value="unlisted">No listado</option>
+      <option value="public">Público ya</option>
+      <option value="programado">Programado…</option>
+    </select>
+    <input type="datetime-local" id="cuando" hidden style="margin-top:8px">
+    <div class="fila">
+      <label style="margin:0"><input type="checkbox" id="opSubs" checked> Subtítulos</label>
+      <label style="margin:0"><input type="checkbox" id="opMini" checked> Miniatura</label>
+      <label style="margin:0"><input type="checkbox" id="opCom" checked> Comentario</label>
+    </div>
+    <div class="fila"><button class="principal" id="btnPublicar" onclick="publicar()">▶️ Publicar en YouTube</button></div>
+    <div id="subida" class="ayuda"></div>
+  </section>
+
+  <section><h2>3 · Aprender de este video</h2>
+    <p class="ayuda">Cuando el video ya lleva uno o dos días publicado: en qué bloque se fue la gente y qué preguntan en los comentarios.
+      Lo que sirva para los próximos guiones queda anotado en «🧠 Conocimiento».</p>
+    <div id="vinculo"></div>
+    <div class="fila"><button onclick="aprender()" id="btnAprender">📈 Aprender de este video</button><span id="msgAprender" class="msg"></span></div>
+    <div id="aprendido"></div>
+  </section>
+
+  <section><h2>4 · Ideas para los próximos videos</h2>
+    <p class="ayuda">Junta lo que piden en los comentarios de todo el canal con lo que la gente busca en YouTube.</p>
+    <div class="fila"><button onclick="ideas()" id="btnIdeas">💡 Buscar ideas</button><span id="msgIdeas" class="msg"></span></div>
+    <div id="listaIdeas"></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const P = new URLSearchParams(location.search).get('p') || '';
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const api = async (url, op = {}) => { const r = await fetch(url, op); const j = r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(); if (!r.ok) throw new Error(j.error || j); return j; };
+const enPC = ['localhost', '127.0.0.1'].includes(location.hostname);
+$('#nombre').textContent = P || 'sin proyecto';
+let CONECTADO = false;
+
+async function conexion() {
+  const e = await api('/api/youtube/estado?canal=1'), c = $('#conexionCuerpo');
+  CONECTADO = e.conectado;
+  if (e.conectado && e.canal) {
+    c.innerHTML = `<p class="ok">✅ Conectado a <b>${esc(e.canal.titulo)}</b> · ${Number(e.canal.suscriptores || 0).toLocaleString('es')} suscriptores · ${esc(e.canal.videos)} videos</p>`
+      + (enPC ? '<button onclick="desconectar()">Desconectar</button>' : '');
+  } else if (e.conectado) {
+    c.innerHTML = `<p class="err">${esc(e.error || 'No pude leer el canal.')}</p>` + (enPC ? '<button onclick="conectar()">Conectar otra vez</button>' : '');
+  } else if (!enPC) {
+    c.innerHTML = '<p>YouTube se conecta una sola vez desde la app del PC (botón «▶️ YouTube»).</p>';
+  } else if (!e.cliente) {
+    c.innerHTML = `<p>Se conecta una sola vez y es gratis. En <a href="https://console.cloud.google.com/" target="_blank">Google Cloud</a>, con tu cuenta del canal:</p>
+      <ol><li>Crea un proyecto (arriba, «Seleccionar proyecto» → «Proyecto nuevo», nombre «Estudio»).</li>
+      <li>En «APIs y servicios» → «Biblioteca», activa <b>YouTube Data API v3</b> y <b>YouTube Analytics API</b>.</li>
+      <li>En «Pantalla de consentimiento de OAuth»: tipo <b>Externo</b>, nombre «Estudio», tu correo. Al terminar, pulsa <b>Publicar la app</b>
+        (si queda en «Prueba», Google te pide conectar de nuevo cada 7 días).</li>
+      <li>En «Credenciales» → «Crear credenciales» → «ID de cliente de OAuth» → tipo <b>App de escritorio</b>. Descarga el JSON.</li>
+      <li>Súbelo aquí:</li></ol>
+      <input type="file" id="cliente" accept=".json,application/json"> <span id="msgCliente" class="msg"></span>`;
+    $('#cliente').onchange = async ev => {
+      try { await api('/api/youtube/cliente', {method: 'POST', body: await ev.target.files[0].text()}); conexion(); }
+      catch (x) { $('#msgCliente').textContent = x.message; $('#msgCliente').className = 'msg err'; }
+    };
+  } else {
+    c.innerHTML = `<p>Falta dar el permiso. Google te va a avisar que «la app no está verificada»: es tu propia app, pulsa
+      «Configuración avanzada» → «Ir a Estudio» y marca todas las casillas.</p><button class="principal" onclick="conectar()">🔑 Conectar YouTube</button>`;
+  }
+}
+function conectar() { window.open('/api/youtube/conectar', 'youtube_permiso'); }
+window.addEventListener('message', ev => { if (ev.data === 'youtube') conexion(); });
+async function desconectar() { if (confirm('¿Desconectar YouTube? Para volver a publicar hay que dar el permiso de nuevo.')) { await api('/api/youtube/desconectar', {method: 'POST'}); conexion(); } }
+
+function pintarMeta(m) {
+  if (!m) return;
+  $('#meta').hidden = false;
+  $('#titulos').innerHTML = (m.titulos || []).map((t, i) => `<label class="titulo"><input type="radio" name="tit" value="${i}"
+    ${t.titulo === m.titulo ? 'checked' : ''}><span>${esc(t.titulo)}<small>${esc(t.por_que || '')}</small></span></label>`).join('');
+  document.querySelectorAll('input[name=tit]').forEach(r => r.onchange = () => { $('#titulo').value = m.titulos[r.value].titulo; });
+  $('#titulo').value = m.titulo || ''; $('#descripcion').value = m.descripcion || ''; $('#capitulos').value = m.capitulos_texto || '';
+  $('#advertencia').value = m.advertencia || ''; $('#etiquetas').value = (m.etiquetas || []).join(', '); $('#comentario').value = m.comentario || '';
+}
+function pintarSubida(s, pub) {
+  const d = $('#subida');
+  if (s && ['subiendo', 'detalles'].includes(s.estado)) {
+    d.innerHTML = `<p>${s.estado === 'subiendo' ? `Subiendo el video… ${s.avance}%` : 'Video subido. Pongo subtítulos, miniatura y comentario…'}</p><div class="barra"><div style="width:${s.avance}%"></div></div>`;
+    setTimeout(cargar, 3000);
+  } else if (s && s.estado === 'fallo') {
+    d.innerHTML = `<p class="err">❌ ${esc(s.msg)}</p>`;
+  } else if (pub) {
+    d.innerHTML = `<p class="ok">✅ Publicado: <a href="${esc(pub.url)}" target="_blank">${esc(pub.url)}</a> (${esc(pub.cuando)})</p>`
+      + (s && s.avisos && s.avisos.length ? '<ul>' + s.avisos.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '');
+  } else d.innerHTML = '';
+  $('#btnPublicar').disabled = !!(s && ['subiendo', 'detalles'].includes(s.estado));
+}
+async function cargar() {
+  if (!P) return;
+  const r = await api(`/api/youtube/proyecto?p=${q(P)}`);
+  if (!$('#meta').dataset.listo) { pintarMeta(r.metadatos); $('#meta').dataset.listo = r.metadatos ? '1' : ''; }
+  $('#miniInfo').innerHTML = r.miniatura ? `Se usa <code>${esc(r.miniatura)}</code> del proyecto.` : 'Todavía no hay miniatura en el proyecto.';
+  pintarSubida(r.subida, r.publicado);
+  $('#vinculo').innerHTML = r.publicado ? `<p class="ayuda">Video: <a href="${esc(r.publicado.url)}" target="_blank">${esc(r.publicado.titulo)}</a></p>`
+    : `<label>¿Ya lo subiste a mano? Pega el link</label><div class="fila"><input type="url" id="link" placeholder="https://youtu.be/..."><button onclick="vincular()">Vincular</button></div>`;
+  if (r.aprender && !$('#aprendido').innerHTML) pintarAprendido(r.aprender);
+  if (!r.final) $('#btnPublicar').disabled = true;
+}
+async function proponer() {
+  $('#btnProponer').disabled = true; $('#msgProponer').textContent = 'La IA está escribiendo (medio minuto)…'; $('#msgProponer').className = 'msg';
+  try { pintarMeta(await api(`/api/youtube/proponer?p=${q(P)}`, {method: 'POST'})); $('#msgProponer').textContent = ''; }
+  catch (x) { $('#msgProponer').textContent = x.message; $('#msgProponer').className = 'msg err'; }
+  $('#btnProponer').disabled = false;
+}
+async function guardar() {
+  await api(`/api/youtube/guardar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({titulo: $('#titulo').value.trim(), descripcion: $('#descripcion').value,
+    capitulos_texto: $('#capitulos').value, advertencia: $('#advertencia').value.trim(), comentario: $('#comentario').value,
+    etiquetas: $('#etiquetas').value.split(',').map(x => x.trim()).filter(Boolean)})});
+  $('#msgGuardar').textContent = 'Guardado'; $('#msgGuardar').className = 'msg ok'; setTimeout(() => $('#msgGuardar').textContent = '', 2000);
+}
+$('#privacidad').onchange = () => { $('#cuando').hidden = $('#privacidad').value !== 'programado'; };
+$('#miniArchivo').onchange = async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  try { await api(`/api/youtube/miniatura?p=${q(P)}`, {method: 'POST', body: f, headers: {'Content-Type': f.type}}); cargar(); } catch (x) { alert(x.message); }
+};
+async function publicar() {
+  if (!CONECTADO) return alert('Primero conecta YouTube (arriba).');
+  if (!$('#meta').hidden) await guardar();
+  const op = {privacidad: $('#privacidad').value, subtitulos: $('#opSubs').checked, miniatura: $('#opMini').checked, comentario: $('#opCom').checked};
+  if (op.privacidad === 'programado') {
+    if (!$('#cuando').value) return alert('Elige el día y la hora.');
+    op.publicar_en = new Date($('#cuando').value).toISOString(); op.privacidad = 'private';
+  }
+  if (!confirm(`¿Subir FINAL.mp4 a YouTube${op.publicar_en ? ' programado para el ' + new Date(op.publicar_en).toLocaleString('es') : ' como ' + $('#privacidad').selectedOptions[0].text}?`)) return;
+  try { await api(`/api/youtube/publicar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(op)}); cargar(); } catch (x) { alert(x.message); }
+}
+async function vincular() {
+  try { await api(`/api/youtube/vincular?p=${q(P)}`, {method: 'POST', body: JSON.stringify({url: $('#link').value})}); cargar(); } catch (x) { alert(x.message); }
+}
+function pintarAprendido(r) {
+  const ret = (r.bloques || []).map(b => `<span>${esc(b.bloque)}</span><div class="b${b.relativa < 0.4 ? ' mal' : ''}" style="width:${Math.round(b.mira * 100)}%"
+    title="${esc(b.texto)}"></div><span>${Math.round(b.mira * 100)}%</span>`).join('');
+  $('#aprendido').innerHTML = `<p class="ayuda">Barras: qué parte de la gente sigue mirando al empezar cada bloque (en rojo, peor que videos parecidos).</p>
+    <div class="ret">${ret}</div>
+    <h3>Dónde se fue la gente</h3><ol>${(r.abandono || []).map(a => `<li><b>${esc(a.bloque)}</b>: ${esc(a.que_pasa)}<br><span class="ok">→ ${esc(a.consejo)}</span></li>`).join('')}</ol>
+    ${r.lo_mejor ? `<p><b>Lo que mejor retuvo:</b> ${esc(r.lo_mejor)}</p>` : ''}
+    <h3>Lo que preguntan</h3><ol>${(r.preguntas || []).map(x => `<li>${esc(x.pregunta)} <small>(${esc(x.veces)}×)</small>${x.respuesta ? `<br><span class="ayuda">${esc(x.respuesta)}</span>` : ''}</li>`).join('')}</ol>
+    <p class="ok">${r.notas_nuevas || 0} notas nuevas en «🧠 Conocimiento».</p>`;
+}
+async function aprender() {
+  $('#btnAprender').disabled = true; $('#msgAprender').textContent = 'Bajo la retención y los comentarios, y la IA los analiza…'; $('#msgAprender').className = 'msg';
+  try { pintarAprendido(await api(`/api/youtube/aprender?p=${q(P)}`, {method: 'POST'})); $('#msgAprender').textContent = ''; }
+  catch (x) { $('#msgAprender').textContent = x.message; $('#msgAprender').className = 'msg err'; }
+  $('#btnAprender').disabled = false;
+}
+function pintarIdeas(r) {
+  $('#listaIdeas').innerHTML = (r.ideas || []).length ? '<ol>' + r.ideas.map(i => `<li><b>${esc(i.tema)}</b><br><span class="ayuda">${esc(i.por_que)}`
+    + `${(i.busquedas || []).length ? ' · se busca: «' + i.busquedas.map(esc).join('», «') + '»' : ''}${i.ya_hecho ? ' · parecido a: ' + esc(i.ya_hecho) : ''}</span></li>`).join('') + '</ol>' : '';
+}
+async function ideas() {
+  $('#btnIdeas').disabled = true; $('#msgIdeas').textContent = 'Leo los comentarios del canal y el buscador de YouTube…'; $('#msgIdeas').className = 'msg';
+  try { pintarIdeas(await api('/api/youtube/ideas', {method: 'POST'})); $('#msgIdeas').textContent = ''; }
+  catch (x) { $('#msgIdeas').textContent = x.message; $('#msgIdeas').className = 'msg err'; }
+  $('#btnIdeas').disabled = false;
+}
+conexion(); cargar(); api('/api/youtube/ideas').then(pintarIdeas).catch(() => {});
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@ _CANDADO = threading.Lock()
 # lo que se abre sin PIN: la pantalla para ponerlo, y el icono para la pantalla de inicio
 LIBRES = {'/celular', '/api/celular/entrar', '/manifest.webmanifest', '/icono.png'}
 # lo que el celular nunca toca, aunque haya puesto el PIN
-SOLO_PC = {'/api/celular'}
+SOLO_PC = {'/api/celular', '/api/youtube/conectar', '/api/youtube/cliente', '/api/youtube/desconectar'}
 _REDES = [ipaddress.ip_network(n) for n in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10',
                                              'fd7a:115c:a1e0::/48', 'fe80::/10')]
 
