@@ -113,6 +113,7 @@
   </div>
 </dialog>
 
+<datalist id="emociones"><option value="emocionado"><option value="calmado"><option value="susurra"><option value="intrigado"><option value="alegre"><option value="serio"><option value="sorprendido"><option value="seguro"><option value="entusiasmado"><option value="orgulloso"><option value="pícaro"><option value="aliviado"><option value="confiado"><option value="cercano"></datalist>
 <script>
 const P = new URLSearchParams(location.search).get('p') || '';
 const PALABRAS_POR_S = 2.6;
@@ -120,7 +121,7 @@ const $ = s => document.querySelector(s);
 const q = encodeURIComponent;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const mmss = s => `${Math.floor((s || 0) / 60)}:${String(Math.round((s || 0) % 60)).padStart(2, '0')}`;
-let G = null, ORIGINAL = {}, DUR = 0, sucio = false;
+let G = null, ORIGINAL = {}, EMO_ORIGINAL = {}, DUR = 0, sucio = false;
 $('#nombre').textContent = P;
 
 async function api(url, op) {
@@ -147,6 +148,7 @@ async function cargar() {
   try { G = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null'); } catch (e) { G = null; }
   if (!G || !(G.bloques || []).length) { $('#bloques').innerHTML = '<p class="msg err">Todavía no hay guion en este proyecto. Pídelo primero a la IA en la app.</p>'; return; }
   ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
+EMO_ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.emocion || '']));
   try { QUITADOS = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion_quitados.json`) || '[]') || []; } catch (e) { QUITADOS = []; }
   try { DUR = (await api(`/api/estado?p=${q(P)}`)).duracion_original || 0; } catch (e) {}
   pintar();
@@ -291,14 +293,17 @@ function pintar() {
         ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}
         ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}</div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
-        <span class="chip" id="aviso${i}"></span></div>
+        <span class="chip" id="aviso${i}"></span>
+        <label class="chip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀
+          <input list="emociones" class="emo" data-i="${i}" value="${esc(b.emocion || '')}" placeholder="como siempre" style="width:8.5em; background:transparent; border:0; color:inherit; font:inherit"></label></div>
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button>
           ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
   }).join('') + (porLugar[G.bloques.length] || []).join('');
-  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos(); });
+  document.querySelectorAll('input.emo').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].emocion = t.value.trim(); sucio = true; avisos(); });
+  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput =() => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos(); });
   SUG = {};
   avisos();
 }
@@ -307,7 +312,7 @@ function avisos() {
   G.bloques.forEach((b, i) => {
     const v = b.texto.trim() ? vozS(b.texto) : 0, l = largo(b.montaje || {}), el = $('#aviso' + i);
     total += Math.max(v, l);
-    const cambio = b.texto !== ORIGINAL[b.id];
+    const cambio = b.texto !== ORIGINAL[b.id] || (b.emocion || '') !== (EMO_ORIGINAL[b.id] || '');
     $('#b' + i).classList.toggle('cambiado', cambio);
     const g = $('#b' + i + ' .guardarAqui'); if (g) { g.classList.toggle('principal', cambio); g.textContent = cambio ? '💾 Guardar cambios' : '💾 Guardar'; }
     if (!el) return;
@@ -467,6 +472,9 @@ async function guardar() {
   b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
   try {
     await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
+    // las emociones que cambiaste van primero por «🎛 Audio e imagen»: así la voz ya hecha de ese bloque se rehace con la nueva
+    const emociones = Object.fromEntries(G.bloques.filter(b => b.id in EMO_ORIGINAL && (b.emocion || '') !== EMO_ORIGINAL[b.id]).map(b => [b.id, b.emocion || '']));
+    if (Object.keys(emociones).length) await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})});
     await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
     await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar', editor: true})});
     await esperar();
