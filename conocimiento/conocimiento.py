@@ -232,10 +232,20 @@ def guiones_para_ia(limite=5000):
 
 
 def texto_para_ia(limite=12000, d=None):
-    """Lo que va dentro del pedido a la IA: primero la marca del proyecto d (si tiene algo), después lo general.
-    Vacío si lo apagaste o si todavía no hay nada aprendido."""
-    if not usar() or not os.path.exists(PRINCIPAL):
+    """Lo que va dentro del pedido a la IA: primero la marca del proyecto d (si tiene algo), después lo general, y al
+    final la «📚 Biblioteca» (el diccionario del canal y tus videos parecidos). Vacío si lo apagaste."""
+    if not usar():
         return ''
+    try:
+        import biblioteca  # noqa: E402  (aquí y no arriba: biblioteca importa este módulo)
+        biblio = biblioteca.texto_para_ia(d, limite // 3)
+    except Exception:
+        biblio = ''
+    t = _texto_conocimiento(limite - len(biblio), d) if os.path.exists(PRINCIPAL) else ''
+    return '\n\n'.join(x for x in (t.rstrip('\n'), biblio) if x) + ('\n' if t or biblio else '')
+
+
+def _texto_conocimiento(limite, d):
     asegurar()
     general = '\n\n'.join(p for p in (_sin_comentarios(leer(PRINCIPAL)), _sin_comentarios(leer(APRENDIDO))) if p)
     if _normal(_sin_comentarios(PLANTILLA)) == _normal(general):

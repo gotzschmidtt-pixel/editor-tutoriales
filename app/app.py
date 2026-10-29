@@ -1337,6 +1337,46 @@ def correr(proyecto, pasos, opciones):
 
 
 YT = {}  # «▶️ YouTube»: avance de la subida de cada proyecto
+BIBLIO = {'proc': None, 'accion': ''}  # «📚 Biblioteca de tus videos»: lo que está corriendo
+
+
+def biblio_correr(accion, canal='', whisper=False):
+    """Junta las transcripciones del canal o le pide a la IA que las lea, aparte (puede tardar), con su registro."""
+    if BIBLIO['proc'] and BIBLIO['proc'].poll() is None:
+        raise ValueError('La biblioteca ya está trabajando: espera a que termine.')
+    sys.path.insert(0, m('conocimiento'))
+    import biblioteca
+    os.makedirs(conocimiento.CARPETA, exist_ok=True)
+    c = [PY, m('conocimiento', 'biblioteca.py'), '--accion', accion, '--ajustes', AJUSTES]
+    if canal:
+        c += ['--canal', canal]
+    if whisper:
+        c.append('--whisper')
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', PYTHONUNBUFFERED='1',
+               DIAG_DIR=os.path.join(conocimiento.CARPETA, 'diagnosticos'), DIAG_RUN=time.strftime('%Y%m%d_%H%M%S_biblioteca'))
+    BIBLIO.update(proc=subprocess.Popen(c, cwd=RAIZ, env=env, stdout=open(biblioteca.LOG, 'w', encoding='utf-8'),
+                                        stderr=subprocess.STDOUT), accion=accion)
+
+
+def biblio_semanal():
+    """Una vez por semana, al abrir la app: suma las transcripciones de tus videos nuevos (gratis) y, si lo pediste,
+    la IA los lee."""
+    try:
+        sys.path.insert(0, m('conocimiento'))
+        import biblioteca
+        aj = leer_ajustes()
+        b = aj.get('biblioteca') or {}
+        if not b.get('semanal'):
+            return
+        ultima = biblioteca.estado().get('ultima')
+        if ultima and time.time() - time.mktime(time.strptime(ultima, '%Y-%m-%d %H:%M')) < 7 * 86400:
+            return
+        biblio_correr('juntar', b.get('canal', ''))
+        BIBLIO['proc'].wait()
+        if b.get('ia') and aj.get('modelo') and biblioteca.pendientes():
+            biblio_correr('aprender')
+    except Exception as e:
+        print(f'· biblioteca semanal: {type(e).__name__}: {e}', flush=True)
 
 
 def yt_config():
@@ -1815,6 +1855,18 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'final': existe(d, 'FINAL.mp4'), 'metadatos': leer_yt('metadatos.json'), 'publicado': leer_yt('publicado.json'),
                                        'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']),
                                        'miniatura': os.path.basename(mini[-1]) if mini else ''})
+            if ruta == '/api/biblioteca':
+                sys.path.insert(0, m('conocimiento'))
+                import biblioteca
+                try:
+                    registro_b = open(biblioteca.LOG, encoding='utf-8', errors='replace').read()[-3000:]
+                except OSError:
+                    registro_b = ''
+                aj = leer_ajustes()
+                return self.responder({**biblioteca.resumen(), 'corriendo': bool(BIBLIO['proc'] and BIBLIO['proc'].poll() is None),
+                                       'accion': BIBLIO['accion'], 'registro': registro_b, 'ajustes': aj.get('biblioteca') or {},
+                                       'ia': bool(aj.get('modelo')), 'youtube': bool((yt_config().get('token') or {}).get('refresh')),
+                                       'precio': flujo._precio(aj.get('modelo'), aj.get('precios_ia'))})
             if ruta == '/api/youtube/ideas':
                 f = os.path.join(PROYECTOS, '.canal', 'youtube', 'ideas.json')
                 return self.responder(json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {})
@@ -2098,6 +2150,22 @@ class Manejador(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 return
+            if ruta == '/api/biblioteca':  # juntar (gratis), aprender (IA) o guardar el canal y lo semanal
+                op = json.loads(self.rfile.read(largo) or b'{}')
+                aj = leer_ajustes()
+                b = dict(aj.get('biblioteca') or {})
+                for k in ('canal', 'semanal', 'ia', 'whisper'):
+                    if k in op:
+                        b[k] = op[k]
+                aj['biblioteca'] = b
+                tmp = AJUSTES + '.tmp'
+                json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                os.replace(tmp, AJUSTES)
+                if op.get('accion') in ('juntar', 'aprender'):
+                    if op['accion'] == 'aprender' and not aj.get('modelo'):
+                        return self.error('Para que la IA lea tus videos hace falta una IA en «⚙ Ajustes IA».')
+                    biblio_correr(op['accion'], b.get('canal', ''), bool(b.get('whisper')))
+                return self.responder({'ok': True})
             if ruta.startswith('/api/youtube/'):
                 try:
                     return self.youtube_post(ruta, q, largo)
@@ -2988,6 +3056,7 @@ def retomar_cola():
 def main():
     srv = abrir_servidor()
     retomar_cola()
+    threading.Thread(target=biblio_semanal, daemon=True).start()
     url = f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):

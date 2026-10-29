@@ -99,6 +99,19 @@
     <div class="fila"><button onclick="ideas()" id="btnIdeas">💡 Buscar ideas</button><span id="msgIdeas" class="msg"></span></div>
     <div id="listaIdeas"></div>
   </section>
+  <section><h2>5 · 📚 Biblioteca de tus videos</h2>
+    <p class="ayuda">La transcripción de cada video de tu canal, para que la app aprenda de todos: arma el <b>diccionario del canal</b>
+      (modelos, herramientas, siglas y webs bien escritos), que usan la transcripción y el guion; la IA saca los procesos y las preguntas
+      y los anota en «🧠 Conocimiento»; y al escribir un guion nuevo la IA ve tus 2 videos más parecidos.</p>
+    <div id="biblioResumen" class="ayuda"></div>
+    <label>Link de tu canal (si no conectaste YouTube)</label><input type="url" id="biblioCanal" placeholder="https://www.youtube.com/@tucanal">
+    <label style="margin-top:10px"><input type="checkbox" id="biblioWhisper"> Transcribir con Whisper los videos sin subtítulos (gratis, en tu PC, unos minutos por video)</label>
+    <label><input type="checkbox" id="biblioSemanal"> Una vez por semana, al abrir la app, sumar los videos nuevos (gratis)</label>
+    <label><input type="checkbox" id="biblioIA"> …y que la IA los lea sola (gasta un poco de IA)</label>
+    <div class="fila"><button onclick="biblio('juntar')" id="btnJuntar">📥 Juntar transcripciones</button>
+      <button onclick="biblio('aprender')" id="btnAprenderB">🧠 Que la IA aprenda de ellas</button></div>
+    <pre id="biblioLog" class="ayuda" style="max-height:14em;overflow:auto;white-space:pre-wrap" hidden></pre>
+  </section>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -232,7 +245,26 @@ async function ideas() {
   catch (x) { $('#msgIdeas').textContent = x.message; $('#msgIdeas').className = 'msg err'; }
   $('#btnIdeas').disabled = false;
 }
-conexion(); cargar(); api('/api/youtube/ideas').then(pintarIdeas).catch(() => {});
+async function verBiblio() {
+  const b = await api('/api/biblioteca'), a = b.ajustes || {};
+  const costo = b.precio ? ` (unos US$ ${Math.max(0.01, b.letras_pendientes / 4 / 1e6 * b.precio[0] * 1.15).toFixed(2)} con tu IA)` : '';
+  $('#biblioResumen').innerHTML = `<b>${b.videos}</b> videos transcritos${b.sin_subtitulos ? ` · ${b.sin_subtitulos} sin subtítulos` : ''}
+    · <b>${b.terminos}</b> términos en el diccionario (${b.terminos_ia} revisados por la IA)${b.ultima ? ` · actualizada el ${esc(b.ultima)}` : ''}
+    ${b.pendientes_ia ? `<br>La IA todavía no leyó ${b.pendientes_ia} videos${costo}.` : ''}<br>Carpeta: <code>${esc(b.ruta)}</code>`;
+  if (document.activeElement !== $('#biblioCanal')) $('#biblioCanal').value = a.canal || '';
+  $('#biblioWhisper').checked = !!a.whisper; $('#biblioSemanal').checked = !!a.semanal; $('#biblioIA').checked = !!a.ia;
+  $('#btnJuntar').disabled = $('#btnAprenderB').disabled = b.corriendo;
+  $('#btnAprenderB').disabled ||= !b.pendientes_ia || !b.ia;
+  $('#biblioLog').hidden = !b.registro; $('#biblioLog').textContent = b.registro; $('#biblioLog').scrollTop = 1e9;
+  if (b.corriendo) setTimeout(verBiblio, 3000);
+}
+const ajBiblio = () => ({canal: $('#biblioCanal').value.trim(), whisper: $('#biblioWhisper').checked, semanal: $('#biblioSemanal').checked, ia: $('#biblioIA').checked});
+['#biblioCanal', '#biblioWhisper', '#biblioSemanal', '#biblioIA'].forEach(s => $(s).onchange = () => api('/api/biblioteca', {method: 'POST', body: JSON.stringify(ajBiblio())}));
+async function biblio(accion) {
+  try { await api('/api/biblioteca', {method: 'POST', body: JSON.stringify({...ajBiblio(), accion})}); } catch (x) { return alert(x.message); }
+  setTimeout(verBiblio, 800);
+}
+conexion(); cargar(); verBiblio(); api('/api/youtube/ideas').then(pintarIdeas).catch(() => {});
 </script>
 </body>
 </html>
