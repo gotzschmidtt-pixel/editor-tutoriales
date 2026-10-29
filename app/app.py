@@ -239,6 +239,9 @@ GRUPOS = {
 }
 PROVEEDORES = {
     'Claude (Anthropic)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
+    'Claude · Opus 5.5 con visión': {'url': 'https://api.anthropic.com', 'modelo': 'claude-opus-5-5', 'imagenes': True, 'tipo': 'claude'},
+    'Claude · Sonnet 5.5 con visión (más barata)': {'url': 'https://api.anthropic.com', 'modelo': 'claude-sonnet-5-5', 'imagenes': True,
+                                                     'tipo': 'claude'},
     'OpenAI (GPT)': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-4o', 'imagenes': True},
     'OpenAI · GPT-6 con visión': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-6.1-sol', 'imagenes': True},
     'OpenAI · GPT-5 con visión': {'url': 'https://api.openai.com/v1', 'modelo': 'gpt-5', 'imagenes': True},
