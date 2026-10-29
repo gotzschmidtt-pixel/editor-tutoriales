@@ -170,6 +170,13 @@ def armar(orig, datos, salida):
     os.replace(salida + '.parcial.mp4', salida)
 
 
+def comienzo(texto, n=3):
+    """Las primeras n palabras COPIADAS TAL CUAL del texto, con su puntuación («Paso cuatro: el»): los insertos buscan
+    la frase en la voz letra por letra, y sin los dos puntos no la encontraban."""
+    m = list(re.finditer(r"[\wáéíóúñü']+", texto))[:n]
+    return texto[m[0].start():m[-1].end()] if m else ''
+
+
 def elegir_insertos(d, datos):
     """Un inserto por paso clave donde la pantalla se ve chica (menos de un tercio del alto) o torcida."""
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
@@ -191,9 +198,8 @@ def elegir_insertos(d, datos):
         torcida = abs(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0]))) > 6
         if max(w, h) > H * 0.75 and not torcida:
             continue  # ya se ve grande y derecha
-        palabras = re.findall(r"[\wáéíóúñü']+", b['texto'])
         nuevos.append({'nota': 'pantalla derecha', 'origen': 'pantalla', 'material': SALIDA, 'src_t': round(t, 2), 'bloque': b['id'],
-                       'frase': ' '.join(palabras[:3]), 'dur': round(min(4.5, max(2.5, float(b.get('voz_real_s') or 4) * 0.5)), 1),
+                       'frase': comienzo(b['texto']), 'dur': round(min(4.5, max(2.5, float(b.get('voz_real_s') or 4) * 0.5)), 1),
                        'claves': [{'t': 0, 'cx': 0.5, 'cy': 0.5, 'w': 0.98}, {'t': 2.5, 'cx': 0.5, 'cy': 0.5, 'w': 0.9}]})
         if len(nuevos) >= 8 and not critico:
             break
