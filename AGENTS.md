@@ -57,7 +57,7 @@ Antes de escribir el guion:
 2. Datos seguros del video (modelo, método, versiones de Android, webs a nombrar). Ejemplo de datos que suele dar:
    «método 2026–2027, Android 15, 16 y 17, xiaomiunlock.com y gsmprime.co».
 3. Duración buscada: parecida a la grabación (por defecto) o un número de minutos.
-4. Humor: sin / poco (por defecto) / normal / mucho.
+4. Humor: sin / poco / normal (el que usa el autor desde el 28/10/2026) / mucho.
 5. Extras: etiquetas (por defecto); flechas, testimonios, nuevos modelos, tarjetas si subió material. El tráiler va
    aparte, después de que apruebe el video (paso 8b).
 6. Si autoriza gastar créditos de ElevenLabs al armar (voz) y en el tráiler. Sin su «sí», paras antes de la voz.
@@ -270,8 +270,8 @@ video, así que queda un 26 % de imagen sin voz; no lo tomes como meta de largo:
 | Nivel | Nombre | Máximo |
 |---|---|---|
 | 0 | sin humor | ningún chiste; solo invitación sencilla a comentar |
-| **1** (por defecto) | poco | UN remate cada 7 u 8 bloques |
-| 2 | normal | un remate cada 4 o 5 bloques |
+| 1 | poco | UN remate cada 7 u 8 bloques |
+| **2** (el del autor desde el 28/10/2026) | normal | un remate cada 4 o 5 bloques |
 | 3 | mucho | un remate cada 3 bloques |
 
 Reglas del humor:
