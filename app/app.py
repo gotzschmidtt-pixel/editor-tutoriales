@@ -40,6 +40,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'subtitulos'))
 import subtitulos  # noqa: E402  «💬 Subtítulos» dinámicos en cualquier idioma
 sys.path.insert(0, os.path.join(RAIZ, 'celular'))
 import celular  # noqa: E402  «📱 Usar desde el celular»: apagado por defecto, con PIN, Wi‑Fi de casa o Tailscale
+import flujo  # noqa: E402  aviso al celular, «🌙 Cola de noche» y gastos del mes
 
 
 def estado_subs(d):
@@ -1330,6 +1331,41 @@ def correr(proyecto, pasos, opciones):
                                            'opciones': opciones} if f and diag and diag.get('reintentable') else None}
         with CANDADO:
             TRABAJO.update(proyecto=None, paso=None, proc=None, inicio=None, plan=[], i=0, inicio_total=None)
+        threading.Thread(target=al_terminar, args=(proyecto,), daemon=True).start()
+
+
+def url_celular():
+    """La dirección con que el celular abre la app (Tailscale primero: anda en casa y afuera), o '' si está apagado."""
+    if ESCUCHA[0] == '127.0.0.1':
+        return ''
+    dirs = celular.direcciones(PUERTO)
+    t = [x for x in dirs if 'Tailscale' in x['tipo']] or dirs
+    return t[0]['url'] + '/' if t else ''
+
+
+def ocupado():
+    with CANDADO:
+        return bool(TRABAJO['proyecto'])
+
+
+def al_terminar(proyecto):
+    """Después de cada trabajo: aviso al celular y, si la «🌙 Cola» está andando, el próximo proyecto."""
+    try:
+        aj, r = leer_ajustes(), RESULTADO.get(proyecto)
+        flujo.termino(PROYECTOS, proyecto, r)
+        flujo.avisar_resultado(aj, proyecto, r, url_celular())
+        time.sleep(3)  # que la página alcance a mostrar el resultado antes de arrancar otro
+        avanzar_cola()
+    except Exception as e:
+        print(f'· aviso o cola: {type(e).__name__}: {e}', flush=True)
+
+
+def avanzar_cola():
+    """Arranca el próximo de la «🌙 Cola»; si ya no queda ninguno, avisa cómo salió la noche."""
+    if flujo.siguiente(PROYECTOS, PUERTO, ocupado) == 'vacia':
+        hechos = [x for x in flujo.leer_cola(PROYECTOS).get('items', []) if x.get('estado') in ('hecho', 'fallo')]
+        ok = sum(x['estado'] == 'hecho' for x in hechos)
+        flujo.avisar(leer_ajustes(), '🌙 Cola terminada', f'{ok} de {len(hechos)} proyectos salieron bien.', url_celular(), fallo=ok < len(hechos))
 
 
 def ultima_linea(log):
@@ -1515,6 +1551,14 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(json.dumps(celular.MANIFIESTO).encode(), 'application/manifest+json')
             if ruta == '/icono.png':
                 return self.responder(open(os.path.join(RAIZ, 'celular', 'icono.png'), 'rb').read(), 'image/png')
+            if ruta == '/api/avisos':
+                a = flujo.avisos(leer_ajustes())
+                return self.responder({'activo': bool(a.get('activo')), 'tema': a.get('tema', ''), 'servidor': a.get('servidor') or 'https://ntfy.sh'})
+            if ruta == '/api/cola':
+                c = flujo.leer_cola(PROYECTOS)
+                return self.responder({'andando': bool(c.get('andando')), 'items': c.get('items', [])})
+            if ruta == '/api/gastos':  # «💲 Gastos del mes»: ElevenLabs (exacto, de su API) y las IAs (tokens × precio aproximado)
+                return self.responder(flujo.gastos_mes(PROYECTOS, leer_ajustes(), clave_eleven()))
             if ruta == '/api/celular':  # solo desde el PC (puerta() lo bloquea desde el celular)
                 c = celular.config(leer_ajustes())
                 return self.responder({'activo': bool(c.get('activo')), 'pin_puesto': bool(c.get('pin_hash')),
@@ -1786,6 +1830,44 @@ class Manejador(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 return
+            if ruta == '/api/avisos':  # aviso al celular con ntfy: activar, tema nuevo o mandar uno de prueba
+                nuevo = json.loads(self.rfile.read(largo) or b'{}')
+                aj = leer_ajustes()
+                a = dict(flujo.avisos(aj))
+                if nuevo.get('tema_nuevo') or not a.get('tema'):
+                    a['tema'] = flujo.tema_nuevo()
+                if 'activo' in nuevo:
+                    a['activo'] = bool(nuevo['activo'])
+                aj['avisos'] = a
+                tmp = AJUSTES + '.tmp'
+                json.dump(aj, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                os.replace(tmp, AJUSTES)
+                if nuevo.get('probar') and not flujo.avisar(aj, '🎬 Estudio', 'Así te llegan los avisos de la app.', url_celular()):
+                    return self.error('No pude mandar el aviso: revisa que esté activado y que el PC tenga internet.')
+                return self.responder({'ok': True, 'tema': a['tema']})
+            if ruta == '/api/cola':  # «🌙 Cola de noche»: agregar, quitar, empezar, parar, limpiar lo terminado
+                nuevo = json.loads(self.rfile.read(largo) or b'{}')
+                acc = nuevo.get('accion')
+
+                def cambio(c):
+                    if acc == 'agregar':
+                        carpeta(nuevo['p'])  # que exista
+                        if any(x['p'] == nuevo['p'] and x['estado'] in ('espera', 'corriendo') for x in c['items']):
+                            raise ValueError(f"«{nuevo['p']}» ya está en la cola")
+                        c['items'].append({'id': uuid.uuid4().hex[:8], 'p': nuevo['p'], 'estado': 'espera',
+                                           'calidad': nuevo.get('calidad') or 'alta', 'agregado': time.time()})
+                    elif acc == 'quitar':
+                        c['items'] = [x for x in c['items'] if x['id'] != nuevo.get('id') or x['estado'] == 'corriendo']
+                    elif acc == 'limpiar':
+                        c['items'] = [x for x in c['items'] if x['estado'] in ('espera', 'corriendo')]
+                    elif acc in ('empezar', 'parar'):
+                        c['andando'] = acc == 'empezar'
+                    else:
+                        raise ValueError('acción desconocida')
+                c = flujo.cambiar_cola(PROYECTOS, cambio)
+                if acc == 'empezar':
+                    threading.Thread(target=avanzar_cola, daemon=True).start()
+                return self.responder({'ok': True, 'andando': bool(c.get('andando')), 'items': c['items']})
             if ruta == '/api/celular':  # «📱 Celular» en la app del PC: activar, apagar o cambiar el PIN
                 nuevo = json.loads(self.rfile.read(largo) or b'{}')
                 aj = leer_ajustes()
@@ -2617,8 +2699,21 @@ def abrir_servidor():
                      'Estudio.exe desde el Administrador de tareas) y vuelve a abrir iniciar.bat.')
 
 
+def retomar_cola():
+    """La app se cerró con la cola andando (corte de luz, reinicio): lo que estaba a medias vuelve a la fila y sigue."""
+    def volver(c):
+        for x in c['items']:
+            if x['estado'] == 'corriendo':
+                x['estado'] = 'espera'
+    if flujo.leer_cola(PROYECTOS).get('items'):
+        c = flujo.cambiar_cola(PROYECTOS, volver)
+        if c.get('andando'):
+            threading.Timer(5, avanzar_cola).start()
+
+
 def main():
     srv = abrir_servidor()
+    retomar_cola()
     url = f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):
