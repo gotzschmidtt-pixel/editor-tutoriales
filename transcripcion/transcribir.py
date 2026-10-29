@@ -10,7 +10,7 @@ Uso:
   python3 transcribir.py --video "Mi video.mp4" --salida mi_video [--motor scribe|whisper] [--modelo large-v3-turbo]
 Escribe mi_video.txt (texto), mi_video.srt (subtítulos) y mi_video.json (palabras con inicio y fin).
 """
-import argparse, json, os, re, shutil, subprocess, tempfile, urllib.error, urllib.request, uuid
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, urllib.error, urllib.request, uuid
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -48,10 +48,20 @@ PALABRAS_CLAVE = ['modo DFU', 'DFU', 'modo Recovery', 'Exit Recovery', '3uTools'
                   'cuenta Google', 'parche de seguridad', 'Easy-Unlocker']
 
 
+def del_diccionario(n):
+    """Los nombres del «📚 Diccionario del canal» (mis_conocimientos/diccionario.json), los más usados primero."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'conocimiento'))
+        import biblioteca
+        return biblioteca.terminos(n)
+    except Exception:
+        return []
+
+
 def palabras_clave():
     # límites de ElevenLabs: hasta 1000, cada una < 50 letras, máximo 5 palabras y sin < > { } [ ] \
     vistas, salida = set(), []
-    for k in PALABRAS_CLAVE:
+    for k in PALABRAS_CLAVE + del_diccionario(600):
         k = ' '.join(re.sub(r'[<>{}\[\]\\]', ' ', str(k)).split())
         if k and len(k) < 50 and len(k.split()) <= 5 and k.lower() not in vistas:
             vistas.add(k.lower())
@@ -121,6 +131,9 @@ def whisper(f, idioma, modelo):
     # palabras técnicas de tus tutoriales: sin esto Whisper escribe «modo de feo» por DFU y «3d tools» por 3uTools
     glosario = ('Tutorial de reparación de celulares: modo DFU, modo Recovery, Exit Recovery, 3uTools, iTunes, ECID, Ramdisk, '
                 'bypass, Hello Screen, iCloud, FRP, payload, SSH, iPhone, Xiaomi, Honor, Raspberry Pi Pico, UnlockTool.')
+    extra = [x for x in del_diccionario(60) if x.lower() not in glosario.lower()]
+    if extra:  # Whisper lee solo unas 200 palabras de pista: van las más usadas en tus videos
+        glosario = glosario[:-1] + ', ' + ', '.join(extra)[:600] + '.'
     segs, _ = WhisperModel(modelo, compute_type='int8', download_root=guardar).transcribe(f, language=idioma, word_timestamps=True,
                                                                                          initial_prompt=glosario)
     return [{'texto': w.word.strip(), 'inicio': w.start, 'fin': w.end} for s in segs for w in s.words]

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudio de tutoriales</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#06070c">
 <style>
   :root {
     --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
@@ -145,6 +146,26 @@
   .voz-vieja { background: #ff4d6d22; border: 1px solid var(--rojo); color: #ffc2cc; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
   .voz-vieja b { color: var(--rojo); }
   .vacio { text-align: center; padding: 60px 20px; color: var(--suave); }
+  /* 📱 en el celular (APK o Chrome): botones de arriba en una tira que se desliza, todo en una columna y botones fáciles de tocar */
+  @media (max-width: 700px) {
+    header { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+    header > * { flex: none; }
+    header h1 { font-size: 16px; }
+    .pestanas { overflow-x: auto; padding: 8px 12px 0; }
+    .pestanas > * { flex: none; }
+    main { padding: 12px; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+    main > div, section.panel { min-width: 0; }
+    button, select { min-height: 40px; }
+    .paso { flex-wrap: wrap; }
+    .paso .acc { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+    .pista { flex-wrap: wrap; }
+    .pista .datos { grid-template-columns: 1fr; }
+    dialog { width: 100vw; max-width: 100vw; max-height: 100dvh; margin: 0; border-radius: 0; padding: 14px; }
+    img, video, canvas, table { max-width: 100%; }
+    pre, code { white-space: pre-wrap; word-break: break-word; }
+    select, input:not([type=checkbox]):not([type=radio]) { max-width: 100%; }
+    label, .aviso, p { max-width: 100%; overflow-wrap: anywhere; }
+  }
 </style>
 </head>
 <body>
@@ -168,6 +189,9 @@
   <button onclick="abrirModulo('panelConocimiento')" title="Lo que la app va aprendiendo de todos tus videos: procesos, guiones, preguntas, dudas e ideas. Lo lee cualquier IA">🧠 Conocimiento</button>
   <span class="estado" id="estado">Sin trabajos</span>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
+  <button onclick="P ? window.open('/youtube?p=' + q(P), 'youtube_' + P) : alert('Abre primero un proyecto.')" title="Publica el video en tu canal (título, descripción, capítulos, subtítulos, miniatura), aprende de su retención y comentarios, y busca ideas para los próximos">▶️ YouTube</button>
+  <button onclick="abrirCola()" title="Deja varios proyectos en fila y la app los arma uno detrás del otro (de noche). También: lo gastado este mes en voz e IA">🌙 Cola y gastos</button>
+  <button id="btnCelular" onclick="abrirCelular()" title="Usa la app desde tu celular (APK o Chrome), en casa por Wi‑Fi o afuera con datos móviles. Apagado por defecto, con PIN">📲 Celular</button>
   <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
 </header>
 
@@ -793,6 +817,37 @@
   <div class="fila" style="margin-top:0"><button type="button" onclick="comprobarEleven()" title="Vacío = comprueba la clave guardada. No gasta créditos">🔍 Comprobar clave</button><span id="clPrueba" class="aviso" style="align-self:center"></span></div>
   <p class="aviso" id="clRuta">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
   <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
+</dialog>
+
+<dialog id="dlgCelular">
+  <h3>📲 Usar la app desde el celular</h3>
+  <p class="aviso">Tu PC sigue haciendo todo el trabajo: el celular solo la controla. Tiene que quedar prendida con la app abierta.
+    Solo entran el Wi‑Fi de casa y <b>Tailscale</b> (para usarla con datos móviles, sin abrir puertos del router), y siempre con PIN.</p>
+  <label>PIN (al menos 6 números) <input type="password" id="celPin" inputmode="numeric" placeholder="déjalo vacío para no cambiarlo"></label>
+  <label class="aviso"><input type="checkbox" id="celActivo"> Activar el acceso desde el celular</label>
+  <div id="celInfo" class="aviso"></div>
+  <div class="fila"><button class="principal" onclick="guardarCelular()">Guardar</button><button onclick="dlgCelular.close()">Cerrar</button></div>
+  <h3>🔔 Avisos al celular</h3>
+  <p class="aviso">Cuando termina o falla un video, te llega una notificación. Instala la app gratis <b>ntfy</b> en el celular
+    (<a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank">Play Store</a>), toca «+» y escribe este tema:</p>
+  <p><code id="avTema" style="font-size:1.2em"></code></p>
+  <label class="aviso"><input type="checkbox" id="avActivo" onchange="guardarAvisos({activo: this.checked})"> Mandar avisos</label>
+  <div class="fila"><button onclick="guardarAvisos({probar: true})">🔔 Mandar uno de prueba</button>
+    <button onclick="confirm('Con un tema nuevo, el celular deja de recibir avisos hasta que te suscribas al nuevo. ¿Seguir?') && guardarAvisos({tema_nuevo: true})">Tema nuevo</button></div>
+  <p id="avMsg" class="aviso"></p>
+</dialog>
+
+<dialog id="dlgCola" style="max-width:min(760px, 96vw)">
+  <h3>🌙 Cola de noche</h3>
+  <p class="aviso">Cada proyecto de la fila hace «▶ Hacer todo», uno detrás del otro. Si un proyecto no tiene guion, se para con el
+    guion listo para que lo revises (igual que «Hacer todo»). Si activaste los avisos, te llega uno por proyecto y otro al terminar la cola.</p>
+  <div id="colaLista"></div>
+  <div class="fila"><button onclick="colaAgregar()">+ Agregar el proyecto abierto</button>
+    <button class="principal" id="colaBoton" onclick="colaAccion(this.dataset.acc)"></button>
+    <button onclick="colaAccion('limpiar')">Quitar los terminados</button></div>
+  <h3>💲 Gastos de este mes</h3>
+  <div id="gastos" class="aviso">Calculando…</div>
+  <div class="fila"><button onclick="dlgCola.close()">Cerrar</button></div>
 </dialog>
 
 <dialog id="dlgAjustes">
@@ -2874,6 +2929,70 @@ async function actualizarApp() {
   catch (e) { alert(e.message); }
   refrescar();
 }
+// «📲 Celular»: solo se ve y se cambia desde la app del PC
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) $('#btnCelular').hidden = true;
+async function abrirCelular() {
+  const c = await api('/api/celular');
+  $('#celActivo').checked = c.activo; $('#celPin').value = '';
+  const dirs = c.direcciones.map(d => `<li><b>${esc(d.tipo)}:</b> <code>${esc(d.url)}</code></li>`).join('');
+  $('#celInfo').innerHTML = (c.activo && !c.escuchando ? '<p class="msg err">Reinicia la app para que el celular pueda entrar.</p>' : '')
+    + (c.pin_puesto ? '' : '<p>Todavía no elegiste PIN.</p>')
+    + (dirs ? `<p>En el celular (APK o Chrome) usa:</p><ul>${dirs}</ul>` : '<p>No encontré la red del PC: revisa el Wi‑Fi.</p>')
+    + '<p>Con datos móviles: instala Tailscale en el PC y en el celular con la misma cuenta, y usa la dirección «Tailscale» (100.x.x.x). '
+    + 'Windows te preguntará si deja entrar a Python: marca <b>Redes privadas y públicas</b>.</p>';
+  dlgCelular.showModal(); verAvisos();
+}
+async function verAvisos() {
+  const a = await api('/api/avisos');
+  $('#avTema').textContent = a.tema || '(se crea al activar)'; $('#avActivo').checked = a.activo;
+}
+async function guardarAvisos(cambio) {
+  $('#avMsg').textContent = '';
+  try { await api('/api/avisos', {method: 'POST', body: JSON.stringify(cambio)}); if (cambio.probar) $('#avMsg').textContent = 'Listo: mira el celular.'; }
+  catch (e) { $('#avMsg').textContent = e.message; }
+  verAvisos();
+}
+const ESTADO_COLA = {espera: '⏳ en fila', corriendo: '⚙️ armando', hecho: '✅ listo', fallo: '❌ falló'};
+function pintarCola(c) {
+  $('#colaLista').innerHTML = c.items.length ? '<ol>' + c.items.map(x => `<li><b>${esc(x.p)}</b> · ${ESTADO_COLA[x.estado] || x.estado}`
+    + (x.msg ? ` <span class="msg err">${esc(x.msg)}</span>` : '')
+    + (x.estado === 'espera' ? ` <button onclick="colaAccion('quitar', '${x.id}')">Quitar</button>` : '') + '</li>').join('') + '</ol>'
+    : '<p class="aviso">La cola está vacía.</p>';
+  const b = $('#colaBoton'); b.dataset.acc = c.andando ? 'parar' : 'empezar';
+  b.textContent = c.andando ? '⏸ Parar después del actual' : '▶ Empezar la cola';
+}
+async function abrirCola() {
+  pintarCola(await api('/api/cola')); dlgCola.showModal();
+  $('#gastos').textContent = 'Calculando…';
+  try {
+    const g = await api('/api/gastos'), e = g.eleven;
+    const dol = x => x == null ? 'precio desconocido' : `US$ ${x.toFixed(2)}`;
+    $('#gastos').innerHTML = (e ? (e.error ? `<p>ElevenLabs: ${esc(e.error)}</p>` : `<p><b>ElevenLabs</b> (plan ${esc(e.plan || '')}): `
+        + `${(e.usados || 0).toLocaleString('es')} de ${(e.limite || 0).toLocaleString('es')} créditos usados`
+        + (e.renueva ? `, se renueva el ${esc(e.renueva)}` : '') + '.</p>') : '<p>ElevenLabs: falta la clave.</p>')
+      + (g.ias.length ? `<p><b>IAs</b>: unos <b>US$ ${g.total_ias.toFixed(2)}</b> este mes (aproximado, por los tokens que anotó cada pedido).</p><ul>`
+        + g.ias.map(x => `<li>${esc(x.modelo)}: ${x.pedidos} pedidos, ${(x.entrada + x.salida).toLocaleString('es')} tokens · ${dol(x.dolares)}</li>`).join('') + '</ul>'
+        : '<p>Ningún pedido a una IA este mes.</p>');
+  } catch (x) { $('#gastos').textContent = x.message; }
+}
+async function colaAgregar() {
+  if (!P) return alert('Abre primero un proyecto.');
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
+  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value})})); }
+  catch (e) { alert(e.message); }
+}
+async function colaAccion(accion, id) {
+  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion, id})})); } catch (e) { alert(e.message); }
+}
+
+async function guardarCelular() {
+  try {
+    const r = await api('/api/celular', {method: 'POST', body: JSON.stringify({pin: $('#celPin').value.trim(), activo: $('#celActivo').checked})});
+    if (r.reiniciar && confirm('Listo. Hay que reiniciar la app para que el cambio valga. ¿La reinicio ahora?')) { dlgCelular.close(); return reiniciarApp(); }
+    abrirCelular();
+  } catch (e) { alert(e.message); }
+}
+
 async function reiniciarApp() {
   if (reiniciando) return; reiniciando = true;
   try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
