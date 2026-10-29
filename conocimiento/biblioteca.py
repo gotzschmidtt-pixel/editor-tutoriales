@@ -267,35 +267,14 @@ def aprender(ajustes_f):
     if not (aj.get('modelo') and aj.get('url')):
         raise SystemExit('ERROR: hace falta una IA en «⚙ Ajustes IA».')
     vs = pendientes()
-    log(f'La IA lee {len(vs)} videos nuevos ({sum(len(v["texto"]) for v in vs):,} letras).'.replace(',', '.'))
+    ias = ias_que_aprenden(ia, aj)
+    log(f'{" + ".join(n for n, _ in ias)} leen {len(vs)} videos nuevos ({sum(len(v["texto"]) for v in vs):,} letras).'.replace(',', '.'))
     d = leer_diccionario()
     notas = 0
     for k, lote in enumerate(lotes(vs), 1):
         log(f'[{k}] {len(lote)} videos…')
-        try:
-            r = ia.extraer_json(ia.llamar(aj, PEDIDO + ''.join(t for _, t in lote), []))
-        except ia.ErrorIA as x:
-            log(f'· la IA no pudo con este grupo: {x}')
-            continue
-        for t in (r.get('terminos') or []) if isinstance(r, dict) else []:
-            nombre = (t.get('termino') or '').strip()
-            if not nombre or len(nombre) > 60:
-                continue
-            x = d.setdefault(nombre.lower(), {'termino': nombre, 'videos': 0})
-            if x.get('tipo') in (None, 'detectado'):
-                x.update(termino=nombre, tipo=t.get('tipo') or 'otro')
-            if t.get('nota') and not x.get('nota'):
-                x['nota'] = t['nota'][:160]
-            if t.get('oido_como'):
-                x.setdefault('oido_como', [])
-                if t['oido_como'] not in x['oido_como']:
-                    x['oido_como'].append(t['oido_como'][:60])
-        for p in (r.get('procesos') or []) if isinstance(r, dict) else []:
-            if p.get('nombre') and p.get('pasos'):
-                notas += conocimiento.anotar('proceso', f"{p['nombre']}: {p['pasos']} (video «{p.get('video', '')}»)")[1]
-        for p in (r.get('preguntas') or []) if isinstance(r, dict) else []:
-            if p.get('pregunta'):
-                notas += conocimiento.anotar('pregunta', p['pregunta'] + (f" → {p['respuesta']}" if p.get('respuesta') else ''))[1]
+        for nombre, r in pedir_a_todas(ia, ias, PEDIDO + ''.join(t for _, t in lote)):
+            notas += sumar(d, r, nombre if len(ias) > 1 else '')
         guardar_diccionario(d)
         e = estado()
         e['aprendidos'] = sorted(set(e.get('aprendidos', [])) | {v['id'] for v, _ in lote})
@@ -306,6 +285,58 @@ def aprender(ajustes_f):
         x['videos'] = sum(k in t for t in textos) or x.get('videos', 0)
     guardar_diccionario(d)
     log(f'✓ Diccionario: {len(d)} términos. {notas} notas nuevas en «🧠 Conocimiento».')
+
+
+def ias_que_aprenden(ia, aj):
+    """[(nombre, ajustes)]: tu IA principal y, con «🧠 Aprender con varias IAs a la vez», también GPT, Claude, Gemini y
+    DeepSeek si tienen clave y modelo en «⚙ Ajustes IA». Cada una gasta lo suyo."""
+    out = [(aj.get('proveedor') or 'IA principal', aj)]
+    if aj.get('aprender_varias'):
+        for ide, a2 in ia.ias_del_guion({**aj, 'tres_ia': True}):
+            if (a2.get('url'), a2.get('modelo')) != (aj.get('url'), aj.get('modelo')):
+                out.append((ia.IAS_GUION[ide][0], a2))
+    return out
+
+
+def pedir_a_todas(ia, ias, texto):
+    """El mismo pedido a cada IA a la vez; devuelve [(nombre, respuesta)] de las que contestaron."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def una(par):
+        nombre, aj2 = par
+        try:
+            return nombre, ia.extraer_json(ia.llamar(aj2, texto, []))
+        except Exception as x:  # una IA que falla no frena a las otras
+            log(f'· {nombre} no pudo con este grupo: {x}')
+            return nombre, None
+    with ThreadPoolExecutor(len(ias)) as hilos:
+        return [(n, r) for n, r in hilos.map(una, ias) if isinstance(r, dict)]
+
+
+def sumar(d, r, quien=''):
+    """Lo que contestó una IA: términos al diccionario, procesos y preguntas a «🧠 Conocimiento» (sin repetir)."""
+    notas = 0
+    firma = f' [{quien}]' if quien else ''
+    for t in (r.get('terminos') or []) if isinstance(r, dict) else []:
+        nombre = (t.get('termino') or '').strip()
+        if not nombre or len(nombre) > 60:
+            continue
+        x = d.setdefault(nombre.lower(), {'termino': nombre, 'videos': 0})
+        if x.get('tipo') in (None, 'detectado'):
+            x.update(termino=nombre, tipo=t.get('tipo') or 'otro')
+        if t.get('nota') and not x.get('nota'):
+            x['nota'] = t['nota'][:160]
+        if t.get('oido_como'):
+            x.setdefault('oido_como', [])
+            if t['oido_como'] not in x['oido_como']:
+                x['oido_como'].append(t['oido_como'][:60])
+    for p in (r.get('procesos') or []) if isinstance(r, dict) else []:
+        if p.get('nombre') and p.get('pasos'):
+            notas += conocimiento.anotar('proceso', f"{p['nombre']}: {p['pasos']} (video «{p.get('video', '')}»){firma}")[1]
+    for p in (r.get('preguntas') or []) if isinstance(r, dict) else []:
+        if p.get('pregunta'):
+            notas += conocimiento.anotar('pregunta', p['pregunta'] + (f" → {p['respuesta']}" if p.get('respuesta') else '') + firma)[1]
+    return notas
 
 
 # ---------- usar: tus videos parecidos al nuevo ----------

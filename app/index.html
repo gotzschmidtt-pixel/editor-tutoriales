@@ -910,6 +910,8 @@
   <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con varias IAs a la vez</b> (GPT, Claude, Gemini y DeepSeek): las que tengan clave y modelo escriben el guion
     al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
     Después eliges la versión que más te guste o pides que se combinen.</label>
+  <label class="aviso"><input type="checkbox" id="ajAprVarias"> 🧠 <b>Aprender con varias IAs a la vez</b>: al leer tus videos («📚 Biblioteca»)
+    las IAs de abajo que tengan clave y modelo leen lo mismo en paralelo y suman lo que cada una encuentra (procesos, preguntas, términos). Cada una gasta lo suyo.</label>
   <div id="ajTresIAs" class="aviso"></div>
   <p class="aviso">Más capturas = la IA ve más del video, pero cuesta más y tarda más. ChatGPT web acepta unas 10 a 20 imágenes por mensaje.</p>
   <p class="aviso">La clave se guarda solo en tu PC (app/ajustes.json). Ollama no necesita clave.</p>
@@ -2492,7 +2494,7 @@ async function ajustesIA() {
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
-  $('#ajTres').checked = !!a.tres_ia;
+  $('#ajTres').checked = !!a.tres_ia; $('#ajAprVarias').checked = !!a.aprender_varias;
   const ias = a.ias_guion || {};
   $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
     <b>${nombre}</b>
@@ -2561,7 +2563,7 @@ async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
     tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
-    tres_ia: $('#ajTres').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
+    tres_ia: $('#ajTres').checked, aprender_varias: $('#ajAprVarias').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
   const ke = $('#ajEleven').value.trim();
   if (ke) { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: ke})}); verEleven(); }
   const listas = TRES_IAS.filter(([id]) => $('#ajTM_' + id).value.trim()).length;
