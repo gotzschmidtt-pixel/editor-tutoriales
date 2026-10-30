@@ -530,24 +530,131 @@ def logo_marca(marca):
     return Image.open(f).convert('RGBA') if os.path.exists(f) else None
 
 
-def componer_mixta(escena, lineas, marca, idioma, salida):
+# los títulos con los estilos que le gustan a fabian (mis_conocimientos/miniaturas/titulos, 30/10/2026): nunca planos,
+# siempre degradé, borde grueso, relieve, brillo y la palabra clave en amarillo/dorado
+TITULO_ESTILOS = {
+    'placa': {'fuente': ['C:/Windows/Fonts/seguibli.ttf', 'C:/Windows/Fonts/ariblk.ttf'], 'italica': 0.0, 'borde': 9, 'relieve': 4,
+              'oscuro': (10, 26, 80), 'claro': ((255, 255, 255), (222, 230, 246)), 'clave': ((255, 238, 96), (255, 190, 0))},
+    'pincel': {'fuente': ['C:/Windows/Fonts/impact.ttf'], 'italica': 0.12, 'borde': 8, 'relieve': 3,
+               'oscuro': (0, 0, 0), 'claro': ((255, 255, 255), (230, 230, 230)), 'clave': ((255, 240, 90), (255, 196, 0))},
+    'metal': {'fuente': ['C:/Windows/Fonts/impact.ttf'], 'italica': 0.10, 'borde': 10, 'relieve': 11,
+              'oscuro': (28, 16, 6), 'claro': ((255, 255, 255), (165, 176, 198)), 'clave': ((255, 242, 120), (240, 128, 0))},
+}
+
+
+def letras(texto, fnt, relleno, oscuro, borde, relieve):
+    """Una palabra «de miniatura»: degradé de arriba abajo, borde grueso, relieve 3D hacia abajo, brillo arriba y sombra."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageChops
+    caja = ImageDraw.Draw(Image.new('L', (1, 1))).textbbox((0, 0), texto, font=fnt, stroke_width=borde)
+    pad = borde + relieve + 24
+    S = (caja[2] - caja[0] + 2 * pad, caja[3] - caja[1] + 2 * pad)
+    o = (pad - caja[0], pad - caja[1])
+    m_txt, m_borde = Image.new('L', S, 0), Image.new('L', S, 0)
+    ImageDraw.Draw(m_txt).text(o, texto, font=fnt, fill=255)
+    ImageDraw.Draw(m_borde).text(o, texto, font=fnt, fill=255, stroke_width=borde, stroke_fill=255)
+    capa = Image.new('RGBA', S, (0, 0, 0, 0))
+    sombra = Image.new('RGBA', S, (0, 0, 0, 0))
+    sombra.paste((0, 0, 0, 190), (8, relieve + 10), m_borde)
+    capa.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(9)))
+    hondo = tuple(max(0, int(c * 0.55)) for c in relleno[1])  # el costado del relieve: el color de la letra, oscuro
+    for k in range(relieve, 0, -1):
+        capa.paste(hondo if k > 2 else oscuro, (0, k), m_borde)
+    capa.paste(oscuro, (0, 0), m_borde)
+    y0, y1 = o[1] + fnt.getbbox(texto)[1], o[1] + fnt.getbbox(texto)[3]
+    u = np.clip((np.arange(S[1]) - y0) / max(1, y1 - y0), 0, 1)[:, None, None]
+    grad = ((1 - u) * np.array(relleno[0]) + u * np.array(relleno[1])).astype(np.uint8)
+    grad = np.repeat(grad, S[0], axis=1)
+    capa.paste(Image.fromarray(grad, 'RGB'), (0, 0), m_txt)
+    brillo = np.clip(1 - (np.arange(S[1]) - y0) / max(1, 0.5 * (y1 - y0)), 0, 1) * 120  # reflejo en la mitad de arriba
+    banda = Image.fromarray(np.repeat(brillo[:, None], S[0], axis=1).astype(np.uint8), 'L')
+    capa.paste((255, 255, 255), (0, 0), ImageChops.multiply(m_txt, banda))
+    return capa
+
+
+def titulo_estilizado(partes, estilo, ancho_max, alto_max=150):
+    """El título en una fila: [(texto, es_clave), …] con el estilo elegido, sobre su placa, pincelada o halo."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+    e = TITULO_ESTILOS.get(estilo, TITULO_ESTILOS['placa'])
+    ruta = next((f for f in e['fuente'] + FUENTES if os.path.exists(f)), None)
+    tam = alto_max
+    while True:
+        fnt = ImageFont.truetype(ruta, tam) if ruta else ImageFont.load_default()
+        piezas = [letras(x, fnt, e['clave'] if clave else e['claro'], e['oscuro'], max(4, int(e['borde'] * tam / 120)),
+                         max(2, int(e['relieve'] * tam / 120))) for x, clave in partes if x]
+        recorte = 2 * (max(4, int(e['borde'] * tam / 120)) + max(2, int(e['relieve'] * tam / 120)) + 24) - int(tam * 0.18)
+        ancho = sum(p.width for p in piezas) - recorte * (len(piezas) - 1)
+        if ancho * (1 + e['italica'] * 0.6) <= ancho_max - (110 if estilo != 'metal' else 20) or tam < 40:
+            break
+        tam -= 4
+    alto = max(p.height for p in piezas)
+    fila = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+    x = 0
+    for p in piezas:
+        fila.alpha_composite(p, (x, alto - p.height))
+        x += p.width - recorte
+    if e['italica']:
+        k = e['italica']
+        fila = fila.transform((int(fila.width + k * fila.height), fila.height), Image.AFFINE, (1, k, -k * fila.height, 0, 1, 0), Image.BICUBIC)
+    # lo que va detrás de las letras
+    pad_x, pad_y = (60, 6) if estilo != 'metal' else (30, 0)
+    W2, H2 = fila.width + 2 * pad_x, fila.height + 2 * pad_y
+    fondo = Image.new('RGBA', (W2 + 60, H2 + 60), (0, 0, 0, 0))
+    ox, oy = 30, 30
+    m = Image.new('L', fondo.size, 0)
+    dib = ImageDraw.Draw(m)
+    if estilo == 'placa':  # placa azul brillante con borde de luz (como «iPhone No disponible»)
+        caja = (ox + 20, oy + int(tam * 0.22), ox + W2 - 20, oy + H2 - int(tam * 0.18))
+        dib.rounded_rectangle(caja, int(tam * 0.35), fill=255)
+        luz = Image.new('RGBA', fondo.size, (0, 0, 0, 0))
+        luz.paste((90, 210, 255, 230), (0, 0), m)
+        fondo.alpha_composite(luz.filter(ImageFilter.GaussianBlur(14)))
+        u = np.clip((np.arange(fondo.size[1]) - caja[1]) / max(1, caja[3] - caja[1]), 0, 1)[:, None, None]
+        g = ((1 - u) * np.array([60, 140, 255]) + u * np.array([12, 52, 190])).astype(np.uint8)
+        fondo.paste(Image.fromarray(np.repeat(g, fondo.size[0], axis=1), 'RGB'), (0, 0), m)
+        ImageDraw.Draw(fondo).rounded_rectangle(caja, int(tam * 0.35), outline=(190, 240, 255), width=5)
+        brillo = Image.new('L', fondo.size, 0)
+        ImageDraw.Draw(brillo).rounded_rectangle((caja[0] + 8, caja[1] + 6, caja[2] - 8, (caja[1] + caja[3]) // 2), int(tam * 0.3), fill=60)
+        fondo.paste((255, 255, 255), (0, 0), brillo)
+    elif estilo == 'pincel':  # pincelada de verde a azul con bordes rotos (como «ELIM. PATRON HONOR 400 LITE»)
+        rng = np.random.default_rng(7)
+        y_a, y_b = oy + int(tam * 0.18), oy + H2 - int(tam * 0.12)
+        arriba = [(ox + x, y_a + rng.integers(-6, 7)) for x in range(0, W2, 24)]
+        abajo = [(ox + x, y_b + rng.integers(-6, 7)) for x in range(W2, -1, -24)]
+        izq = [(ox - rng.integers(0, 30), y) for y in range(y_b, y_a, -10)]
+        der = [(ox + W2 + rng.integers(0, 30), y) for y in range(y_a, y_b, 10)]
+        dib.polygon(arriba + der + abajo + izq, fill=255)
+        u = np.linspace(0, 1, fondo.size[0])[None, :, None]
+        g = ((1 - u) * np.array([70, 225, 60]) + u * np.array([28, 70, 235])).astype(np.uint8)
+        capa = Image.fromarray(np.repeat(g, fondo.size[1], axis=0), 'RGB')
+        rayas = ImageDraw.Draw(capa)
+        for _ in range(40):  # las marcas del pincel
+            y = int(rng.integers(y_a, y_b))
+            rayas.line((ox + int(rng.integers(0, W2 // 3)), y, ox + int(rng.integers(W2 // 2, W2)), y), fill=(255, 255, 255) if rng.random() < .5 else (0, 40, 90), width=1)
+        sombra = Image.new('RGBA', fondo.size, (0, 0, 0, 0))
+        sombra.paste((0, 0, 0, 150), (6, 10), m)
+        fondo.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(10)))
+        fondo.paste(capa, (0, 0), m)
+    else:  # metal 3D sobre un halo oscuro (como «BYPASS iOS SIN ERRORES»)
+        dib.rounded_rectangle((ox + 30, oy + 20, ox + W2 - 30, oy + H2 - 10), 40, fill=200)
+        halo = Image.new('RGBA', fondo.size, (0, 0, 0, 0))
+        halo.paste((8, 18, 70, 255), (0, 0), m)
+        fondo.alpha_composite(halo.filter(ImageFilter.GaussianBlur(26)))
+    fondo.alpha_composite(fila, (ox + pad_x, oy + pad_y))
+    return fondo
+
+
+def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa'):
     """Pone encima de la escena de GPT todo lo escrito y los logos, en el idioma pedido."""
     from PIL import Image, ImageDraw
     lienzo = Image.fromarray(cv2.cvtColor(cv2.resize(escena, (W, H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)).convert('RGBA')
-    pega = lambda capa, x, y: lienzo.alpha_composite(capa, (int(x), int(y)))
-    # la franja de abajo: inclinada, amarilla a celeste, con borde negro
-    y_izq, y_der = H * 0.785, H * 0.745
-    grad = np.zeros((H, W, 4), np.uint8)
-    u = np.linspace(0, 1, W)[None, :, None]
-    grad[..., :3] = ((1 - u) * np.array([255, 214, 0]) + u * np.array([0, 196, 255])).astype(np.uint8)
-    grad[..., 3] = 255
-    mascara = Image.new('L', (W, H), 0)
-    ImageDraw.Draw(mascara).polygon([(0, y_izq), (W, y_der), (W, H), (0, H)], fill=255)
-    lienzo.paste(Image.fromarray(grad, 'RGBA'), (0, 0), mascara)
-    ImageDraw.Draw(lienzo).line([(0, y_izq), (W, y_der)], fill=(0, 0, 0), width=7)
-    titulo = ' / '.join(x for x, _ in (traducir(l, idioma) for l in lineas if l))
-    capa = texto_italico(titulo, 118, ancho_max=W - 50)
-    pega(capa, (W - capa.width) / 2, (y_izq + y_der) / 2 + (H - (y_izq + y_der) / 2) / 2 - capa.height / 2 + 6)
+    def pega(capa, x, y):  # sin salirse del lienzo
+        x, y = int(x), int(y)
+        capa = capa.crop((max(0, -x), max(0, -y), min(capa.width, W - x), min(capa.height, H - y)))
+        lienzo.alpha_composite(capa, (max(0, x), max(0, y)))
+    # abajo, el título con uno de tus estilos: la marca en blanco/plateado y el problema en amarillo/dorado
+    partes = [(x, k > 0) for k, (x, _) in enumerate(traducir(l, idioma) for l in lineas if l)]
+    capa = titulo_estilizado(partes, estilo, W - 20)
+    pega(capa, (W - capa.width) / 2, H - capa.height + 18)
     # arriba: NEW 2026 y las etiquetas ANTES / DESPUÉS sobre cada teléfono
     pega(cinta('NEW 2026', (226, 30, 36), 50, 10), 8, 6)
     antes, despues = ANTES_DESPUES[idioma]
@@ -570,7 +677,7 @@ def componer_mixta(escena, lineas, marca, idioma, salida):
     lienzo.convert('RGB').save(salida, quality=92)
 
 
-def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=()):
+def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',)):
     """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
     refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 2)
     fondo_txt = FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']).replace('(1) fondo', 'FONDO')
@@ -592,11 +699,12 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
     escena = imagen_gpt(prompt, refs)
     cv2.imwrite(f'{salida_base}_escena.png', escena)
     hechas = []
-    for idioma in idiomas:
-        f = f'{salida_base}_{idioma}.jpg'
-        componer_mixta(escena, lineas, marca, idioma, f)
-        hechas.append(os.path.basename(f))
-        print(f'· {os.path.basename(f)} lista', flush=True)
+    for estilo in estilos:
+        for idioma in idiomas:
+            f = f'{salida_base}_{estilo}_{idioma}.jpg' if len(estilos) > 1 else f'{salida_base}_{idioma}.jpg'
+            componer_mixta(escena, lineas, marca, idioma, f, estilo)
+            hechas.append(os.path.basename(f))
+            print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas
 
 
@@ -661,6 +769,10 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
 FOTOS = ('antes', 'despues', 'extra1', 'extra2')  # las fotos HD que subes en «🖼 Miniatura» (foto_miniatura_*.jpg)
 
 
+def estilos_titulo(a):
+    return tuple(TITULO_ESTILOS) if a.titulo == 'todos' else (a.titulo,)
+
+
 def con_fotos(d, a):
     """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video; GPT y la app
     ponen fondo, textos, sello, píldoras y logo."""
@@ -692,7 +804,7 @@ def con_fotos(d, a):
     hechas = []
     try:
         for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
-            hacer = miniaturas_mixtas if a.mixta else miniaturas_gpt
+            hacer = (lambda *x, **k: miniaturas_mixtas(*x, estilos=estilos_titulo(a), **k)) if a.mixta else miniaturas_gpt
             base = os.path.join(d, f"miniatura_fotos_{'mixta' if a.mixta else 'gpt'}_{fondo}")
             for f in hacer(d, [fotos['antes'], fotos['despues']], lineas, base, marca, antes_desc='tal como está en la foto HD',
                            fondo=fondo, extras=extras):
@@ -712,6 +824,7 @@ def main():
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
     ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
     ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
+    ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = uno de cada uno, gratis)')
     ap.add_argument('--mixta', action='store_true', help='con --gpt: GPT hace solo la escena y la app pone textos y logos (1 imagen para los 3 idiomas)')
     ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
@@ -780,7 +893,7 @@ def main():
                 for fondo in (('escritorio', 'gpt') if a.fondos else ('escritorio',)):
                     base = os.path.join(d, f'miniatura_mixta_{fondo}' if a.fondos else 'miniatura_mixta')
                     for f in miniaturas_mixtas(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), base, lineas[0][0],
-                                               antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
+                                               antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo, estilos=estilos_titulo(a)):
                         hechas.append({'archivo': f, 'de': f'mixta: escena de GPT ({fondo}) + textos de la app', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
                 for fondo in ('escritorio', 'gpt'):

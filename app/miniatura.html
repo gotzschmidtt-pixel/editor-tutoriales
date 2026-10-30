@@ -60,6 +60,12 @@
         <option value="mixta">🧩 Mixta: GPT la escena, la app los textos y el logo (recomendada)</option>
         <option value="gpt">✨ Todo GPT (textos incluidos)</option>
       </select></label>
+      <label title="Tus estilos de título (los que te gustan): con la mixta, los 3 salen gratis de la misma escena">Título <select id="titulo">
+        <option value="todos">Los 3 estilos (gratis, para elegir)</option>
+        <option value="placa">Placa azul brillante</option>
+        <option value="pincel">Pincelada verde y azul</option>
+        <option value="metal">Letras 3D doradas</option>
+      </select></label>
     </div>
     <p class="aviso" id="costo"></p>
     <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
@@ -149,7 +155,7 @@ async function hacer() {
   aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
   try {
     await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
-      body: JSON.stringify({texto: $('#texto').value, fondo: $('#fondo').value, modo: $('#modo').value, confirmo: 'SI'})});
+      body: JSON.stringify({texto: $('#texto').value, fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, confirmo: 'SI'})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);

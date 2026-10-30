@@ -98,7 +98,8 @@ def comandos(paso, d, op, py, ajustes):
         texto = str(op.get('texto') or '').strip()[:80]
         fondo = op.get('fondo') if op.get('fondo') in ('foto', 'gpt', 'ambos') else 'foto'
         return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo]
-                + (['--mixta'] if op.get('modo', 'mixta') == 'mixta' else []) + (['--texto', texto] if texto else [])]
+                + (['--mixta', '--titulo', op.get('titulo') if op.get('titulo') in ('placa', 'pincel', 'metal') else 'todos'] if op.get('modo', 'mixta') == 'mixta' else [])
+                + (['--texto', texto] if texto else [])]
     if paso == 'm_avisos':
         return [[py, m('avisos', 'avisos_legales.py'), '--proyecto', '.']]
     if paso == 'm_sonidos':
