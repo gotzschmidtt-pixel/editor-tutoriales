@@ -1074,7 +1074,7 @@ def falta_patron_versiones(d, bloques):
                    'agrégalo al comienzo, donde dices a qué modelos sirve (así salen los logos)')
     if (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor' and not re.search(VERSIONES_MAGICOS, todo):
         out.append('patrón fijo: en Honor la voz también dice «funciona con MagicOS nueve, diez u once» (así sale su logo)')
-    if not re.search(r'parche', todo):
+    if not re.search(r'\bparche', todo):
         out.append('patrón fijo: la voz también dice que el método sirve para cualquier fecha de parche de seguridad')
     return out
 
