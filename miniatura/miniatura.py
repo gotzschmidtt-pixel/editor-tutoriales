@@ -315,7 +315,7 @@ def pedir_imagen(req, intentos=4):
 
 
 FONDOS_MINI = {  # pedido de fabian (30/10/2026): probar los dos y quedarse con el que más le guste
-    'escritorio': '(1) fondo = SU escritorio real, el de la imagen 1, tal cual, claro y apenas desenfocado: la laptop, el cartel '
+    'escritorio': '(1) fondo = SU escritorio real, el que se ve alrededor del teléfono en las fotos de su video, tal cual, claro y apenas desenfocado: la laptop, el cartel '
                   'negro «Frp» y la G de Google grande de 4 colores (no inventes otro fondo); ',
     'gpt': '(1) fondo generado por ti, como sus miniaturas de iPhone: oscuro azul profundo con estelas de luz de neón celeste y '
            'violeta, rayos de luz y un piso que refleja; ',
