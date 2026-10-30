@@ -3,7 +3,7 @@
 Los logos son de fabian y sirven para todos los videos: mis_conocimientos/logos/logos.json (se sincroniza con la otra PC).
 Cada logo tiene su "nombre" («Android 15») y sus "palabras" («android quince»). Con los tiempos por letra de la voz se busca
 cuándo se dice cada uno; en «Android quince, dieciséis o diecisiete» salen los tres, uno al lado del otro, cada uno cuando se
-nombra, y se van juntos. Van arriba a la derecha, chicos, para no tapar el teléfono. Un mismo logo no se repite antes de 30 s.
+nombra, y se van juntos. Salen de a uno, grandes, como pop-up en el centro. Un mismo logo no se repite antes de 30 s.
 Tablas y textos van en español, inglés y portugués («idiomas» en logos.json: pedido de fabian, 30/10/2026): en la versión
 del video en otro idioma sale la suya.
 
@@ -20,7 +20,10 @@ DESFASE = 0.3     # la voz entra 0,3 s después del inicio del bloque (mezclar_v
 JUNTOS = 4.0      # menciones a menos de esto van en la misma fila
 QUEDA = 2.8       # segundos que siguen en pantalla después de la última mención de la fila
 NO_REPETIR = 30.0
-ALTO = 0.19       # alto de cada logo, en parte del alto del video (las insignias anchas, al mismo alto)
+ALTO = 0.5        # alto del logo, en parte del alto del video (grande, como pop-up en el centro)
+ALTO_ANCHO = 0.26 # alto de las insignias anchas (marcas y webs)
+MINIMO = 0.35     # menos que esto no se alcanza a ver: ese logo se salta
+POP = 0.35        # segundos que tarda en crecer al entrar
 ENTRA = 0.3
 NUMEROS = {'nueve': 9, 'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15, 'dieciseis': 16,
            'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20,
@@ -151,31 +154,33 @@ def main():
         return
     total = duracion(a.video)
     W, H = tamano(a.video)
-    caja = round(H * ALTO) // 2 * 2
-    margen, hueco = round(H * 0.045), round(H * 0.015)
+    # pedido de fabian (30/10/2026): grandes, de a UNO, como pop-up en el centro, cada uno mientras la voz lo nombra (con
+    # «Android 15, 16, 17» sale el 15, después el 16, después el 17); no importa si tapa el teléfono
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
-    for fila in filas:
-        hasta = min(total - 0.1, fila[-1][0] + QUEDA)
-        for k, (t, l) in enumerate(fila):
-            if t >= hasta - 0.5:
-                continue
-            dur = hasta - t
-            png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
-            # de derecha a izquierda: cada uno con su ancho (al mismo alto), separados por el hueco
-            anchos = [round(caja * (proporcion(os.path.join(a.logos, del_idioma(o, a.logos, idioma))) if proporcion(os.path.join(a.logos, del_idioma(o, a.logos, idioma))) > 1.3 else 1)) // 2 * 2 for _, o in fila]
-            ancho = anchos[k]
-            x = W - margen - sum(anchos[k:]) - (len(fila) - 1 - k) * hueco
-            piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', png],
-                           'pre': f"format=rgba,scale={ancho}:{caja}:force_original_aspect_ratio=decrease,"
-                                  f"pad={ancho}:{caja}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,"
-                                  f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={max(0, dur - ENTRA):.2f}:d={ENTRA}:alpha=1,"
-                                  f"setpts=PTS-STARTPTS+{t}/TB",
-                           'overlay': f"x={x}:y={margen}:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
-            n = len(piezas)
-            ins += piezas[-1]['args']
-            filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
-            ult = f'v{n}'
-            print(f"{t:7.1f}s  {l.get('nombre') or l['archivo']}", flush=True)
+    uno = [x for fila in filas for x in fila]
+    for k, (t, l) in enumerate(uno):
+        sig = uno[k + 1][0] if k + 1 < len(uno) else t + QUEDA
+        hasta = min(total - 0.1, t + QUEDA, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
+        if hasta - t < MINIMO:
+            continue
+        dur = hasta - t
+        png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
+        ancho_rel = proporcion(png)
+        alto = round(H * (ALTO_ANCHO if ancho_rel > 1.3 else ALTO)) // 2 * 2  # las insignias anchas, más bajas
+        ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
+        # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
+        crece = f"min(1,0.55+0.45*(t/{POP})+0.08*sin(min(t/{POP},1)*3.1416))"
+        piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', png],
+                       'pre': f"format=rgba,scale={ancho}:{alto}:force_original_aspect_ratio=decrease,"
+                              f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
+                              f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={max(0, dur - ENTRA):.2f}:d={ENTRA}:alpha=1,"
+                              f"setpts=PTS-STARTPTS+{t}/TB",
+                       'overlay': f"x='(W-w)/2':y='(H-h)/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
+        n = len(piezas)
+        ins += piezas[-1]['args']
+        filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
+        ult = f'v{n}'
+        print(f"{t:7.1f}s  {l.get('nombre') or l['archivo']}  ({dur:.1f} s)", flush=True)
     if not piezas:
         print('Los logos caían al final del video: no pongo nada.')
         return
