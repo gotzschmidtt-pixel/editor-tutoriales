@@ -913,7 +913,7 @@ FOTOS = ('antes', 'despues', 'extra1', 'extra2')  # las fotos HD que subes en «
 
 
 def estilos_titulo(a):
-    return tuple(TITULO_ESTILOS) if a.titulo == 'todos' else (a.titulo,)
+    return ('placa', 'metal') if a.titulo == 'todos' else (a.titulo,)  # los dos que eligió fabian (30/10/2026)
 
 
 def con_fotos(d, a):
@@ -968,7 +968,7 @@ def main():
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
     ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
     ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
-    ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = uno de cada uno, gratis)')
+    ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = los dos que le gustan a fabian: placa y metal)')
     ap.add_argument('--titulo-gpt', action='store_true', help='con --mixta: el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)')
     ap.add_argument('--esquina-izq', default='NEW 2026', help='con --mixta: texto corto arriba a la izquierda (vacío = nada)')
     ap.add_argument('--esquina-der', default='', help='con --mixta: texto corto arriba a la derecha (el logo baja un poco)')

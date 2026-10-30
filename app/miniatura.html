@@ -79,10 +79,10 @@
         <option value="gpt">✨ Todo GPT (textos incluidos)</option>
       </select></label>
       <label title="Tus estilos de título (los que te gustan): con la mixta, los 3 salen gratis de la misma escena">Título <select id="titulo">
-        <option value="todos">Los 3 estilos (gratis, para elegir)</option>
+        <option value="todos">Tus 2 favoritos: placa y 3D dorado</option>
         <option value="placa">Placa azul brillante</option>
+                <option value="metal">Letras 3D doradas</option>
         <option value="pincel">Pincelada verde y azul</option>
-        <option value="metal">Letras 3D doradas</option>
       </select></label>
       <label title="El título lo dibuja GPT 2.5 copiando tus estilos (se ve menos genérico que el de la app). Gasta 1 imagen por estilo y por idioma"><input type="checkbox" id="tituloGpt" checked> ✨ Título y etiquetas dibujados por GPT 2.5</label>
     </div>
@@ -175,7 +175,7 @@ async function sugerir() {
 $('#linea1').oninput = $('#linea2').oninput = pintarSugeridos;
 function imagenes() {
   const mixta = $('#modo').value === 'mixta', fondos = $('#fondo').value === 'ambos' ? 2 : 1;
-  const titulos = mixta && $('#tituloGpt').checked ? ($('#titulo').value === 'todos' ? 3 : 1) * 3 : 0;
+  const titulos = mixta && $('#tituloGpt').checked ? ($('#titulo').value === 'todos' ? 2 : 1) * 3 : 0;
   return (mixta ? 1 : 3) * fondos + titulos;
 }
 function pintarCosto() {
