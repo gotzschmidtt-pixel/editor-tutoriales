@@ -128,7 +128,8 @@ def main():
             filtros.append('[v]anull[x]')
     elif mus:
         filtros.append('[m]anull[x]')
-    props = {'clips': clips, 'titulo': plan['titulo'], 'subtitulo': plan.get('subtitulo')}
+    # 'audio' siempre va: si faltara, Remotion usa el de ejemplo (trailer/audio.mp3) y sin voz ni música fallaba con un 404
+    props = {'clips': clips, 'titulo': plan['titulo'], 'subtitulo': plan.get('subtitulo'), 'audio': ''}
     if filtros:
         filtros.append(f"[x]atrim=0:{total},loudnorm=I=-15:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]")
         ff(ins + ['-filter_complex', ';'.join(filtros), '-map', '[a]', '-ar', '48000', os.path.join(PUB, 'audio.wav')])
