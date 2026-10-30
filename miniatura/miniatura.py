@@ -238,6 +238,52 @@ def referencias_estilo(marca, n=2):
     return [os.path.join(ESTILO, f) for f in suyas[:n]]
 
 
+# los momentos de tu video que sirven para la miniatura (pedido de fabian, 30/10/2026): varias opciones de ANTES y el
+# DESPUÉS en la pantalla de inicio. Primero lo que se lee en la pantalla (mapa_video.json), si no, lo que dice el guion
+CLAVES = {
+    'verifica': (r'verifica tu cuenta|this device is locked|dispositivo est[aá] bloqueado|iphone no disponible|bloqueo de activaci',
+                 r'verifica|bloquead|locked|no disponible|cuenta de google'),
+    'fastboot': (r'fastboot ?& ?rescue|fastboot mode|recovery mode|modo download|\bdfu\b', r'fastboot|recovery|\bdfu\b|download'),
+    'bienvenido': (r'\bbienvenido\b', r'bienvenid|welcome|idioma'),  # «Welcome» sale en la web: solo el del teléfono
+    'inicio': (r'agregar ciudad|my ?honor|play ?store|tienda de apps', r'pantalla (principal|de inicio)|ya funcionando|home'),
+}
+NOMBRE_ANTES = {'verifica': 'la pantalla bloqueada («Verifica tu cuenta»)', 'fastboot': 'el teléfono en modo FASTBOOT',
+                'bienvenido': 'el teléfono recién formateado en «Bienvenido»'}
+
+
+def cuadros_clave(d, nt):
+    """{'verifica': s, 'fastboot': s, 'bienvenido': s, 'inicio': s} con los que encuentre (el segundo más nítido cerca)."""
+    try:
+        mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8')).get('cuadros', [])
+    except (OSError, ValueError):
+        mapa = []
+    try:
+        bloques = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')).get('bloques', [])
+    except (OSError, ValueError):
+        bloques = []
+    total = float(nt[0][-1]) if len(nt[0]) else 60.0
+    out = {}
+    for clave, (rx_pantalla, rx_guion) in CLAVES.items():
+        # en el mapa: el texto de la pantalla del teléfono (sin el programa de la PC, que también dice «fastboot»)
+        vistos = [x['t'] for x in mapa if re.search(rx_pantalla, str(x.get('texto', '')), re.I)
+                  and not re.search(r'easy-?unlocker|read ?fastboot|xiaomiunlock\.com|place ?a ?new|all models|sign in|order',
+                                    str(x.get('texto', '')), re.I)]
+        if clave == 'inicio':
+            vistos = [s for s in vistos if s > total * 0.6]
+        s = (vistos[-1] if clave == 'inicio' else vistos[0]) if vistos else None
+        if s is None:  # si no, el bloque del guion que lo nombra
+            for b in (reversed(bloques) if clave == 'inicio' else bloques):
+                txt = ' '.join(str(b.get(k) or '') for k in ('ancla', 've_inicio', 've_fin'))
+                mo = b.get('montaje') or {}
+                if re.search(rx_guion, txt, re.I) and mo.get('src_inicio') is not None:
+                    fin = mo.get('src_fin') or mo['src_inicio'] + 3
+                    s = mo['src_inicio'] + 0.4 * (fin - mo['src_inicio'])
+                    break
+        if s is not None:
+            out[clave] = mejor(*nt, max(0, s - 1.5), min(total, s + 1.5))
+    return out
+
+
 def pedir_imagen(req, intentos=4):
     """El pedido a la IA de imágenes; si OpenAI dice «demasiados pedidos» (429) o falla un momento, espera y reintenta."""
     import time, urllib.error, urllib.request
@@ -256,7 +302,7 @@ def pedir_imagen(req, intentos=4):
             time.sleep(espera)
 
 
-def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
+def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None):
     """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
     k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
@@ -271,8 +317,8 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         texto = ' / '.join(f'«{x}»' for x, _ in partes)
         traduce = any(t for _, t in partes)
         prompt = ('Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian, técnico de celulares, IDÉNTICA a SU ESTILO. '
-                  'Imagen 1: el teléfono REAL de este video bloqueado (ANTES). Imagen 2: el mismo teléfono ya libre, en su pantalla '
-                  'de inicio con las apps (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
+                  f'Imagen 1: el teléfono REAL de este video ANTES: {antes_desc or "bloqueado"}; muéstralo tal cual. Imagen 2: el mismo '
+                  'teléfono ya libre, en SU pantalla de inicio con las apps, igual que en la foto (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
                   'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. Las demás imágenes son miniaturas '
                   'suyas: cópiales el estilo (no su texto, ni su teléfono, ni el reloj de duración de YouTube). OBLIGATORIO, todo junto: '
                   '(1) fondo = su escritorio real, claro y nítido: la laptop, el cartel negro «Frp» y la G de Google grande de 4 colores; '
@@ -370,6 +416,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
@@ -407,22 +454,34 @@ def main():
     if (a.gpt or a.short) and hechas:  # referencias: el cuadro del problema y el del resultado (los mismos que eligió para las suyas)
         refs = []
         cap = cv2.VideoCapture(orig)
-        # el PROBLEMA (lo más nítido del primer 15 %: la pantalla bloqueada) y el RESULTADO (lo más nítido del final: la pantalla de inicio)
+        # el ANTES (la pantalla bloqueada, el fastboot o «Bienvenido») y el DESPUÉS en la pantalla de inicio
         nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
         total = float(nt[0][-1]) if len(nt[0]) else 60.0
-        for k, s in enumerate((mejor(*nt, total * 0.02, total * 0.15), mejor(*nt, total * 0.975, total * 0.998))):
-            cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
+        clave = cuadros_clave(d, nt)
+        print('· momentos para la miniatura: ' + ', '.join(f'{k} {int(s // 60)}:{int(s % 60):02d}' for k, s in clave.items()), flush=True)
+        antes = [k for k in ('verifica', 'fastboot', 'bienvenido') if k in clave] or ['verifica']
+        clave.setdefault('verifica', mejor(*nt, total * 0.02, total * 0.15))
+        clave.setdefault('inicio', mejor(*nt, total * 0.975, total * 0.998))
+        for k in set(antes + ['inicio']):
+            cap.set(cv2.CAP_PROP_POS_MSEC, clave[k] * 1000)
             ok, c = cap.read()
             if ok:
                 refs.append(os.path.join(d, f'.ref_miniatura_{k}.png'))
                 cv2.imwrite(refs[-1], cv2.resize(c, (1280, 720)))
+        ref = {os.path.basename(r)[len('.ref_miniatura_'):-4]: r for r in refs}
         cap.release()
         try:
-            if a.gpt:
-                for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0]):
-                    hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
+            if a.gpt and a.variantes:  # una por cada ANTES, en español, para elegir la mejor
+                for k in antes:
+                    for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), lineas[0][0],
+                                            idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k)):
+                        hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · ANTES: {k}', 'segundo': round(clave[k], 1), 'texto': [x for x in lineas[0] if x]})
+            elif a.gpt:
+                for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0],
+                                        antes_desc=NOMBRE_ANTES.get(antes[0])):
+                    hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             if a.short:  # la portada del Short: vertical, con el estilo de sus Shorts
-                for f in portadas_short(d, refs, list(lineas[0]), os.path.join(d, 'portada_short'), lineas[0][0]):
+                for f in portadas_short(d, [ref[antes[0]]], list(lineas[0]), os.path.join(d, 'portada_short'), lineas[0][0]):
                     hechas.append({'archivo': f, 'de': 'portada del Short (gpt-image-2.5-flare)', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
         finally:
             for f in refs:

@@ -87,6 +87,7 @@ def comandos(paso, d, op, py, ajustes):
         texto = str(op.get('texto') or '').strip()[:80]
         return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.'] + (['--texto', texto] if texto else [])
                 + (['--gpt'] if op.get('gpt') and str(op.get('confirmo') or '').upper() in ('SI', 'SÍ') else [])
+                + (['--variantes'] if op.get('variantes') and op.get('gpt') else [])
                 + (['--short'] if op.get('short') and str(op.get('confirmo') or '').upper() in ('SI', 'SÍ') else [])]
     if paso == 'm_avisos':
         return [[py, m('avisos', 'avisos_legales.py'), '--proyecto', '.']]
