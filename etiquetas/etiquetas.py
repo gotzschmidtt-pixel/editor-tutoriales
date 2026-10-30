@@ -205,12 +205,12 @@ def main():
         total = round(g['fin'] - g['ini'], 2)
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2), 'placa': placa_gpt(i['tipo'])} for i in g['items']]
-        lado = lado_libre(a.video, g['ini'], total, g['items'])
+        lado = 'arriba'  # pedido de fabian (30/10/2026): las etiquetas van arriba a la derecha
         for i in g['items']:
             i['lado'] = lado
         # solo la zona de abajo y de ese lado (la pila de hasta 3 etiquetas, con su sombra y su entrada animada)
         ancho = 1920 if max(len(str(i.get('texto') or '')) for i in g['items']) > 38 else ANCHO_ZONA  # una muy larga: todo el ancho
-        x, y = (0 if lado != 'derecha' else 1920 - ancho), 1080 - ALTO_ZONA
+        x, y = 1920 - ancho, 0
         trabajos.append((k, g, total, lista, lado, os.path.join(tmp, f'g{k:02d}'), (x, y, ancho)))
 
     def dibujar(tr):
