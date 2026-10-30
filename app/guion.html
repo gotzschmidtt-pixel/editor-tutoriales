@@ -374,11 +374,18 @@ function pintar() {
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="frases" id="frases${i}"></div>
+        ${(b.alternativas || []).map((x, k) => `<div class="alt" style="margin:8px 0; padding:8px; border:1px dashed var(--borde); border-radius:10px">
+          <div class="meta">Opción ${String.fromCharCode(66 + k)} (no se usa hasta que la elijas)</div>
+          <textarea data-alt="${i}" data-k="${k}" spellcheck="true" lang="es" style="min-height:4em">${esc(x)}</textarea>
+          <div class="acciones"><button onclick="usarAlternativa(${i}, ${k})" title="Pasa esta opción a ser el texto del bloque; el texto de ahora queda como opción">⇄ Usar esta</button>
+            <button onclick="borrarAlternativa(${i}, ${k})">🗑 Borrar opción</button></div></div>`).join('')}
         <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
+          <button onclick="copiarTramo(${i})" title="Hace una copia del texto como otra opción, para escribir una versión distinta y quedarte con la que más te guste">📑 Hacer otra opción</button>
           <button onclick="ortoBloque(${i})" title="Revisa tildes y ortografía de este bloque (LanguageTool, gratis)">🔤 Ortografía</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button>
           ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
   }).join('') + (porLugar[G.bloques.length] || []).join('');
+  document.querySelectorAll('textarea[data-alt]').forEach(t => t.oninput = () => { G.bloques[t.dataset.alt].alternativas[+t.dataset.k] = t.value; sucio = true; });
   document.querySelectorAll('input.emo').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].emocion = t.value.trim(); sucio = true; avisos(); });
   document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput =() => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos();
     clearTimeout(t._frases); t._frases = setTimeout(() => pintarFrases(+t.dataset.i), 900); });
@@ -450,6 +457,10 @@ let SUG = {};
 const sinTilde = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const IGNORADAS = new Set((() => { try { return JSON.parse(localStorage.getItem('ortografia_ignorar') || '[]'); } catch (e) { return []; } })());
 const esTilde = x => x.opciones[0] && x.original !== x.opciones[0] && sinTilde(x.original) === sinTilde(x.opciones[0]);
+// varias versiones de un bloque (pedido de fabian, 30/10/2026): la voz usa solo el texto del bloque; las opciones esperan
+function copiarTramo(i) { const b = G.bloques[i]; (b.alternativas = b.alternativas || []).push(b.texto); sucio = true; pintar(); }
+function usarAlternativa(i, k) { const b = G.bloques[i]; [b.texto, b.alternativas[k]] = [b.alternativas[k], b.texto]; sucio = true; pintar(); }
+function borrarAlternativa(i, k) { const b = G.bloques[i]; b.alternativas.splice(k, 1); if (!b.alternativas.length) delete b.alternativas; sucio = true; pintar(); }
 async function ortoBloque(i) {  // la ortografía de un solo bloque (pedido de fabian, 30/10/2026)
   const el = $('#orto' + i); if (el) el.textContent = 'Revisando…';
   try {
