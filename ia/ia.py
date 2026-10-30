@@ -2850,6 +2850,14 @@ def guardar_preguntas(d, lista, tarea='guion'):
     except Exception:
         pass
     f = os.path.join(d, ARCHIVO_PREGUNTAS[tarea])
+    if tarea == 'guion':  # lo que contestaste y todavía no se aplicó no se borra porque la IA escriba preguntas nuevas
+        try:
+            mias = [x for x in json.load(open(f, encoding='utf-8')) if isinstance(x, dict) and str(x.get('respuesta', '')).strip()
+                    and not x.get('hecha')]
+        except (OSError, ValueError, TypeError):
+            mias = []
+        nuevas_ = {normal(x['pregunta']) for x in out}
+        out = out + [x for x in mias if normal(str(x.get('pregunta', ''))) not in nuevas_]
     if tarea == 'trailer':
         try:
             viejas = [x for x in json.load(open(f, encoding='utf-8')) if isinstance(x, dict) and str(x.get('respuesta', '')).strip()]

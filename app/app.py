@@ -2635,7 +2635,30 @@ class Manejador(BaseHTTPRequestHandler):
                         nuevo['revision_imagen_pendiente'] = actual['revision_imagen_pendiente']
                     os.replace(os.path.join(d, 'guion.json'), os.path.join(d, 'guion.json.anterior'))
                 json.dump(nuevo, open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-                json.dump(v.get('preguntas') or [], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                # tus respuestas no se pierden al cambiar de versión: quedan guardadas en la versión de antes (vuelven si la
+                # eliges otra vez), se aprenden, y las que contestaste y no se aplicaron pasan a la nueva
+                try:
+                    mias = [x for x in json.load(open(os.path.join(d, 'preguntas_guion.json'), encoding='utf-8'))
+                            if isinstance(x, dict) and str(x.get('respuesta') or '').strip()]
+                except (OSError, ValueError, TypeError):
+                    mias = []
+                antes = next((x for x in versiones if x.get('elegida') and x is not v), None)
+                if antes is not None and mias:
+                    resp = {re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower(): x for x in mias}
+                    for x in antes.get('preguntas') or []:
+                        m = resp.get(re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower())
+                        if m:
+                            x['respuesta'], x['hecha'] = m['respuesta'], m.get('hecha', False)
+                if mias:
+                    try:
+                        conocimiento.aprender_de_proyecto(d)
+                    except Exception:
+                        pass
+                nuevas = [dict(x) for x in (v.get('preguntas') or [])]
+                ya = {re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower() for x in nuevas}
+                nuevas += [dict(x, de_version=(antes or {}).get('nombre', '')) for x in mias if not x.get('hecha')
+                           and re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower() not in ya]
+                json.dump(nuevas, open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in v.get('avisos') or []))
                 for x in versiones:
                     x['elegida'] = x is v

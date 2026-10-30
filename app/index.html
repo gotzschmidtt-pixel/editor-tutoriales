@@ -2853,8 +2853,8 @@ async function verPreguntas() {
   try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`)) || []; } catch (e) { PREGUNTAS = []; }
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
   const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${esc(x.pregunta)}</div>
-      <div class="fila" style="margin:4px 0">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
-      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%"></div>`;
+      <div class="fila" style="margin:4px 0">${(x.opciones || []).map(o => `<button onclick="const i = this.closest('.pregunta').querySelector('input'); i.value = this.textContent; respuestaAlVuelo(i)">${esc(o)}</button>`).join('')}</div>
+      <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" style="width:100%" onchange="respuestaAlVuelo(this)"></div>`;
   const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
   $('#preguntasGuion').innerHTML = !pend.length ? '' : `<div class="preguntas"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''} sobre tu guion</b>
     <p class="aviso">Elige una opción o escribe la respuesta (para dictar en Windows: tecla ⊞ Win + H). Las que dejes vacías no cambian nada.
@@ -2864,6 +2864,11 @@ async function verPreguntas() {
     <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button>
     <button onclick="responderPreguntas(true)" title="Guarda tus respuestas en preguntas_guion.json sin gastar la IA de la app: las aplica la IA de chat que hace el video (DeepSeek, Claude…)">💾 Solo guardar respuestas (las aplica DeepSeek)</button>
     <span class="msg" id="msgPreg"></span></div></div>`;
+}
+async function respuestaAlVuelo(i) {  // cada respuesta se guarda apenas la eliges o escribes: si sales y vuelves, sigue ahí
+  PREGUNTAS[+i.dataset.k].respuesta = i.value.trim();
+  try { await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    $('#msgPreg').textContent = '✓ Respuesta guardada'; $('#msgPreg').className = 'msg ok'; } catch (e) {}
 }
 async function responderPreguntas(soloGuardar) {
   document.querySelectorAll('#preguntasGuion input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());

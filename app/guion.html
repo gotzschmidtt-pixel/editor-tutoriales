@@ -191,9 +191,9 @@ async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json
   try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
   const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
   const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${conSegundos(x.pregunta)}</div>
-    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
-    ${x.sugerida ? `<div class="opciones"><button title="Ya contestaste una pregunta casi igual en ${esc(x.sugerida_de || 'otro video')}: tócala para usar esa respuesta" onclick="this.closest('.pregunta').querySelector('input').value = this.dataset.r" data-r="${esc(x.sugerida)}">🧠 Ya lo contestaste en ${esc(x.sugerida_de || 'otro video')}: «${esc(x.sugerida)}»</button></div>` : ''}
-    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
+    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="const i = this.closest('.pregunta').querySelector('input'); i.value = this.textContent; respuestaAlVuelo(i)">${esc(o)}</button>`).join('')}</div>
+    ${x.sugerida ? `<div class="opciones"><button title="Ya contestaste una pregunta casi igual en ${esc(x.sugerida_de || 'otro video')}: tócala para usar esa respuesta" onclick="const i = this.closest('.pregunta').querySelector('input'); i.value = this.dataset.r; respuestaAlVuelo(i)" data-r="${esc(x.sugerida)}">🧠 Ya lo contestaste en ${esc(x.sugerida_de || 'otro video')}: «${esc(x.sugerida)}»</button></div>` : ''}
+    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" onchange="respuestaAlVuelo(this)"></div>`;
   const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
   $('#preguntas').innerHTML = !pend.length ? '' : `<div class="panel preg"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''}</b>
     <p class="msg">Elige una opción o escribe la respuesta (para dictar en Windows: ⊞ Win + H). Las que dejes vacías no cambian nada.</p>
@@ -211,6 +211,10 @@ async function esperar() {  // hasta que la app termine el paso que se pidió
     if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
     return;
   }
+}
+async function respuestaAlVuelo(i) {  // cada respuesta se guarda apenas la eliges o escribes: si sales y vuelves, sigue ahí
+  PREGUNTAS[+i.dataset.k].respuesta = i.value.trim();
+  try { await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)}); $('#msgPreg').textContent = '✓ Respuesta guardada'; $('#msgPreg').className = 'msg ok'; } catch (e) {}
 }
 async function responder(soloGuardar) {
   document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
