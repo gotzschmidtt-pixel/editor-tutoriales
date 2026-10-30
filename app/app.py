@@ -1588,6 +1588,17 @@ def yt_elegir_miniatura(d, archivo):
     json.dump({'archivo': archivo}, open(os.path.join(d, 'youtube', 'miniatura.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 
+def yt_investigacion(d):
+    """Lo más útil de «🔎 Investigar el tema» para la IA que propone títulos (si ya se investigó)."""
+    try:
+        x = json.load(open(os.path.join(d, 'youtube', 'investigacion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    return {'fecha': x.get('fecha'), 'resumen': x.get('resumen') or {}, 'google': x.get('google'), 'youtube': x.get('youtube_sugerencias'),
+            'mis_busquedas': (x.get('mis_busquedas') or [])[:15], 'etiquetas': (x.get('etiquetas') or [])[:20],
+            'videos': [{k: v.get(k) for k in ('titulo', 'canal', 'vistas', 'por_dia', 'publicado')} for v in (x.get('videos') or [])[:15]]}
+
+
 def yt_bloques(d):
     """Los bloques del guion con el segundo en que empiezan en FINAL.mp4."""
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')) if existe(d, 'guion.json') else {'bloques': []}
@@ -2016,6 +2027,17 @@ class Manejador(BaseHTTPRequestHandler):
             d = os.path.join(PROYECTOS, '.canal')
             return self.responder(yt_ia(d, 'ideas', {'mis_videos': videos, 'comentarios': com, 'busquedas': busq}))
         d = carpeta(q['p'])
+        if ruta == '/api/youtube/investigar':  # «🔎 Investigar el tema»: YouTube, Google y tus búsquedas (pedido de fabian, 30/10/2026)
+            modelo = str((json.loads(self.rfile.read(largo) or b'{}') or {}).get('modelo') or '').strip()[:60]
+            r = subprocess.run([PY, m('youtube', 'investigar.py'), '--proyecto', d, '--ajustes', AJUSTES] + (['--modelo', modelo] if modelo else []),
+                               capture_output=True, text=True,
+                               encoding='utf-8', errors='replace', timeout=900, cwd=d,
+                               env=dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', DIAG_DIR=os.path.join(d, 'diagnosticos')))
+            try:
+                json.loads(r.stdout.strip().splitlines()[-1])
+                return self.responder(json.load(open(os.path.join(d, 'youtube', 'investigacion.json'), encoding='utf-8')))
+            except (ValueError, IndexError, OSError):
+                return self.error('No pude investigar: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
         if ruta == '/api/youtube/proponer':
             if not existe(d, 'guion.json'):
                 return self.error('Este proyecto no tiene guion todavía.')
@@ -2041,7 +2063,7 @@ class Manejador(BaseHTTPRequestHandler):
             except Exception:
                 pass
             r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', []),
-                                       'busquedas': busq})
+                                       'busquedas': busq, 'investigacion': yt_investigacion(d)})
             r['titulo'] = ((r.get('titulos') or [{}])[r.get('elegido') or 0] or {}).get('titulo', '')
             r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
             json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -2178,7 +2200,7 @@ class Manejador(BaseHTTPRequestHandler):
                 leer_yt = lambda f: json.load(open(os.path.join(d, 'youtube', f), encoding='utf-8')) if existe(d, os.path.join('youtube', f)) else None
                 mini = yt_miniatura(d)
                 return self.responder({'final': existe(d, 'FINAL.mp4'), 'metadatos': leer_yt('metadatos.json'), 'publicado': leer_yt('publicado.json'),
-                                       'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']),
+                                       'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']), 'investigacion': leer_yt('investigacion.json'),
                                        'miniatura': os.path.basename(mini) if mini else '',
                                        'miniaturas': [os.path.basename(f) for f in yt_miniaturas(d)][:40]})
             if ruta == '/api/biblioteca':

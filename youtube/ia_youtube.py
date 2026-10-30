@@ -34,7 +34,10 @@ LA IDEA DEL VIDEO NUEVO (datos seguros del autor):
 EL GUION DEL VIDEO NUEVO, bloque por bloque (id, segundo en que empieza y texto):
 {json.dumps(e['bloques'], ensure_ascii=False)}
 
-LO QUE LA GENTE ESCRIBE EN EL BUSCADOR DE YOUTUBE (úsalo en títulos, descripción y etiquetas, sin forzar):
+{('INVESTIGACIÓN DEL TEMA DE HOY (los videos de otros canales que más vistas por día juntan, lo que se busca en YouTube y '
+   'Google, y el análisis de títulos y miniaturas ganadores). Úsala para elegir palabras clave, el largo y la forma de los '
+   'títulos, y las etiquetas, sin copiar títulos ajenos:' + chr(10) + json.dumps(e['investigacion'], ensure_ascii=False)[:9000] + chr(10) + chr(10))
+   if e.get('investigacion') else ''}LO QUE LA GENTE ESCRIBE EN EL BUSCADOR DE YOUTUBE (úsalo en títulos, descripción y etiquetas, sin forzar):
 {json.dumps(e.get('busquedas') or {}, ensure_ascii=False)}
 
 PÁGINAS Y CONTACTOS DEL AUTOR (van en la descripción con su link exacto):

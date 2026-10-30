@@ -70,7 +70,12 @@
     <p class="ayuda">La IA de «⚙ Ajustes IA» propone 5 títulos con el estilo de tus videos más vistos, la descripción con tus páginas,
       los capítulos (salen de los bloques del guion, con el segundo exacto del video final), las etiquetas y el comentario para fijar.
       Corrige lo que quieras y publica.</p>
-    <div class="fila"><button onclick="proponer()" id="btnProponer">✨ Proponer con IA</button><span id="msgProponer" class="msg"></span></div>
+    <div class="fila"><input type="text" id="modeloInv" placeholder="Modelo exacto a buscar (ej.: Honor Magic 8 Lite)" style="flex:1; min-width:14em"
+      title="Si el nombre del proyecto no es el modelo exacto del teléfono, escríbelo acá: la búsqueda en YouTube y Google usa este nombre">
+      <button onclick="investigar()" id="btnInvestigar" title="Mira qué funciona afuera: los videos del tema con más vistas en YouTube (canales, títulos, miniaturas, etiquetas), lo que la gente escribe en Google y en YouTube, y lo que buscaron para llegar a tus videos. La IA lo resume. Gasta cuota de YouTube (gratis) y un pedido a tu IA (centavos)">🔎 Investigar el tema (YouTube y Google)</button>
+      <button onclick="proponer()" id="btnProponer">✨ Proponer con IA</button><span id="msgProponer" class="msg"></span></div>
+    <div class="barra" id="barraInv" hidden><div></div></div><p class="ayuda" id="pctInv" hidden></p>
+    <div id="investigacion"></div>
     <div class="barra" id="barraProponer" hidden><div></div></div><p class="ayuda" id="pctProponer" hidden></p>
     <div id="meta" hidden>
       <label>Título (elige uno o escribe el tuyo, hasta 100 letras)</label>
@@ -225,6 +230,8 @@ async function cargar() {
   if (!P) return;
   const r = await api(`/api/youtube/proyecto?p=${q(P)}`);
   if (!$('#meta').dataset.listo) { pintarMeta(r.metadatos); $('#meta').dataset.listo = r.metadatos ? '1' : ''; }
+  if (!$('#investigacion').innerHTML) pintarInvestigacion(r.investigacion);
+  if (r.investigacion && r.investigacion.modelo && !$('#modeloInv').value) $('#modeloInv').value = r.investigacion.modelo;
   // tus miniaturas del proyecto: tocas la que va a YouTube (antes se subía sola la más nueva)
   $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca la que va a YouTube. Elegida: <code>${esc(r.miniatura)}</code></p>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; max-height:420px; overflow:auto">` +
@@ -237,6 +244,43 @@ async function cargar() {
     : `<label>¿Ya lo subiste a mano? Pega el link</label><div class="fila"><input type="url" id="link" placeholder="https://youtu.be/..."><button onclick="vincular()">Vincular</button></div>`;
   if (r.aprender && !$('#aprendido').innerHTML) pintarAprendido(r.aprender);
   if (!r.final) $('#btnPublicar').disabled = true;
+}
+function pintarInvestigacion(x) {
+  if (!x) { $('#investigacion').innerHTML = ''; return; }
+  const r = x.resumen || {}, fmt = n => Number(n || 0).toLocaleString('es');
+  const chips = l => (l || []).map(t => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:999px; background:#1d2440; border:1px solid #26304f">${esc(t)}</span>`).join('');
+  const sug = o => Object.values(o || {}).flat().filter((v, i, a) => a.indexOf(v) === i).slice(0, 24);
+  $('#investigacion').innerHTML = `<details open style="margin:10px 0; border:1px solid #26304f; border-radius:12px; padding:10px 12px">
+    <summary><b>🔎 Lo que funciona afuera</b> <span class="ayuda">(${esc(x.fecha || '')} · ${esc((x.frases || []).join(' · '))})</span></summary>
+    ${r.palabras_clave ? `<p><b>Palabras clave:</b><br>${chips(r.palabras_clave)}</p>` : ''}
+    ${r.titulos ? `<p><b>Títulos que ganan:</b> ${esc(r.titulos)}</p>` : ''}
+    ${r.miniaturas ? `<p><b>Miniaturas que ganan:</b> ${esc(r.miniaturas)}</p>` : ''}
+    ${r.competencia ? `<p><b>Competencia:</b> ${esc(r.competencia)}</p>` : ''}
+    ${r.oportunidad ? `<p><b>Oportunidad:</b> ${esc(r.oportunidad)}</p>` : ''}
+    ${(r.ideas_titulo || []).length ? `<p><b>Ideas de título:</b></p><ol>${r.ideas_titulo.map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : ''}
+    <p><b>Se busca en YouTube:</b><br>${chips(sug(x.youtube_sugerencias))}</p>
+    <p><b>Se busca en Google:</b><br>${chips(sug(x.google))}</p>
+    ${(x.mis_busquedas || []).length ? `<p><b>Lo que buscaron para llegar a tus videos (90 días):</b><br>${chips(x.mis_busquedas.slice(0, 15).map(b => `${b.busqueda} · ${fmt(b.vistas)}`))}</p>` : ''}
+    ${(x.etiquetas || []).length ? `<p><b>Etiquetas que más usan:</b><br>${chips(x.etiquetas.slice(0, 20).map(e => e.etiqueta))}</p>` : ''}
+    ${(x.canales || []).length ? `<p><b>Canales del tema:</b> ${x.canales.map(c => `${esc(c.canal)}${c.tuyo ? ' (tú)' : ''} · ${c.videos} video(s) · ${fmt(c.vistas)} vistas`).join(' — ')}</p>` : ''}
+    ${(x.videos || []).length ? `<p><b>Videos con más vistas por día:</b></p><div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px">` +
+      x.videos.slice(0, 12).map(v => `<a href="https://youtu.be/${esc(v.id)}" target="_blank" style="color:inherit; text-decoration:none">
+        <img src="${esc(v.miniatura)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
+        <small><b>${esc(v.titulo)}</b><br>${esc(v.canal)}${v.tuyo ? ' (tú)' : ''} · ${fmt(v.vistas)} vistas · ${fmt(v.por_dia)}/día · ${esc(v.publicado)}</small></a>`).join('') + '</div>' : ''}
+  </details>`;
+}
+async function investigar() {
+  if (!confirm('Voy a mirar YouTube y Google sobre el tema de este video y la IA lo resume (un pedido a tu IA: centavos; la cuota de YouTube es gratis). ¿Sigo?')) return;
+  $('#btnInvestigar').disabled = true; $('#msgProponer').textContent = 'Investigando en YouTube y Google (1 o 2 minutos)…'; $('#msgProponer').className = 'msg';
+  const t0 = Date.now(), b = $('#barraInv'), p = $('#pctInv');  // aproximada
+  b.hidden = p.hidden = false;
+  const pinta = x => { b.firstElementChild.style.width = x + '%'; p.textContent = `${Math.floor(x)} % · ${Math.round((Date.now() - t0) / 1000)} s${x < 100 ? ' (aprox.)' : ''}`; };
+  const id = setInterval(() => pinta(Math.min(97, 100 * (1 - Math.exp(-2.2 * (Date.now() - t0) / 90000)))), 250);
+  try { pintarInvestigacion(await api(`/api/youtube/investigar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({modelo: $('#modeloInv').value.trim()})})); clearInterval(id); pinta(100);
+    $('#msgProponer').textContent = '✓ Listo. Ahora «✨ Proponer con IA» usa esta investigación.'; $('#msgProponer').className = 'msg ok'; }
+  catch (x) { clearInterval(id); $('#msgProponer').textContent = x.message; $('#msgProponer').className = 'msg err'; }
+  $('#btnInvestigar').disabled = false;
+  setTimeout(() => { b.hidden = p.hidden = true; }, 2500);
 }
 async function proponer() {
   $('#btnProponer').disabled = true; $('#msgProponer').textContent = 'La IA está escribiendo (medio minuto)…'; $('#msgProponer').className = 'msg';
