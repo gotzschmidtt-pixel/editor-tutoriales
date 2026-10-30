@@ -221,6 +221,18 @@ def traducir(linea, idioma):
 
 
 ANTES_DESPUES = {'es': ('ANTES', 'DESPUÉS'), 'en': ('BEFORE', 'AFTER'), 'pt': ('ANTES', 'DEPOIS')}
+def necesita_pc(marca):
+    """True salvo que fabian haya marcado que esa marca no necesita PC (mis_conocimientos/procesos_pc.json)."""
+    try:
+        datos = json.load(open(os.path.join(RAIZ, 'mis_conocimientos', 'procesos_pc.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return True
+    return datos.get(marca.lower(), True) is not False
+
+
+PILDORAS_PC = {'es': '«TODOS LOS MODELOS» (ícono de teléfono) y «EN MINUTOS» (ícono de reloj)',
+               'en': '«ALL MODELS» (ícono de teléfono) y «IN MINUTES» (ícono de reloj)',
+               'pt': '«TODOS OS MODELOS» (ícono de teléfono) y «EM MINUTOS» (ícono de reloj)'}
 PILDORAS = {'es': '«SIN PC» (ícono de computadora tachada) y «TODOS LOS MODELOS» (ícono de teléfono)',
             'en': '«NO PC» (ícono de computadora tachada) y «ALL MODELS» (ícono de teléfono)',
             'pt': '«SEM PC» (ícono de computadora tachada) y «TODOS OS MODELOS» (ícono de teléfono)'}
@@ -328,7 +340,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   '(5) candado abierto con la G de Google entre los dos; '
                   f'(6) arriba a la derecha el logo de {marca_logo} en un cuadrado blanco redondeado; arriba a la izquierda una cinta '
                   'roja inclinada «NEW 2026»; (7) un sello redondo dorado «MÉTODO GARANTIZADO 2026» a la derecha; '
-                  f'(8) dos píldoras blancas con ícono al costado: {PILDORAS[idioma]}; '
+                  f'(8) dos píldoras blancas con ícono al costado: {(PILDORAS_PC if necesita_pc(marca) else PILDORAS)[idioma]}; '
                   '(9) abajo una franja inclinada amarilla y celeste a todo el ancho con el texto GRANDE en mayúsculas, tipografía muy '
                   f'gruesa condensada e itálica, blanco con borde negro y sombra, perfectamente escrito, en {nombre}: {texto}'
                   + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
@@ -380,6 +392,9 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         partes = [traducir(x, idioma) for x in lineas if x]
         texto = ' / '.join(f'«{x}»' for x, _ in partes)
         traduce = any(t for _, t in partes)
+        # «SIN PC» solo si fabian marcó que esa marca no necesita PC (Honor sí la necesita)
+        pildora = (f'una píldora blanca «{SIN_PC[idioma]}» con una laptop. ' if not necesita_pc(marca)
+                   else 'una píldora blanca «' + PILDORAS_PC[idioma].split('»')[0].strip('«') + '». ')
         prompt = ('Portada VERTICAL 9:16 de un YouTube Short del canal Xiaomiunlock de fabian, IDÉNTICA a SU ESTILO. Imagen 1: el '
                   'teléfono REAL de este video con la pantalla bloqueada. Imagen 2: SU MASCOTA (el conejo con casco «XIAOMIUNLOCK»): '
                   'chica en una esquina de abajo. Las demás son portadas suyas: cópiales el estilo (no su texto ni su teléfono). '
@@ -388,8 +403,9 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   'oscuras redondeadas, letra blanca muy gruesa, condensada e itálica, perfectamente escrita, en '
                   f'{nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
                   f'; al lado del título el logo de {marca_logo} en un cuadrado; ABAJO una franja azul con «{PROMESA[idioma]}» y '
-                  f'una píldora blanca «{SIN_PC[idioma]}» con una laptop. Letras grandes que se lean en el celular. Ningún otro '
-                  'texto, ningún logo ni persona inventados. Todo completo dentro de la imagen vertical, sin cortar nada.')
+                  + pildora +
+                  'Letras grandes que se lean en el celular. Ningún otro texto, ningún logo ni persona inventados. Todo completo '
+                  'dentro de la imagen vertical, sin cortar nada.')
         b = uuid.uuid4().hex
         cuerpo = b''
         for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '864x1536', 'quality': 'high', 'output_format': 'png'}.items():
