@@ -89,6 +89,7 @@ def comandos(paso, d, op, py, ajustes):
                 + (['--gpt'] if op.get('gpt') and str(op.get('confirmo') or '').upper() in ('SI', 'SÍ') else [])
                 + (['--variantes'] if op.get('variantes') and op.get('gpt') else [])
                 + (['--fondos'] if op.get('fondos') and op.get('gpt') else [])
+                + (['--mixta'] if op.get('mixta') and op.get('gpt') else [])
                 + (['--short'] if op.get('short') and str(op.get('confirmo') or '').upper() in ('SI', 'SÍ') else [])]
     if paso == 'm_avisos':
         return [[py, m('avisos', 'avisos_legales.py'), '--proyecto', '.']]

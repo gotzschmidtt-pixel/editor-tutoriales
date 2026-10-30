@@ -377,6 +377,224 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     return hechas
 
 
+# MIXTA (idea aceptada por fabian, 30/10/2026): GPT pinta solo la escena (fondo, manos, teléfonos, flecha, candado,
+# mascota) SIN NINGÚN texto, y la app pone encima los textos, el sello, las píldoras y el logo oficial guardado. Así no
+# salen letras mal escritas ni logos inventados, y una sola escena sirve para los 3 idiomas (gasta 1 imagen, no 3)
+SELLO = {'es': ('MÉTODO', 'GARANTIZADO', '2026'), 'en': ('GUARANTEED', 'METHOD', '2026'), 'pt': ('MÉTODO', 'GARANTIDO', '2026')}
+PILDORAS_MIXTA = {True: {'es': (('TODOS LOS', 'MODELOS', 'tel'), ('EN', 'MINUTOS', 'reloj')),
+                         'en': (('ALL', 'MODELS', 'tel'), ('IN', 'MINUTES', 'reloj')),
+                         'pt': (('TODOS OS', 'MODELOS', 'tel'), ('EM', 'MINUTOS', 'reloj'))},
+                  False: {'es': (('SIN', 'PC', 'pc'), ('TODOS LOS', 'MODELOS', 'tel')),
+                          'en': (('NO', 'PC', 'pc'), ('ALL', 'MODELS', 'tel')),
+                          'pt': (('SEM', 'PC', 'pc'), ('TODOS OS', 'MODELOS', 'tel'))}}
+LOGOS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
+
+
+def imagen_gpt(prompt, refs, size='1536x864'):
+    """Un pedido a gpt-image-2.5-flare con imágenes de referencia; devuelve la imagen (BGR)."""
+    import base64, urllib.request, uuid
+    k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
+    if not k:
+        raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
+    b = uuid.uuid4().hex
+    cuerpo = b''
+    for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': size, 'quality': 'high', 'output_format': 'png'}.items():
+        cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
+    for i, r in enumerate(refs):
+        tipo = 'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'
+        cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}{os.path.splitext(r)[1]}"\r\n'
+                   f'Content-Type: {tipo}\r\n\r\n').encode() + open(r, 'rb').read() + b'\r\n'
+    cuerpo += f'--{b}--\r\n'.encode()
+    req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
+                                 headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
+    r = pedir_imagen(req)
+    return cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
+
+
+def fuente(tam, cual=0):
+    from PIL import ImageFont
+    f = next((x for x in FUENTES[cual:] if os.path.exists(x)), None)
+    return ImageFont.truetype(f, tam) if f else ImageFont.load_default()
+
+
+def texto_italico(linea, tam, relleno=(255, 255, 255), borde=8, ancho_max=None):
+    """El texto grueso, blanco con borde negro, inclinado como itálica y con sombra (capa RGBA recortada)."""
+    from PIL import Image, ImageDraw, ImageFilter
+    while True:
+        fnt = fuente(tam)
+        caja = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), linea, font=fnt, stroke_width=borde)
+        w, h = caja[2] - caja[0], caja[3] - caja[1]
+        if not ancho_max or w + 0.22 * h <= ancho_max or tam < 30:
+            break
+        tam -= 4
+    pad = 30
+    capa = Image.new('RGBA', (int(w + 0.22 * h) + 2 * pad, h + 2 * pad), (0, 0, 0, 0))
+    dib = ImageDraw.Draw(capa)
+    dib.text((pad - caja[0] + 10, pad - caja[1] + 10), linea, font=fnt, fill=(0, 0, 0, 170), stroke_width=borde, stroke_fill=(0, 0, 0, 170))
+    capa = capa.filter(ImageFilter.GaussianBlur(6))
+    ImageDraw.Draw(capa).text((pad - caja[0], pad - caja[1]), linea, font=fnt, fill=relleno, stroke_width=borde, stroke_fill=(0, 0, 0))
+    k = 0.22  # arriba se corre a la derecha: itálica
+    return capa.transform(capa.size, Image.AFFINE, (1, k, -k * capa.height, 0, 1, 0), Image.BICUBIC)
+
+
+def cinta(texto, color, tam=58, angulo=6):
+    """Etiqueta de color inclinada con letra blanca gruesa (NEW 2026, ANTES, DESPUÉS)."""
+    from PIL import Image, ImageDraw
+    fnt = fuente(tam)
+    caja = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=fnt, stroke_width=3)
+    w, h = caja[2] - caja[0] + 50, caja[3] - caja[1] + 26
+    capa = Image.new('RGBA', (w + 12, h + 12), (0, 0, 0, 0))
+    dib = ImageDraw.Draw(capa)
+    dib.rounded_rectangle((8, 8, w + 8, h + 8), 10, fill=(0, 0, 0, 150))
+    dib.rounded_rectangle((0, 0, w, h), 10, fill=color + (255,), outline=(255, 255, 255, 255), width=4)
+    dib.text((25 - caja[0], 13 - caja[1]), texto, font=fnt, fill=(255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0))
+    return capa.rotate(angulo, expand=True, resample=Image.BICUBIC)
+
+
+def sello(r, lineas):
+    """El sello dorado redondo con estrellas (MÉTODO GARANTIZADO 2026)."""
+    from PIL import Image, ImageDraw, ImageFilter
+    S = 2 * r + 30
+    c = S / 2
+    capa = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    dib = ImageDraw.Draw(capa)
+    dib.ellipse((c - r + 8, c - r + 12, c + r + 8, c + r + 12), fill=(0, 0, 0, 140))
+    capa = capa.filter(ImageFilter.GaussianBlur(8))
+    dib = ImageDraw.Draw(capa)
+    pts = [(c + (r if i % 2 == 0 else r * 0.93) * np.cos(np.pi * i / 36), c + (r if i % 2 == 0 else r * 0.93) * np.sin(np.pi * i / 36)) for i in range(72)]
+    dib.polygon(pts, fill=(176, 122, 18))
+    for q, col in ((0.88, (250, 205, 80)), (0.80, (190, 135, 25)), (0.76, (18, 18, 18))):
+        dib.ellipse((c - r * q, c - r * q, c + r * q, c + r * q), fill=col)
+    dib.ellipse((c - r * 0.70, c - r * 0.70, c + r * 0.70, c + r * 0.70), outline=(235, 190, 70), width=3)
+    def estrella(x, y, s):
+        dib.polygon([(x + (s if i % 2 == 0 else s * 0.42) * np.cos(-np.pi / 2 + np.pi * i / 5),
+                      y + (s if i % 2 == 0 else s * 0.42) * np.sin(-np.pi / 2 + np.pi * i / 5)) for i in range(10)], fill=(250, 210, 90))
+    for dx in (-r * 0.22, 0, r * 0.22):
+        estrella(c + dx, c - r * 0.55 + (0 if dx == 0 else r * 0.04), r * (0.09 if dx == 0 else 0.07))
+        estrella(c + dx, c + r * 0.56 - (0 if dx == 0 else r * 0.04), r * (0.09 if dx == 0 else 0.07))
+    tams = (int(r * 0.30), int(r * 0.30), int(r * 0.46))
+    ys = (c - r * 0.36, c - r * 0.06, c + r * 0.22)
+    for linea, tam, y in zip(lineas, tams, ys):
+        while tam > 10 and dib.textlength(linea, font=fuente(tam)) > r * 1.3:
+            tam -= 2
+        fnt = fuente(tam)
+        dib.text((c, y + tam / 2), linea, font=fnt, fill=(250, 210, 90), anchor='mm')
+    return capa
+
+
+def icono(tipo, d):
+    """Ícono redondo de las píldoras: teléfono (azul), reloj (rojo) o PC tachada (rojo)."""
+    from PIL import Image, ImageDraw
+    capa = Image.new('RGBA', (d, d), (0, 0, 0, 0))
+    dib = ImageDraw.Draw(capa)
+    dib.ellipse((0, 0, d - 1, d - 1), fill=(24, 110, 235) if tipo == 'tel' else (225, 40, 40))
+    blanco, g = (255, 255, 255), max(3, d // 14)
+    if tipo == 'tel':
+        dib.rounded_rectangle((d * 0.34, d * 0.2, d * 0.66, d * 0.8), d // 12, outline=blanco, width=g)
+        dib.line((d * 0.45, d * 0.71, d * 0.55, d * 0.71), fill=blanco, width=g)
+    elif tipo == 'reloj':
+        dib.ellipse((d * 0.2, d * 0.2, d * 0.8, d * 0.8), outline=blanco, width=g)
+        dib.line((d / 2, d / 2, d / 2, d * 0.31), fill=blanco, width=g)
+        dib.line((d / 2, d / 2, d * 0.64, d * 0.56), fill=blanco, width=g)
+    else:
+        dib.rectangle((d * 0.24, d * 0.28, d * 0.76, d * 0.62), outline=blanco, width=g)
+        dib.line((d * 0.4, d * 0.72, d * 0.6, d * 0.72), fill=blanco, width=g)
+        dib.line((d * 0.2, d * 0.8, d * 0.8, d * 0.2), fill=blanco, width=g + 1)
+    return capa
+
+
+def pildora(arriba, abajo, tipo, alto=60):
+    from PIL import Image, ImageDraw
+    fnt = fuente(int(alto * 0.36), 1)
+    dib = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+    w = int(max(dib.textlength(arriba, font=fnt), dib.textlength(abajo, font=fnt))) + alto + 34
+    capa = Image.new('RGBA', (w + 8, alto + 8), (0, 0, 0, 0))
+    dib = ImageDraw.Draw(capa)
+    dib.rounded_rectangle((6, 7, w + 6, alto + 7), alto // 2, fill=(0, 0, 0, 120))
+    dib.rounded_rectangle((0, 0, w, alto), alto // 2, fill=(255, 255, 255, 255))
+    ic = icono(tipo, alto - 10)
+    capa.paste(ic, (5, 5), ic)
+    x = alto + 12
+    dib.text((x, alto * 0.30), arriba, font=fnt, fill=(15, 15, 15), anchor='lm')
+    dib.text((x, alto * 0.70), abajo, font=fnt, fill=(15, 15, 15), anchor='lm')
+    return capa
+
+
+def logo_marca(marca):
+    """El logo oficial guardado de la marca (mis_conocimientos/logos), o None."""
+    from PIL import Image
+    f = os.path.join(LOGOS_DIR, marca.lower().replace(' ', '_') + '.png')
+    return Image.open(f).convert('RGBA') if os.path.exists(f) else None
+
+
+def componer_mixta(escena, lineas, marca, idioma, salida):
+    """Pone encima de la escena de GPT todo lo escrito y los logos, en el idioma pedido."""
+    from PIL import Image, ImageDraw
+    lienzo = Image.fromarray(cv2.cvtColor(cv2.resize(escena, (W, H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)).convert('RGBA')
+    pega = lambda capa, x, y: lienzo.alpha_composite(capa, (int(x), int(y)))
+    # la franja de abajo: inclinada, amarilla a celeste, con borde negro
+    y_izq, y_der = H * 0.785, H * 0.745
+    grad = np.zeros((H, W, 4), np.uint8)
+    u = np.linspace(0, 1, W)[None, :, None]
+    grad[..., :3] = ((1 - u) * np.array([255, 214, 0]) + u * np.array([0, 196, 255])).astype(np.uint8)
+    grad[..., 3] = 255
+    mascara = Image.new('L', (W, H), 0)
+    ImageDraw.Draw(mascara).polygon([(0, y_izq), (W, y_der), (W, H), (0, H)], fill=255)
+    lienzo.paste(Image.fromarray(grad, 'RGBA'), (0, 0), mascara)
+    ImageDraw.Draw(lienzo).line([(0, y_izq), (W, y_der)], fill=(0, 0, 0), width=7)
+    titulo = ' / '.join(x for x, _ in (traducir(l, idioma) for l in lineas if l))
+    capa = texto_italico(titulo, 118, ancho_max=W - 50)
+    pega(capa, (W - capa.width) / 2, (y_izq + y_der) / 2 + (H - (y_izq + y_der) / 2) / 2 - capa.height / 2 + 6)
+    # arriba: NEW 2026 y las etiquetas ANTES / DESPUÉS sobre cada teléfono
+    pega(cinta('NEW 2026', (226, 30, 36), 50, 10), 8, 6)
+    antes, despues = ANTES_DESPUES[idioma]
+    for txt, col, cx in ((antes, (226, 30, 36), 0.31), (despues, (34, 168, 64), 0.61)):
+        c = cinta(txt, col, 60, 5)
+        pega(c, W * cx - c.width / 2, 8)
+    # la columna derecha: logo oficial, sello y las dos píldoras
+    logo = logo_marca(marca)
+    if logo is not None:
+        k = min(230 / logo.width, 110 / logo.height)
+        logo = logo.resize((int(logo.width * k), int(logo.height * k)), Image.LANCZOS)
+        pega(logo, W - logo.width - 14, 14)
+    s = sello(108, SELLO[idioma])
+    pega(s, W - s.width - 10, H * 0.205)
+    y = H * 0.545
+    for arriba, abajo, tipo in PILDORAS_MIXTA[necesita_pc(marca)][idioma]:
+        p = pildora(arriba, abajo, tipo, 62)
+        pega(p, W - p.width - 16, y)
+        y += p.height + 10
+    lienzo.convert('RGB').save(salida, quality=92)
+
+
+def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio'):
+    """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
+    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + referencias_estilo(marca, 2)
+    fondo_txt = FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']).replace('(1) fondo', 'FONDO')
+    prompt = ('Escena para una miniatura de YouTube 16:9 del canal Xiaomiunlock, al estilo de las miniaturas de las últimas '
+              'imágenes (solo el estilo de la escena: sin su texto). ' + fondo_txt +
+              f'Imagen 1: el teléfono REAL de este video ANTES: {antes_desc or "bloqueado"}; Imagen 2: el mismo teléfono ya libre '
+              'en SU pantalla de inicio (DESPUÉS). Pon los dos teléfonos reales grandes, de frente, sostenidos con guante negro, '
+              'con la pantalla copiada tal cual de las fotos y bien legible: el de ANTES centrado al 31 % del ancho y el de '
+              'DESPUÉS al 61 %, los dos desde el 15 % hasta el 85 % del alto. Entre los dos, una flecha gruesa curva amarilla '
+              'del de ANTES al de DESPUÉS y, debajo, un candado abierto azul con la G de Google. Imagen 3: SU MASCOTA (el conejo '
+              'Mi con casco de soldar y el androide verde con herramientas), a la izquierda abajo, entre el 45 % y el 82 % del '
+              'alto, sin tapar el teléfono. MUY IMPORTANTE: NO escribas ningún texto, letra, número, logo, sello, etiqueta, '
+              'píldora ni marca de agua fuera de las pantallas de los teléfonos: los pondré yo después. Deja LIBRE (solo fondo) '
+              'la franja derecha (del 79 % al 100 % del ancho) y la franja de arriba a la izquierda (hasta el 20 % del ancho y '
+              'el 14 % del alto). Colores saturados, mucho contraste, bien iluminado. Todo dentro de la imagen 16:9.')
+    print('· la IA de imágenes hace la escena (sin texto)…', flush=True)
+    escena = imagen_gpt(prompt, refs)
+    cv2.imwrite(f'{salida_base}_escena.png', escena)
+    hechas = []
+    for idioma in idiomas:
+        f = f'{salida_base}_{idioma}.jpg'
+        componer_mixta(escena, lineas, marca, idioma, f)
+        hechas.append(os.path.basename(f))
+        print(f'· {os.path.basename(f)} lista', flush=True)
+    return hechas
+
+
 SHORTS = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'shorts')  # portadas de Shorts de fabian (ESTILO_SHORTS.md)
 PROMESA = {'es': 'EN INSTANTES - DE RAÍZ', 'en': 'IN SECONDS - PERMANENT', 'pt': 'EM INSTANTES - DE RAIZ'}
 SIN_PC = {'es': 'SIN PC', 'en': 'NO PC', 'pt': 'SEM PC'}
@@ -440,6 +658,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--mixta', action='store_true', help='con --gpt: GPT hace solo la escena y la app pone textos y logos (1 imagen para los 3 idiomas)')
     ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
@@ -501,6 +720,12 @@ def main():
                     for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), lineas[0][0],
                                             idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k)):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · ANTES: {k}', 'segundo': round(clave[k], 1), 'texto': [x for x in lineas[0] if x]})
+            elif a.gpt and a.mixta:  # GPT hace la escena y la app escribe encima (con --fondos, las dos escenas)
+                for fondo in (('escritorio', 'gpt') if a.fondos else ('escritorio',)):
+                    base = os.path.join(d, f'miniatura_mixta_{fondo}' if a.fondos else 'miniatura_mixta')
+                    for f in miniaturas_mixtas(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), base, lineas[0][0],
+                                               antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
+                        hechas.append({'archivo': f, 'de': f'mixta: escena de GPT ({fondo}) + textos de la app', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
                 for fondo in ('escritorio', 'gpt'):
                     for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_fondo_{fondo}'),

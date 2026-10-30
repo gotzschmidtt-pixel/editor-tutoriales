@@ -171,6 +171,7 @@
       <label class="aviso" title="La portada vertical (9:16) del Short con el estilo de tus Shorts, hecha por gpt-image-2.5-flare en español, inglés y portugués. Gasta 3 imágenes en calidad alta"><input type="checkbox" id="minShort"> 📱 Portada del Short (3 idiomas, gasta)</label>
       <label class="aviso" title="Con «También con GPT»: en vez de una, hace una miniatura por cada ANTES que encuentre en tu video (la pantalla bloqueada, el fastboot y «Bienvenido»), en español, para que elijas la mejor. Gasta una imagen por cada una"><input type="checkbox" id="minVariantes"> 🔀 Varias opciones de ANTES</label>
       <label class="aviso" title="Con «También con GPT»: la misma miniatura dos veces, una con tu escritorio real de fondo y otra con un fondo hecho por GPT (azul con neón), en español, para comparar. Gasta 2 imágenes"><input type="checkbox" id="minFondos"> 🖼 Dos fondos (escritorio y GPT)</label>
+      <label class="aviso" title="Con «También con GPT»: GPT pinta solo la escena (fondo, manos, teléfonos, flecha, mascota) sin ningún texto, y la app pone encima los textos, el sello, las píldoras y el logo oficial guardado. Nunca salen letras mal escritas ni logos inventados, y una escena sirve para los 3 idiomas: gasta 1 imagen en vez de 3"><input type="checkbox" id="minMixta"> 🧩 Mixta: GPT la escena, la app los textos</label>
       <button class="principal" onclick="miniaturas()">🖼 Hacer miniaturas</button><span class="msg" id="minMsg"></span></div>
     <div id="minVer" class="tira"></div>
   </section>
@@ -311,12 +312,13 @@ function miniaturas() {  // con GPT gasta: hay que escribir SI (como antes de ga
   const gpt = $('#minGpt').checked, short = $('#minShort').checked;
   if (gpt || short) {
     const variantes = gpt && $('#minVariantes').checked;
-    const n = (gpt ? 3 : 0) + (short ? 3 : 0);
+    const mixta = gpt && $('#minMixta').checked, fondos = gpt && $('#minFondos').checked;
+    const n = (gpt ? (mixta ? (fondos ? 2 : 1) : 3) : 0) + (short ? 3 : 0);
     const r = prompt(`⚠ Esto gasta ${n} imágenes de gpt-image-2.5-flare en calidad alta (${[gpt ? 'la miniatura' : '', short ? 'la portada del Short' : ''].filter(Boolean).join(' y ')}, en español, inglés y portugués).\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
     if (r === null) return;
     if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
   }
-  correr('m_miniatura', {texto: $('#minTexto').value, gpt, short, variantes: gpt && $('#minVariantes').checked, fondos: gpt && $('#minFondos').checked, confirmo: gpt || short ? 'SI' : ''}, '#minMsg', gpt || short ? 'Buscando los mejores cuadros y haciendo las de GPT (unos minutos)…' : 'Buscando los mejores cuadros…');
+  correr('m_miniatura', {texto: $('#minTexto').value, gpt, short, variantes: gpt && $('#minVariantes').checked, fondos: gpt && $('#minFondos').checked, mixta: gpt && $('#minMixta').checked, confirmo: gpt || short ? 'SI' : ''}, '#minMsg', gpt || short ? 'Buscando los mejores cuadros y haciendo las de GPT (unos minutos)…' : 'Buscando los mejores cuadros…');
 }
 function zoom(deshacer) { correr('m_zoom', {archivo: $('#zoomArchivo').value, max: +$('#zoomMax').value, deshacer: !!deshacer}, '#zoomMsg', deshacer ? 'Volviendo…' : 'Buscando los clics y armando el zoom…'); }
 function color(deshacer) { correr('m_color', {fuerza: +$('#colFuerza').value, deshacer: !!deshacer}, '#colMsg', deshacer ? 'Volviendo…' : 'Midiendo y corrigiendo el color (unos minutos)…'); }
