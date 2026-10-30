@@ -38,6 +38,20 @@ sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
 sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
 import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar, mejor  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+FONDOS = os.path.join(RAIZ, 'mis_conocimientos', 'fondos')
+
+
+def fondo_de_marca(d):
+    """El fondo de la placa final para la marca del proyecto (mis_conocimientos/fondos/fondos.json); None si no hay."""
+    try:
+        import conocimiento
+        marca = (conocimiento.marca_de_proyecto(d) or '').lower()
+        lista = json.load(open(os.path.join(FONDOS, 'fondos.json'), encoding='utf-8')).get('fondos', [])
+    except Exception:
+        return None
+    f = next((os.path.join(FONDOS, x['archivo']) for x in lista if marca and str(x.get('marca', '')).lower() == marca), None)
+    return f if f and os.path.isfile(f) else None
 sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
 import sonidos  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
@@ -133,6 +147,11 @@ def main():
         filtros.append('[m]anull[x]')
     # 'audio' siempre va: si faltara, Remotion usa el de ejemplo (trailer/audio.mp3) y sin voz ni música fallaba con un 404
     props = {'clips': clips, 'titulo': plan['titulo'], 'subtitulo': plan.get('subtitulo'), 'audio': ''}
+    fondo = fondo_de_marca(os.path.dirname(os.path.abspath(a.plan)))
+    if fondo:  # «fondo Honor», «fondo Motorola»…: el de la marca, detrás del título (pedido de fabian, 30/10/2026)
+        shutil.copyfile(fondo, os.path.join(PUB, 'fondo' + os.path.splitext(fondo)[1]))
+        props['fondo'] = 'trailer/fondo' + os.path.splitext(fondo)[1]
+        print(f'· placa final con el fondo de la marca: {os.path.basename(fondo)}', flush=True)
     if filtros:
         filtros.append(f"[x]atrim=0:{total},loudnorm=I=-15:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]")
         ff(ins + ['-filter_complex', ';'.join(filtros), '-map', '[a]', '-ar', '48000', os.path.join(PUB, 'audio.wav')])

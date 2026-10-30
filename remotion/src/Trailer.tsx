@@ -1,9 +1,10 @@
-import {AbsoluteFill, Audio, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {estilo} from './estilo';
 
 export type Fase = 'ANTES' | 'DURANTE' | 'DESPUÉS';
 export type Clip = {src: string; dur: number; fase: Fase};
-export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string};
+// fondo: la imagen de la marca para la placa final (mis_conocimientos/fondos, hecha con gpt-image-2.5 sin texto); el título va encima
+export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string; fondo?: string};
 
 const CIERRE = 2.4; // segundos de la placa final con el título
 const FLASH = 4; // cuadros de destello entre cortes
@@ -51,12 +52,28 @@ const Toma: React.FC<{clip: Clip; nuevo: boolean}> = ({clip, nuevo}) => {
   );
 };
 
-const Cierre: React.FC<{titulo: string; subtitulo?: string}> = ({titulo, subtitulo}) => {
+const Cierre: React.FC<{titulo: string; subtitulo?: string; fondo?: string}> = ({titulo, subtitulo, fondo}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
   const s = spring({frame: f, fps, config: {damping: 12}});
   const s2 = spring({frame: f - 8, fps, config: {damping: 14}});
   const brillo = interpolate(f, [0, 2 * fps], [-30, 130]);
+  if (fondo) {  // con el fondo de la marca: la imagen se acerca despacio y el título va a la izquierda, sobre la parte oscura
+    const zoom = interpolate(f, [0, CIERRE * fps], [1.0, 1.06]);
+    return (
+      <AbsoluteFill style={{backgroundColor: '#07080d', fontFamily: estilo.fuente}}>
+        <Img src={staticFile(fondo)} style={{width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${zoom})`}} />
+        <AbsoluteFill style={{background: 'linear-gradient(90deg, rgba(7,8,13,.85) 0%, rgba(7,8,13,.55) 38%, transparent 62%)'}} />
+        <AbsoluteFill style={{justifyContent: 'center', paddingLeft: 110, paddingRight: 820}}>
+          <div style={{fontWeight: 900, fontSize: 104, transform: `translateY(${(1 - s) * 60}px)`, opacity: s, lineHeight: 1.05,
+            backgroundImage: `linear-gradient(100deg, white ${brillo - 15}%, ${estilo.azul} ${brillo}%, white ${brillo + 15}%)`,
+            WebkitBackgroundClip: 'text', color: 'transparent', textShadow: 'none'}}>{titulo}</div>
+          {subtitulo && <div style={{marginTop: 26, fontSize: 50, fontWeight: 700, color: estilo.rosa, opacity: s2,
+            transform: `translateY(${(1 - s2) * 30}px)`, letterSpacing: 1}}>{subtitulo}</div>}
+        </AbsoluteFill>
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{background: `radial-gradient(circle at 30% 30%, ${estilo.rosa}55, transparent 60%), radial-gradient(circle at 75% 70%, ${estilo.azul}55, transparent 60%), #07080d`,
       justifyContent: 'center', alignItems: 'center', fontFamily: estilo.fuente}}>
@@ -70,7 +87,7 @@ const Cierre: React.FC<{titulo: string; subtitulo?: string}> = ({titulo, subtitu
   );
 };
 
-export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio}) => {
+export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio, fondo}) => {
   const {fps} = useVideoConfig();
   let desde = 0;
   return (
@@ -86,7 +103,7 @@ export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio
         return seq;
       })}
       <Sequence from={desde}>
-        <Cierre titulo={titulo} subtitulo={subtitulo} />
+        <Cierre titulo={titulo} subtitulo={subtitulo} fondo={fondo} />
       </Sequence>
       {audio && <Audio src={staticFile(audio)} />}
     </AbsoluteFill>
