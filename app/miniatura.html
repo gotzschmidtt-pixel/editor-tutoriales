@@ -44,6 +44,7 @@
 <header>
   <h1>🖼 Miniatura · <span id="nombre"></span></h1>
   <span class="msg" id="estadoTrabajo"></span>
+  <div class="barra" id="barraTrabajo" hidden style="flex:1; min-width:260px; margin:0"><div></div><span></span></div>
 </header>
 <main>
   <section>
@@ -270,8 +271,19 @@ async function cargar() {
 }
 
 setInterval(async () => {  // qué está haciendo la app (si otra pestaña corre un paso)
-  try { const e = await api(`/api/estado?p=${q(P)}`); $('#estadoTrabajo').textContent = e.trabajo && e.trabajo.proyecto ? `Trabajando: ${e.trabajo.paso || ''}` : ''; } catch (e) {}
-}, 4000);
+  try {  // lo que corre en la app (por ejemplo «Hacer todo» desde la ventana principal), con su porcentaje
+    const e = await api(`/api/estado?p=${q(P)}`), w = e.trabajo || {}, b = $('#barraTrabajo');
+    if (!w.proyecto) { $('#estadoTrabajo').textContent = ''; b.hidden = true; return; }
+    const n = (E.bloques || []).length, m = /^L(\d+)/.exec(w.linea || '');
+    let pct = w.pct_paso;
+    if (pct == null && m && n) pct = 100 * Math.min(1, +m[1] / n);  // va por el bloque L12 de 56…
+    if (pct == null && w.promedio_s) pct = Math.min(97, 100 * w.segundos / w.promedio_s);  // o por lo que suele tardar
+    const etapa = w.plan && w.plan.length ? ` (${(w.i || 0) + 1} de ${w.plan.length}: ${w.plan[w.i || 0] || w.paso})` : '';
+    $('#estadoTrabajo').textContent = `Trabajando: ${w.paso || ''}${etapa}${w.linea ? ' · ' + w.linea.slice(0, 60) : ''}`;
+    b.hidden = pct == null;
+    if (pct != null) { b.firstElementChild.style.width = pct + '%'; b.lastElementChild.textContent = `${Math.floor(pct)} % · ${Math.floor(w.segundos / 60)}:${String(w.segundos % 60).padStart(2, '0')}`; }
+  } catch (e) {}
+}, 2000);
 pintarCosto();
 cargar().catch(e => alert(e.message));
 </script>
