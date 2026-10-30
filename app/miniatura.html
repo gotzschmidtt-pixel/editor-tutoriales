@@ -62,6 +62,11 @@
       <button onclick="sugerir()" title="Tu IA (⚙ Ajustes IA) lee el guion y lo que funciona en tu canal y propone 8 títulos con su traducción. Es un pedido corto de texto (centavos)">💡 Sugerir con IA</button>
     </div>
     <div class="sugeridos" id="sugeridos"></div>
+    <div class="fila" title="Textos cortos (hasta 22 letras) en las esquinas de arriba, en una cinta inclinada. Vacío = no se pone. También se traducen">
+      <label>↖ Arriba izquierda <input type="text" id="esqIzq" value="NEW 2026" maxlength="22" style="width:11em; text-transform:uppercase"></label>
+      <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: 100% REAL" maxlength="22" style="width:11em; text-transform:uppercase"></label>
+      <span class="aviso">(con texto a la derecha, el logo baja un poco)</span>
+    </div>
     <p class="msg" id="sugMsg"></p>
     <div class="fila">
       <label>Fondo <select id="fondo">
@@ -189,7 +194,7 @@ async function hacer() {
   aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
   try {
     await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
-      body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, titulo_gpt: $('#tituloGpt').checked, confirmo: 'SI'})});
+      body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, titulo_gpt: $('#tituloGpt').checked, esq_izq: $('#esqIzq').value.trim().toUpperCase(), esq_der: $('#esqDer').value.trim().toUpperCase(), confirmo: 'SI'})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);
