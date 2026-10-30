@@ -89,6 +89,7 @@
   <h1>🎬 <b>Tráiler</b> · <span id="nombre"></span></h1>
   <span class="total" id="total"></span>
   <span class="espacio"></span>
+  <button onclick="if (!sucio || confirm('Tienes cambios sin guardar en las tomas: se pierden al recargar. ¿Recargar igual?')) { sucio = false; location.reload(); }" title="Recarga la página (como F5) para ver lo último que armó la app">🔄 Recargar</button>
   <label class="aviso" title="GPT, Claude y DeepSeek (las que tengan modelo y clave en «⚙ Ajustes IA») proponen cada una su tráiler, a la vez. Después eliges el mejor. Se paga una propuesta a cada una"><input type="checkbox" id="varias"> Con varias IAs</label>
   <button id="btnProponer" onclick="proponer()" title="La IA de la app (⚙ Ajustes IA) mira tu video, tu guion ya aprobado y tus respuestas, y propone las mejores tomas ANTES · DURANTE · DESPUÉS. Gasta un pedido a la IA, no ElevenLabs">✨ Proponer con la IA</button>
   <button onclick="encargoChat()" title="Copia el pedido completo del tráiler (lo mismo que la app le manda a la IA) para pegarlo en el chat de Claude, ChatGPT o DeepSeek, sin gastar la API. También queda en ia_prompt_trailer.txt">📋 Copiar encargo para un chat (gratis)</button>
