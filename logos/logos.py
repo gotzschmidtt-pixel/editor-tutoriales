@@ -3,7 +3,7 @@
 Los logos son de fabian y sirven para todos los videos: mis_conocimientos/logos/logos.json (se sincroniza con la otra PC).
 Cada logo tiene su "nombre" («Android 15») y sus "palabras" («android quince»). Con los tiempos por letra de la voz se busca
 cuándo se dice cada uno; en «Android quince, dieciséis o diecisiete» salen los tres, uno al lado del otro, cada uno cuando se
-nombra, y se van juntos. Salen de a uno, grandes, como pop-up en el centro. Un mismo logo no se repite antes de 30 s.
+nombra, y se van juntos. Salen de a uno, grandes, como pop-up arriba a la derecha. Un mismo logo no se repite antes de 30 s.
 Tablas y textos van en español, inglés y portugués («idiomas» en logos.json: pedido de fabian, 30/10/2026): en la versión
 del video en otro idioma sale la suya.
 
@@ -20,8 +20,8 @@ DESFASE = 0.3     # la voz entra 0,3 s después del inicio del bloque (mezclar_v
 JUNTOS = 4.0      # menciones a menos de esto van en la misma fila
 QUEDA = 2.8       # segundos que siguen en pantalla después de la última mención de la fila
 NO_REPETIR = 30.0
-ALTO = 0.5        # alto del logo, en parte del alto del video (grande, como pop-up en el centro)
-ALTO_ANCHO = 0.26 # alto de las insignias anchas (marcas y webs)
+ALTO = 0.36       # alto del logo, en parte del alto del video (grande, arriba a la derecha para no tapar el teléfono)
+ALTO_ANCHO = 0.2  # alto de las insignias anchas (marcas y webs)
 MINIMO = 0.35     # menos que esto no se alcanza a ver: ese logo se salta
 POP = 0.35        # segundos que tarda en crecer al entrar
 ENTRA = 0.3
@@ -154,8 +154,8 @@ def main():
         return
     total = duracion(a.video)
     W, H = tamano(a.video)
-    # pedido de fabian (30/10/2026): grandes, de a UNO, como pop-up en el centro, cada uno mientras la voz lo nombra (con
-    # «Android 15, 16, 17» sale el 15, después el 16, después el 17); no importa si tapa el teléfono
+    # pedido de fabian (30/10/2026): grandes, de a UNO, como pop-up arriba a la derecha, cada uno mientras la voz lo nombra (con
+    # «Android 15, 16, 17» sale el 15, después el 16, después el 17), sin tapar el teléfono
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     uno = [x for fila in filas for x in fila]
     for k, (t, l) in enumerate(uno):
@@ -166,6 +166,7 @@ def main():
         dur = hasta - t
         png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
         ancho_rel = proporcion(png)
+        margen = round(H * 0.04)
         alto = round(H * (ALTO_ANCHO if ancho_rel > 1.3 else ALTO)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
         # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
@@ -176,7 +177,7 @@ def main():
                               f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
                               f"fade=t=in:st=0:d={suave:.2f}:alpha=1,fade=t=out:st={max(0, dur - suave):.2f}:d={suave:.2f}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",
-                       'overlay': f"x='(W-w)/2':y='(H-h)/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
+                       'overlay': f"x='W-w-{margen}-({ancho}-w)/2':y='{margen}+({alto}-h)/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
         n = len(piezas)
         ins += piezas[-1]['args']
         filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
