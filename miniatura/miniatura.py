@@ -393,15 +393,18 @@ PILDORAS_MIXTA = {True: {'es': (('TODOS LOS', 'MODELOS', 'tel'), ('EN', 'MINUTOS
 LOGOS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
 
 
-def imagen_gpt(prompt, refs, size='1536x864'):
-    """Un pedido a gpt-image-2.5-flare con imágenes de referencia; devuelve la imagen (BGR)."""
+def imagen_gpt(prompt, refs, size='1536x864', transparente=False):
+    """Un pedido a gpt-image-2.5-flare con imágenes de referencia; devuelve la imagen (BGR, o BGRA si es transparente)."""
     import base64, urllib.request, uuid
     k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
     if not k:
         raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
     b = uuid.uuid4().hex
     cuerpo = b''
-    for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': size, 'quality': 'high', 'output_format': 'png'}.items():
+    campos = {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': size, 'quality': 'high', 'output_format': 'png'}
+    if transparente:
+        campos['background'] = 'transparent'
+    for campo, v in campos.items():
         cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
     for i, r in enumerate(refs):
         tipo = 'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'
@@ -411,7 +414,8 @@ def imagen_gpt(prompt, refs, size='1536x864'):
     req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
                                  headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
     r = pedir_imagen(req)
-    return cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
+    return cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8),
+                        cv2.IMREAD_UNCHANGED if transparente else cv2.IMREAD_COLOR)
 
 
 def fuente(tam, cual=0):
@@ -643,7 +647,7 @@ def titulo_estilizado(partes, estilo, ancho_max, alto_max=150):
     return fondo
 
 
-def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa'):
+def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa', titulo_png=None):
     """Pone encima de la escena de GPT todo lo escrito y los logos, en el idioma pedido."""
     from PIL import Image, ImageDraw
     lienzo = Image.fromarray(cv2.cvtColor(cv2.resize(escena, (W, H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)).convert('RGBA')
@@ -653,8 +657,16 @@ def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa'):
         lienzo.alpha_composite(capa, (max(0, x), max(0, y)))
     # abajo, el título con uno de tus estilos: la marca en blanco/plateado y el problema en amarillo/dorado
     partes = [(x, k > 0) for k, (x, _) in enumerate(traducir(l, idioma) for l in lineas if l)]
-    capa = titulo_estilizado(partes, estilo, W - 20)
-    pega(capa, (W - capa.width) / 2, H - capa.height + 18)
+    if titulo_png and os.path.exists(titulo_png):  # el que dibujó GPT con tu estilo, recortado y a lo ancho de abajo
+        capa = Image.open(titulo_png).convert('RGBA')
+        caja = capa.getchannel('A').point(lambda v: 255 if v > 60 else 0).getbbox()  # sin el borde casi invisible
+        capa = capa.crop(caja or (0, 0, capa.width, capa.height))
+        k = min((W - 30) / capa.width, 235 / capa.height)
+        capa = capa.resize((int(capa.width * k), int(capa.height * k)), Image.LANCZOS)
+        pega(capa, (W - capa.width) / 2, H - capa.height - 10)
+    else:
+        capa = titulo_estilizado(partes, estilo, W - 20)
+        pega(capa, (W - capa.width) / 2, H - capa.height + 18)
     # arriba: NEW 2026 y las etiquetas ANTES / DESPUÉS sobre cada teléfono
     pega(cinta('NEW 2026', (226, 30, 36), 50, 10), 8, 6)
     antes, despues = ANTES_DESPUES[idioma]
@@ -675,6 +687,36 @@ def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa'):
         pega(p, W - p.width - 16, y)
         y += p.height + 10
     lienzo.convert('RGB').save(salida, quality=92)
+
+
+TITULOS_REF = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'titulos')  # los títulos que le gustan (ESTILO_TITULOS.md)
+TITULO_GPT = {
+    'placa': (['placa_iphone_no_disponible.png'], 'una placa azul brillante redondeada con borde de luz celeste y reflejo arriba, '
+              'detrás de las letras; letra muy gruesa, redondeada e itálica, con borde azul oscuro y sombra'),
+    'pincel': (['pincel_elim_patron_honor.png'], 'una pincelada pintada a mano de verde a azul, con bordes rotos, a todo el ancho detrás '
+               'de las letras; letra condensada muy gruesa con borde negro'),
+    'metal': (['metal_bypass_ios.png', 'metal_quitar_google.png'], 'letras 3D enormes con relieve y brillo, la parte clave en '
+              'dorado (amarillo a naranja) y la marca en plateado, borde oscuro grueso y un halo azul oscuro detrás'),
+}
+
+
+def titulo_gpt(partes, estilo, salida):
+    """GPT 2.5 dibuja SOLO el título (fondo transparente) copiando uno de tus estilos. Guarda el PNG en salida."""
+    refs, como = TITULO_GPT.get(estilo, TITULO_GPT['placa'])
+    refs = [os.path.join(TITULOS_REF, f) for f in refs if os.path.exists(os.path.join(TITULOS_REF, f))]
+    blanco, clave = (partes + [''])[:2]
+    prompt = ('Diseña SOLO el título de una miniatura de YouTube, sobre fondo TRANSPARENTE: nada más (sin teléfonos, sin '
+              'personas, sin fondo, sin marco de imagen). Copia EXACTAMENTE el estilo de las letras y de lo que va detrás de '
+              f'ellas de la(s) imagen(es) de referencia (no su texto): {como}. El texto, en UNA sola fila y perfectamente '
+              f'escrito, son estas palabras exactas y ninguna más: «{blanco}» en blanco/plateado'
+              + (f' y «{clave}» en amarillo/dorado' if clave else '') +
+              '. Letras enormes que ocupen casi todo el ancho, con volumen, brillo, borde grueso y sombra. Centrado y '
+              'completo, sin cortar nada en los bordes.')
+    img = imagen_gpt(prompt, refs, size='1536x1024', transparente=True)
+    if img.ndim == 3 and img.shape[2] == 3:  # por si no vino transparente
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+    cv2.imwrite(salida, img)
+    return salida
 
 
 def traducciones_titulo(d, lineas):
@@ -706,7 +748,7 @@ def traducciones_titulo(d, lineas):
     return out
 
 
-def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',)):
+def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',), titulo_por_gpt=False, escena=None):
     """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
     refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 2)
     fondo_txt = FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']).replace('(1) fondo', 'FONDO')
@@ -724,15 +766,22 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
               'píldora ni marca de agua fuera de las pantallas de los teléfonos: los pondré yo después. Deja LIBRE (solo fondo) '
               'la franja derecha (del 79 % al 100 % del ancho) y la franja de arriba a la izquierda (hasta el 20 % del ancho y '
               'el 14 % del alto). Colores saturados, mucho contraste, bien iluminado. Todo dentro de la imagen 16:9.')
-    print('· la IA de imágenes hace la escena (sin texto)…', flush=True)
-    escena = imagen_gpt(prompt, refs)
-    cv2.imwrite(f'{salida_base}_escena.png', escena)
+    if escena is None:
+        print('· la IA de imágenes hace la escena (sin texto)…', flush=True)
+        escena = imagen_gpt(prompt, refs)
+        cv2.imwrite(f'{salida_base}_escena.png', escena)
     hechas = []
     tr = traducciones_titulo(d, lineas)
     for estilo in estilos:
         for idioma in idiomas:
             f = f'{salida_base}_{estilo}_{idioma}.jpg' if len(estilos) > 1 else f'{salida_base}_{idioma}.jpg'
-            componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo)
+            png = None
+            if titulo_por_gpt:  # el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)
+                png = f'{salida_base}_titulo_{estilo}_{idioma}.png'
+                if not os.path.exists(png):
+                    print(f'· GPT dibuja el título «{" ".join(tr.get(idioma, lineas))}» ({estilo})…', flush=True)
+                    titulo_gpt(tr.get(idioma, lineas), estilo, png)
+            componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo, png)
             hechas.append(os.path.basename(f))
             print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas
@@ -834,7 +883,7 @@ def con_fotos(d, a):
     hechas = []
     try:
         for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
-            hacer = (lambda *x, **k: miniaturas_mixtas(*x, estilos=estilos_titulo(a), **k)) if a.mixta else miniaturas_gpt
+            hacer = (lambda *x, **k: miniaturas_mixtas(*x, estilos=estilos_titulo(a), titulo_por_gpt=a.titulo_gpt, **k)) if a.mixta else miniaturas_gpt
             base = os.path.join(d, f"miniatura_fotos_{'mixta' if a.mixta else 'gpt'}_{fondo}")
             for f in hacer(d, [fotos['antes'], fotos['despues']], lineas, base, marca, antes_desc='tal como está en la foto HD',
                            fondo=fondo, extras=extras):
@@ -855,6 +904,7 @@ def main():
     ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
     ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
     ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = uno de cada uno, gratis)')
+    ap.add_argument('--titulo-gpt', action='store_true', help='con --mixta: el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)')
     ap.add_argument('--mixta', action='store_true', help='con --gpt: GPT hace solo la escena y la app pone textos y logos (1 imagen para los 3 idiomas)')
     ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
@@ -923,7 +973,7 @@ def main():
                 for fondo in (('escritorio', 'gpt') if a.fondos else ('escritorio',)):
                     base = os.path.join(d, f'miniatura_mixta_{fondo}' if a.fondos else 'miniatura_mixta')
                     for f in miniaturas_mixtas(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), base, lineas[0][0],
-                                               antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo, estilos=estilos_titulo(a)):
+                                               antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo, estilos=estilos_titulo(a), titulo_por_gpt=a.titulo_gpt):
                         hechas.append({'archivo': f, 'de': f'mixta: escena de GPT ({fondo}) + textos de la app', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
                 for fondo in ('escritorio', 'gpt'):

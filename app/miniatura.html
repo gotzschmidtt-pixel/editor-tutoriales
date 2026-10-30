@@ -79,6 +79,7 @@
         <option value="pincel">Pincelada verde y azul</option>
         <option value="metal">Letras 3D doradas</option>
       </select></label>
+      <label title="El título lo dibuja GPT 2.5 copiando tus estilos (se ve menos genérico que el de la app). Gasta 1 imagen por estilo y por idioma"><input type="checkbox" id="tituloGpt" checked> ✨ Título dibujado por GPT 2.5</label>
     </div>
     <p class="aviso" id="costo"></p>
     <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
@@ -167,14 +168,18 @@ async function sugerir() {
   catch (e) { aviso('#sugMsg', e.message, 'err'); }
 }
 $('#linea1').oninput = $('#linea2').oninput = pintarSugeridos;
-function imagenes() { const n = $('#modo').value === 'mixta' ? 1 : 3; return $('#fondo').value === 'ambos' ? 2 * n : n; }
+function imagenes() {
+  const mixta = $('#modo').value === 'mixta', fondos = $('#fondo').value === 'ambos' ? 2 : 1;
+  const titulos = mixta && $('#tituloGpt').checked ? ($('#titulo').value === 'todos' ? 3 : 1) * 3 : 0;
+  return (mixta ? 1 : 3) * fondos + titulos;
+}
 function pintarCosto() {
-  $('#titulo').parentElement.style.display = $('#modo').value === 'mixta' ? '' : 'none';  // con «Todo GPT» el título lo dibuja GPT
+  $('#titulo').parentElement.style.display = $('#tituloGpt').parentElement.style.display = $('#modo').value === 'mixta' ? '' : 'none';  // con «Todo GPT» el título lo dibuja GPT
   const n = imagenes();
   $('#costo').textContent = `Gasta ${n} imagen${n > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad alta` +
-    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas).' : ' (una por idioma).');
+    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas' + ($('#tituloGpt').checked ? '; el título, una por estilo e idioma).' : ').') : ' (una por idioma).');
 }
-$('#fondo').onchange = $('#modo').onchange = pintarCosto;
+$('#fondo').onchange = $('#modo').onchange = $('#titulo').onchange = $('#tituloGpt').onchange = pintarCosto;
 
 async function hacer() {
   if (!(E.fotos_miniatura || {}).antes) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
@@ -184,7 +189,7 @@ async function hacer() {
   aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
   try {
     await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
-      body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, confirmo: 'SI'})});
+      body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, titulo_gpt: $('#tituloGpt').checked, confirmo: 'SI'})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);
