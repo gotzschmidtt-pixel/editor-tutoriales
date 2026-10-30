@@ -169,11 +169,12 @@ def main():
         alto = round(H * (ALTO_ANCHO if ancho_rel > 1.3 else ALTO)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
         # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
+        suave = min(ENTRA, dur * 0.15)  # los que se nombran rápido («quince, dieciséis…») casi no se desvanecen
         crece = f"min(1,0.55+0.45*(t/{POP})+0.08*sin(min(t/{POP},1)*3.1416))"
         piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', png],
                        'pre': f"format=rgba,scale={ancho}:{alto}:force_original_aspect_ratio=decrease,"
                               f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
-                              f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={max(0, dur - ENTRA):.2f}:d={ENTRA}:alpha=1,"
+                              f"fade=t=in:st=0:d={suave:.2f}:alpha=1,fade=t=out:st={max(0, dur - suave):.2f}:d={suave:.2f}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",
                        'overlay': f"x='(W-w)/2':y='(H-h)/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
         n = len(piezas)
