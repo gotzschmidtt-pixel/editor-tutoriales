@@ -575,6 +575,17 @@ def comandos(paso, d, op):
         srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
+    if paso == 'trailer_version':  # «▶ Ver» de cada IA: su tráiler armado aparte (sin voz = gratis), para compararlos
+        v = re.sub(r'[^a-z]', '', str(op.get('v') or ''))
+        plan = f'trailer_{v}.json'
+        if not v or not existe(d, plan):
+            raise ValueError('esa propuesta del tráiler ya no está')
+        if op.get('sin_voz'):
+            t = json.load(open(os.path.join(d, plan), encoding='utf-8'))
+            t.pop('voz', None)
+            plan = f'trailer_{v}.sinvoz.json'
+            json.dump(t, open(os.path.join(d, plan), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', plan, '--salida', f'trailer_{v}.mp4']]
     if paso == 'trailer_solo':  # «🎬 Ver solo el tráiler»: antes que el video, solo con tu grabación (la voz queda para después)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4']]
     if paso == 'short':  # «📱 Short»: vertical 9:16 con lo más importante, reencuadrado y con subtítulos (sin gastar créditos)
@@ -668,6 +679,7 @@ PASOS = [
     {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'short', 'nombre': 'Short vertical 9:16', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'SHORT.mp4', 'oculto': True},
     {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
+    {'id': 'trailer_version', 'nombre': 'Armar el tráiler de una IA (para compararlo)', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True, 'blando': True},
     {'id': 'trailer_solo', 'nombre': 'Armar solo el tráiler (para verlo)', 'necesita': ['original.mp4', 'trailer.json'], 'produce': 'trailer.mp4', 'oculto': True, 'blando': True},
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
@@ -818,7 +830,7 @@ def revision_imagen_pendiente(d):
     return isinstance(g, dict) and bool(g.get('revision_imagen_pendiente'))
 
 
-USAN_ELEVEN = {'voz', 'prueba', 'musica', 'trailer', 'trailer_solo', 'nuevos_modelos'}
+USAN_ELEVEN = {'voz', 'prueba', 'musica', 'trailer', 'trailer_solo', 'trailer_version', 'nuevos_modelos'}
 
 
 def carpeta(p):
@@ -1170,7 +1182,7 @@ def falta_libreria(mod, env):
     return subprocess.run([PY, '-c', f'import {mod}'], capture_output=True, env=env, **SIN_VENTANA).returncode != 0
 
 
-NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion'), 'trailer_solo': ('remotion', 'remotion')}
+NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion'), 'trailer_solo': ('remotion', 'remotion'), 'trailer_version': ('remotion', 'remotion')}
 
 
 def asegurar_node(paso, log, env):
