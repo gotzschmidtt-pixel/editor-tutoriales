@@ -2929,6 +2929,23 @@ def ias_del_guion(ajustes):
     return out
 
 
+def ia_de_la_version(d, ajustes):
+    """Pedido del autor (29/10/2026): corregir, ajustar o pedir ideas sobre una versión del guion lo hace la misma IA que la
+    escribió (la elegida en «Versiones de cada IA»), si tiene modelo y clave. Si no, tu IA principal."""
+    try:
+        v = next((x for x in json.load(open(os.path.join(d, 'versiones_guion.json'), encoding='utf-8')) if x.get('elegida')), None)
+    except (OSError, ValueError, TypeError):
+        return ajustes
+    if not v:
+        return ajustes
+    aj = dict(ias_del_guion({**ajustes, 'tres_ia': True})).get(v.get('id'))
+    if not aj:
+        print(f"· la versión elegida es de {v.get('nombre')}, pero esa IA no tiene modelo y clave: lo hace tu IA principal", flush=True)
+        return ajustes
+    print(f"· la versión elegida es de {IAS_GUION[v['id']][0]}: lo hace {IAS_GUION[v['id']][0]} ({aj['modelo']})", flush=True)
+    return aj
+
+
 def versiones_fallidas(d, ajustes):
     """«🔁 Reintentar las que fallaron»: (versiones de antes, [(id, ajustes)] de las IAs que no entregaron guion y tienen
     modelo y clave). Las que fallaron se piden otra vez aunque ya no esté tildado «varias IAs a la vez»."""
@@ -3399,7 +3416,7 @@ def main():
         revision_pendiente(d, a.ajustes, destino, forzar=a.forzar)
         return
     if a.tarea == 'guion' and a.ideas:
-        ideas_guion(d, json.load(open(a.ajustes, encoding='utf-8')))
+        ideas_guion(d, ia_de_la_version(d, json.load(open(a.ajustes, encoding='utf-8'))))
         return
     reintento = None
     if a.tarea == 'guion' and a.reintentar_varias:  # se revisa antes de mirar el video: si no hay nada que reintentar, no tarda
@@ -3409,7 +3426,7 @@ def main():
     mapa, todo_ia = None, False
     avisos_humor = []
     if a.tarea == 'guion' and a.ajustar_humor:  # «🎚 Ajustar el humor»: el guion que ya tienes, sin rehacerlo
-        ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        ajustes = ia_de_la_version(d, json.load(open(a.ajustes, encoding='utf-8')))
         datos = json.load(open(destino, encoding='utf-8'))
         if medir_humor(datos['bloques']) is None:
             datos = marcar_humor(ajustes, datos)
@@ -3531,6 +3548,8 @@ def main():
             print(f'Prompt en {f}. Adjunta las {len(caps)} capturas de ia_capturas/ si tu IA ve imágenes.')
             return
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        if a.tarea == 'guion' and (a.respuestas or a.ajustar_largo) and os.path.exists(destino):
+            ajustes = ia_de_la_version(d, ajustes)  # la versión elegida la corrige la IA que la escribió
         if a.tarea == 'guion' and a.respuestas and os.path.exists(destino):
             datos = corregir_con_respuestas(d, ajustes, json.load(open(destino, encoding='utf-8')))
             datos, avisos = revisar(d, a.tarea, datos)
