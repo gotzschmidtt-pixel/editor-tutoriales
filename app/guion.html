@@ -200,7 +200,7 @@ async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json
     ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
     ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
     <div class="acciones"><button class="principal" onclick="responder()" title="La IA de la app corrige solo los bloques que tocan tus respuestas (gasta un pedido a la IA)">✓ Responder y corregir con la IA de la app</button>
-    <button onclick="responder(true)" title="Guarda tus respuestas sin gastar la IA de la app: las aplica la IA de chat que hace el video (DeepSeek, Claude…)">💾 Solo guardar respuestas (las aplica DeepSeek)</button>
+    <button onclick="responder(true)" title="Guarda tus respuestas sin gastar la IA: quedan aprendidas, y las aplicas cuando quieras con «Responder y corregir» o desde el chat de Claude o DeepSeek">💾 Solo guardar respuestas (sin gastar IA)</button>
     <span class="msg" id="msgPreg"></span></div></div>`;
 }
 async function esperar() {  // hasta que la app termine el paso que se pidió
@@ -228,7 +228,8 @@ async function responder(soloGuardar) {
     }
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
     sucio = false;
-    if (soloGuardar) { m.textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» para que corrija el guion con tus respuestas.'; m.className = 'msg ok'; return; }
+    if (soloGuardar) { try { await api(`/api/conocimiento/aprender?p=${q(P)}`, {method: 'POST', body: '{}'}); } catch (e) {}
+      m.textContent = '✓ Guardadas y aprendidas. Para aplicarlas al guion: «Responder y corregir», o dile a Claude o DeepSeek «ya respondí».'; m.className = 'msg ok'; return; }
     m.className = 'msg'; m.textContent = 'La IA corrige el guion con tus respuestas…';
     await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true, editor: true})});
     await esperar(); await cargar();

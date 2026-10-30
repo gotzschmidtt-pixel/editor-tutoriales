@@ -2862,7 +2862,7 @@ async function verPreguntas() {
     ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
     ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
     <div class="fila"><button class="principal" onclick="responderPreguntas()">✓ Responder y corregir el guion</button>
-    <button onclick="responderPreguntas(true)" title="Guarda tus respuestas en preguntas_guion.json sin gastar la IA de la app: las aplica la IA de chat que hace el video (DeepSeek, Claude…)">💾 Solo guardar respuestas (las aplica DeepSeek)</button>
+    <button onclick="responderPreguntas(true)" title="Guarda tus respuestas sin gastar la IA: quedan aprendidas, y las aplicas cuando quieras con «Responder y corregir» o desde el chat de Claude o DeepSeek">💾 Solo guardar respuestas (sin gastar IA)</button>
     <span class="msg" id="msgPreg"></span></div></div>`;
 }
 async function respuestaAlVuelo(i) {  // cada respuesta se guarda apenas la eliges o escribes: si sales y vuelves, sigue ahí
@@ -2878,7 +2878,8 @@ async function responderPreguntas(soloGuardar) {
     await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(GUION, null, 1)});
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
     if (soloGuardar) {
-      $('#msgPreg').textContent = '✓ Guardadas. Dile a DeepSeek «ya respondí» y corrige el guion con tus respuestas.'; $('#msgPreg').className = 'msg ok';
+      try { await api(`/api/conocimiento/aprender?p=${q(P)}`, {method: 'POST', body: '{}'}); } catch (e) {}
+      $('#msgPreg').textContent = '✓ Guardadas y aprendidas. Para aplicarlas al guion: «Responder y corregir», o dile a Claude o DeepSeek «ya respondí».'; $('#msgPreg').className = 'msg ok';
       return;
     }
     await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true})});
