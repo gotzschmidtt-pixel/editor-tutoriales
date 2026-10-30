@@ -1057,7 +1057,7 @@ def patron_versiones(d):
         return ''
     txt = ("PATRÓN FIJO DE TODOS LOS GUIONES (pedido del autor): en un bloque del comienzo, donde dices a qué modelos sirve, la voz "
            "dice con estas palabras «este método sirve para Android quince, dieciséis, diecisiete o superiores» (cuando la voz las "
-           "dice, la app pone el logo de cada versión). Si en este video el autor dice otras versiones, nombra las suyas: manda el video.")
+           "dice, la app pone el logo de cada versión), y también «sirve para cualquier fecha de parche de seguridad». Si en este video el autor dice otras versiones, nombra las suyas: manda el video.")
     if marca == 'honor':
         txt += " Como es Honor, en esa frase o la siguiente: «y también funciona con MagicOS nueve, diez u once»."
     return txt
@@ -1074,6 +1074,8 @@ def falta_patron_versiones(d, bloques):
                    'agrégalo al comienzo, donde dices a qué modelos sirve (así salen los logos)')
     if (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor' and not re.search(VERSIONES_MAGICOS, todo):
         out.append('patrón fijo: en Honor la voz también dice «funciona con MagicOS nueve, diez u once» (así sale su logo)')
+    if not re.search(r'parche', todo):
+        out.append('patrón fijo: la voz también dice que el método sirve para cualquier fecha de parche de seguridad')
     return out
 
 
