@@ -106,6 +106,9 @@ def main():
 
     # audio: música con entrada fuerte y salida suave; la voz encima, con la música agachada
     mus = plan.get('musica')
+    fija = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mis_musica', 'musica_fija.mp3')
+    if mus and not os.path.exists(mus['pista']) and os.path.exists(fija):
+        mus = {**mus, 'pista': fija}  # sin música propia del proyecto, la misma de tus videos (mis_musica\musica_fija.mp3)
     if mus and not os.path.exists(mus['pista']):
         print('AVISO: no encontré la música del tráiler, va sin música'); mus = None
     filtros, ins = [], []
