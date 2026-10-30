@@ -17,6 +17,13 @@ DIFERENCIA = 22.0  # diferencia media (0-255) entre miniaturas a partir de la cu
 CICLO = (1.0, 1.35, 1.0, 1.7)            # zoom de cada encuadre: general, cerca, general, detalle
 CICLO_CRITICO = (1.0, 1.2, 1.0, 1.25)    # con un corte importante: sin acercarse tanto
 MW, MH = 64, 36
+OTRO_MOMENTO = 4.0  # en una pausa larga, cada encuadre repite la escena unos segundos antes (o después) en la grabación
+
+
+def misma_escena(mini, t1, t2):
+    """Si en esos dos segundos de la grabación se ve la misma escena."""
+    k1, k2 = [min(len(mini) - 1, max(0, int(round(x)))) for x in (t1, t2)]
+    return float(np.abs(mini[k1].astype(np.int16) - mini[k2].astype(np.int16)).mean()) <= DIFERENCIA
 
 
 def miniaturas(original, cache):

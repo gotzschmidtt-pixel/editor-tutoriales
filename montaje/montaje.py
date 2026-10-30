@@ -263,6 +263,7 @@ def main():
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
     umbral_agitada = max(UMBRAL_AGITADA, float(__import__('numpy').percentile(nt[2], 85)))  # en un video muy movido, solo lo más agitado
     plan = encuadres.planear(d['bloques'], a.original, os.path.splitext(a.original)[0] + '.encuadres.npz')
+    mini = encuadres.miniaturas(a.original, os.path.splitext(a.original)[0] + '.encuadres.npz')
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
@@ -301,7 +302,7 @@ def main():
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
         nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
         clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else [])
-                                        + ([plan.get((i, 'a')), plan.get((i, 'b'))] if (i, 'a') in plan or (i, 'b') in plan else []),
+                                        + ([plan.get((i, 'a')), plan.get((i, 'b')), 'otro_momento'] if (i, 'a') in plan or (i, 'b') in plan else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
@@ -368,14 +369,27 @@ def main():
                 else:
                     orden = '[rv][f]' if tras_tramo else '[f][rv]'
                     filtro = f"[0]setpts=PTS/{LENTO_ESCENA},{out_pausa},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]"
-                run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex', filtro, '-map', '[o]'] + enc + [ida])
-                if a.estabilizar:
-                    estabilizar(ida, enc)
+                def hacer_ida(a0, a1, destino):
+                    run(['-ss', f'{a0:.2f}', '-t', f'{a1 - a0:.2f}', '-i', a.original, '-an', '-filter_complex', filtro, '-map', '[o]'] + enc + [destino])
+                    if a.estabilizar:
+                        estabilizar(destino, enc)
+                hacer_ida(s0, s1, ida)
                 # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen
                 # tiembla (y ampliarla 4 veces cuadro a cuadro sería muy lento); el movimiento de la escena ya la mantiene viva
                 if (i, 'b') in plan:
-                    hechos = con_encuadres(['-stream_loop', '-1', '-i', ida], f"fps={FPS}", plan[(i, 'b')], FPS, res,
-                                           f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_b'), nfr)
+                    # cada encuadre repite otro momento de la misma escena (otro movimiento de la mano), no siempre la misma
+                    # vuelta: así una pausa larga no se nota repetida (fabian, 30/10/2026)
+                    segs, hechos = plan[(i, 'b')], []
+                    for k, (x0, x1, z, cx, cy) in enumerate(segs):
+                        ini, fin = round(x0 * FPS), (round(x1 * FPS) if k < len(segs) - 1 else nfr)
+                        origen = ida
+                        for corr in (k * encuadres.OTRO_MOMENTO, -k * encuadres.OTRO_MOMENTO):
+                            if k and 0 <= s0 - corr and s1 - corr <= dur_original and encuadres.misma_escena(mini, s1, s1 - corr):
+                                origen = os.path.join(tmp, f'{i}_ida{k}.mp4')
+                                hacer_ida(s0 - corr, s1 - corr, origen)
+                                break
+                        hechos += con_encuadres(['-stream_loop', '-1', '-i', origen], f"fps={FPS}", [(0, (fin - ini) / FPS, z, cx, cy)], FPS,
+                                               res, f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_b{k}'), fin - ini)
                 else:
                     run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps={FPS},format=yuv420p{lab}",
                          '-frames:v', str(nfr)] + enc + [f])
