@@ -47,6 +47,7 @@ import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retenci�
 import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de todos tus videos → reglas para la IA
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
+import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
 
 
 def estado_subs(d):
@@ -2109,6 +2110,11 @@ class Manejador(BaseHTTPRequestHandler):
                     if f and os.path.exists(f) and os.path.commonpath([os.path.realpath(f), os.path.realpath(RAIZ)]) == os.path.realpath(RAIZ):
                         e[k + '_ver'] = '/ver?ruta=' + urllib.parse.quote(os.path.relpath(f, RAIZ).replace('\\', '/'))
                 return self.responder(e)
+            if ruta == '/api/recursos':  # «📊 Uso del PC»: procesador, RAM y gráfica en vivo, y qué está haciendo la app
+                r = recursos.leer()
+                with CANDADO:
+                    r['trabajo'] = {'proyecto': TRABAJO['proyecto'], 'paso': next((x['nombre'] for x in PASOS if x['id'] == TRABAJO['paso']), TRABAJO['paso'])}
+                return self.responder(r)
             if ruta == '/api/conocimiento':  # «🧠 Conocimiento»: CONOCIMIENTO.md, lo aprendido y sus rutas completas
                 return self.responder(conocimiento.resumen())
             if ruta == '/aprendi':  # «🧠 Lo que aprendí», en su propia pestaña
