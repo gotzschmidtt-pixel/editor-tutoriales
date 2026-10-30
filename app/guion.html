@@ -326,6 +326,36 @@ function reponerVoz(i) {  // «sin voz, acelerado»: vuelve lo que decía
   ['texto_quitado', 'velocidad_antes', 'modo_antes', 'congelar_antes', 'sin_voz'].forEach(c => delete m[c]);
   sucio = true; pintar();
 }
+// «▶ Ver el corte» (pedido de fabian, 30/10/2026): el bloque en el último video armado, o su tramo de la grabación, ahí mismo
+const VIDEOS_ARMADOS = ['4_musica.mp4', '3_voz.mp4', '1_montaje.mp4', 'FINAL.mp4'];  // sin tráiler: los segundos del guion coinciden
+function verCorte(i, cual) {
+  const b = G.bloques[i], m = b.montaje || {}, caja = document.querySelector(`#b${i} > div`);
+  const desde = cual === 'video' ? +b.inicio_min : +(m.src_inicio ?? 0);
+  const hasta = cual === 'video' ? +b.fin_max : +(m.src_fin ?? desde + 5);
+  caja.querySelectorAll('.corte').forEach(x => x.remove());
+  const img = caja.querySelector('img'); if (img) img.hidden = true;
+  const div = document.createElement('div'); div.className = 'corte';
+  div.innerHTML = `<video controls autoplay playsinline style="width:100%; border-radius:8px; background:#000"></video>
+    <div class="meta">${cual === 'video' ? 'Del último video armado' : 'De tu grabación'} · ${mmss(desde)}–${mmss(hasta)} ·
+      <a href="#" onclick="cerrarCorte(${i}); return false">✕ cerrar</a></div>`;
+  caja.insertBefore(div, caja.firstChild);
+  const v = div.querySelector('video');
+  const archivos = cual === 'video' ? VIDEOS_ARMADOS.slice() : ['original.mp4'];
+  const probar = () => {  // el primero que exista
+    const f = archivos.shift();
+    if (!f) { div.querySelector('.meta').textContent = 'Todavía no hay un video armado. Arma el video y vuelve a tocar.'; return; }
+    v.src = `/archivo?p=${q(P)}&f=${q(f)}#t=${desde.toFixed(2)},${hasta.toFixed(2)}`;
+  };
+  v.onerror = probar;
+  v.addEventListener('timeupdate', () => { if (v.currentTime >= hasta) { v.pause(); v.currentTime = hasta; } });
+  v.addEventListener('play', () => { if (v.currentTime >= hasta - 0.05 || v.currentTime < desde - 0.5) v.currentTime = desde; });
+  probar();
+}
+function cerrarCorte(i) {
+  const caja = document.querySelector(`#b${i} > div`);
+  caja.querySelectorAll('.corte').forEach(x => x.remove());
+  const img = caja.querySelector('img'); if (img) img.hidden = false;
+}
 function pintar() {
   const porLugar = {};
   QUITADOS.forEach((x, k) => (porLugar[lugarQuitado(x)] = porLugar[lugarQuitado(x)] || []).push(fantasma(x, k)));
@@ -335,7 +365,10 @@ function pintar() {
       <div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
         <div class="meta"><b>${mmss(b.inicio_min)}–${mmss(b.fin_max)}</b> del video · de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div>
         ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}
-        ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}</div>
+        ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}
+        <div class="meta" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px">
+          <button onclick="verCorte(${i}, 'video')" title="Este bloque en el último video armado, con la voz y la música">▶ Ver el corte</button>
+          <button onclick="verCorte(${i}, 'grabacion')" title="El tramo de tu grabación que usa este bloque, sin cortes ni voz">🎞 Tu grabación</button></div></div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
         <span class="chip" id="aviso${i}"></span>
         <label class="chip emoChip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀 [
