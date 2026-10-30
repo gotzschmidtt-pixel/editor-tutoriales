@@ -2605,6 +2605,8 @@ class Manejador(BaseHTTPRequestHandler):
                     viejo['estabilizar'] = nuevo['estabilizar']
                 if nuevo.get('trailer_donde') in ('inicio', 'final'):  # «Material extra»: el tráiler abre o cierra el video
                     viejo['trailer_donde'] = nuevo['trailer_donde']
+                if 'trailer_segundos' in nuevo:  # «🎬 Tráiler»: cuánto querés que dure (la IA arma las tomas para eso)
+                    viejo['trailer_segundos'] = min(max(int(nuevo['trailer_segundos'] or 10), 5), 40)
                 json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/musica_fija':  # la música de este proyecto pasa a usarse en todos los videos (o se quita)

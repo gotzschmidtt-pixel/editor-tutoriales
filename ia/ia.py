@@ -607,7 +607,13 @@ Responde SOLO con un objeto JSON {{"etiquetas": [...]}}. Ejemplo de un elemento:
 {{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5,
 "por_que": "la voz nombra la web donde se descarga la herramienta"}}"""]
     elif tarea == 'trailer':
-        partes += [f"""Arma el tráiler de inicio de unos 10 segundos con la firma del autor: ANTES, DURANTE y DESPUÉS.
+        try:  # «🎬 Tráiler»: cuánto quiere el autor que dure (edicion.json, 10 s si no eligió)
+            seg = int(json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')).get('trailer_segundos') or 10)
+        except (OSError, ValueError, TypeError, AttributeError):
+            seg = 10
+        n_ant, n_dur, n_des = ('1', '1 a 2', '1') if seg <= 7 else ('1 a 2', '2 a 4', '1 a 2') if seg <= 12 else ('2', '3 a 5', '2') if seg <= 18 else ('2 a 3', '4 a 7', '2 a 3')
+        d_max = 2.6 if seg <= 12 else 3.4
+        partes += [f"""Arma el tráiler de inicio de unos {seg} segundos en total (el autor eligió ese largo: la suma de los «dur» tiene que dar eso, ±1 s) con la firma del autor: ANTES, DURANTE y DESPUÉS.
 Muestra lo mejor de lo mejor para que el espectador se quede:
 - ANTES = el problema: el teléfono BLOQUEADO (la pantalla que pide la cuenta Google o «Verificar tu cuenta», el FRP, el
   candado), o la pieza antes de tocarla. Búscalo en el MAPA y en la transcripción.
@@ -617,9 +623,9 @@ Muestra lo mejor de lo mejor para que el espectador se quede:
   o el equipo funcionando. Suele estar cerca del final de la grabación.
 Cada toma tiene que verse clara: nada de pantallas en negro, cargas o manos tapando.
 Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho", "voz": "una frase de la voz en off, máximo 15 palabras",
-"clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
+"clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a {d_max}}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
-Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS.
+Entre {n_ant} clips ANTES, {n_dur} DURANTE y {n_des} DESPUÉS.
 Cada clip lleva además "por_que": en pocas palabras qué se ve y por qué es de lo mejor (el autor lo lee al revisar).
 PREGUNTAS AL AUTOR (hasta {TRAILER_PREGUNTAS_MAX} en total, en "preguntas"): ya viste el video y el guion; antes de dar el tráiler por bueno,
 pregunta lo que no te quede claro (tipo "dato": cuál es la pantalla del problema, en qué momento queda desbloqueado, si

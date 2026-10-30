@@ -102,6 +102,7 @@
     lo que no le quedó claro. Tú contestas, cambias las tomas que quieras y lo armas cuando te guste.</p>
   <p class="msg" id="msg"></p>
   <div id="requisitos"></div>
+  <div id="largo"></div>
   <div id="versiones"></div>
   <div id="preguntas"></div>
   <div id="mejoras"></div>
@@ -118,7 +119,24 @@ const segundos = t => { t = String(t).trim().replace(',', '.'); const p = t.spli
 const FASES = [['ANTES', '😟 ANTES', 'el problema: el teléfono bloqueado, la pantalla que pide la cuenta'],
   ['DURANTE', '⚙️ DURANTE', 'el paso clave: cuando se pone la key o el código y se ve avanzar'],
   ['DESPUÉS', '✅ DESPUÉS', 'el resultado: ya desbloqueado, en la pantalla de inicio']];
-let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio';
+let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio', OBJ = 10;
+// ⏱ cuánto dura el tráiler: la IA arma las tomas para ese largo (edicion.json «trailer_segundos»)
+const LARGOS = [[6, 'Gancho rápido', 'el problema y el resultado, casi sin el medio. Ideal si lo vas a reusar en Shorts.'],
+  [10, 'Recomendado', 'ANTES, el paso clave y DESPUÉS. No hace esperar al que ya buscó el tutorial: retiene en los primeros 30 s.'],
+  [15, 'Con más contexto', 'dos tomas por fase: se entiende mejor qué pasa con la key o el programa.'],
+  [20, 'Para videos largos', 'si el video pasa los 15 minutos y el proceso tiene varias etapas.'],
+  [30, 'Tipo presentación', 'casi un resumen del video. Solo si el tráiler va al final o como video aparte.']];
+function verLargo() {
+  $('#largo').innerHTML = `<details class="panel"><summary>⏱ Largo del tráiler: <b>${OBJ} s</b> (${esc((LARGOS.find(x => x[0] === OBJ) || [0, 'a tu medida'])[1])}) · cambiar</summary>
+    <p class="msg">La IA arma las tomas para ese largo cuando propone (ya propuesto, pide «✨ Proponer» otra vez).</p>
+    ${LARGOS.map(([s, nombre, que]) => `<div class="acciones" style="align-items:center"><button ${s === OBJ ? 'class="principal"' : ''} onclick="ponerLargo(${s})">${s === OBJ ? '✓ ' : ''}${s} s · ${nombre}</button><span class="msg">${que}</span></div>`).join('')}
+    <div class="acciones" style="align-items:center">Otro: <input id="largoOtro" type="number" min="5" max="40" value="${OBJ}" style="width:5em"> s <button onclick="ponerLargo(+$('#largoOtro').value)">Usar</button></div></details>`;
+}
+async function ponerLargo(s) {
+  s = Math.min(40, Math.max(5, Math.round(+s || 10)));
+  try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_segundos: s})}); OBJ = s; verLargo(); if (T) resumen(); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
+}
 $('#nombre').textContent = P;
 
 async function api(url, op) {
@@ -142,7 +160,8 @@ async function cargar() {
   E = await api(`/api/estado?p=${q(P)}`);
   DUR = E.duracion_original || 0;
   try { T = JSON.parse(await api(`/api/json?p=${q(P)}&f=trailer.json`) || 'null'); } catch (e) { T = null; }
-  try { DONDE = (await api(`/api/edicion?p=${q(P)}`)).trailer_donde || 'inicio'; } catch (e) {}
+  try { const ed = await api(`/api/edicion?p=${q(P)}`); DONDE = ed.trailer_donde || 'inicio'; OBJ = +ed.trailer_segundos || 10; } catch (e) {}
+  verLargo();
   const avisos = [];
   if (!hay('guion.json')) avisos.push('Todavía no hay guion: la IA propone con tu grabación y la transcripción (con el guion aprobado elige mejor los pasos clave).');
   if (!hay('3_voz.mp4')) avisos.push('Todavía no está el video con voz: puedes proponer y «🎬 Ver solo el tráiler»; para unirlo al video, primero «▶ Hacer todo» en la app.');
@@ -287,7 +306,7 @@ function resumen() {
   const v = (T.voz || '').trim();
   if ($('#largoVoz')) $('#largoVoz').textContent = v ? `· ${v.length} letras` : '· sin voz';
   const faltan = FASES.filter(([f]) => !n(f)).map(([f]) => f);
-  $('#total').innerHTML = `${T.clips.length} tomas · unos <b class="${dura >= 6 && dura <= 16 ? 'ok' : 'mal'}">${dura.toFixed(1)} s</b>` + (faltan.length ? ` · <b class="mal">falta ${faltan.join(' y ')}</b>` : '');
+  $('#total').innerHTML = `${T.clips.length} tomas · unos <b class="${Math.abs(dura - OBJ) <= Math.max(2, OBJ * 0.25) ? 'ok' : 'mal'}">${dura.toFixed(1)} s</b> de ${OBJ} s elegidos` + (faltan.length ? ` · <b class="mal">falta ${faltan.join(' y ')}</b>` : '');
   $('#btnGuardar').classList.toggle('principal', sucio);
   $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar';
   $('#btnArmar').disabled = !hay('3_voz.mp4') || !T.clips.length;
