@@ -700,6 +700,15 @@ TITULOS_REF = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'titulos')  
 TITULO_GPT = {
     'placa': (['placa_iphone_no_disponible.png'], 'una placa azul brillante redondeada con borde de luz celeste y reflejo arriba, '
               'detrás de las letras; letra muy gruesa, redondeada e itálica, con borde azul oscuro y sombra'),
+    # otros colores de placa (fabian, 30/10/2026: la azul se pierde sobre su escritorio claro)
+    'placa_negra': (['placa_iphone_no_disponible.png'], 'la MISMA placa redondeada pero NEGRA brillante (negro azulado, '
+                    'reflejo arriba) con un borde de neón celeste que brilla, detrás de las letras; letra muy gruesa, redondeada '
+                    'e itálica, con borde oscuro y sombra'),
+    'placa_roja': (['placa_iphone_no_disponible.png'], 'la MISMA placa redondeada pero ROJA brillante (rojo vivo arriba, '
+                   'rojo oscuro abajo) con un borde de luz blanca, detrás de las letras; letra muy gruesa, redondeada e '
+                   'itálica, con borde oscuro y sombra'),
+    'placa_violeta': (['placa_iphone_no_disponible.png'], 'la MISMA placa redondeada pero VIOLETA a MAGENTA brillante con '
+                      'un borde de luz rosa, detrás de las letras; letra muy gruesa, redondeada e itálica, con borde oscuro y sombra'),
     'pincel': (['pincel_elim_patron_honor.png'], 'una pincelada pintada a mano de verde a azul, con bordes rotos, a todo el ancho detrás '
                'de las letras; letra condensada muy gruesa con borde negro'),
     'metal': (['metal_bypass_ios.png', 'metal_quitar_google.png'], 'letras 3D enormes con relieve y brillo, la parte clave en '
@@ -916,6 +925,8 @@ FOTOS = ('antes', 'despues', 'extra1', 'extra2')  # las fotos HD que subes en «
 
 
 def estilos_titulo(a):
+    if a.titulo == 'placas':  # las 4 placas, para ver cuál contrasta mejor
+        return ('placa', 'placa_negra', 'placa_roja', 'placa_violeta')
     return ('placa', 'metal') if a.titulo == 'todos' else (a.titulo,)  # los dos que eligió fabian (30/10/2026)
 
 
@@ -994,7 +1005,7 @@ def main():
     ap.add_argument('--momentos', action='store_true', help='solo busca en el video los cuadros de ANTES y DESPUÉS (gratis)')
     ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
     ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
-    ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = los dos que le gustan a fabian: placa y metal)')
+    ap.add_argument('--titulo', choices=('placa', 'placa_negra', 'placa_roja', 'placa_violeta', 'pincel', 'metal', 'todos', 'placas'), default='todos', help='con --mixta: el estilo del título (todos = los dos que le gustan a fabian: placa y metal)')
     ap.add_argument('--titulo-gpt', action='store_true', help='con --mixta: el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)')
     ap.add_argument('--esquina-izq', default='NEW 2026', help='con --mixta: texto corto arriba a la izquierda (vacío = nada)')
     ap.add_argument('--esquina-der', default='', help='con --mixta: texto corto arriba a la derecha (el logo baja un poco)')

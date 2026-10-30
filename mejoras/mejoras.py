@@ -98,7 +98,7 @@ def comandos(paso, d, op, py, ajustes):
         texto = str(op.get('texto') or '').strip()[:80]
         fondo = op.get('fondo') if op.get('fondo') in ('foto', 'gpt', 'ambos') else 'foto'
         return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo]
-                + (['--mixta', '--titulo', op.get('titulo') if op.get('titulo') in ('placa', 'pincel', 'metal') else 'todos'] if op.get('modo', 'mixta') == 'mixta' else [])
+                + (['--mixta', '--titulo', op.get('titulo') if op.get('titulo') in ('placa', 'placa_negra', 'placa_roja', 'placa_violeta', 'pincel', 'metal', 'placas') else 'todos'] if op.get('modo', 'mixta') == 'mixta' else [])
                 + (['--titulo-gpt'] if op.get('titulo_gpt') and op.get('modo', 'mixta') == 'mixta' else [])
                 + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else 'NEW 2026').strip()[:22],
                    '--esquina-der', str(op.get('esq_der') or '').strip()[:22]]
