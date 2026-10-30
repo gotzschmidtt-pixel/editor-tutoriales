@@ -2929,6 +2929,57 @@ def ias_del_guion(ajustes):
     return out
 
 
+def trailer_varias(d, ajustes, ias, texto, caps):
+    """«🎬 Tráiler con varias IAs» (pedido del autor, 29/10/2026): cada IA propone su tráiler con el mismo encargo, a la vez.
+    Quedan en trailer_<ia>.json y versiones_trailer.json; el de tu IA principal (o el primero que salió) pasa a trailer.json."""
+    res = {}
+
+    def una(ide, aj):
+        t0 = time.time()
+        try:
+            datos = extraer_json(llamar(aj, texto, caps))
+            if not (isinstance(datos, dict) and datos.get('clips')):
+                raise ValueError('contestó sin tomas de tráiler')
+            preguntas = normalizar_preguntas(datos.pop('preguntas', None))
+            datos, _ = revisar(d, 'trailer', datos)
+            res[ide] = {'datos': datos, 'preguntas': preguntas, 'segundos': round(time.time() - t0)}
+            print(f'· {IAS_GUION[ide][0]} propuso su tráiler ({len(datos["clips"])} tomas)', flush=True)
+        except BaseException as e:  # una que falla no frena a las otras
+            res[ide] = {'error': ' '.join(str(e).split())[:300] or type(e).__name__, 'segundos': round(time.time() - t0)}
+            print(f'· {IAS_GUION[ide][0]} no propuso tráiler: {res[ide]["error"]}', flush=True)
+
+    print('Le pido el tráiler a ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in ias) + ' a la vez…', flush=True)
+    hilos = [threading.Thread(target=una, args=x, daemon=True) for x in ias]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    versiones = []
+    for ide, aj in ias:
+        x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
+        v['segundos'] = x.get('segundos')
+        if 'datos' in x:
+            v.update(archivo=f'trailer_{ide}.json', tomas=len(x['datos']['clips']), titulo=x['datos'].get('titulo') or '',
+                     voz=x['datos'].get('voz') or '', preguntas=x['preguntas'])
+            json.dump(x['datos'], open(os.path.join(d, v['archivo']), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        else:
+            v['error'] = x['error']
+        versiones.append(v)
+    buenas = [v for v in versiones if 'archivo' in v]
+    if not buenas:
+        raise SystemExit('ERROR: ninguna IA propuso el tráiler. ' + ' · '.join(f"{v['nombre']}: {v['error']}" for v in versiones))
+    principal = _proveedor(ajustes)
+    elegida = next((v for v in buenas if _proveedor({**ajustes, 'proveedor': IAS_GUION[v['id']][1], 'url': IAS_GUION[v['id']][2],
+                                                     'tipo': IAS_GUION[v['id']][3]}) == principal), buenas[0])
+    for v in versiones:
+        v['elegida'] = v is elegida
+    json.dump(versiones, open(os.path.join(d, 'versiones_trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    guardar_preguntas(d, elegida['preguntas'], 'trailer')
+    print(f"· {len(buenas)} IAs propusieron su tráiler ({', '.join(v['nombre'] for v in buenas)}). Ves el de {elegida['nombre']}: "
+          'arriba eliges otro', flush=True)
+    return res[elegida['id']]['datos']
+
+
 def ia_de_la_version(d, ajustes):
     """Pedido del autor (29/10/2026): corregir, ajustar o pedir ideas sobre una versión del guion lo hace la misma IA que la
     escribió (la elegida en «Versiones de cada IA»), si tiene modelo y clave. Si no, tu IA principal."""
@@ -3381,6 +3432,7 @@ def main():
     ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
     ap.add_argument('--forzar', action='store_true', help='con --revisar-imagen: revisa otra vez cada bloque contra su imagen')
     ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
+    ap.add_argument('--varias', action='store_true', help='tarea trailer: GPT, Claude y DeepSeek proponen cada una su tráiler')
     ap.add_argument('--reintentar-varias', action='store_true',
                     help='tarea guion: solo las IAs que no entregaron su versión la escriben otra vez; tu guion.json no cambia')
     ap.add_argument('--ideas', action='store_true', help='tarea guion: la IA relee el guion final y deja dudas e ideas en preguntas_guion.json')
@@ -3581,7 +3633,14 @@ def main():
             progreso(100, 'Listo')
             return
         varias = ias_del_guion(ajustes) if a.tarea == 'guion' else []
-        if len(varias) > 1:  # «✍️ Guion con 3 IAs a la vez»
+        de_trailer = ias_del_guion({**ajustes, 'tres_ia': True}) if a.tarea == 'trailer' and a.varias else []
+        if a.tarea == 'trailer' and a.varias and len(de_trailer) < 2:
+            print('· para el tráiler con varias IAs hace falta modelo y clave de al menos dos en «⚙ Ajustes IA»: lo hace tu IA principal', flush=True)
+        if len(de_trailer) > 1:  # «🎬 Tráiler con varias IAs»
+            tramo(35, 94)
+            progreso(0, 'Las IAs proponen su tráiler a la vez…')
+            datos = trailer_varias(d, ajustes, de_trailer, texto, caps)
+        elif len(varias) > 1:  # «✍️ Guion con 3 IAs a la vez»
             tramo(35, 94)
             progreso(0, 'Las IAs escriben su guion a la vez…')
             datos, avisos_humor = guion_varias(d, ajustes, varias, texto, caps, todo_ia)
@@ -3592,6 +3651,8 @@ def main():
         else:
             if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
                 os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
+            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
+                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
             tramo(35, 65)
             progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
             try:

@@ -575,11 +575,14 @@ def comandos(paso, d, op):
         srt = srt_de(d, unir)
         return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
+    if paso == 'trailer_solo':  # «🎬 Ver solo el tráiler»: antes que el video, solo con tu grabación (la voz queda para después)
+        return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4']]
     if paso == 'short':  # «📱 Short»: vertical 9:16 con lo más importante, reencuadrado y con subtítulos (sin gastar créditos)
         return [[PY, m('short', 'short.py'), '--proyecto', '.', '--duracion', str(max(10, min(180, float(op.get('duracion') or 60))))]
                 + (['--voz-nueva'] if op.get('voz_nueva') else [])]
     if paso == 'trailer_ia':  # sin pistas propias la IA elige sola las mejores tomas ANTES · DURANTE · DESPUÉS
-        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]]
+        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'trailer', '--modo', 'api', '--ajustes', AJUSTES]
+                + (['--varias'] if op.get('varias') else [])]
     if paso == 'etiquetas_ia':
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'etiquetas', '--modo', 'api', '--ajustes', AJUSTES]]
     if paso == 'senales_ia':
@@ -665,6 +668,7 @@ PASOS = [
     {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'short', 'nombre': 'Short vertical 9:16', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'SHORT.mp4', 'oculto': True},
     {'id': 'trailer_ia', 'nombre': 'Elegir las tomas del tráiler con IA', 'necesita': ['original.mp4'], 'produce': 'trailer.json', 'oculto': True, 'blando': True},
+    {'id': 'trailer_solo', 'nombre': 'Armar solo el tráiler (para verlo)', 'necesita': ['original.mp4', 'trailer.json'], 'produce': 'trailer.mp4', 'oculto': True, 'blando': True},
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
@@ -814,7 +818,7 @@ def revision_imagen_pendiente(d):
     return isinstance(g, dict) and bool(g.get('revision_imagen_pendiente'))
 
 
-USAN_ELEVEN = {'voz', 'prueba', 'musica', 'trailer', 'nuevos_modelos'}
+USAN_ELEVEN = {'voz', 'prueba', 'musica', 'trailer', 'trailer_solo', 'nuevos_modelos'}
 
 
 def carpeta(p):
@@ -1166,7 +1170,7 @@ def falta_libreria(mod, env):
     return subprocess.run([PY, '-c', f'import {mod}'], capture_output=True, env=env, **SIN_VENTANA).returncode != 0
 
 
-NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion')}
+NODE = {'etiquetas': ('', 'playwright'), 'senales': ('remotion', 'remotion'), 'trailer': ('remotion', 'remotion'), 'trailer_solo': ('remotion', 'remotion')}
 
 
 def asegurar_node(paso, log, env):
@@ -2663,6 +2667,30 @@ class Manejador(BaseHTTPRequestHandler):
                 for x in versiones:
                     x['elegida'] = x is v
                 json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                return self.responder({'ok': True})
+            if ruta == '/api/elegir_version_trailer':  # «🎬 Tráiler con varias IAs»: esa propuesta pasa a ser tu tráiler
+                d = carpeta(q['p'])
+                try:
+                    versiones = json.load(open(os.path.join(d, 'versiones_trailer.json'), encoding='utf-8'))
+                except (OSError, ValueError):
+                    return self.error('este proyecto no tiene tráileres de varias IAs')
+                v = next((x for x in versiones if x.get('id') == q.get('v') and x.get('archivo')), None)
+                if not v or not existe(d, v['archivo']):
+                    return self.error('esa propuesta del tráiler ya no está')
+                if existe(d, 'trailer.json'):
+                    os.replace(os.path.join(d, 'trailer.json'), os.path.join(d, 'trailer.json.anterior'))
+                shutil.copyfile(os.path.join(d, v['archivo']), os.path.join(d, 'trailer.json'))
+                try:  # tus respuestas a las preguntas del tráiler se conservan; se suman las de esta propuesta
+                    viejas = [x for x in json.load(open(os.path.join(d, 'preguntas_trailer.json'), encoding='utf-8'))
+                              if isinstance(x, dict) and str(x.get('respuesta') or '').strip()]
+                except (OSError, ValueError, TypeError):
+                    viejas = []
+                ya = {str(x.get('pregunta')).strip().lower() for x in viejas}
+                json.dump(viejas + [x for x in v.get('preguntas') or [] if str(x.get('pregunta')).strip().lower() not in ya],
+                          open(os.path.join(d, 'preguntas_trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                for x in versiones:
+                    x['elegida'] = x is v
+                json.dump(versiones, open(os.path.join(d, 'versiones_trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
             if ruta == '/api/reintentar':  # «Reintentar» del diagnóstico: desde el paso que falló, solo si tiene sentido
                 rep = (RESULTADO.get(q['p']) or {}).get('repetir')

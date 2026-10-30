@@ -89,17 +89,20 @@
   <h1>🎬 <b>Tráiler</b> · <span id="nombre"></span></h1>
   <span class="total" id="total"></span>
   <span class="espacio"></span>
+  <label class="aviso" title="GPT, Claude y DeepSeek (las que tengan modelo y clave en «⚙ Ajustes IA») proponen cada una su tráiler, a la vez. Después eliges el mejor. Se paga una propuesta a cada una"><input type="checkbox" id="varias"> Con varias IAs</label>
   <button id="btnProponer" onclick="proponer()" title="La IA de la app (⚙ Ajustes IA) mira tu video, tu guion ya aprobado y tus respuestas, y propone las mejores tomas ANTES · DURANTE · DESPUÉS. Gasta un pedido a la IA, no ElevenLabs">✨ Proponer con la IA</button>
   <button onclick="encargoChat()" title="Deja el encargo del tráiler (ia_prompt_trailer.txt) para DeepSeek u otra IA de chat. No gasta nada">📋 Encargo para DeepSeek u otra IA</button>
   <button id="btnGuardar" onclick="guardar()">💾 Guardar</button>
-  <button class="principal" id="btnArmar" onclick="armar()" title="Arma el tráiler y lo une a tu video. La frase de voz se hace con ElevenLabs (gasta créditos)">▶ Armar tráiler</button>
+  <button id="btnSolo" onclick="armarSolo()" title="Arma solo el tráiler (trailer.mp4) para verlo, sin necesitar el video terminado. La frase de voz se hace con ElevenLabs una sola vez: al unirlo después no se vuelve a pagar">🎬 Ver solo el tráiler</button>
+  <button class="principal" id="btnArmar" onclick="armar()" title="Arma el tráiler y lo une a tu video. La frase de voz se hace con ElevenLabs (si ya la hiciste con «Ver solo el tráiler», no se vuelve a pagar)">▶ Armar y unir al video</button>
 </header>
 <main>
-  <p class="ayuda">El tráiler va aparte del video: primero se arma el video normal con su guion; después, con todo lo que la IA ya vio,
+  <p class="ayuda">El tráiler es un módulo aparte: puedes hacerlo primero, solo con tu grabación (con el guion aprobado la IA elige mejor), o al final. Con todo lo que la IA ve,
     te propone las mejores tomas de <b>ANTES</b> (el problema), <b>DURANTE</b> (el paso clave) y <b>DESPUÉS</b> (el resultado), y te pregunta
     lo que no le quedó claro. Tú contestas, cambias las tomas que quieras y lo armas cuando te guste.</p>
   <p class="msg" id="msg"></p>
   <div id="requisitos"></div>
+  <div id="versiones"></div>
   <div id="preguntas"></div>
   <div id="mejoras"></div>
   <div id="ver"></div>
@@ -140,14 +143,14 @@ async function cargar() {
   DUR = E.duracion_original || 0;
   try { T = JSON.parse(await api(`/api/json?p=${q(P)}&f=trailer.json`) || 'null'); } catch (e) { T = null; }
   try { DONDE = (await api(`/api/edicion?p=${q(P)}`)).trailer_donde || 'inicio'; } catch (e) {}
-  const falta = [];
-  if (!hay('guion.json')) falta.push('el guion (escríbelo y apruébalo en la app)');
-  if (!hay('3_voz.mp4')) falta.push('el video con voz (pulsa «▶ Hacer todo» en la app)');
-  $('#requisitos').innerHTML = falta.length ? `<div class="panel preg">Primero termina el video normal: falta ${falta.join(' y ')}.
-    ${hay('guion.json') ? 'Ya puedes pedir la propuesta, pero para armarlo hace falta el video.' : ''}</div>` : '';
-  $('#btnProponer').disabled = !hay('guion.json') || !hay('original.mp4');
+  const avisos = [];
+  if (!hay('guion.json')) avisos.push('Todavía no hay guion: la IA propone con tu grabación y la transcripción (con el guion aprobado elige mejor los pasos clave).');
+  if (!hay('3_voz.mp4')) avisos.push('Todavía no está el video con voz: puedes proponer y «🎬 Ver solo el tráiler»; para unirlo al video, primero «▶ Hacer todo» en la app.');
+  $('#requisitos').innerHTML = avisos.length ? `<div class="panel preg">${avisos.join('<br>')}</div>` : '';
+  $('#btnProponer').disabled = !hay('original.mp4');
+  $('#btnSolo').disabled = !hay('original.mp4') || !T;
   $('#btnArmar').disabled = !hay('3_voz.mp4') || !T;
-  verPreguntas(); verVideo(); pintar(); verIdeas();
+  verVersiones(); verPreguntas(); verVideo(); pintar(); verIdeas();
 }
 async function verIdeas() {  // ideas_trailer.md: cómo haría Claude el tráiler (lo trae «📥 Importar lo de Claude»)
   let t = '';
@@ -193,7 +196,7 @@ async function proponer(conRespuestas) {
   if (!conRespuestas && T && !confirm('La IA propone otro tráiler (el actual queda como trailer.json.anterior). Gasta un pedido a la IA de la app, no ElevenLabs. ¿Seguir?')) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'La IA mira el video y el guion y elige las tomas…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_ia`, {method: 'POST', body: JSON.stringify({})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_ia`, {method: 'POST', body: JSON.stringify({varias: $('#varias').checked})});
     await esperar(); sucio = false; await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Propuesta lista. Revisa las tomas y contesta sus preguntas.';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
@@ -288,6 +291,34 @@ function resumen() {
   $('#btnGuardar').classList.toggle('principal', sucio);
   $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar';
   $('#btnArmar').disabled = !hay('3_voz.mp4') || !T.clips.length;
+  $('#btnSolo').disabled = !hay('original.mp4') || !T.clips.length;
+}
+async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una, para elegir la que más te guste
+  let vs = [];
+  if (hay('versiones_trailer.json')) try { const r = await api(`/archivo?p=${q(P)}&f=versiones_trailer.json&v=${Date.now()}`); vs = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
+  $('#versiones').innerHTML = !vs.length ? '' : `<div class="panel preg"><b>🎬 Tráileres de cada IA</b>
+    <p class="msg">Ves el marcado con ✓. Elegir otro guarda el actual como trailer.json.anterior; tus respuestas se conservan.</p>
+    ${vs.map(v => `<div class="acciones" style="align-items:center">${v.archivo
+      ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirTrailer('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
+         <span class="msg">${esc(v.modelo)} · ${v.tomas} tomas · «${esc(v.titulo)}»${v.voz ? ' · voz: «' + esc(v.voz) + '»' : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>`
+      : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
+}
+async function elegirTrailer(id) {
+  if (sucio && !confirm('Tienes cambios sin guardar en las tomas: se pierden al elegir otra propuesta. ¿Seguir?')) return;
+  try { await api(`/api/elegir_version_trailer?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); sucio = false; await cargar(); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
+}
+async function armarSolo() {
+  const v = (T && T.voz || '').trim();
+  if (!confirm('Armo solo el tráiler (trailer.mp4) para que lo veas; tu video no se toca.\n\n' +
+    (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos, una sola vez (al unirlo después no se vuelve a pagar mientras no cambies la frase).` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({})});
+    await esperar(); await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Tráiler listo: míralo arriba. Cuando el video esté terminado, «▶ Armar y unir al video».';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
 async function guardar() {
   if (!T) return true;
