@@ -2781,9 +2781,42 @@ def texto_mapa(mapa):
                      for m in mapa)
 
 
+FRASE_RX = re.compile(r'[^.?!¿¡]*[¿¡]?[^.?!]*[.?!…]+|\S[^.?!]*$')
+
+
+def frases_bloque(d, b):
+    """[(frase, t0, t1)]: cuándo dice la voz cada frase del bloque, en segundos desde que empieza su voz. Con la voz ya hecha
+    de ese texto, sus tiempos reales; si no (lo normal: la revisión va antes de pagar la voz), 2,6 palabras por segundo."""
+    txt = str(b.get('texto') or '')
+    try:
+        al = json.load(open(os.path.join(d, 'voz', f"{b['id']}.align.json"), encoding='utf-8'))
+        dicho = ''.join(al['characters'])
+        if dicho.strip() == txt.strip():
+            t0s, t1s = al['character_start_times_seconds'], al['character_end_times_seconds']
+            return [(m.group().strip(), t0s[m.start()], t1s[min(m.end(), len(t1s)) - 1])
+                    for m in FRASE_RX.finditer(dicho) if len(m.group().strip()) > 1]
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        pass
+    total, n = len(txt.split()) / PALABRAS_POR_S, max(1, len(txt))
+    return [(m.group().strip(), total * m.start() / n, total * m.end() / n) for m in FRASE_RX.finditer(txt) if len(m.group().strip()) > 1]
+
+
+def en_grabacion(mo, t):
+    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final)."""
+    if mo['modo'].startswith('lento'):
+        fin = mo.get('src_fin') or mo['src_inicio']
+        largo = (fin - mo['src_inicio']) / (mo.get('velocidad') or 1)
+        if t <= largo:
+            return mo['src_inicio'] + t * (mo.get('velocidad') or 1), False
+        return max(mo['src_inicio'], fin - 1.2), True
+    return mo['src_inicio'], True
+
+
 def control_bloque(d, b, ocr):
-    """Las imágenes de control de un bloque, como las miré yo: el COMIENZO y el FINAL de su tramo lado a lado y, en los
-    pasos clave, un detalle cada ~3 s con el texto leído con zoom. Devuelve ([(desc, ruta)], texto con zoom)."""
+    """Las imágenes de control de un bloque: un cuadro por FRASE de la voz, el que se ve en el video mientras la voz la dice
+    (como «🎞 Frase por frase» del editor: así se vio que en HONOR 8 LITE «lo apagas, como se ve aquí» caía sobre el teléfono
+    ya apagado; con solo comienzo, medio y final no se veía) y, en los pasos clave, un detalle cada ~3 s con el texto leído
+    con zoom. Devuelve ([(desc, ruta)], texto con zoom, [(frase, segundo, pausa)])."""
     import cv2
     orig = os.path.join(d, 'original.mp4')
     mo = b['montaje']
@@ -2792,15 +2825,16 @@ def control_bloque(d, b, ocr):
         fin = ini + 1
     out = os.path.join(d, 'ia_capturas', 'revision')
     os.makedirs(out, exist_ok=True)
-    a = sacar_cuadro(orig, ini + 0.3, os.path.join(out, f"{b['id']}_a.jpg"), 640, 5)
-    c = sacar_cuadro(orig, (ini + fin) / 2, os.path.join(out, f"{b['id']}_c.jpg"), 640, 5)  # el medio: una escena de paso no engaña
-    z = sacar_cuadro(orig, fin - 0.3, os.path.join(out, f"{b['id']}_z.jpg"), 640, 5)
+    frases = [(x, *en_grabacion(mo, 0.3 + (t0 + t1) / 2)) for x, t0, t1 in frases_bloque(d, b)][:9]
+    if not frases:  # sin texto: comienzo, medio y final del tramo
+        frases = [('(comienzo)', ini + 0.3, False), ('(medio)', (ini + fin) / 2, False), ('(final)', fin - 0.3, False)]
+    partes = [sacar_cuadro(orig, s, os.path.join(out, f"{b['id']}_f{k}.jpg"), 640, 5) for k, (_, s, _) in enumerate(frases)]
     lado = os.path.join(out, f"{b['id']}.jpg")
-    cv2.imwrite(lado, rejilla([a, c, z], [f'COMIENZO {mmss(ini)}', f'MEDIO {mmss((ini + fin) / 2)}', f'FINAL {mmss(fin)}'], 3, 640),
+    cv2.imwrite(lado, rejilla(partes, [f"FRASE {k + 1} · {mmss(s)}{' (pausa)' if p else ''}" for k, (_, s, p) in enumerate(frases)], 3, 640),
                 [cv2.IMWRITE_JPEG_QUALITY, 80])
-    for f in (a, c, z):
+    for f in partes:
         os.remove(f)
-    imgs, zoom = [(f"bloque {b['id']}: comienzo, medio y final del tramo", lado)], ''
+    imgs, zoom = [(f"bloque {b['id']}: lo que se ve mientras la voz dice cada frase", lado)], ''
     if es_critico(b):
         n = int(min(6, max(2, (fin - ini) // 3 + 1)))
         tiempos = [ini + (fin - ini) * k / (n - 1) for k in range(n)]
@@ -2818,7 +2852,7 @@ def control_bloque(d, b, ocr):
             os.remove(f)
         imgs.append((f"bloque {b['id']}: detalle del paso clave", det))
         zoom = '; '.join(leidos)
-    return imgs, zoom
+    return imgs, zoom, frases
 
 
 def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
@@ -2831,7 +2865,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
-    print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo, medio y final de cada tramo, detalle en los pasos clave)…', flush=True)
+    print(f'Preparo las imágenes de control de {len(bloques)} bloques (un cuadro por frase de la voz, detalle en los pasos clave)…', flush=True)
     tramo(0, 70)  # preparar las imágenes (y leer con zoom) es lo más largo; después, los pedidos a la IA
 
     def peso(b):  # un paso clave tarda bastante más: cada cuadro de detalle se lee con zoom (unos 15 s cada uno)
@@ -2860,25 +2894,30 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
         for b in grupo:
             mo = b['montaje']
             ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-            imgs, zoom = control[b['id']]
+            imgs, zoom, frases = control[b['id']]
             nums = []
             for desc, f in imgs:
                 caps.append((desc, f)); nums.append(str(len(caps)))
             autor = ' '.join(w['texto'] for w in palabras if ini - 1 <= w['inicio'] <= fin + 1)[:400]
-            lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice: «{b['texto'][:400]}»"
+            por_frase = ' '.join(f"FRASE {k + 1} ({mmss(s)}{', pausa' if p else ''}): «{x[:160]}»" for k, (x, s, p) in enumerate(frases))
+            lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice, frase por frase: {por_frase}"
                           + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else '')
                           + (f"\n  Lo que dice el autor en su grabación en ese tramo: «{autor}»" if autor else ''))
-        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda), el MEDIO y el FINAL (derecha)
-del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen con el detalle cada pocos segundos:
+        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con un cuadro por FRASE de la voz (FRASE 1, FRASE 2…):
+cada cuadro es lo que se ve en el video MIENTRAS la voz dice esa frase («pausa» = cae en la repetición del final del tramo);
+en los pasos clave, otra imagen con el detalle cada pocos segundos:
 {chr(10).join(lineas)}
 
 Mapa de la grabación completa (lo que se ve en cada cambio de pantalla):
 {mapa_txt[:24000]}
 
-Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y el final) y va con lo que dice el autor ahí
-(si la voz narra un paso que el autor hace antes o después, o algo que no se ve ni se dice, NO está bien). Si NO (por ejemplo la voz dice
+Para cada bloque mira FRASE POR FRASE si lo que dice esa frase se ve en SU cuadro. Una frase de acción o de pantalla («lo apagas,
+como se ve aquí», «ya aparece omitir», «escribo la contraseña», «le damos clic en…») tiene que caer sobre esa acción o esa pantalla:
+si cae sobre otra (el teléfono ya apagado, la contraseña del WiFi en vez de «omitir»), el bloque NO está bien, aunque la acción esté
+en otra parte del tramo. Las frases generales (saludo, consejo, chiste) van con cualquier cuadro. También mira que vaya con lo que dice
+el autor ahí (si la voz narra un paso que el autor hace antes o después, o algo que no se ve ni se dice, NO está bien). Si NO (por ejemplo la voz dice
 «pega la key» y se ve otra pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
-{{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}.""", caps)
+{{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "frase": 2, "segundo": 312, "por_que": "la frase 2 dice «pega la key» y su cuadro es otra pantalla; en 312 se ve el campo Key"}}]}}.""", caps)
 
     tanda = tanda or (4 if es_local(ajustes) else 12)
     por_id = {b['id']: b for b in bloques}
