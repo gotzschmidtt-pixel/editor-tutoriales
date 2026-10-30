@@ -11,7 +11,8 @@ const FLASH = 4; // cuadros de destello entre cortes
 export const duracionTrailer = (p: TrailerProps, fps: number) =>
   Math.round((p.clips.reduce((s, c) => s + c.dur, 0) + CIERRE) * fps);
 
-// Sello grande ANTES / DURANTE / DESPUÉS: entra con golpe, tiembla un poco y se queda
+// Sello ANTES / DURANTE / DESPUÉS: entra con golpe, tiembla un poco y se queda. Va chico y arriba a la izquierda: grande y
+// abajo tapaba el teléfono (pedido de fabian, 30/10/2026, tráiler de HONOR 8 LITE)
 const Sello: React.FC<{fase: Fase; nuevo: boolean}> = ({fase, nuevo}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
@@ -19,11 +20,11 @@ const Sello: React.FC<{fase: Fase; nuevo: boolean}> = ({fase, nuevo}) => {
   const sacudida = nuevo ? Math.sin(f * 2.3) * interpolate(f, [0, 10], [10, 0], {extrapolateRight: 'clamp'}) : 0;
   const color = estilo.colorFase[fase];
   return (
-    <div style={{position: 'absolute', left: 90, bottom: 110, transform: `scale(${0.4 + 0.6 * s}) rotate(${-4 + sacudida * 0.3}deg)`,
-      transformOrigin: 'left bottom', opacity: s}}>
-      <div style={{fontFamily: estilo.fuente, fontWeight: 900, fontSize: 170, letterSpacing: 6, color: 'white',
-        padding: '6px 38px', background: color, borderRadius: 18,
-        boxShadow: `0 0 0 6px rgba(255,255,255,.9), 0 0 60px ${color}, 0 18px 40px rgba(0,0,0,.5)`,
+    <div style={{position: 'absolute', left: 60, top: 100, transform: `scale(${0.4 + 0.6 * s}) rotate(${-3 + sacudida * 0.3}deg)`,
+      transformOrigin: 'left top', opacity: s}}>
+      <div style={{fontFamily: estilo.fuente, fontWeight: 900, fontSize: 78, letterSpacing: 3, color: 'white',
+        padding: '2px 22px', background: color, borderRadius: 12,
+        boxShadow: `0 0 0 4px rgba(255,255,255,.9), 0 0 30px ${color}, 0 10px 24px rgba(0,0,0,.5)`,
         textShadow: '0 6px 0 rgba(0,0,0,.25)'}}>{fase}</div>
     </div>
   );
