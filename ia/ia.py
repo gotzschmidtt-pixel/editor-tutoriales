@@ -2750,6 +2750,8 @@ def control_bloque(d, b, ocr):
         partes, leidos = [], []
         for k, t in enumerate(tiempos):
             partes.append(sacar_cuadro(orig, t, os.path.join(out, f"{b['id']}_d{k}.jpg"), 640, 4))
+            if ocr:
+                print(f"  · {b['id']}: leo con zoom el texto de la pantalla en {mmss(t)} ({k + 1} de {n})", flush=True)
             txt = leer_con_zoom(ocr, orig, t, os.path.join(out, 'zoom_tmp.jpg'))
             if txt:
                 leidos.append(f"{mmss(t)}: {' | '.join(txt)[:200]}")
@@ -2773,8 +2775,19 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
     print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo, medio y final de cada tramo, detalle en los pasos clave)…', flush=True)
+    tramo(0, 70)  # preparar las imágenes (y leer con zoom) es lo más largo; después, los pedidos a la IA
+
+    def peso(b):  # un paso clave tarda bastante más: cada cuadro de detalle se lee con zoom (unos 15 s cada uno)
+        mo = b['montaje']
+        largo = (mo.get('src_fin') or mo['src_inicio']) - mo['src_inicio']
+        return 1 + (3 * int(min(6, max(2, max(1, largo) // 3 + 1))) if es_critico(b) and ocr else 0)
+    pesos = [peso(b) for b in bloques]
     control = {}
-    for b in bloques:  # un bloque cuyas imágenes no salen no frena la revisión del resto
+    for k, b in enumerate(bloques):  # un bloque cuyas imágenes no salen no frena la revisión del resto
+        mo = b['montaje']
+        progreso(100 * sum(pesos[:k]) / sum(pesos), f"bloque {b['id']} ({k + 1} de {len(bloques)}): tramo {mmss(mo['src_inicio'])}–"
+                 f"{mmss(mo.get('src_fin') or mo['src_inicio'])}" + (' · paso clave: también leo con zoom el texto de la pantalla'
+                                                                     if es_critico(b) else ''))
         try:
             control[b['id']] = control_bloque(d, b, ocr)
         except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
@@ -2782,6 +2795,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     bloques = [b for b in bloques if b['id'] in control]
     if not bloques:
         return []
+    tramo(70, 98)
     palabras = pistas.palabras_video(d)  # lo que dice el autor en cada tramo: delata una voz atrasada o inventada
 
     def pedir(grupo, a):
@@ -3424,6 +3438,8 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
     with open(os.path.join(d, 'mejoras_guion.txt'), 'a', encoding='utf-8') as f:
         f.write(''.join(x + '\n' for x in avisos))
     print('Guardado guion.json revisado contra sus imágenes', flush=True)
+    tramo(0, 100)
+    progreso(100, 'Listo')
 
 
 def main():

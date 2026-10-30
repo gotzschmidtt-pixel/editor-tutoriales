@@ -2661,12 +2661,18 @@ function pintarBarra(t, r, arch) {
     // tardó la vez anterior, y si no hay vez anterior, se cuenta solo por pasos
     const n = t.plan.length;
     let dentro = t.pct_paso, estimado = false;
-    if (dentro == null && t.antes_s) { dentro = Math.min(95, 100 * t.segundos / t.antes_s); estimado = true; }
+    const ref = t.antes_s || t.promedio_s;  // lo que tardó la vez anterior en este proyecto, o su promedio en todos
+    if (dentro == null && ref) { dentro = Math.min(95, 100 * t.segundos / ref); estimado = true; }
     const pct = Math.round(100 * (t.i + (dentro == null ? 0.5 : dentro / 100)) / n);
+    const min = s => s >= 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
+    let resta = '';  // cuánto le falta a este paso: por su % real (o estimado) y el tiempo que lleva
+    if (dentro != null && dentro >= 2 && t.segundos >= 15) resta = ` · faltan ~${min(t.segundos * (100 - dentro) / dentro)}`;
+    else if (ref && t.segundos < ref) resta = ` · faltan ~${min(ref - t.segundos)}`;
     const falta = t.antes_s && t.segundos < t.antes_s ? ` · la vez anterior tardó ${reloj(t.antes_s)}` : '';
+    const prom = t.promedio_s ? ` · promedio ${min(t.promedio_s)}${t.promedio_veces > 1 ? ` (${t.promedio_veces} veces)` : ''}` : '';
     b.className = 'trabaja';
-    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${dentro == null ? '' : `${pct}%${estimado ? ' (estimado)' : ''} · `}${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
-      <span class="cuanto">este paso ${reloj(t.segundos)}${falta} · total ${reloj(t.total_s)}</span>
+    b.innerHTML = `<div class="arriba"><span class="que">⏳ ${dentro == null ? '' : `este paso ${Math.round(dentro)}%${estimado ? ' (estimado)' : ''} · todo ${pct}% · `}${n > 1 ? `Paso ${t.i + 1} de ${n} · ` : ''}${esc(t.plan[t.i])}</span>
+      <span class="cuanto">este paso ${reloj(t.segundos)}${resta}${falta}${prom} · total ${reloj(t.total_s)}</span>
       ${n > 1 ? `<span class="chips">${t.plan.map((x, k) => `<span class="chip ${k < t.i ? 'hecho' : k === t.i ? 'ahora' : ''}">${k < t.i ? '✓' : k === t.i ? '⏳' : '○'} ${esc(x)}</span>`).join('')}</span>` : ''}
       ${avance}<button onclick="verUltimas = !verUltimas; refrescar()">${verUltimas ? '▾ Ocultar registro' : '▸ Ver registro'}</button>
       <button onclick="api('/api/detener', {method: 'POST'})">■ Detener</button></div>

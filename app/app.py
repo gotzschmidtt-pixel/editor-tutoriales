@@ -1622,16 +1622,39 @@ def ultima_linea(log):
     return ''
 
 
+_PROMEDIOS = {}  # nombre del paso -> (cuándo se calculó, promedio en s, cuántas veces)
+
+
+def promedio_paso(nombre):
+    """Cuánto tarda en promedio este paso, con lo que tardó en todos tus proyectos de esta PC («✓ … listo en N s»).
+    Se recalcula cada 2 minutos (la barra pregunta cada segundo)."""
+    hecho = _PROMEDIOS.get(nombre)
+    if hecho and time.time() - hecho[0] < 120:
+        return hecho[1], hecho[2]
+    veces = []
+    for p in os.listdir(PROYECTOS) if os.path.isdir(PROYECTOS) else []:
+        try:
+            texto = open(registro(os.path.join(PROYECTOS, p)), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        veces += [int(s) for s in re.findall(r'✓ ' + re.escape(nombre) + r' listo en (\d+) s', texto)]
+    prom = round(sum(veces) / len(veces)) if veces else None
+    _PROMEDIOS[nombre] = (time.time(), prom, len(veces))
+    return prom, len(veces)
+
+
 def avance_paso(completo, paso):
     """Lo que la barra muestra del paso en curso: su % real (las líneas «[N%]» que escriben los pasos), las últimas
-    líneas del registro y cuánto tardó este mismo paso la última vez que salió bien (para estimar lo que falta)."""
+    líneas del registro, cuánto tardó este mismo paso la última vez que salió bien y su promedio en todos tus proyectos
+    (para estimar lo que falta)."""
     nombre = next((x['nombre'] for x in PASOS if x['id'] == paso), paso or '')
     seccion = completo[completo.rfind('\n▶'):] if '\n▶' in completo else completo[-6000:]
     pcts = re.findall(r'\[(\d{1,3})%\]', seccion)
-    lineas = [l.strip() for l in re.split(r'[\r\n]+', seccion[-6000:]) if l.strip() and not l.startswith('frame=')][-8:]
+    lineas = [l.strip() for l in re.split(r'[\r\n]+', seccion[-6000:]) if l.strip() and not l.startswith('frame=')][-12:]
     antes = re.findall(r'✓ ' + re.escape(nombre) + r' listo en (\d+) s', completo) if nombre else []
+    prom, veces = promedio_paso(nombre) if nombre else (None, 0)
     return {'pct_paso': min(100, int(pcts[-1])) if pcts else None, 'ultimas': lineas,
-            'antes_s': int(antes[-1]) if antes else None}
+            'antes_s': int(antes[-1]) if antes else None, 'promedio_s': prom, 'promedio_veces': veces}
 
 
 def causa(d):
