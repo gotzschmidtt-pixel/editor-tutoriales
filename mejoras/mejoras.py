@@ -44,7 +44,8 @@ PASOS = [
 ]
 IDS = {p['id'] for p in PASOS}
 USAN_ELEVEN = {'m_sonidos'}  # solo con «Crear con ElevenLabs»; los demás no gastan
-EDITABLES = {'sonidos': bool, 'sonidos_volumen': float, 'sonidos_tipos': list, 'emocion_voz': bool, 'mejorar_imagen': bool}
+LUGARES_SELLO = ('arriba-izquierda', 'arriba-centro', 'arriba-derecha', 'centro', 'abajo-izquierda', 'abajo-centro', 'abajo-derecha')  # dónde van los sellos ANTES/DURANTE/DESPUÉS del tráiler
+EDITABLES = {'sello_lugar': str, 'sonidos': bool, 'sonidos_volumen': float, 'sonidos_tipos': list, 'emocion_voz': bool, 'mejorar_imagen': bool}
 ARCHIVOS_ZOOM = ('material.mp4', 'original.mp4')
 RESPALDOS = {'zoom': '_sin_zoom', 'color': '_sin_color', 'limpiar': '_sin_limpiar'}
 SUBIDAS = {'pantalla': 'pantalla_grabada.mp4', **{f'foto_{k}': f'foto_miniatura_{k}.jpg' for k in ('antes', 'despues', 'extra1', 'extra2')}}
@@ -293,6 +294,8 @@ def post(h, ruta, q, largo, d):
                 e[k] = min(max(float(v), 0.0), 2.0)
             elif tipo is list and isinstance(v, list):
                 e[k] = [x for x in v if x in sonidos.SONIDOS]
+            elif k == 'sello_lugar' and v in LUGARES_SELLO:
+                e[k] = v
         _escribir(f, e)
         return h.responder({'ok': True})
     if ruta == '/api/mejoras/emocion':  # la emoción de cada bloque (vacío = como siempre)

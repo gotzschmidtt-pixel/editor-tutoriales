@@ -228,6 +228,10 @@ def main():
             sellos[fase] = f'trailer/sello_{n}.png'
     if sellos:
         props['sellos'] = sellos
+    try:  # dónde van los sellos (lo eliges en «🎬 Tráiler»)
+        props['selloLugar'] = json.load(open(os.path.join(d_proy, 'edicion.json'), encoding='utf-8')).get('sello_lugar') or 'arriba-izquierda'
+    except (OSError, ValueError):
+        props['selloLugar'] = 'arriba-izquierda'
     fondo = None if diapo else fondo_de_marca(d_proy)
     if fondo:  # «fondo Honor», «fondo Motorola»…: el de la marca, detrás del título (pedido de fabian, 30/10/2026)
         shutil.copyfile(fondo, os.path.join(PUB, 'fondo' + os.path.splitext(fondo)[1]))

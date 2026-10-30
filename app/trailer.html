@@ -90,6 +90,15 @@
      style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
             background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
   <script>
+let SELLO_LUGAR = 'arriba-izquierda';  // dónde van los sellos (pedido de fabian, 30/10/2026)
+fetch('/api/mejoras/estado?p=' + encodeURIComponent(new URLSearchParams(location.search).get('p') || '')).then(r => r.json())
+  .then(e => { SELLO_LUGAR = (e.edicion || {}).sello_lugar || SELLO_LUGAR; const s = document.getElementById('selloLugar'); if (s) s.value = SELLO_LUGAR; }).catch(() => {});
+async function lugarSello(v) {
+  SELLO_LUGAR = v;
+  await fetch('/api/mejoras/edicion?p=' + encodeURIComponent(new URLSearchParams(location.search).get('p') || ''), {method: 'POST', body: JSON.stringify({sello_lugar: v})});
+  alert('Listo: los sellos van ' + document.getElementById('selloLugar').selectedOptions[0].text.toLowerCase() + '. Vuelve a tocar «sin voz (gratis)» o «▶ Ver con voz» para verlo.');
+}
+
   function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
     const p = new URLSearchParams(location.search).get('p');
     const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
@@ -368,6 +377,10 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
   if (SOLO) vs = vs.filter(v => v.id === SOLO);  // «↗ Abrir en pestaña nueva»: solo ese tráiler, en grande
   const caja = 'width:100%; box-sizing:border-box; font:inherit; padding:10px; border-radius:10px; resize:vertical';
   $('#versiones').innerHTML = !vs.length ? '' : `<div class="panel preg"><b>🎬 ${SOLO ? 'Tráiler de ' + esc(vs[0].nombre) : 'Tráileres de cada IA'}</b>
+    <label style="margin-left:14px" title="Dónde aparecen los sellos ANTES / DURANTE / DESPUÉS. Se aplica al volver a armar el tráiler">📍 Sellos:
+      <select id="selloLugar" onchange="lugarSello(this.value)">${[['arriba-izquierda', 'Arriba a la izquierda'], ['arriba-centro', 'Arriba al centro'],
+        ['arriba-derecha', 'Arriba a la derecha'], ['centro', 'Al centro'], ['abajo-izquierda', 'Abajo a la izquierda'], ['abajo-centro', 'Abajo al centro'],
+        ['abajo-derecha', 'Abajo a la derecha']].map(([v, n]) => `<option value="${v}" ${v === SELLO_LUGAR ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     ${SOLO ? `<p class="msg"><a href="/trailer?p=${q(P)}">← Ver los de todas las IAs</a></p>` : '<p class="msg">Ves el marcado con ✓. Elegir otro guarda el actual como trailer.json.anterior; tus respuestas se conservan.</p>'}
     ${vs.map(v => `<div style="border:1px solid #ffffff22; border-radius:14px; padding:12px; margin:12px 0">${v.archivo
       ? `<div class="acciones" style="align-items:center; flex-wrap:wrap">
