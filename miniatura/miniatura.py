@@ -221,6 +221,10 @@ def traducir(linea, idioma):
 
 
 ANTES_DESPUES = {'es': ('ANTES', 'DESPUÉS'), 'en': ('BEFORE', 'AFTER'), 'pt': ('ANTES', 'DEPOIS')}
+PILDORAS = {'es': '«SIN PC» (ícono de computadora tachada) y «TODOS LOS MODELOS» (ícono de teléfono)',
+            'en': '«NO PC» (ícono de computadora tachada) y «ALL MODELS» (ícono de teléfono)',
+            'pt': '«SEM PC» (ícono de computadora tachada) y «TODOS OS MODELOS» (ícono de teléfono)'}
+MASCOTA = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'mascota_xiaomiunlock.png')
 ESTILO = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'referencias')  # miniaturas de fabian (ESTILO_MINIATURAS.md)
 
 
@@ -242,22 +246,30 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
     hechas = []
     marca_logo = marca.title() if marca != 'TU CELULAR' else 'la marca del teléfono'
-    refs = list(refs) + referencias_estilo(marca)  # 1 y 2: tus cuadros; 3 y 4: tu estilo
+    # 1 y 2: tus cuadros; 3: tu mascota; después, 3 miniaturas tuyas (las de la misma marca primero)
+    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + referencias_estilo(marca, 3)
     for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
         partes = [traducir(x, idioma) for x in lineas if x]
         texto = ' / '.join(f'«{x}»' for x, _ in partes)
         traduce = any(t for _, t in partes)
-        prompt = ('Miniatura de YouTube (16:9) para el canal Xiaomiunlock de fabian, técnico de celulares, con SU ESTILO: las '
-                  'imágenes 3 y 4 son miniaturas suyas, cópiales SOLO el estilo (no su texto, ni su teléfono, ni el reloj de duración '
-                  'de YouTube). Imagen 1: el teléfono REAL de este video bloqueado (ANTES); imagen 2: el mismo teléfono ya libre '
-                  '(DESPUÉS). Estilo: los dos teléfonos reales, grandes y nítidos, de frente, sostenidos con guante negro o apoyados; '
-                  'etiqueta inclinada roja «' + ANTES_DESPUES[idioma][0] + '» sobre el bloqueado y verde «' + ANTES_DESPUES[idioma][1] +
-                  '» sobre el libre, y una flecha gruesa curva amarilla entre los dos; el candado con la G de Google de 4 colores; el '
-                  f'logo de {marca_logo} en una esquina de arriba y una cinta roja «2026»; colores saturados, alto contraste, fondo '
-                  'oscuro con brillo de neón o el escritorio real. Abajo, una franja inclinada de color fuerte con el texto GRANDE en '
-                  'mayúsculas, tipografía muy gruesa condensada e itálica, blanco y amarillo con borde negro y sombra, perfectamente '
-                  f'escrito, en {nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  '. Ningún otro texto, ningún logo ni persona inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
+        prompt = ('Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian, técnico de celulares, IDÉNTICA a SU ESTILO. '
+                  'Imagen 1: el teléfono REAL de este video bloqueado (ANTES). Imagen 2: el mismo teléfono ya libre, en su pantalla '
+                  'de inicio con las apps (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
+                  'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. Las demás imágenes son miniaturas '
+                  'suyas: cópiales el estilo (no su texto, ni su teléfono, ni el reloj de duración de YouTube). OBLIGATORIO, todo junto: '
+                  '(1) fondo = su escritorio real, claro y nítido: la laptop, el cartel negro «Frp» y la G de Google grande de 4 colores; '
+                  '(2) los dos teléfonos reales grandes, de frente, sostenidos con guante negro, la pantalla bien legible; '
+                  f'(3) etiqueta inclinada roja «{ANTES_DESPUES[idioma][0]}» arriba del bloqueado y verde «{ANTES_DESPUES[idioma][1]}» '
+                  'arriba del libre, letra gruesa blanca con borde; (4) flecha gruesa curva amarilla del bloqueado al libre; '
+                  '(5) candado abierto con la G de Google entre los dos; '
+                  f'(6) arriba a la derecha el logo de {marca_logo} en un cuadrado blanco redondeado; arriba a la izquierda una cinta '
+                  'roja inclinada «NEW 2026»; (7) un sello redondo dorado «MÉTODO GARANTIZADO 2026» a la derecha; '
+                  f'(8) dos píldoras blancas con ícono al costado: {PILDORAS[idioma]}; '
+                  '(9) abajo una franja inclinada amarilla y celeste a todo el ancho con el texto GRANDE en mayúsculas, tipografía muy '
+                  f'gruesa condensada e itálica, blanco con borde negro y sombra, perfectamente escrito, en {nombre}: {texto}'
+                  + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
+                  '. Colores saturados, mucho contraste, nada oscuro ni de ciencia ficción. Ningún otro texto, ningún logo ni persona '
+                  'inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
         b = uuid.uuid4().hex
         cuerpo = b''
         for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x864', 'quality': 'high', 'output_format': 'png'}.items():
@@ -325,7 +337,7 @@ def main():
         # el PROBLEMA (lo más nítido del primer 15 %: la pantalla bloqueada) y el RESULTADO (lo más nítido del final: la pantalla de inicio)
         nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
         total = float(nt[0][-1]) if len(nt[0]) else 60.0
-        for k, s in enumerate((mejor(*nt, total * 0.02, total * 0.15), mejor(*nt, total * 0.93, total * 0.995))):
+        for k, s in enumerate((mejor(*nt, total * 0.02, total * 0.15), mejor(*nt, total * 0.975, total * 0.998))):
             cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
             ok, c = cap.read()
             if ok:
