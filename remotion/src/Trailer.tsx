@@ -25,7 +25,7 @@ const Sello: React.FC<{fase: Fase; nuevo: boolean; img?: string}> = ({fase, nuev
   return (
     <div style={{position: 'absolute', left: 60, top: 100, transform: `scale(${0.4 + 0.6 * s}) rotate(${-3 + sacudida * 0.3}deg)`,
       transformOrigin: 'left top', opacity: s}}>
-      {img ? <Img src={staticFile(img)} style={{height: 130}} /> :  /* el sello dibujado por GPT 2.5, si está */
+      {img ? <Img src={staticFile(img)} style={{height: 230}} /> :  /* el sello dibujado por GPT 2.5, si está */
       <div style={{fontFamily: estilo.fuente, fontWeight: 900, fontSize: 78, letterSpacing: 3, color: 'white',
         padding: '2px 22px', background: color, borderRadius: 12,
         boxShadow: `0 0 0 4px rgba(255,255,255,.9), 0 0 30px ${color}, 0 10px 24px rgba(0,0,0,.5)`,
