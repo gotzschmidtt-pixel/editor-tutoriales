@@ -927,7 +927,7 @@ FOTOS = ('antes', 'despues', 'extra1', 'extra2')  # las fotos HD que subes en «
 def estilos_titulo(a):
     if a.titulo == 'placas':  # las 4 placas, para ver cuál contrasta mejor
         return ('placa', 'placa_negra', 'placa_roja', 'placa_violeta')
-    return ('placa', 'metal') if a.titulo == 'todos' else (a.titulo,)  # los dos que eligió fabian (30/10/2026)
+    return ('placa_negra', 'placa', 'metal') if a.titulo == 'todos' else (a.titulo,)  # los favoritos de fabian (30/10/2026)
 
 
 def momentos_miniatura(d):
