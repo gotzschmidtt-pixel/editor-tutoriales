@@ -375,6 +375,7 @@ function pintar() {
         <div class="orto" id="orto${i}"></div>
         <div class="frases" id="frases${i}"></div>
         <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
+          <button onclick="ortoBloque(${i})" title="Revisa tildes y ortografía de este bloque (LanguageTool, gratis)">🔤 Ortografía</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button>
           ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
   }).join('') + (porLugar[G.bloques.length] || []).join('');
@@ -449,6 +450,17 @@ let SUG = {};
 const sinTilde = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const IGNORADAS = new Set((() => { try { return JSON.parse(localStorage.getItem('ortografia_ignorar') || '[]'); } catch (e) { return []; } })());
 const esTilde = x => x.opciones[0] && x.original !== x.opciones[0] && sinTilde(x.original) === sinTilde(x.opciones[0]);
+async function ortoBloque(i) {  // la ortografía de un solo bloque (pedido de fabian, 30/10/2026)
+  const el = $('#orto' + i); if (el) el.textContent = 'Revisando…';
+  try {
+    const texto = G.bloques[i].texto;
+    const r = await api('/api/ortografia', {method: 'POST', body: JSON.stringify({texto})});
+    SUG[i] = r.cambios.map(c => ({desde: c.desde, largo: c.largo, original: texto.substr(c.desde, c.largo), opciones: c.opciones, mensaje: c.mensaje}))
+      .filter(x => x.original.trim() && !IGNORADAS.has(x.original.toLowerCase()));
+    pintarOrto(i);
+    if (el && !SUG[i].length) el.textContent = '✓ Sin errores de ortografía.';
+  } catch (e) { if (el) el.textContent = 'No pude revisar: ' + e.message; }
+}
 async function revisarOrtografia() {
   const msg = $('#msg');
   msg.className = 'msg'; msg.textContent = 'Revisando la ortografía…';
