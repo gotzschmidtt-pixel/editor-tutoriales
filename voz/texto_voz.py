@@ -7,6 +7,8 @@ def texto_voz(t):
     sueltos ni marcas de formato (*, #, `), con mayúscula al empezar y punto al final. El guion no se toca: solo cambia
     lo que se lee, así la voz no hace pausas raras ni lee símbolos."""
     t = re.sub(r'[*#`]+', '', str(t or ''))
+    # las webs se leen «punto com» / «punto co» (con «gsmprime.co» la voz decía «punto se o»; fabian, 30/10/2026)
+    t = re.sub(r'\b([a-z0-9-]+)\.(com|co|net|org)\b', r'\1 punto \2', t, flags=re.I)
     t = re.sub(r'\s+([,.;:!?…])', r'\1', t)
     t = re.sub(r'\s*;\s*', ', ', t)
     t = re.sub(r',(?=[^\s\d])', ', ', t)  # «hola,que» → «hola, que» (no toca 27,5 ni xiaomiunlock.com)
