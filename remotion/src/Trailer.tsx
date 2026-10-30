@@ -4,7 +4,8 @@ import {estilo} from './estilo';
 export type Fase = 'ANTES' | 'DURANTE' | 'DESPUÉS';
 export type Clip = {src: string; dur: number; fase: Fase};
 // fondo: la imagen de la marca para la placa final (mis_conocimientos/fondos, hecha con gpt-image-2.5 sin texto); el título va encima
-export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string; fondo?: string};
+// diapositiva: la placa final entera hecha por gpt-image-2.5 (con el título ya escrito), con el estilo que eligió fabian
+export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string; fondo?: string; diapositiva?: string};
 
 const CIERRE = 2.4; // segundos de la placa final con el título
 const FLASH = 4; // cuadros de destello entre cortes
@@ -52,12 +53,20 @@ const Toma: React.FC<{clip: Clip; nuevo: boolean}> = ({clip, nuevo}) => {
   );
 };
 
-const Cierre: React.FC<{titulo: string; subtitulo?: string; fondo?: string}> = ({titulo, subtitulo, fondo}) => {
+const Cierre: React.FC<{titulo: string; subtitulo?: string; fondo?: string; diapositiva?: string}> = ({titulo, subtitulo, fondo, diapositiva}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
   const s = spring({frame: f, fps, config: {damping: 12}});
   const s2 = spring({frame: f - 8, fps, config: {damping: 14}});
   const brillo = interpolate(f, [0, 2 * fps], [-30, 130]);
+  if (diapositiva) {  // la placa de GPT ya trae el título: entra con un destello y se acerca despacio
+    const zoom = interpolate(f, [0, CIERRE * fps], [1.0, 1.05]);
+    return (
+      <AbsoluteFill style={{backgroundColor: '#07080d'}}>
+        <Img src={staticFile(diapositiva)} style={{width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${zoom})`, opacity: s}} />
+      </AbsoluteFill>
+    );
+  }
   if (fondo) {  // con el fondo de la marca: la imagen se acerca despacio y el título va a la izquierda, sobre la parte oscura
     const zoom = interpolate(f, [0, CIERRE * fps], [1.0, 1.06]);
     return (
@@ -87,7 +96,7 @@ const Cierre: React.FC<{titulo: string; subtitulo?: string; fondo?: string}> = (
   );
 };
 
-export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio, fondo}) => {
+export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio, fondo, diapositiva}) => {
   const {fps} = useVideoConfig();
   let desde = 0;
   return (
@@ -103,7 +112,7 @@ export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio
         return seq;
       })}
       <Sequence from={desde}>
-        <Cierre titulo={titulo} subtitulo={subtitulo} fondo={fondo} />
+        <Cierre titulo={titulo} subtitulo={subtitulo} fondo={fondo} diapositiva={diapositiva} />
       </Sequence>
       {audio && <Audio src={staticFile(audio)} />}
     </AbsoluteFill>
