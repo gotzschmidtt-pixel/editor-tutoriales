@@ -20,7 +20,7 @@ DESFASE = 0.3     # la voz entra 0,3 s después del inicio del bloque (mezclar_v
 JUNTOS = 4.0      # menciones a menos de esto van en la misma fila
 QUEDA = 2.8       # segundos que siguen en pantalla después de la última mención de la fila
 NO_REPETIR = 30.0
-ALTO = 0.19       # alto de cada logo, en parte del alto del video
+ALTO = 0.19       # alto de cada logo, en parte del alto del video (las insignias anchas, al mismo alto)
 ENTRA = 0.3
 NUMEROS = {'nueve': 9, 'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15, 'dieciseis': 16,
            'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20,
@@ -84,11 +84,14 @@ def plan(guion, carpeta_voz, logos):
         for pos, l in menciones(txt, logos):
             out.append((round(b['inicio_min'] + DESFASE + t0[min(pos, len(t0) - 1)], 2), l))
     out.sort(key=lambda x: x[0])
-    filas, visto = [], {}
+    filas, visto, veces = [], {}, {}
     for t, l in out:
         if t - visto.get(l['archivo'], -999) < NO_REPETIR:
             continue
+        if veces.get(l['archivo'], 0) >= int(l.get('max_veces') or 99):  # «Honor» se dice todo el rato: su logo sale una vez
+            continue
         visto[l['archivo']] = t
+        veces[l['archivo']] = veces.get(l['archivo'], 0) + 1
         if filas and t - filas[-1][-1][0] <= JUNTOS and len(filas[-1]) < 4:
             filas[-1].append((t, l))
         else:
@@ -106,6 +109,15 @@ def tamano(v):
                        capture_output=True, text=True, check=True).stdout
     w, h = r.strip().split(',')[:2]
     return int(w), int(h)
+
+
+def proporcion(png):
+    """ancho / alto del PNG: las insignias de marcas y webs son anchas, los logos de versión casi cuadrados."""
+    try:
+        w, h = tamano(png)
+        return min(4.0, max(0.5, w / h))
+    except Exception:
+        return 1.0
 
 
 def del_idioma(logo, carpeta, idioma):
@@ -148,10 +160,14 @@ def main():
             if t >= hasta - 0.5:
                 continue
             dur = hasta - t
-            x = W - margen - (len(fila) - k) * caja - (len(fila) - 1 - k) * hueco
-            piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))],
-                           'pre': f"format=rgba,scale={caja}:{caja}:force_original_aspect_ratio=decrease,"
-                                  f"pad={caja}:{caja}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,"
+            png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
+            # de derecha a izquierda: cada uno con su ancho (al mismo alto), separados por el hueco
+            anchos = [round(caja * (proporcion(os.path.join(a.logos, del_idioma(o, a.logos, idioma))) if proporcion(os.path.join(a.logos, del_idioma(o, a.logos, idioma))) > 1.3 else 1)) // 2 * 2 for _, o in fila]
+            ancho = anchos[k]
+            x = W - margen - sum(anchos[k:]) - (len(fila) - 1 - k) * hueco
+            piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', png],
+                           'pre': f"format=rgba,scale={ancho}:{caja}:force_original_aspect_ratio=decrease,"
+                                  f"pad={ancho}:{caja}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,"
                                   f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={max(0, dur - ENTRA):.2f}:d={ENTRA}:alpha=1,"
                                   f"setpts=PTS-STARTPTS+{t}/TB",
                            'overlay': f"x={x}:y={margen}:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
