@@ -337,14 +337,13 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
     <p class="msg">Ves el marcado con ✓. Elegir otro guarda el actual como trailer.json.anterior; tus respuestas se conservan.</p>
     ${vs.map(v => `<div class="acciones" style="align-items:center">${v.archivo
       ? `<button ${v.elegida ? 'class="principal"' : ''} onclick="elegirTrailer('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
-         <button onclick="verTrailerIA('${esc(v.id)}', true)" title="Arma el tráiler de ${esc(v.nombre)} sin la frase de voz, para compararlo. No gasta nada">▶ Ver (sin voz, gratis)</button>
-         <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Con la frase de voz: gasta unos ${(v.voz || '').length} créditos de ElevenLabs">🔊 Con voz</button>
+         <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Arma el tráiler de ${esc(v.nombre)} con su frase de voz, para compararlo: gasta unos ${(v.voz || '').length} créditos de ElevenLabs (una sola vez por frase)">▶ Ver con voz</button>
+         <button onclick="verTrailerIA('${esc(v.id)}', true)" title="Sin la frase de voz: no gasta nada">sin voz (gratis)</button>
          <span class="msg">${esc(v.modelo)} · ${v.tomas} tomas · «${esc(v.titulo)}»${v.voz ? ' · voz: «' + esc(v.voz) + '»' : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>
          ${hay('trailer_' + v.id + '.mp4') ? `<video controls preload="metadata" style="max-height:240px; margin-top:6px" src="/archivo?p=${q(P)}&f=trailer_${esc(v.id)}.mp4&v=${E.archivos['trailer_' + v.id + '.mp4'].fecha}"></video>` : ''}`
       : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
 }
 async function verTrailerIA(id, sinVoz) {  // el tráiler de esa IA armado aparte (trailer_<ia>.mp4), sin tocar el elegido
-  if (!sinVoz && !confirm('Lo armo con su frase de voz: gasta unos créditos de ElevenLabs (una sola vez por frase). ¿Seguir?')) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
   try {
     await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz})});
