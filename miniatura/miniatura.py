@@ -220,30 +220,50 @@ def traducir(linea, idioma):
     return linea, True
 
 
-def miniaturas_gpt(d, refs, lineas, salida_base):
+ANTES_DESPUES = {'es': ('ANTES', 'DESPUÉS'), 'en': ('BEFORE', 'AFTER'), 'pt': ('ANTES', 'DEPOIS')}
+ESTILO = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'referencias')  # miniaturas de fabian (ESTILO_MINIATURAS.md)
+
+
+def referencias_estilo(marca, n=2):
+    """Las miniaturas de fabian que muestran su estilo: las de la misma marca primero."""
+    try:
+        todas = sorted(f for f in os.listdir(ESTILO) if f.lower().endswith(('.jpg', '.png')))
+    except OSError:
+        return []
+    suyas = [f for f in todas if f.lower().startswith(marca.lower()[:4])] + [f for f in todas if not f.lower().startswith(marca.lower()[:4])]
+    return [os.path.join(ESTILO, f) for f in suyas[:n]]
+
+
+def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
     """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
     k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
     if not k:
         raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
     hechas = []
-    for idioma, nombre in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')):
+    marca_logo = marca.title() if marca != 'TU CELULAR' else 'la marca del teléfono'
+    refs = list(refs) + referencias_estilo(marca)  # 1 y 2: tus cuadros; 3 y 4: tu estilo
+    for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
         partes = [traducir(x, idioma) for x in lineas if x]
         texto = ' / '.join(f'«{x}»' for x, _ in partes)
         traduce = any(t for _, t in partes)
-        prompt = ('Miniatura de YouTube para un video tutorial de técnicos de celulares, muy llamativa y profesional, estilo de canal '
-                  'grande: colores fuertes, alto contraste, brillo neón rosa #ff2bd6 y celeste #2bd9ff sobre fondo oscuro. Imagen 1: el '
-                  'teléfono REAL del video bloqueado (el problema): ponlo grande, nítido, de frente, con la pantalla bien visible y un '
-                  'candado rojo brillante encima. Imagen 2: el resultado (el teléfono ya libre): chico al costado con un check verde. '
-                  'Una flecha gruesa del problema al resultado. Texto GRANDE en dos líneas, en mayúsculas, tipografía muy gruesa con '
-                  f'borde, perfectamente escrito, en {nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  '. Ningún otro texto, ningún logo inventado. El texto a la izquierda, el teléfono a la derecha.')
+        prompt = ('Miniatura de YouTube (16:9) para el canal Xiaomiunlock de fabian, técnico de celulares, con SU ESTILO: las '
+                  'imágenes 3 y 4 son miniaturas suyas, cópiales SOLO el estilo (no su texto, ni su teléfono, ni el reloj de duración '
+                  'de YouTube). Imagen 1: el teléfono REAL de este video bloqueado (ANTES); imagen 2: el mismo teléfono ya libre '
+                  '(DESPUÉS). Estilo: los dos teléfonos reales, grandes y nítidos, de frente, sostenidos con guante negro o apoyados; '
+                  'etiqueta inclinada roja «' + ANTES_DESPUES[idioma][0] + '» sobre el bloqueado y verde «' + ANTES_DESPUES[idioma][1] +
+                  '» sobre el libre, y una flecha gruesa curva amarilla entre los dos; el candado con la G de Google de 4 colores; el '
+                  f'logo de {marca_logo} en una esquina de arriba y una cinta roja «2026»; colores saturados, alto contraste, fondo '
+                  'oscuro con brillo de neón o el escritorio real. Abajo, una franja inclinada de color fuerte con el texto GRANDE en '
+                  'mayúsculas, tipografía muy gruesa condensada e itálica, blanco y amarillo con borde negro y sombra, perfectamente '
+                  f'escrito, en {nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
+                  '. Ningún otro texto, ningún logo ni persona inventados. La imagen se recorta a 16:9: deja libre el 9 % de arriba y el 9 % de abajo, sin texto ni etiquetas ahí.')
         b = uuid.uuid4().hex
         cuerpo = b''
         for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x1024', 'quality': 'high', 'output_format': 'png'}.items():
             cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
         for i, r in enumerate(refs):
-            cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode()
+            cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}{os.path.splitext(r)[1]}"\r\nContent-Type: {'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'}\r\n\r\n'.encode()
                        + open(r, 'rb').read() + b'\r\n')
         cuerpo += f'--{b}--\r\n'.encode()
         req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
@@ -313,7 +333,7 @@ def main():
                 cv2.imwrite(refs[-1], cv2.resize(c, (1280, 720)))
         cap.release()
         try:
-            for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt')):
+            for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0]):
                 hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
         finally:
             for f in refs:
