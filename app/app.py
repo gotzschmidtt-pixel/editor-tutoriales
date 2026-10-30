@@ -1271,6 +1271,20 @@ def asegurar_librerias(log, env):
     log.write('✓ Librerías instaladas\n'); log.flush()
 
 
+def correr_despierto(*args):
+    """El trabajo corre con el PC despierto (pedido de fabian, 30/10/2026: el PC se durmió en medio de «Música de fondo» y un
+    paso de 40 s tardó una hora). No cambia la configuración de energía de Windows: vale solo mientras dura el trabajo."""
+    marca = sys.platform == 'win32'
+    if marca:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+    try:
+        return correr(*args)
+    finally:
+        if marca:
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # vuelve a lo normal
+
+
 def correr(proyecto, pasos, opciones):
     try:
         d = carpeta(proyecto)
@@ -2808,7 +2822,7 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
-                threading.Thread(target=correr, args=(q['p'], pasos, datos), daemon=True).start()
+                threading.Thread(target=correr_despierto, args=(q['p'], pasos, datos), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/reescribir_bloque':  # «✨ Reescribir con IA» un bloque: devuelve el texto, no guarda nada
                 datos = json.loads(self.rfile.read(largo) or b'{}')
@@ -2967,7 +2981,7 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
-                threading.Thread(target=correr, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}), daemon=True).start()
+                threading.Thread(target=correr_despierto, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
