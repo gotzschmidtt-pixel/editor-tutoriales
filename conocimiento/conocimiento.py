@@ -210,6 +210,13 @@ def aprender_de_proyecto(d):
     secs.pop(nombre, None)
     nueva = f'## {nombre} · {time.strftime("%Y-%m-%d")}\n' + '\n'.join(lineas)
     escribir(APRENDIDO, _cabecera_aprendido() + '\n' + '\n\n'.join([nueva] + list(secs.values())) + '\n')  # el más nuevo arriba
+    marca = marca_de_proyecto(d)
+    if marca:  # también en «Por marca» (HONOR.md…): la IA lo recibe primero en cualquier video de esa marca
+        for x in lineas:
+            try:
+                anotar_marca(marca, 'pregunta', f'{x[2:]} [{nombre}]')
+            except ValueError:
+                pass
     return len(lineas)
 
 
