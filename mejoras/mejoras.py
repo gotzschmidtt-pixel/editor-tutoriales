@@ -234,7 +234,7 @@ def post(h, ruta, q, largo, d):
     if ruta == '/api/mejoras/titulos_ia':  # «💡 Sugerir con IA» en «🖼 Miniatura» (un pedido corto de texto a tu IA)
         import subprocess
         r = subprocess.run([sys.executable, m('miniatura', 'titulos.py'), '--proyecto', d], capture_output=True, text=True,
-                           encoding='utf-8', timeout=400, cwd=d)
+                           encoding='utf-8', timeout=400, cwd=d, env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8'))
         try:
             return h.responder(json.loads(r.stdout.strip().splitlines()[-1]))
         except (ValueError, IndexError):
