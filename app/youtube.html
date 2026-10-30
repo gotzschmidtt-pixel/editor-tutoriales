@@ -55,15 +55,16 @@
       los capítulos (salen de los bloques del guion, con el segundo exacto del video final), las etiquetas y el comentario para fijar.
       Corrige lo que quieras y publica.</p>
     <div class="fila"><button onclick="proponer()" id="btnProponer">✨ Proponer con IA</button><span id="msgProponer" class="msg"></span></div>
+    <div class="barra" id="barraProponer" hidden><div></div></div><p class="ayuda" id="pctProponer" hidden></p>
     <div id="meta" hidden>
       <label>Título (elige uno o escribe el tuyo, hasta 100 letras)</label>
       <div id="titulos"></div>
       <input type="text" id="titulo" maxlength="100">
-      <label>Descripción</label><textarea id="descripcion" style="min-height:10em"></textarea>
+      <label>Descripción</label><div id="descOpciones" class="fila"></div><textarea id="descripcion" style="min-height:10em"></textarea>
       <label>Capítulos (van al final de la descripción; el primero en 0:00, al menos 3)</label><textarea id="capitulos"></textarea>
       <label>Aviso (va al final)</label><input type="text" id="advertencia">
       <label>Etiquetas (separadas por coma)</label><input type="text" id="etiquetas">
-      <label>Comentario para fijar</label><textarea id="comentario" style="min-height:4em"></textarea>
+      <label>Comentario para fijar</label><div id="comOpciones" class="fila"></div><textarea id="comentario" style="min-height:4em"></textarea>
       <div class="fila"><button onclick="guardar()">💾 Guardar cambios</button><span id="msgGuardar" class="msg"></span></div>
     </div>
     <label>Miniatura (JPG o PNG, hasta 2 MB)</label>
@@ -185,6 +186,11 @@ function pintarMeta(m) {
   document.querySelectorAll('input[name=tit]').forEach(r => r.onchange = () => { $('#titulo').value = m.titulos[r.value].titulo; });
   $('#titulo').value = m.titulo || ''; $('#descripcion').value = m.descripcion || ''; $('#capitulos').value = m.capitulos_texto || '';
   $('#advertencia').value = m.advertencia || ''; $('#etiquetas').value = (m.etiquetas || []).join(', '); $('#comentario').value = m.comentario || '';
+  // varias opciones para elegir (la primera es la que ya está puesta)
+  const opciones = (sel, campo, lista) => { const xs = [m[campo], ...(lista || [])].filter(Boolean);
+    $(sel).innerHTML = xs.length > 1 ? xs.map((x, i) => `<button type="button" title="${esc(x)}" onclick="$('#${campo}').value = this.title">Opción ${i + 1}</button>`).join('') : ''; };
+  opciones('#descOpciones', 'descripcion', m.descripciones);
+  opciones('#comOpciones', 'comentario', m.comentarios);
 }
 function pintarSubida(s, pub) {
   const d = $('#subida');
@@ -212,8 +218,13 @@ async function cargar() {
 }
 async function proponer() {
   $('#btnProponer').disabled = true; $('#msgProponer').textContent = 'La IA está escribiendo (medio minuto)…'; $('#msgProponer').className = 'msg';
-  try { pintarMeta(await api(`/api/youtube/proponer?p=${q(P)}`, {method: 'POST'})); $('#msgProponer').textContent = ''; }
-  catch (x) { $('#msgProponer').textContent = x.message; $('#msgProponer').className = 'msg err'; }
+  const t0 = Date.now(), b = $('#barraProponer'), p = $('#pctProponer');  // aproximada: la IA no dice cuánto le falta
+  b.hidden = p.hidden = false;
+  const pinta = x => { b.firstElementChild.style.width = x + '%'; p.textContent = `${Math.floor(x)} % · ${Math.round((Date.now() - t0) / 1000)} s${x < 100 ? ' (aprox.)' : ''}`; };
+  const id = setInterval(() => pinta(Math.min(97, 100 * (1 - Math.exp(-2.2 * (Date.now() - t0) / 40000)))), 250);
+  try { pintarMeta(await api(`/api/youtube/proponer?p=${q(P)}`, {method: 'POST'})); $('#msgProponer').textContent = ''; clearInterval(id); pinta(100); }
+  catch (x) { clearInterval(id); $('#msgProponer').textContent = x.message; $('#msgProponer').className = 'msg err'; }
+  setTimeout(() => { b.hidden = p.hidden = true; }, 2500);
   $('#btnProponer').disabled = false;
 }
 async function guardar() {

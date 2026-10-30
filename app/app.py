@@ -1975,7 +1975,15 @@ class Manejador(BaseHTTPRequestHandler):
                 g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
                 bloques = [{'id': b['id'], 's': b.get('inicio_min', 0), 'texto': b.get('texto', '')} for b in g.get('bloques', [])]
             idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
-            r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', [])})
+            busq = {}  # lo que la gente escribe en el buscador de YouTube sobre la marca de este video (gratis)
+            try:
+                marca = (conocimiento.marca_de_proyecto(d) or os.path.basename(d).split()[0]).lower()
+                for s_ in (f'{marca} frp', f'{marca} cuenta google', f'quitar cuenta google {marca}', f'{marca} bypass'):
+                    busq[s_] = youtube.sugerencias(s_)
+            except Exception:
+                pass
+            r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', []),
+                                       'busquedas': busq})
             r['titulo'] = ((r.get('titulos') or [{}])[r.get('elegido') or 0] or {}).get('titulo', '')
             r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
             json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

@@ -34,6 +34,9 @@ LA IDEA DEL VIDEO NUEVO (datos seguros del autor):
 EL GUION DEL VIDEO NUEVO, bloque por bloque (id, segundo en que empieza y texto):
 {json.dumps(e['bloques'], ensure_ascii=False)}
 
+LO QUE LA GENTE ESCRIBE EN EL BUSCADOR DE YOUTUBE (úsalo en títulos, descripción y etiquetas, sin forzar):
+{json.dumps(e.get('busquedas') or {}, ensure_ascii=False)}
+
 PÁGINAS Y CONTACTOS DEL AUTOR (van en la descripción con su link exacto):
 {json.dumps(e.get('paginas', []), ensure_ascii=False)}
 
@@ -46,7 +49,9 @@ Devuelve este JSON:
   "descripcion": "2 a 4 párrafos: qué resuelve el video, para qué modelos/versiones (solo los que se nombran), qué hace falta, y las páginas con su link. Sin capítulos (los pone la app)",
   "etiquetas": ["15 a 25 etiquetas: marca, modelo, problema, método, año"],
   "capitulos": [{{"bloque": "L01", "titulo": "Qué necesitas"}}, ... entre 4 y 12, el primero el bloque inicial, cada uno donde empieza un paso nuevo],
+  "descripciones": ["otra versión de la descripción, con otro enfoque (más corta y directa)"],
   "comentario": "el comentario que el autor fija: invita a comentar el modelo y la versión, recuerda el WhatsApp o la web si está en las páginas",
+  "comentarios": ["otras 2 opciones de comentario fijado, distintas: una con pregunta para generar respuestas, otra con un dato útil"],
   "advertencia": "una frase si el video trata de quitar bloqueos o abrir el equipo: solo en equipos propios y bajo tu responsabilidad; vacío si no hace falta"}}"""
 
 
