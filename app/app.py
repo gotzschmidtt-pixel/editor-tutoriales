@@ -2688,6 +2688,32 @@ class Manejador(BaseHTTPRequestHandler):
                     x['elegida'] = x is v
                 json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
                 return self.responder({'ok': True})
+            if ruta == '/api/trailer_version_texto':  # los textos de la diapositiva (título y subtítulo) y la frase de voz de una IA
+                d = carpeta(q['p'])
+                v = re.sub(r'[^a-z]', '', q.get('v') or '')
+                f = os.path.join(d, f'trailer_{v}.json')
+                if not v or not os.path.exists(f):
+                    return self.error('esa propuesta del tráiler ya no está')
+                nuevo = json.loads(self.rfile.read(largo) or b'{}')
+                t = json.load(open(f, encoding='utf-8'))
+                for k in ('titulo', 'subtitulo', 'voz'):
+                    if k in nuevo:
+                        t[k] = str(nuevo[k] or '').strip()[:300]
+                json.dump(t, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                try:  # la lista de versiones muestra el título y la voz nuevos
+                    fv = os.path.join(d, 'versiones_trailer.json')
+                    versiones = json.load(open(fv, encoding='utf-8'))
+                    for x in versiones:
+                        if x.get('id') == v:
+                            x['titulo'], x['voz'] = t.get('titulo', ''), t.get('voz', '')
+                            if x.get('elegida'):  # es tu tráiler: trailer.json también cambia
+                                tr = json.load(open(os.path.join(d, 'trailer.json'), encoding='utf-8'))
+                                tr.update({k: t.get(k, '') for k in ('titulo', 'subtitulo', 'voz')})
+                                json.dump(tr, open(os.path.join(d, 'trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                    json.dump(versiones, open(fv, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                except (OSError, ValueError):
+                    pass
+                return self.responder({'ok': True})
             if ruta == '/api/elegir_version_trailer':  # «🎬 Tráiler con varias IAs»: esa propuesta pasa a ser tu tráiler
                 d = carpeta(q['p'])
                 try:

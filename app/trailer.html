@@ -330,9 +330,23 @@ function resumen() {
   $('#btnArmar').disabled = !hay('3_voz.mp4') || !T.clips.length;
   $('#btnSolo').disabled = !hay('original.mp4') || !T.clips.length;
 }
+let TEXTOS = {}, TEXTOS_ABIERTO = '';
+async function guardarTextos(id, rehacer) {  // título, subtítulo y voz de esa IA; con «rehacer», su tráiler se arma de nuevo con voz
+  const datos = {};
+  document.querySelectorAll(`.campos[data-v="${id}"] input[data-t]`).forEach(i => datos[i.dataset.t] = i.value.trim());
+  const msg = $('#msg');
+  try {
+    await api(`/api/trailer_version_texto?p=${q(P)}&v=${q(id)}`, {method: 'POST', body: JSON.stringify(datos)});
+    TEXTOS_ABIERTO = id;
+    if (rehacer) return verTrailerIA(id, false);
+    await cargar(); msg.className = 'msg ok'; msg.textContent = '✓ Textos guardados. «▶ Ver con voz» para verlos en el tráiler.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
 async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una, para elegir la que más te guste
   let vs = [];
   if (hay('versiones_trailer.json')) try { const r = await api(`/archivo?p=${q(P)}&f=versiones_trailer.json&v=${Date.now()}`); vs = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
+  TEXTOS = {};
+  for (const v of vs.filter(x => x.archivo)) try { const r = await api(`/archivo?p=${q(P)}&f=${q(v.archivo)}&v=${Date.now()}`); TEXTOS[v.id] = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
   $('#versiones').innerHTML = !vs.length ? '' : `<div class="panel preg"><b>🎬 Tráileres de cada IA</b>
     <p class="msg">Ves el marcado con ✓. Elegir otro guarda el actual como trailer.json.anterior; tus respuestas se conservan.</p>
     ${vs.map(v => `<div class="acciones" style="align-items:center">${v.archivo
@@ -340,6 +354,13 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
          <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Arma el tráiler de ${esc(v.nombre)} con su frase de voz, para compararlo: gasta unos ${(v.voz || '').length} créditos de ElevenLabs (una sola vez por frase)">▶ Ver con voz</button>
          <button onclick="verTrailerIA('${esc(v.id)}', true)" title="Sin la frase de voz: no gasta nada">sin voz (gratis)</button>
          <span class="msg">${esc(v.modelo)} · ${v.tomas} tomas · «${esc(v.titulo)}»${v.voz ? ' · voz: «' + esc(v.voz) + '»' : ''}${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</span>
+         <details style="width:100%" ${TEXTOS_ABIERTO === v.id ? 'open' : ''}><summary class="msg">✏️ Editar los textos de la diapositiva y la voz</summary>
+           <div class="campos" data-v="${esc(v.id)}">
+             <label>Título (intro, máx. 5 palabras)<input data-t="titulo" value="${esc((TEXTOS[v.id] || {}).titulo ?? v.titulo ?? '')}"></label>
+             <label>Subtítulo (debajo del título)<input data-t="subtitulo" value="${esc((TEXTOS[v.id] || {}).subtitulo ?? '')}"></label>
+             <label class="ancho">Frase de la voz (vacía = sin voz)<input data-t="voz" value="${esc((TEXTOS[v.id] || {}).voz ?? v.voz ?? '')}"></label></div>
+           <div class="acciones"><button class="principal" onclick="guardarTextos('${esc(v.id)}', true)" title="Guarda y vuelve a armar este tráiler con voz (la frase nueva gasta sus créditos de ElevenLabs)">💾 Guardar y rehacer</button>
+             <button onclick="guardarTextos('${esc(v.id)}', false)">Solo guardar</button></div></details>
          ${hay('trailer_' + v.id + '.mp4') ? `<video controls preload="metadata" style="max-height:240px; margin-top:6px" src="/archivo?p=${q(P)}&f=trailer_${esc(v.id)}.mp4&v=${E.archivos['trailer_' + v.id + '.mp4'].fecha}"></video>` : ''}`
       : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
 }
