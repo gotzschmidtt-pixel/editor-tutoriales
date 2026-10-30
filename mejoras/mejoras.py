@@ -189,6 +189,7 @@ def estado(d):
         'miniaturas_fotos': _leer(d, 'miniatura_fotos.json'),
         'titulos_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('titulos', []),
         'esquinas_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('esquinas', []),
+        'momentos_miniatura': _leer(d, 'momentos_miniatura.json'),
     }
 
 
@@ -240,6 +241,23 @@ def post(h, ruta, q, largo, d):
             return h.responder(json.loads(r.stdout.strip().splitlines()[-1]))
         except (ValueError, IndexError):
             return h.error('La IA no pudo sugerir títulos: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
+    if ruta == '/api/mejoras/momentos_miniatura':  # los mejores cuadros de tu video para el ANTES y el DESPUÉS (gratis)
+        import subprocess
+        r = subprocess.run([sys.executable, m('miniatura', 'miniatura.py'), '--proyecto', d, '--momentos'], capture_output=True,
+                           text=True, encoding='utf-8', timeout=900, cwd=d, env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8'))
+        try:
+            return h.responder({'ok': True, 'momentos': json.loads(r.stdout.strip().splitlines()[-1])})
+        except (ValueError, IndexError):
+            return h.error('No pude buscar en tu video: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
+    if ruta == '/api/mejoras/foto_de_video':  # usar un cuadro de tu video (en su resolución) como foto de la miniatura
+        import subprocess
+        nombre = SUBIDAS.get(q.get('tipo'))
+        if not nombre or not nombre.startswith('foto_') or not os.path.exists(os.path.join(d, 'original.mp4')):
+            return h.error('foto no válida o falta tu video')
+        s = max(0.0, float(q.get('t') or 0))
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s:.2f}', '-i', os.path.join(d, 'original.mp4'),
+                        '-frames:v', '1', '-q:v', '2', os.path.join(d, nombre)], capture_output=True)
+        return h.responder({'ok': os.path.exists(os.path.join(d, nombre))})
     if ruta == '/api/mejoras/borrar_foto':  # quitar una de tus fotos de la miniatura
         nombre = SUBIDAS.get(q.get('tipo'))
         if not nombre or not nombre.startswith('foto_'):

@@ -919,31 +919,53 @@ def estilos_titulo(a):
     return ('placa', 'metal') if a.titulo == 'todos' else (a.titulo,)  # los dos que eligió fabian (30/10/2026)
 
 
+def momentos_miniatura(d):
+    """Los segundos de tu video que sirven de ANTES (verifica, fastboot, bienvenido) y de DESPUÉS (inicio). Se guardan en
+    momentos_miniatura.json para no volver a buscarlos."""
+    f = os.path.join(d, 'momentos_miniatura.json')
+    try:
+        return json.load(open(f, encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
+    orig = os.path.join(d, 'original.mp4')
+    if not os.path.exists(orig):
+        return {}
+    nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
+    total = float(nt[0][-1]) if len(nt[0]) else 60.0
+    mo = cuadros_clave(d, nt)
+    if not any(k in mo for k in ('verifica', 'fastboot', 'bienvenido')):
+        mo['verifica'] = mejor(*nt, total * 0.02, total * 0.15)
+    mo.setdefault('inicio', mejor(*nt, total * 0.975, total * 0.998))
+    mo = {k: round(float(v), 1) for k, v in mo.items()}
+    json.dump(mo, open(f, 'w', encoding='utf-8'), indent=1)
+    return mo
+
+
 def con_fotos(d, a):
     """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video; GPT y la app
     ponen fondo, textos, sello, píldoras y logo."""
     fotos = {k: os.path.join(d, f'foto_miniatura_{k}.jpg') for k in FOTOS if os.path.exists(os.path.join(d, f'foto_miniatura_{k}.jpg'))}
-    if 'antes' not in fotos:
-        raise SystemExit('ERROR: falta la foto del ANTES (el teléfono bloqueado). Súbela en «🖼 Miniatura».')
     if not a.gpt:
         raise SystemExit('ERROR: la miniatura con tus fotos la hace GPT: escribe SI para confirmar el gasto.')
-    temporal = None
-    if 'despues' not in fotos:  # sin foto del DESPUÉS: la pantalla de inicio del final de tu video
-        orig = os.path.join(d, 'original.mp4')
-        if not os.path.exists(orig):
-            raise SystemExit('ERROR: falta la foto del DESPUÉS (el teléfono ya libre). Súbela en «🖼 Miniatura».')
-        nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
-        total = float(nt[0][-1]) if len(nt[0]) else 60.0
-        s = cuadros_clave(d, nt).get('inicio') or mejor(*nt, total * 0.975, total * 0.998)
-        cap = cv2.VideoCapture(orig)
-        cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
-        ok, c = cap.read()
-        cap.release()
+    temporales = []
+    orig = os.path.join(d, 'original.mp4')
+    for k, claves, que in (('antes', ('verifica', 'fastboot', 'bienvenido'), 'el teléfono bloqueado'), ('despues', ('inicio',), 'el teléfono ya libre')):
+        if k in fotos:
+            continue
+        mo = momentos_miniatura(d)  # sin tu foto: el mejor cuadro de tu video
+        s = next((mo[c] for c in claves if c in mo), None)
+        ok = False
+        if s is not None and os.path.exists(orig):
+            cap = cv2.VideoCapture(orig)
+            cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
+            ok, c = cap.read()
+            cap.release()
         if not ok:
-            raise SystemExit('ERROR: falta la foto del DESPUÉS (el teléfono ya libre). Súbela en «🖼 Miniatura».')
-        temporal = fotos['despues'] = os.path.join(d, '.ref_miniatura_inicio.png')
-        cv2.imwrite(temporal, c)
-        print(f'· sin foto del DESPUÉS: uso tu video en {int(s // 60)}:{int(s % 60):02d}', flush=True)
+            raise SystemExit(f'ERROR: falta la foto del {k.upper()} ({que}) y no la encontré en tu video. Súbela en «🖼 Miniatura».')
+        fotos[k] = os.path.join(d, f'.ref_miniatura_{k}.png')
+        temporales.append(fotos[k])
+        cv2.imwrite(fotos[k], c)
+        print(f'· sin foto del {k.upper()}: uso tu video en {int(s // 60)}:{int(s % 60):02d}', flush=True)
     lineas = list(a.texto.split('|')[:2]) if a.texto else list(textos(d)[0])
     extras = [fotos[k] for k in FOTOS[2:] if k in fotos]
     marca = next((x.strip().upper() for x in lineas if x.strip().upper() in MARCAS), textos(d)[0][0])  # para el logo oficial
@@ -958,8 +980,8 @@ def con_fotos(d, a):
                 hechas.append({'archivo': f, 'de': f"tus fotos · {'mixta' if a.mixta else 'todo GPT'} · fondo {'de tus fotos' if fondo == 'foto' else 'de GPT'}",
                                'texto': [x for x in lineas if x]})
     finally:
-        if temporal:
-            os.remove(temporal)
+        for f in temporales:
+            os.remove(f)
     json.dump({'miniaturas': hechas}, open(os.path.join(d, 'miniatura_fotos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'Listo: {len(hechas)} miniaturas con tus fotos.', flush=True)
 
@@ -969,6 +991,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--momentos', action='store_true', help='solo busca en el video los cuadros de ANTES y DESPUÉS (gratis)')
     ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
     ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
     ap.add_argument('--titulo', choices=('placa', 'pincel', 'metal', 'todos'), default='todos', help='con --mixta: el estilo del título (todos = los dos que le gustan a fabian: placa y metal)')
@@ -981,6 +1004,9 @@ def main():
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
+    if a.momentos:
+        print(json.dumps(momentos_miniatura(d)), flush=True)
+        return
     if a.fotos:
         return con_fotos(d, a)
     orig = os.path.join(d, 'original.mp4')

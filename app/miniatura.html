@@ -49,7 +49,7 @@
   <section>
     <h2>1 · Tus fotos HD</h2>
     <p class="aviso">Sube tus tomas o fotos en buena calidad. Toca un recuadro para elegir el archivo, arrástrala encima, o tócalo y pega con
-      <b>Ctrl + V</b> (lo que copió ShareX). La del ANTES es obligatoria; si falta la del DESPUÉS, la app usa la pantalla de inicio del final de tu video.</p>
+      <b>Ctrl + V</b> (lo que copió ShareX). Si no tienes alguna, toca uno de los cuadros de tu video que aparecen debajo, o déjala vacía y la app usa el mejor cuadro de tu video sola.</p>
     <div class="fotos" id="fotos"></div>
     <input type="file" id="archivo" accept="image/*" hidden>
     <p class="msg" id="fotoMsg"></p>
@@ -107,7 +107,7 @@ const P = new URLSearchParams(location.search).get('p') || '';
 const $ = s => document.querySelector(s);
 const q = encodeURIComponent;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-const FOTOS = [['antes', 'ANTES', 'El teléfono bloqueado (Verifica tu cuenta, fastboot, Bienvenido…). Obligatoria'],
+const FOTOS = [['antes', 'ANTES', 'El teléfono bloqueado (Verifica tu cuenta, fastboot, Bienvenido…)'],
                ['despues', 'DESPUÉS', 'El teléfono ya libre, en la pantalla de inicio'],
                ['extra1', 'Otra toma', 'Opcional: otro ángulo del mismo teléfono'],
                ['extra2', 'Otra toma', 'Opcional: otro ángulo del mismo teléfono']];
@@ -132,9 +132,31 @@ function pintarFotos() {
          ondragover="event.preventDefault(); this.classList.add('encima')" ondragleave="this.classList.remove('encima')" ondrop="soltar(event, '${k}')">
       <b>${titulo}</b>
       ${hay[k] ? `<img src="${arch('foto_miniatura_' + k + '.jpg', hay[k])}" alt="${titulo}">` : `<div class="vacia">${esc(ayuda)}<br><br>Toca, arrastra o Ctrl + V</div>`}
+      ${!hay[k] && SUGIERE[k] ? sugerenciasVideo(k) : ''}
       <div class="fila" style="margin:0"><button onclick="event.stopPropagation(); abrirArchivo('${k}')">📂 Elegir</button>
         ${hay[k] ? `<button onclick="event.stopPropagation(); borrar('${k}')">🗑 Quitar</button>` : ''}</div>
     </div>`).join('');
+}
+const SUGIERE = {antes: [['verifica', '🔒 Verifica tu cuenta'], ['fastboot', '⚡ Fastboot'], ['bienvenido', '👋 Bienvenido']], despues: [['inicio', '🏠 Pantalla de inicio']]};
+function sugerenciasVideo(k) {  // los mejores cuadros de tu video para ese recuadro: tocas uno y queda como foto
+  const mo = E.momentos_miniatura || {};
+  const hay = SUGIERE[k].filter(([c]) => mo[c] != null);
+  if (!(E.archivos || {})['original.mp4']) return '';
+  if (!hay.length) return '<p class="aviso">Buscando en tu video…</p>';
+  return `<p class="aviso" style="margin:2px 0">De tu video (toca uno; si no eliges, la app usa el primero):</p><div class="tira" style="gap:6px">` +
+    hay.map(([c, n]) => `<figure style="width:31%; cursor:pointer" onclick="event.stopPropagation(); usarCuadro('${k}', ${mo[c]})" title="Usar este cuadro de ${Math.floor(mo[c] / 60)}:${String(Math.floor(mo[c] % 60)).padStart(2, '0')}">
+      <img src="/api/cuadro?p=${q(P)}&t=${mo[c]}" alt="" style="aspect-ratio:auto"><figcaption>${n}</figcaption></figure>`).join('') + '</div>';
+}
+async function usarCuadro(k, t) {
+  aviso('#fotoMsg', 'Guardando ese cuadro en buena calidad…');
+  try { await api(`/api/mejoras/foto_de_video?p=${q(P)}&tipo=foto_${k}&t=${t}`, {method: 'POST', body: '{}'}); aviso('#fotoMsg', '✓ Listo: ese cuadro quedó como foto.', 'ok'); await cargar(); }
+  catch (e) { aviso('#fotoMsg', e.message, 'err'); }
+}
+let BUSCANDO = false;
+async function buscarMomentos() {  // gratis, en tu PC: la primera vez tarda unos segundos
+  if (BUSCANDO || E.momentos_miniatura || !(E.archivos || {})['original.mp4']) return;
+  BUSCANDO = true;
+  try { await api(`/api/mejoras/momentos_miniatura?p=${q(P)}`, {method: 'POST', body: '{}'}); await cargar(); } catch (e) { aviso('#fotoMsg', e.message, 'err'); }
 }
 function elegir(k) { ELEGIDA = k; pintarFotos(); }
 function abrirArchivo(k) { ELEGIDA = k; pintarFotos(); $('#archivo').value = ''; $('#archivo').click(); }
@@ -210,7 +232,7 @@ function pintarCosto() {
 $('#fondo').onchange = $('#modo').onchange = $('#titulo').onchange = $('#tituloGpt').onchange = pintarCosto;
 
 async function hacer() {
-  if (!(E.fotos_miniatura || {}).antes) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
+  if (!(E.fotos_miniatura || {}).antes && !(E.archivos || {})['original.mp4']) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
   const r = prompt(`⚠ Esto gasta ${imagenes()} imagen(es) de gpt-image-2.5-flare en calidad alta.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
   if (r === null) return;
   if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
@@ -235,6 +257,7 @@ async function hacer() {
 async function cargar() {
   E = await api(`/api/mejoras/estado?p=${q(P)}`);
   pintarFotos();
+  buscarMomentos();
   pintarSugeridos();
   pintarEsquinas();
   const m = (E.miniaturas_fotos || {}).miniaturas || [];
