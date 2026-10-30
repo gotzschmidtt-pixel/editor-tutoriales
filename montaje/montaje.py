@@ -93,6 +93,20 @@ EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app
 PARTES = '.montaje_partes'  # tramos ya hechos: si el montaje se corta, o cambias un solo bloque, no se rehacen los demás
 
 
+def numeros_iguales(x):
+    """510 y 510.0 son lo mismo: el editor de guion guarda los números sin «.0» y la app con «.0»; sin esto cada guardado
+    desde el editor cambiaba la clave de TODOS los bloques y el montaje los volvía a armar enteros (fabian, 30/10/2026)."""
+    if isinstance(x, bool) or x is None:
+        return x
+    if isinstance(x, (int, float)):
+        return round(float(x), 3)
+    if isinstance(x, dict):
+        return {k: numeros_iguales(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [numeros_iguales(v) for v in x]
+    return x
+
+
 def huella_archivo(f):
     try:
         st = os.stat(f)
@@ -269,7 +283,7 @@ def main():
         quieto = bool(m.get('quieto')) or agitada
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
         nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
-        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else []),
+        clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
