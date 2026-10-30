@@ -30,6 +30,9 @@
   .tira figure { margin: 0; width: 380px; max-width: 100%; }
   .tira img { width: 100%; border-radius: 8px; border: 1px solid var(--borde); }
   .tira figcaption { font-size: 12px; color: var(--suave); margin-top: 4px; }
+  .barra { position: relative; height: 20px; max-width: 560px; background: #0f1426; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; margin: 6px 0; }
+  .barra div { height: 100%; width: 0; background: linear-gradient(90deg, var(--rosa), var(--amarillo)); transition: width .25s; }
+  .barra span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; }
   .sugeridos { display: flex; gap: 8px; flex-wrap: wrap; }
   .sug { background: #0f1426; border: 1px solid var(--borde); border-radius: 10px; padding: 6px 10px; cursor: pointer; text-align: left; }
   .sug:hover, .sug.elegida { border-color: var(--rosa); }
@@ -68,6 +71,7 @@
       <span class="aviso">(con texto a la derecha, el logo baja un poco)</span>
     </div>
     <div class="sugeridos" id="sugEsquinas"></div>
+    <div class="barra" id="sugBarra" hidden><div></div><span></span></div>
     <p class="msg" id="sugMsg"></p>
     <div class="fila">
       <label>Fondo <select id="fondo">
@@ -89,6 +93,7 @@
     </div>
     <p class="aviso" id="costo"></p>
     <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
+    <div class="barra" id="barra" hidden><div></div><span></span></div>
   </section>
 
   <section>
@@ -174,11 +179,21 @@ function pintarEsquinas() {
 }
 function esquina(campo, i) { $(campo).value = E.esquinas_ia[i].es; }
 function usar(i) { const x = E.titulos_ia[i]; $('#linea1').value = x.es[0] || ''; $('#linea2').value = x.es[1] || ''; pintarSugeridos(); }
+function barra(sel, seg) {  // barra aproximada: la IA no dice cuánto le falta, así que avanza según lo que suele tardar
+  const b = $(sel), t0 = Date.now();
+  const pintar = p => { b.firstElementChild.style.width = p + '%';
+    b.lastElementChild.textContent = `${Math.floor(p)} % · ${Math.round((Date.now() - t0) / 1000)} s${p < 100 ? ' (aprox.)' : ''}`; };
+  b.hidden = false;
+  pintar(0);
+  const id = setInterval(() => pintar(Math.min(97, 100 * (1 - Math.exp(-2.2 * (Date.now() - t0) / 1000 / seg)))), 250);
+  return ok => { clearInterval(id); if (ok) { pintar(100); setTimeout(() => { b.hidden = true; }, 2500); } else b.hidden = true; };
+}
 async function sugerir() {
   if (!confirm('La IA de la app (⚙ Ajustes IA) va a proponer 8 títulos y 8 textos para las esquinas. Es un pedido corto de texto: gasta centavos. ¿Sigo?')) return;
-  aviso('#sugMsg', 'La IA está pensando títulos (unos segundos)…');
-  try { await api(`/api/mejoras/titulos_ia?p=${q(P)}`, {method: 'POST', body: '{}'}); aviso('#sugMsg', '✓ Toca uno para usarlo (puedes editarlo después).', 'ok'); await cargar(); }
-  catch (e) { aviso('#sugMsg', e.message, 'err'); }
+  aviso('#sugMsg', 'La IA está pensando títulos…');
+  const fin = barra('#sugBarra', 15);
+  try { await api(`/api/mejoras/titulos_ia?p=${q(P)}`, {method: 'POST', body: '{}'}); fin(true); aviso('#sugMsg', '✓ Toca uno para usarlo (puedes editarlo después).', 'ok'); await cargar(); }
+  catch (e) { fin(false); aviso('#sugMsg', e.message, 'err'); }
 }
 $('#linea1').oninput = $('#linea2').oninput = pintarSugeridos;
 function imagenes() {
@@ -200,6 +215,7 @@ async function hacer() {
   if (r === null) return;
   if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
   aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
+  const fin = barra('#barra', 70 * imagenes());
   try {
     await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
       body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, titulo_gpt: $('#tituloGpt').checked, esq_izq: $('#esqIzq').value.trim().toUpperCase(), esq_der: $('#esqDer').value.trim().toUpperCase(), confirmo: 'SI'})});
@@ -210,8 +226,9 @@ async function hacer() {
       if (e.fallo) throw new Error(e.fallo.msg || 'falló: mira el registro');
       break;
     }
+    fin(true);
     aviso('#msg', '✓ Lista.', 'ok');
-  } catch (e) { aviso('#msg', e.message, 'err'); }
+  } catch (e) { fin(false); aviso('#msg', e.message, 'err'); }
   await cargar();
 }
 
