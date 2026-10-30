@@ -946,30 +946,49 @@ def desfases(d, bloques):
 # 12-15 s) dijo «los mantenemos apretados… aparece el menú» en 2:14, sobre «Comprobando información», cuando en la
 # grabación aprieta volumen más y power en 2:44 y el menú sale en 2:53: la voz iba un bloque adelantada y la frase
 # «volumen más y power» se perdió. La revisión por palabras no lo vio porque el texto no copiaba lo que dice.
-ACCIONES = {'volumen': r'\bvol(umen)?\b', 'power': r'\bpower\b|\bencendido\b', 'botón': r'\bboton(es)?\b',
-            'tecla': r'\bteclas?\b', 'soltar': r'\bsolt', 'menú': r'\bmenu\b', 'fastboot': r'fastboot',
-            'recovery': r'recovery', 'DFU': r'\bdfu\b', 'desconectar': r'\bdesconect',
+# HONOR 8 LITE (29/10/2026) dejó 5 avisos falsos de 9: «encendido» como estado («dice que está encendido»), «los usaremos
+# más adelante», «teclamos el menos» (sin decir volumen), «retirar el cable» (sin decir desconectar) y «si no le hubiera
+# puesto wifi». Y no veía el apagado de 0:33 («vamos a apagar el dispositivo»): apagar también es la acción de power.
+ACCIONES = {'volumen': r'\bvol(umen)?\b|\bel menos\b|\btecla (de )?menos\b',
+            'power': r'\bpower\b|\b(boton|tecla) de encendido\b|\bapag(a|ar|amos|as|ue|uen)\b', 'botón': r'\bboton(es)?\b',
+            'tecla': r'\btecl(a|as|amos|ea|eamos)\b', 'soltar': r'\bsolt', 'menú': r'\bmenu\b', 'fastboot': r'fastboot',
+            'recovery': r'recovery', 'DFU': r'\bdfu\b', 'desconectar': r'\bdesconect|\b(retir|quit|sac)\w*( \w+){0,2} (el |los )?cables?\b',
             'pegar': r'\bpeg(a|ar|amos|as|ue|uen)\b', 'omitir': r'\bomit', 'reiniciar': r'\breinici',
             'WiFi': r'\bwi-?fi\b', 'crear cuenta': r'\bcrea(r)? (una |nuestra |tu )?(propia |nueva )?cuenta'}
 MODOS = {'fastboot', 'recovery', 'DFU'}  # «la pantalla de fastboot» se nombra todo el rato: no marca el momento de la acción
+NO_ES_ACCION = r'\b(no|ni|nunca|sin|si)\b'  # «no uses power», «si sueltas antes…»: aviso o hipótesis, no lo que se hace
+PROMESA = r'\b(va|van) a (aparecer|salir|mostrar)\b'  # «les voy a demostrar que nos va a aparecer la opción de omitir»: todavía no
+MAS_ADELANTE = r'\b(mas adelante|usaremos|veremos)\b'  # «los demás botones, como reiniciar, los usaremos más adelante»
 
 
 def nombra_accion(rx, txt):
     """Si el texto nombra la acción como algo que se hace, no como aviso: en «no uses power, que te reinicia el equipo»
-    o «si sueltas antes…» no se aprieta power ni se reinicia nada."""
-    return any(not re.search(r'\b(no|ni|nunca|sin|si)\b', re.split(r'[.:;!?]', txt[:m.start()])[-1])
+    o «si sueltas antes…» no se aprieta power ni se reinicia nada, y en «como reiniciar, los usaremos más adelante» tampoco."""
+    def frase(m):
+        return re.split(r'[.:;!?]', txt[:m.start()])[-1] + re.split(r'[.:;!?]', txt[m.start():])[0]
+    return any(not re.search(NO_ES_ACCION, re.split(r'[.:;!?]', txt[:m.start()])[-1]) and not re.search(MAS_ADELANTE, frase(m))
                for m in re.finditer(rx, txt))
 
 
 def momentos_accion(d):
     """[(segundo, fin, frase, {acciones})]: dónde dice el autor que aprieta, pega, conecta, elige… (de su transcripción).
-    Las menciones a menos de 5 s se juntan en un solo momento."""
+    Las menciones a menos de 5 s se juntan en un solo momento. Lo que dice como hipótesis o aviso («si no le hubiera
+    puesto wifi», «no lo sueltes») no es un momento: no lo está haciendo."""
     palabras = pistas.palabras_video(d)
     hits = []
     for k, w in enumerate(palabras):
-        par = normal(w['texto'] + ' ' + (palabras[k + 1]['texto'] if k + 1 < len(palabras) else ''))
+        uno = normal(w['texto'])
+        tres = normal(' '.join(x['texto'] for x in palabras[k:k + 4]))  # «el menos», «botón de encendido», «retiramos el cable»
+        antes = []
+        for x in reversed(palabras[max(0, k - 8):k]):  # lo dicho antes en la misma frase (hasta una coma o un punto)
+            if re.search(r'[.,;:!?]$', x['texto'].strip()):
+                break
+            antes.insert(0, normal(x['texto']))
+        if re.search(NO_ES_ACCION, ' '.join(antes)) or re.search(PROMESA, ' '.join(antes)):
+            continue
         for nombre, rx in ACCIONES.items():
-            if re.search(rx, normal(w['texto'])) or (nombre == 'crear cuenta' and re.search(rx, par)):
+            m = re.search(rx, tres)
+            if re.search(rx, uno) or (m and m.start() < len(uno)):
                 hits.append((w['inicio'], nombre))
     grupos = []
     for t, nombre in hits:

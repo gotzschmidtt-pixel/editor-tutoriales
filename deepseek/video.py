@@ -399,7 +399,7 @@ def main():
         if not a.confirmo_creditos:
             raise SystemExit('La voz gasta créditos de ElevenLabs (solo los bloques nuevos o cambiados). Pregúntale al autor; '
                              'si dice que sí, repite con --confirmo-creditos.')
-        correr(p, 'todo', {'sin_ia': True})
+        correr(p, 'todo', {'sin_ia': True, 'confirmo': 'SI'})  # el autor ya lo aprobó: --confirmo-creditos
         print('LISTO: ' + os.path.join(d, 'FINAL.mp4') + ' (sin extras). Revisa avisos en registro.txt.')
         print(resumen_guion(d))
 

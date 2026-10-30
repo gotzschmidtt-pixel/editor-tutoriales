@@ -249,10 +249,20 @@ async function pedirIdeas() {
 async function seguir() {
   if (sucio && !await guardar()) return;
   let c = null; try { c = await api(`/api/costo_voz?p=${q(P)}`); } catch (e) {}
-  const gasto = c && c.caracteres ? `voz de ${c.bloques.length} bloques en ElevenLabs (${c.caracteres.toLocaleString('es')} caracteres: ${c.bloques.join(', ')})`
-    : c ? 'sin generar voz nueva (todas se reutilizan)' : 'voz con ElevenLabs solo en los bloques nuevos o cambiados';
-  if (!confirm(`Armo el video: ${gasto}, montaje, subtítulos y música. ¿Seguir?`)) return;
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({})}); }
+  let est = null; try { est = await api(`/api/estado?p=${q(P)}`); } catch (e) {}
+  const gasta = [];
+  if (!c || c.desconocido) gasta.push('la voz que falte (no pude calcular cuánta)');
+  else if (c.caracteres) gasta.push(`unos ${c.caracteres.toLocaleString('es')} créditos de voz (${c.bloques.length} bloques: ${c.bloques.join(', ')})`);
+  if (!est || !(est.musica_fija || est.archivos['musica.mp3'])) gasta.push('una música nueva (unos 2.950 créditos)');
+  if (!gasta.length) {
+    if (!confirm('Armo el video sin generar voz nueva (todas se reutilizan): montaje, subtítulos y música. ¿Seguir?')) return;
+  } else {
+    // segunda confirmación (pedido de fabian, 29/10/2026): un clic no alcanza para gastar ElevenLabs, hay que escribir SI
+    const r = prompt(`⚠ Armo el video: montaje, subtítulos y música, y esto gasta ElevenLabs: ${gasta.join(' y ')}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+    if (r === null) return;
+    if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
+  }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({confirmo: 'SI'})}); }
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
   $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
 }

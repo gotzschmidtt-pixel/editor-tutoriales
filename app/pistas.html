@@ -508,6 +508,20 @@ async function guardar() {
   return {rehacer};
 }
 let PENDIENTE_REHACER = false;
+async function pedirSiGasto() {  // segunda confirmación antes de gastar ElevenLabs, igual que «▶ Hacer todo»: hay que escribir SI
+  let c = null, e = null;
+  try { c = await api(`/api/costo_voz?p=${q(P)}`); } catch (x) {}
+  try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) {}
+  const gasta = [];
+  if (!c || c.desconocido) gasta.push('la voz que falte (no pude calcular cuánta)');
+  else if (c.caracteres) gasta.push(`unos ${c.caracteres.toLocaleString('es')} créditos de voz (${c.bloques.join(', ')})`);
+  if (!e || !(e.musica_fija || e.archivos['musica.mp3'])) gasta.push('una música nueva (unos 2.950 créditos)');
+  if (!gasta.length) return true;
+  const r = prompt(`⚠ Esto gasta ElevenLabs: ${gasta.join(' y ')}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+  if (r !== null && /^\s*s[ií]\s*$/i.test(r)) return true;
+  if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.');
+  return false;
+}
 async function armar() {
   const g = await guardar(); if (g === false) return;
   const rehacer = PENDIENTE_REHACER;
@@ -515,8 +529,9 @@ async function armar() {
   if (!confirm(rehacer
     ? 'Cambiaste la voz o la música: se rehace el video (solo se vuelve a generar la voz de los bloques que cambiaste) y después se ponen tus extras. Tarda un rato. ¿Seguir?'
     : `Se vuelven a poner sobre el video: ${extras.join(', ') || 'nada'}. ¿Seguir?`)) { PENDIENTE_REHACER = rehacer; return; }
+  if (rehacer && !(await pedirSiGasto())) { PENDIENTE_REHACER = rehacer; return; }
   try {
-    if (rehacer) await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({luego_extras: extras, sin_ia: true})});
+    if (rehacer) await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({luego_extras: extras, sin_ia: true, confirmo: 'SI'})});
     else if (extras.length) await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({solo: extras, sin_ia: true})});
     else { $('#msg').textContent = '✓ Guardado (no hay extras que poner)'; return; }
   } catch (e) { $('#msg').textContent = '✗ ' + e.message; $('#msg').className = 'msg err'; return; }

@@ -1040,6 +1040,21 @@ def registro(d):
     return os.path.join(d, 'registro.txt')
 
 
+# avisos de «Revisar cada bloque contra su imagen» que dicen que la voz no va con lo que se ve
+DESALINEADO = re.compile(r'la imagen no va con lo que dice|lo dices y lo haces en|parece ir (atrasada|adelantada)|'
+                         r'no lo muestra ningún bloque|falta ese paso en la voz')
+
+
+def avisos_de_imagen(d, nombre):
+    """Los avisos de voz que no va con la imagen que dejó la última pasada de la revisión con imágenes (en el registro)."""
+    try:
+        texto = open(registro(d), encoding='utf-8', errors='replace').read()
+    except OSError:
+        return []
+    seccion = texto[texto.rfind('▶ ' + nombre):] if '▶ ' + nombre in texto else ''
+    return [l.strip().lstrip('·').strip() for l in seccion.splitlines() if DESALINEADO.search(l)]
+
+
 RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
 NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'mis_conocimientos', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
@@ -1362,6 +1377,17 @@ def correr(proyecto, pasos, opciones):
                     conocimiento.aprender_guion(d)
                 except Exception as e:
                     log.write(f'· no pude guardar el guion como ejemplo ({type(e).__name__}: {e})\n')
+            if paso == 'revisar_imagen' and k < len(pasos) - 1:
+                log.flush()
+                avisos = avisos_de_imagen(d, info['nombre'])
+                if avisos:
+                    # pedido de fabian (29/10/2026): en HONOR 8 LITE la revisión avisó bloques corridos y «Hacer todo» siguió
+                    # igual con la voz (unos 12.000 créditos). Ahora se frena acá, antes de gastar, para corregirlos primero
+                    log.write(f'\n⏸ Me frené antes de la voz: la revisión dejó {len(avisos)} aviso(s) de voz que no va con la '
+                              'imagen. Corrige esos bloques en «📝 Ver y editar guion» y vuelve a tocar «▶ Hacer todo»: la revisión '
+                              'no se repite y sigue con la voz.\n'); log.flush()
+                    opciones['_pausa'], opciones['_avisos'] = 'revision', avisos
+                    break
     except Exception as e:
         # sin esto el paso moría en silencio y la app volvía a «Listo para hacer» sin decir nada
         import traceback
@@ -1393,6 +1419,7 @@ def correr(proyecto, pasos, opciones):
                                'msg': f['msg'] if f else '', 'hechos': hechos, 'saltados': saltados, 'total': len(pasos),
                                'segundos': int(time.time() - (TRABAJO['inicio_total'] or time.time())), 'cuando': time.time(),
                                'pausa': None if f else opciones.get('_pausa'), 'seguir': opciones.get('_seguir'), 'diagnostico': diag if f else None,
+                               'avisos': opciones.get('_avisos') if not f else None,
                                'repetir': {'pasos': pasos[pasos.index(f['paso']):] if f and f['paso'] in pasos else [],
                                            'opciones': opciones} if f and diag and diag.get('reintentable') else None}
         with CANDADO:
@@ -1690,6 +1717,52 @@ def voz_vieja(d):
         res = None
     VOZ_VIEJA[d] = (firma, res)
     return res
+
+
+def costo_voz(d, desde=None, hasta=None):
+    """Qué bloques generarían voz en ElevenLabs y cuántos caracteres (de L desde a L hasta, si se dan). No llama a ElevenLabs."""
+    if not existe(d, 'guion.json'):
+        return {'bloques': [], 'caracteres': 0}
+    datos = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    if desde:
+        ids = [str(b.get('id', '')).upper() for b in datos['bloques']]
+        x, y = str(desde).strip().upper(), str(hasta or desde).strip().upper()
+        if x in ids and y in ids:
+            i, j = sorted((ids.index(x), ids.index(y)))
+            datos['bloques'] = datos['bloques'][i:j + 1]
+    f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, dir=d, prefix='.costo_', encoding='utf-8')
+    json.dump(datos, f, ensure_ascii=False)
+    f.close()
+    try:
+        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'] + voz_args(d),
+                           capture_output=True, text=True, encoding='utf-8', timeout=60, **SIN_VENTANA)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError, subprocess.TimeoutExpired):
+        return {'bloques': [], 'caracteres': 0, 'desconocido': True}
+    finally:
+        os.remove(f.name)
+
+
+def gasto_sin_confirmar(d, paso, pasos, datos):
+    """Si el trabajo gastaría créditos de ElevenLabs (la voz del video o una música nueva) y no viene con «SI» escrito,
+    el motivo para no arrancarlo; None si puede arrancar. Pedido de fabian (29/10/2026): un «▶ Hacer todo» generó la voz
+    entera de HONOR 8 LITE (unos 12.000 créditos) sin que él lo hubiera ordenado; desde ahí hay que escribir SI."""
+    if str(datos.get('confirmo') or '').strip().upper() in ('SI', 'SÍ'):
+        return None
+    gasta = []
+    if 'voz' in pasos or paso == 'prueba':
+        c = costo_voz(d, datos.get('desde'), datos.get('hasta')) if paso == 'prueba' else costo_voz(d)
+        if c.get('desconocido'):
+            gasta.append('la voz que falte (no pude calcular cuánta)')
+        elif c.get('caracteres'):
+            n = f"{c['caracteres']:,}".replace(',', '.')
+            gasta.append(f"unos {n} créditos de voz ({len(c['bloques'])} bloque{'' if len(c['bloques']) == 1 else 's'}: {', '.join(c['bloques'])})")
+    if 'musica' in pasos and not os.path.exists(MUSICA_FIJA) and not existe(d, 'musica.mp3'):
+        gasta.append('una música nueva (unos 2.950 créditos)')
+    if not gasta:
+        return None
+    return ('Esto gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo arranqué porque falta escribir SI. Recarga la página '
+            '(F5) y vuelve a tocar el botón: ahora te pide escribir SI antes de gastar.')
 
 
 def estado(proyecto):
@@ -2164,27 +2237,7 @@ class Manejador(BaseHTTPRequestHandler):
                 self.wfile.write(cuerpo)
                 return
             if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
-                d = carpeta(q['p'])
-                if not existe(d, 'guion.json'):
-                    return self.responder({'bloques': [], 'caracteres': 0})
-                datos = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
-                if q.get('desde'):
-                    ids = [str(b.get('id', '')).upper() for b in datos['bloques']]
-                    x, y = q['desde'].strip().upper(), (q.get('hasta') or q['desde']).strip().upper()
-                    if x in ids and y in ids:
-                        i, j = sorted((ids.index(x), ids.index(y)))
-                        datos['bloques'] = datos['bloques'][i:j + 1]
-                f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, dir=d, prefix='.costo_', encoding='utf-8')
-                json.dump(datos, f, ensure_ascii=False)
-                f.close()
-                try:
-                    r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'] + voz_args(d),
-                                       capture_output=True, text=True, encoding='utf-8', timeout=60)
-                    return self.responder(json.loads(r.stdout.strip().splitlines()[-1]))
-                except (ValueError, IndexError, subprocess.TimeoutExpired):
-                    return self.responder({'bloques': [], 'caracteres': 0, 'desconocido': True})
-                finally:
-                    os.remove(f.name)
+                return self.responder(costo_voz(carpeta(q['p']), q.get('desde'), q.get('hasta')))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
                 d = carpeta(q['p'])
                 leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
@@ -2368,8 +2421,10 @@ class Manejador(BaseHTTPRequestHandler):
                         carpeta(nuevo['p'])  # que exista
                         if any(x['p'] == nuevo['p'] and x['estado'] in ('espera', 'corriendo') for x in c['items']):
                             raise ValueError(f"«{nuevo['p']}» ya está en la cola")
+                        # el «SI» que escribiste al ponerlo en la cola: de noche arranca sin volver a preguntar
                         c['items'].append({'id': uuid.uuid4().hex[:8], 'p': nuevo['p'], 'estado': 'espera',
-                                           'calidad': nuevo.get('calidad') or 'alta', 'agregado': time.time()})
+                                           'calidad': nuevo.get('calidad') or 'alta', 'agregado': time.time(),
+                                           'confirmo': 'SI' if str(nuevo.get('confirmo') or '').strip().upper() in ('SI', 'SÍ') else ''})
                     elif acc == 'quitar':
                         c['items'] = [x for x in c['items'] if x['id'] != nuevo.get('id') or x['estado'] == 'corriendo']
                     elif acc == 'limpiar':
@@ -2607,6 +2662,9 @@ class Manejador(BaseHTTPRequestHandler):
                         return self.error(str(e))
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
+                falta_si = gasto_sin_confirmar(carpeta(q['p']), q['paso'], pasos, datos)
+                if falta_si:
+                    return self.error(falta_si)
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")

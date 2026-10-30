@@ -52,7 +52,8 @@ def avisar_resultado(aj, proyecto, r, url=''):
         return
     minutos = max(1, round((r.get('segundos') or 0) / 60))
     if r.get('ok'):
-        pausa = ' Espera que revises el guion.' if r.get('pausa') == 'guion' else ''
+        pausa = (' Espera que revises el guion.' if r.get('pausa') == 'guion' else
+                 ' Se frenó antes de la voz: hay bloques donde la voz no va con la imagen.' if r.get('pausa') == 'revision' else '')
         avisar(aj, f'✅ {proyecto}: listo', f"Terminó en {minutos} min ({r.get('total', 0)} pasos).{pausa}", url)
     elif r.get('msg') != 'detenido por ti':
         avisar(aj, f'❌ {proyecto}: falló en «{r.get("paso") or "un paso"}»', r.get('msg') or 'Mira el diagnóstico en la app.',
@@ -107,7 +108,7 @@ def siguiente(proyectos, puerto, ocupado):
     try:
         q = urllib.parse.urlencode({'p': item['p'], 'paso': 'todo'})
         pedido = urllib.request.Request(f'http://127.0.0.1:{puerto}/api/ejecutar?{q}', method='POST',
-                                        data=json.dumps({'calidad': item.get('calidad') or 'alta'}).encode())
+                                        data=json.dumps({'calidad': item.get('calidad') or 'alta', 'confirmo': item.get('confirmo') or ''}).encode())
         urllib.request.urlopen(pedido, timeout=30).close()
     except Exception as e:  # p. ej. «primero sube tu video»: se anota y se sigue con el próximo
         msg = e.read().decode(errors='replace') if hasattr(e, 'read') else str(e)

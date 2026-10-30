@@ -1075,22 +1075,31 @@ function pintarPasos(pasos, t, fallo) {
     </div>`;
   }).join('');
 }
+// Segunda confirmación antes de gastar ElevenLabs (pedido de fabian, 29/10/2026: un «▶ Hacer todo» generó la voz entera sin
+// que él lo ordenara). Un clic en «Aceptar» no alcanza: hay que escribir SI. El servidor tampoco arranca sin ese SI.
+function pedirSi(texto) {
+  const r = prompt('⚠ ' + texto + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
+  if (r === null) return false;
+  if (/^\s*s[ií]\s*$/i.test(r)) return true;
+  alert('No escribiste SI: no hice nada y no se gastó nada.');
+  return false;
+}
 async function confirmarVoz(desde, hasta) {  // antes de gastar ElevenLabs: cuántos bloques y caracteres de voz
   let c;
   try { c = await api(`/api/costo_voz?p=${q(P)}` + (desde ? `&desde=${q(desde)}&hasta=${q(hasta || desde)}` : '')); } catch (e) { c = {desconocido: true}; }
-  if (c.desconocido) return confirm('No pude calcular cuánta voz falta generar. Las voces que falten se hacen con ElevenLabs '
-    + '(~1 crédito por letra); las que ya están se reutilizan. ¿Seguir?');
+  if (c.desconocido) return pedirSi('No pude calcular cuánta voz falta generar. Las voces que falten se hacen con ElevenLabs '
+    + '(~1 crédito por letra); las que ya están se reutilizan.');
   if (!c.caracteres) return true;
-  return confirm(`Se va a generar la voz de ${c.bloques.length} bloque${c.bloques.length === 1 ? '' : 's'} en ElevenLabs: `
-    + `${c.caracteres.toLocaleString('es')} caracteres.\n\n${c.bloques.join(', ')}\n\nLas demás voces se reutilizan (no gastan). ¿Seguir?`);
+  return pedirSi(`Esto gasta unos ${c.caracteres.toLocaleString('es')} créditos de ElevenLabs: la voz de ${c.bloques.length} `
+    + `bloque${c.bloques.length === 1 ? '' : 's'} (${c.bloques.join(', ')}).\n\nLas demás voces se reutilizan (no gastan).`);
 }
 async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del proyecto, el paso «Música» genera una pista nueva (gasta)
   let e;
   try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) { e = null; }
   if (e && (e.musica_fija || e.archivos['musica.mp3'])) return true;
-  return confirm((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
+  return pedirSi((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
     + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
-    + 'Queda guardada en el proyecto y no se vuelve a pagar.\n\n¿Seguir? (Cancelar = no hago nada todavía)');
+    + 'Queda guardada en el proyecto y no se vuelve a pagar.');
 }
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
@@ -1138,10 +1147,13 @@ async function ejecutar(paso) {
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
+  if (paso === 'todo' || paso === 'voz') op.confirmo = 'SI';  // ya lo escribiste en confirmarVoz / confirmarMusica
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
     if (pr === null) return; if (pr) op.prompt = pr;
+    if (!pedirSi('Esto gasta unos 2.950 créditos de ElevenLabs Music por cada 3:35 de música.')) return;
+    op.confirmo = 'SI';
   }
   if (paso === 'transcribir') {
     // con una transcripción ya hecha (y corregida a mano en transcripcion.txt), Forced Alignment solo le pone los tiempos exactos
@@ -1160,7 +1172,7 @@ async function probarBloques() {
   if (!desde) return alert('Escribe el primer bloque a probar (por ejemplo L23) y, si son varios, el último (L27).');
   if (!(await confirmarVoz(desde, hasta))) return;
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value, confirmo: 'SI'})}); }
   catch (e) { return alert(e.message); }
   esperaPrueba = true; refrescar();
 }
@@ -2694,6 +2706,18 @@ function pintarBarra(t, r, arch) {
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
     return;
   }
+  if (r.ok && r.pausa === 'revision') {  // «Hacer todo» se frenó antes de la voz: la revisión con imágenes encontró bloques corridos
+    const av = r.avisos || [];
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">⏸ Me frené antes de la voz: ${av.length} aviso${av.length === 1 ? '' : 's'} de voz que no va con la imagen</span>
+      <span class="cuanto">corrígelos antes de pagar la voz; al volver a tocar «▶ Hacer todo» la revisión no se repite</span>
+      <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
+      <button onclick="seguirTodo()" title="Sigue con la voz sin corregir: gasta ElevenLabs y te pide escribir SI">▶ Seguir igual</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>
+      ${av.length ? `<pre class="detalle" style="white-space:pre-wrap; margin:4px 0; max-height:12em; overflow:auto">${esc(av.join('\n'))}</pre>` : ''}`;
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
+    return;
+  }
   if (r.ok && r.pausa === 'extras') {
     b.className = 'ok';
     b.innerHTML = `<div class="arriba"><span class="que">✓ La IA propuso dónde van las etiquetas y flechas: revísalas antes de ponerlas</span>
@@ -3058,7 +3082,7 @@ async function ponerExtrasAsi() {
 async function seguirTodo() {
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value})}); } catch (e) { alert(e.message); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: 'SI'})}); } catch (e) { alert(e.message); }
   refrescar();
 }
 
@@ -3078,7 +3102,7 @@ async function actualizarProyecto() {  // reutiliza transcripción, guion y voce
   soltarVideo();
   let r;
   try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true, confirmo: 'SI'})}); }
   catch (e) { alert(e.message); }
   refrescar();
 }
@@ -3169,7 +3193,7 @@ async function abrirCola() {
 async function colaAgregar() {
   if (!P) return alert('Abre primero un proyecto.');
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
-  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value})})); }
+  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: 'SI'})})); }
   catch (e) { alert(e.message); }
 }
 async function colaAccion(accion, id) {
