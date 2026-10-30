@@ -524,6 +524,8 @@ def comandos(paso, d, op):
         return [[PY, m('transcripcion', 'transcribir.py'), '--video', 'original.mp4', '--salida', 'transcripcion', '--motor', motor]]
     if paso == 'voz':
         return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz'] + voz_args(d)]
+    if paso == 'alinear':  # con la voz ya hecha: cada frase sobre la pantalla que nombra (OCR en tu PC, gratis)
+        return [[PY, m('alinear', 'alinear.py'), '--proyecto', '.']]
     if paso == 'montaje':
         c = [PY, m('montaje', 'montaje.py'), '--original', 'original.mp4'] + g + ['--salida', '1_montaje.mp4']
         if existe(d, 'imagen.png'):
@@ -667,6 +669,8 @@ def comandos(paso, d, op):
 PASOS = [
     {'id': 'transcribir', 'nombre': 'Transcribir tu voz', 'necesita': ['original.mp4'], 'produce': 'transcripcion.txt', 'opcional': True},
     {'id': 'voz', 'nombre': 'Generar voz (ElevenLabs)', 'necesita': ['guion.json'], 'produce': 'voz'},
+    {'id': 'alinear', 'nombre': 'Alinear cada frase con su pantalla (gratis)', 'necesita': ['guion.json', 'original.mp4', 'voz'],
+     'produce': 'alineacion.txt'},
     {'id': 'montaje', 'nombre': 'Montar video', 'necesita': ['original.mp4', 'guion.json'], 'produce': '1_montaje.mp4'},
     {'id': 'insertos', 'nombre': 'Cortes y zooms con material extra', 'necesita': ['1_montaje.mp4', 'insertos.json', 'voz'], 'produce': '2_insertos.mp4', 'opcional': True, 'blando': True},
     {'id': 'mezclar', 'nombre': 'Poner la voz y subtítulos', 'necesita': ['1_montaje.mp4', 'voz'], 'produce': '3_voz.mp4'},
@@ -1052,6 +1056,24 @@ DESALINEADO = re.compile(r'la imagen no va con lo que dice|lo dices y lo haces e
                          r'no lo muestra ningún bloque|falta ese paso en la voz')
 
 
+def avisos_de_alineacion(d, nombre):
+    """Las frases que «alinear» no pudo poner sobre su pantalla. Si son las mismas que ya te mostré, no vuelvo a frenar."""
+    try:
+        texto = open(registro(d), encoding='utf-8', errors='replace').read()
+    except OSError:
+        return []
+    seccion = texto[texto.rfind('▶ ' + nombre):] if '▶ ' + nombre in texto else ''
+    avisos = [l.strip().lstrip('·').strip() for l in seccion.splitlines() if 'no se ve; aparece en' in l]
+    vista = os.path.join(d, '.alineacion_vista.json')
+    try:
+        if json.load(open(vista, encoding='utf-8')) == avisos:
+            return []
+    except (OSError, ValueError):
+        pass
+    json.dump(avisos, open(vista, 'w', encoding='utf-8'), ensure_ascii=False)
+    return avisos
+
+
 def avisos_de_imagen(d, nombre):
     """Los avisos de voz que no va con la imagen que dejó la última pasada de la revisión con imágenes (en el registro)."""
     try:
@@ -1384,6 +1406,17 @@ def correr(proyecto, pasos, opciones):
                     conocimiento.aprender_guion(d)
                 except Exception as e:
                     log.write(f'· no pude guardar el guion como ejemplo ({type(e).__name__}: {e})\n')
+            if paso == 'alinear' and k < len(pasos) - 1:
+                log.flush()
+                avisos = avisos_de_alineacion(d, info['nombre'])
+                if avisos:
+                    # pedido de fabian (30/10/2026): en HONOR 8 LITE, con la voz nueva, 3 frases no caían sobre su pantalla y se
+                    # notó recién en el video. Ahora se frena antes de montar (la voz ya está y no se vuelve a pagar)
+                    log.write(f'\n⏸ Me frené antes del montaje: {len(avisos)} frase(s) no caen sobre la pantalla que nombran y no las '
+                              'pude correr solo (mira alineacion.txt). Corrige esos tramos en «📝 Ver y editar guion» o vuelve a tocar '
+                              '«▶ Hacer todo» para seguir igual.\n'); log.flush()
+                    opciones['_pausa'], opciones['_avisos'] = 'revision', avisos
+                    break
             if paso == 'revisar_imagen' and k < len(pasos) - 1:
                 log.flush()
                 avisos = avisos_de_imagen(d, info['nombre'])
@@ -1904,8 +1937,9 @@ class Manejador(BaseHTTPRequestHandler):
         """Otra página abierta en el navegador no puede borrar, detener ni cambiar tus claves."""
         origen = urllib.parse.urlparse(self.headers.get('Origin') or '').hostname
         host = (self.headers.get('Host') or '').split(':')[0]
-        if celular.es_local(self.client_address[0]):
-            return host in ('localhost', '127.0.0.1', '[::1]', '') and origen in (None, 'localhost', '127.0.0.1', '::1')
+        if celular.es_local(self.client_address[0]):  # *.localhost (estudio.localhost) siempre es este mismo PC
+            propio = lambda h: h in ('localhost', '127.0.0.1', '[::1]', '::1', '') or str(h).endswith('.localhost')
+            return propio(host) and (origen is None or propio(origen))
         return origen is None or origen == host  # el celular ya pasó por puerta(): mismo nombre que la página
 
     def youtube_post(self, ruta, q, largo):
@@ -2488,6 +2522,12 @@ class Manejador(BaseHTTPRequestHandler):
                     if datos.get('accion') == 'historial':
                         n = aprendizaje.aprender_historial(PROYECTOS)
                         return self.responder(dict(aprendizaje.resumen(), nuevas=n))
+                    if datos.get('accion') == 'patrones':  # «💡» la IA saca el patrón de tus correcciones (un pedido corto de texto)
+                        aj = leer_ajustes()
+                        if not (aj.get('modelo') and aj.get('url')):
+                            return self.error('Para sacar patrones hace falta una IA en «⚙ Ajustes IA».')
+                        nuevas = aprendizaje.patrones_ia(aj)
+                        return self.responder(dict(aprendizaje.resumen(), nuevas_reglas=nuevas))
                     aprendizaje.cambiar(datos.get('accion', ''), datos.get('id', ''), datos.get('texto', ''))
                 except ValueError as e:
                     return self.error(str(e))
@@ -3069,6 +3109,14 @@ class Manejador(BaseHTTPRequestHandler):
                                                    for m in r.get('matches', [])]})
             if ruta == '/api/pegar':
                 cuerpo, d = self.rfile.read(largo), carpeta(q['p'])
+                aprendidas = 0
+                if q.get('editor') == '1' and b'"bloques"' in cuerpo and existe(d, 'guion.json'):
+                    # lo que cambiaste a mano en «📝 Editor de guion» (pedido de fabian, 30/10/2026: que la IA aprenda y no lo repita)
+                    try:
+                        aprendidas = aprendizaje.registrar(d, 'guion.json', open(os.path.join(d, 'guion.json'), encoding='utf-8').read(),
+                                                           cuerpo.decode('utf-8', errors='replace'))
+                    except Exception as e:
+                        print(f'· no pude aprender de tu edición ({type(e).__name__}: {e})', flush=True)
                 if b'"bloques"' in cuerpo and existe(d, 'guion.json'):  # un guion nuevo: el actual queda en el historial (no solo en .anterior)
                     h = os.path.join(d, 'historial_guion')
                     os.makedirs(h, exist_ok=True)
@@ -3076,7 +3124,7 @@ class Manejador(BaseHTTPRequestHandler):
                     for viejo in sorted(os.listdir(h))[:-40]:
                         os.remove(os.path.join(h, viejo))
                 open(os.path.join(d, 'ia_respuesta_pegada.txt'), 'wb').write(cuerpo)
-                return self.responder({'ok': True})
+                return self.responder({'ok': True, 'aprendidas': aprendidas})
             if ruta == '/api/short_extras':  # «📱 Short»: qué extras van al final (testimonio, páginas, ver el video completo)
                 d = carpeta(q['p'])
                 x = json.loads(self.rfile.read(largo) or b'{}')
@@ -3503,6 +3551,21 @@ def abrir_servidor():
                      'Estudio.exe desde el Administrador de tareas) y vuelve a abrir iniciar.bat.')
 
 
+ALIAS = 'estudio.localhost'  # pedido de fabian (30/10/2026): entrar más directo, sin escribir 127.0.0.1:8765
+
+
+def abrir_alias():
+    """La misma app en http://estudio.localhost (puerto 80), SOLO en este PC (127.0.0.1): no abre nada a la red ni a
+    internet. Los navegadores llevan cualquier «algo.localhost» a tu propio PC sin tocar Windows. Si el puerto 80 está
+    ocupado por otro programa, se sigue entrando por localhost:8765 como siempre."""
+    try:
+        s = Servidor(('127.0.0.1', 80), Manejador)
+    except OSError:
+        return None
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    return s
+
+
 def retomar_cola():
     """La app se cerró con la cola andando (corte de luz, reinicio): lo que estaba a medias vuelve a la fila y sigue."""
     def volver(c):
@@ -3547,7 +3610,7 @@ def main():
     retomar_cola()
     threading.Thread(target=biblio_semanal, daemon=True).start()
     threading.Thread(target=canal_semanal, daemon=True).start()
-    url = f'http://localhost:{PUERTO}'
+    url = f'http://{ALIAS}' if abrir_alias() else f'http://localhost:{PUERTO}'
     print(f'Estudio abierto en {url}  (cierra esta ventana para salir)')
     if not os.environ.get('SIN_NAVEGADOR'):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()

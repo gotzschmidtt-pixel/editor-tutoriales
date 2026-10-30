@@ -55,7 +55,7 @@ def _cambios_texto(antes, despues):
     a, b = _normal(antes).split(), _normal(despues).split()
     out = []
     for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, [_clave(x) for x in a], [_clave(x) for x in b], autojunk=False).get_opcodes():
-        if op == 'equal' or max(i2 - i1, j2 - j1) > MAX_PALABRAS:
+        if op == 'equal':
             continue
         x, y = ' '.join(a[i1:i2]), ' '.join(b[j1:j2])
         if _clave(x) == _clave(y) or (not _clave(x) and not _clave(y)):
@@ -63,7 +63,10 @@ def _cambios_texto(antes, despues):
         if op in ('delete', 'insert') and len(_clave(x or y).split()) >= 2 and (
                 _clave(x) in _clave(despues) if op == 'delete' else _clave(y) in _clave(antes)):
             continue  # la frase solo cambió de lugar dentro del texto: no la quitaste ni la agregaste
-        out.append(({'replace': 'cambio', 'delete': 'quito', 'insert': 'agrego'}[op], x, y))
+        largo = max(i2 - i1, j2 - j1) > MAX_PALABRAS  # una frase entera: no sale una regla literal, pero la IA saca el patrón
+        tipos = ({'replace': 'reescribio_frase', 'delete': 'quito_frase', 'insert': 'agrego_frase'} if largo else
+                 {'replace': 'cambio', 'delete': 'quito', 'insert': 'agrego'})
+        out.append((tipos[op], x, y))
     return out
 
 
@@ -238,7 +241,7 @@ def recalcular():
         if v.get('texto_mio'):
             c['texto_mio'] = v['texto_mio']
         out.append(c)
-    out += [r for r in viejas.values() if r.get('estado') == 'mia']  # las que escribiste tú a mano
+    out += [r for r in viejas.values() if r.get('estado') == 'mia' or r.get('tipo') == 'patron']  # las tuyas y las de la IA
     out.sort(key=lambda r: (r.get('estado') != 'mia', -r.get('veces', 0)))
     _guardar_reglas(out)
     escribir_md()
@@ -290,6 +293,67 @@ def cambiar(accion, rid='', texto=''):
     _guardar_reglas(rs)
     escribir_md()
     return rs
+
+
+# ---------- 2b. el patrón de tus correcciones, con la IA (pedido de fabian, 30/10/2026) ----------
+
+VISTOS = os.path.join(CARPETA, 'patrones_vistos.json')  # hasta qué edición ya leyó la IA
+TIPOS_PATRON = {'reescribio', 'reescribio_frase', 'quito_frase', 'agrego_frase', 'quito_bloque', 'quito_humor', 'quito', 'cambio',
+                'agrego', 'quito_etiqueta', 'quito_circulo'}
+
+
+def patrones_ia(ajustes):
+    """Lee tus correcciones nuevas y le pide a la IA de «⚙ Ajustes IA» las reglas generales que hay detrás (el patrón, no el
+    caso). Quedan como «💡 sugeridas»: llegan a la IA del guion cuando les das ✓. Devuelve las reglas nuevas."""
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(AQUI), 'ia'))
+    import ia
+    todas = ediciones()
+    try:
+        visto = int(json.load(open(VISTOS, encoding='utf-8')).get('n', 0))
+    except (OSError, ValueError, TypeError):
+        visto = 0
+    nuevas = [e for e in todas[visto:] if e.get('tipo') in TIPOS_PATRON and e.get('origen', 'editor') == 'editor']
+    if not nuevas:
+        return []
+    nuevas = nuevas[-40:]
+    rs = _leer_reglas()
+    ya = [r.get('texto_mio') or r['texto'] for r in rs if r.get('estado') != 'rechazada'][:60]
+    no = [r.get('texto_mio') or r['texto'] for r in rs if r.get('estado') == 'rechazada'][:30]
+    lista = '\n'.join(f"{i}. [{e.get('tipo')}] {e.get('proyecto', '')} {e.get('bloque', '')}: «{str(e.get('antes') or '')[:300]}» → "
+                      f"«{str(e.get('despues') or '')[:300]}»" for i, e in enumerate(nuevas, 1))
+    pedido = ('Eres el editor del canal de YouTube Xiaomiunlock (fabian, tutoriales de desbloqueo de celulares). Una IA escribió '
+              'el guion de un video y fabian lo corrigió a mano. Estas son sus correcciones («antes» → «después»; vacío = lo '
+              f'quitó o lo agregó):\n{lista}\n\nSaca de 1 a 5 REGLAS GENERALES y accionables para que la IA que escribe los '
+              'próximos guiones no vuelva a hacer lo que fabian corrige: el patrón, no el caso puntual (por ejemplo «No hagas '
+              'chistes sobre la suegra», «Nombra cada botón tal como aparece en pantalla», «No prometas que es gratis»). Si un '
+              'cambio es solo un dato de ese video, no saques regla de él. Escribe cada regla en una frase corta, en español, '
+              'dirigida a la IA del guion.\n'
+              f'No repitas estas reglas que ya existen: {json.dumps(ya, ensure_ascii=False)}\n'
+              f'No propongas lo que fabian ya rechazó: {json.dumps(no, ensure_ascii=False)}\n'
+              'Responde SOLO con JSON: {"reglas": [{"regla": "…", "por_que": "qué corrigió fabian, en una frase", '
+              '"ejemplos": [números de las correcciones]}]}')
+    r = ia.extraer_json(ia.llamar(dict(ajustes, imagenes=False), pedido, []))
+    hechas = []
+    for x in ((r or {}).get('reglas') or [])[:5] if isinstance(r, dict) else []:
+        texto = _normal((x or {}).get('regla'))
+        if not texto:
+            continue
+        rid = _id('patron', _clave(texto))
+        if any(z['id'] == rid for z in rs):
+            continue
+        ej = [nuevas[i - 1] for i in (x.get('ejemplos') or []) if isinstance(i, int) and 1 <= i <= len(nuevas)][:3]
+        regla = {'id': rid, 'texto': texto, 'tipo': 'patron', 'estado': 'sugerida', 'veces': len(ej) or 1,
+                 'proyectos': sorted({e.get('proyecto') for e in ej if e.get('proyecto')}), 'del_editor': len(ej),
+                 'ejemplos': [{k: e.get(k) for k in ('proyecto', 'bloque', 'antes', 'despues', 'fecha') if e.get(k)} for e in ej],
+                 'por_que': _normal(x.get('por_que')), 'fecha': time.strftime('%Y-%m-%d')}
+        rs.insert(0, regla)
+        hechas.append(regla)
+    _guardar_reglas(rs)
+    escribir_md()
+    os.makedirs(CARPETA, exist_ok=True)
+    json.dump({'n': len(todas)}, open(VISTOS, 'w', encoding='utf-8'))
+    return hechas
 
 
 # ---------- 3. perfil de estilo ----------

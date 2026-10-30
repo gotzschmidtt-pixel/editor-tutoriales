@@ -65,7 +65,8 @@
       regla le llega sola a la IA en el próximo guion (en verde). Las que vienen de versiones viejas del guion quedan como
       <b>sugeridas</b>: puede que esos cambios los hiciera una IA, así que llegan a la IA solo si les das ✓. No gasta créditos.</p>
     <div class="fila"><input type="text" id="nueva" placeholder="Escribe una regla tuya: p. ej. «Di siempre MTK, nunca Qualcomm»" style="flex:1; min-width:16em"
-      onkeydown="if (event.key === 'Enter') agregar()"><button class="principal" onclick="agregar()">➕ Agregar regla</button></div>
+      onkeydown="if (event.key === 'Enter') agregar()"><button class="principal" onclick="agregar()">➕ Agregar regla</button>
+      <button onclick="patrones()" title="Tu IA de «⚙ Ajustes IA» lee tus correcciones nuevas y saca las reglas generales que hay detrás (un pedido corto de texto: centavos). Quedan como sugeridas hasta que les das ✓">💡 Sacar patrones con IA</button></div>
   </section>
   <section class="ancho"><h2>📏 Reglas</h2><div id="reglas"></div></section>
   <section><h2>🎙 Tu perfil de estilo</h2><div id="perfil"></div></section>
@@ -82,14 +83,14 @@ async function api(url, op) {
   return j;
 }
 let R = null;
-const ESTADO = {auto: 'automática', aprobada: '✓ aprobada', rechazada: '✗ rechazada', mia: '✍ tuya'};
+const ESTADO = {auto: 'automática', aprobada: '✓ aprobada', rechazada: '✗ rechazada', mia: '✍ tuya', sugerida: '💡 patrón sugerido por la IA'};
 function pintar() {
   const f = $('#filtro').value;
   const rs = R.reglas.filter(r => f === 'todas' || (f === 'activas' && r.activa) || (f === 'rechazadas' && r.estado === 'rechazada')
-    || (f === 'sugeridas' && !r.activa && r.estado === 'auto'));
+    || (f === 'sugeridas' && !r.activa && (r.estado === 'auto' || r.estado === 'sugerida')));
   $('#minVeces').textContent = R.min_veces;
   $('#reglas').innerHTML = rs.length ? rs.map(r => `<div class="regla ${r.activa ? 'activa' : ''} ${r.estado}">
-    <div class="t">${esc(r.texto_mio || r.texto)}</div>
+    <div class="t">${esc(r.texto_mio || r.texto)}${r.por_que ? `<br><small class="aviso">${esc(r.por_que)}</small>` : ''}</div>
     <div class="fila"><span class="chip ${r.activa ? 'on' : ''}">${r.activa ? 'la IA la usa' : 'no llega a la IA'}</span>
       <span class="chip">${ESTADO[r.estado] || r.estado}</span>
       ${r.veces ? `<span class="chip">${r.veces} vez${r.veces > 1 ? 'es' : ''}${r.del_editor ? ` (${r.del_editor} en el editor)` : ' (del historial)'}</span>` : ''}
@@ -129,6 +130,14 @@ function editar(id) {
   if (t !== null) enviar({accion: 'editar', id, texto: t});
 }
 function agregar() { const t = $('#nueva').value.trim(); if (!t) return; enviar({accion: 'agregar', texto: t}, 'Regla agregada'); $('#nueva').value = ''; }
+async function patrones() {
+  $('#msg').textContent = 'La IA está leyendo tus correcciones…'; $('#msg').className = 'msg';
+  try { R = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'patrones'})}); pintar();
+    const n = (R.nuevas_reglas || []).length;
+    $('#msg').textContent = n ? `Listo: ${n} patrón(es) nuevo(s). Dale ✓ a los que estén bien.` : 'No hay correcciones nuevas o no salió ninguna regla nueva.';
+    $('#msg').className = 'msg ok'; }
+  catch (e) { $('#msg').textContent = e.message; $('#msg').className = 'msg err'; }
+}
 async function historial() {
   $('#msg').textContent = 'Revisando el historial de tus guiones…'; $('#msg').className = 'msg';
   try { R = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'historial'})}); pintar();

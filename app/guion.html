@@ -110,6 +110,7 @@
     El aviso de cada bloque compara lo que tarda la voz en decir el texto con lo que dura su imagen. Al guardar, la app revisa el
     guion (duración y orden) y guarda el anterior como <code>guion.json.anterior</code>. Solo los bloques que cambiaste gastan voz nueva.</p>
   <p class="msg" id="msg"></p>
+  <div id="aprendido" hidden style="border:1px solid var(--borde); border-radius:12px; padding:10px 14px; margin:8px 0"></div>
   <div id="preguntas"></div>
   <div id="mejoras"></div>
   <div id="bloques"></div>
@@ -560,7 +561,8 @@ async function guardar() {
     // las emociones que cambiaste van primero por «🎛 Audio e imagen»: así la voz ya hecha de ese bloque se rehace con la nueva
     const emociones = Object.fromEntries(G.bloques.filter(b => b.id in EMO_ORIGINAL && (b.emocion || '') !== EMO_ORIGINAL[b.id]).map(b => [b.id, b.emocion || '']));
     if (Object.keys(emociones).length) await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})});
-    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
+    const pegado = await api(`/api/pegar?p=${q(P)}&editor=1`, {method: 'POST', body: JSON.stringify(G)});
+    if (pegado && pegado.aprendidas) aprenderPatrones(pegado.aprendidas);  // en paralelo: no frena el guardado
     await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar', editor: true})});
     await esperar();
     let mej = ''; try { mej = await api(`/archivo?p=${q(P)}&f=mejoras_guion.txt&v=${Date.now()}`); } catch (e) {}
@@ -569,6 +571,28 @@ async function guardar() {
   } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
   b.disabled = false;
   return true;
+}
+async function aprenderPatrones(n) {  // «🧠 Lo que aprendí»: la IA saca el patrón de lo que corregiste y te pregunta si lo usa siempre
+  const caja = $('#aprendido');
+  caja.hidden = false;
+  caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s). La IA está buscando el patrón para no repetirlo…`;
+  let r;
+  try { r = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'patrones'})}); }
+  catch (e) { caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s) en «🧠 Lo que aprendí». (No pude sacar el patrón con la IA: ${esc(e.message)})`; return; }
+  const nuevas = r.nuevas_reglas || [];
+  if (!nuevas.length) { caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s) en «🧠 Lo que aprendí». No salió ninguna regla nueva.`; return; }
+  caja.innerHTML = `<b>🧠 De lo que corregiste aprendí esto.</b> ¿Lo uso en todos los guiones?` + nuevas.map(x => `
+    <div class="fila" data-id="${esc(x.id)}" style="margin:6px 0; gap:8px; align-items:center; flex-wrap:wrap">
+      <span style="flex:1; min-width:16em">«${esc(x.texto)}»${x.por_que ? `<br><small class="ayuda">${esc(x.por_que)}</small>` : ''}</span>
+      <button class="principal" onclick="decidirRegla('${esc(x.id)}', 'aprobada', this)">✓ Sí, siempre</button>
+      <button onclick="decidirRegla('${esc(x.id)}', 'rechazada', this)">✗ No</button></div>`).join('') +
+    `<small class="ayuda">Las ves y corriges cuando quieras en <a href="/aprendi" target="_blank">🧠 Lo que aprendí</a>.</small>`;
+}
+async function decidirRegla(id, accion, boton) {
+  try {
+    await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion, id})});
+    boton.parentElement.innerHTML = `<span>${accion === 'aprobada' ? '✓ Listo: la IA lo va a cumplir en los próximos guiones.' : '✗ Descartada: no vuelve a salir.'}</span>`;
+  } catch (e) { alert(e.message); }
 }
 async function guardarBloque(i) {  // el 💾 de cada bloque: guarda todo el guion y avisa ahí mismo, sin subir hasta arriba
   const g = $('#b' + i + ' .guardarAqui');
