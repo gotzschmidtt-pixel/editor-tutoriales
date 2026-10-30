@@ -101,6 +101,8 @@
     te propone las mejores tomas de <b>ANTES</b> (el problema), <b>DURANTE</b> (el paso clave) y <b>DESPUÉS</b> (el resultado), y te pregunta
     lo que no le quedó claro. Tú contestas, cambias las tomas que quieras y lo armas cuando te guste.</p>
   <p class="msg" id="msg"></p>
+  <style>@keyframes latido { from { opacity: .25 } to { opacity: .7 } }</style>
+  <div id="progreso"></div>
   <div id="requisitos"></div>
   <div id="largo"></div>
   <div id="versiones"></div>
@@ -119,7 +121,7 @@ const segundos = t => { t = String(t).trim().replace(',', '.'); const p = t.spli
 const FASES = [['ANTES', '😟 ANTES', 'el problema: el teléfono bloqueado, la pantalla que pide la cuenta'],
   ['DURANTE', '⚙️ DURANTE', 'el paso clave: cuando se pone la key o el código y se ve avanzar'],
   ['DESPUÉS', '✅ DESPUÉS', 'el resultado: ya desbloqueado, en la pantalla de inicio']];
-let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio', OBJ = 10;
+let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio', OBJ = 10, ESPERANDO = false;
 // ⏱ cuánto dura el tráiler: la IA arma las tomas para ese largo (edicion.json «trailer_segundos»)
 const LARGOS = [[6, 'Gancho rápido', 'el problema y el resultado, casi sin el medio. Ideal si lo vas a reusar en Shorts.'],
   [10, 'Recomendado', 'ANTES, el paso clave y DESPUÉS. No hace esperar al que ya buscó el tutorial: retiene en los primeros 30 s.'],
@@ -146,19 +148,35 @@ async function api(url, op) {
   if (!r.ok) throw new Error(d.error || d || r.statusText);
   return d;
 }
-async function esperar() {  // hasta que la app termine el paso que se pidió
-  for (let k = 0; k < 1800; k++) {
-    await new Promise(r => setTimeout(r, 1000));
-    const e = await api(`/api/estado?p=${q(P)}`);
-    if (e.trabajo.proyecto) { if (e.trabajo.linea) $('#msg').textContent = '… ' + e.trabajo.linea.slice(0, 160); continue; }
-    if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
-    return;
-  }
+async function esperar() {  // hasta que la app termine el paso que se pidió, con una barra de progreso
+  const t0 = Date.now();
+  try {
+    for (let k = 0; k < 1800; k++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const e = await api(`/api/estado?p=${q(P)}`), t = e.trabajo || {};
+      if (t.proyecto) { barra(t, (Date.now() - t0) / 1000); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
+      return;
+    }
+  } finally { $('#progreso').innerHTML = ''; }
+}
+function barra(t, s) {  // el % real del paso si lo escribe; si no, lo que tardó la última vez
+  const pct = t.pct_paso != null ? t.pct_paso : t.antes_s ? Math.min(95, Math.round(s / t.antes_s * 100)) : null;
+  const linea = (t.ultimas || []).slice(-1)[0] || t.linea || '';
+  s = Math.max(s, t.segundos || 0);
+  $('#progreso').innerHTML = `<div class="panel"><b>⏳ ${esc((t.plan || [])[t.i || 0] || t.paso || 'Trabajando')}</b> · ${mmss(s)}${t.antes_s ? ` (la última vez tardó ${mmss(t.antes_s)})` : ''}
+    <div style="height:10px; border-radius:6px; background:#ffffff1a; margin:8px 0; overflow:hidden"><div style="height:100%; width:${pct ?? 100}%; background:linear-gradient(90deg,#ff2bd6,#8f5bff);${pct == null ? ' opacity:.45; animation: latido 1.2s ease-in-out infinite alternate' : ''}"></div></div>
+    <div class="msg">${pct != null ? pct + ' % · ' : ''}${esc(linea.slice(0, 180))}</div></div>`;
 }
 const hay = f => !!(E && E.archivos[f]);
 async function cargar() {
   E = await api(`/api/estado?p=${q(P)}`);
   DUR = E.duracion_original || 0;
+  if (E.trabajo && E.trabajo.proyecto === P && !ESPERANDO) {  // abriste la página con algo trabajando: también ves la barra
+    ESPERANDO = true;
+    esperar().then(() => { ESPERANDO = false; cargar(); })
+      .catch(x => { ESPERANDO = false; $('#msg').className = 'msg err'; $('#msg').textContent = x.message; });
+  }
   try { T = JSON.parse(await api(`/api/json?p=${q(P)}&f=trailer.json`) || 'null'); } catch (e) { T = null; }
   try { const ed = await api(`/api/edicion?p=${q(P)}`); DONDE = ed.trailer_donde || 'inicio'; OBJ = +ed.trailer_segundos || 10; } catch (e) {}
   verLargo();
