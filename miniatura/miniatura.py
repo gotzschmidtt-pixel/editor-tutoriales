@@ -670,15 +670,15 @@ def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa', titulo
     # arriba: los textos cortos de las esquinas (NEW 2026…) y las etiquetas ANTES / DESPUÉS sobre cada teléfono
     izq, der = (list(esquinas) + ['', ''])[:2]
     if izq:
-        pega(cinta(izq.upper(), (226, 30, 36), 50 if len(izq) <= 10 else 40, 10), 8, 6)
+        pega(sticker(izq.upper(), 'rojo', 82, 10), 8, 6)
     alto_der = 0
     if der:
-        c = cinta(der.upper(), (24, 104, 235), 46 if len(der) <= 10 else 36, -8)
+        c = sticker(der.upper(), 'azul', 74, -8)
         pega(c, W - c.width - 6, 4)
         alto_der = c.height - 6
     antes, despues = ANTES_DESPUES[idioma]
-    for txt, col, cx in ((antes, (226, 30, 36), 0.31), (despues, (34, 168, 64), 0.61)):
-        c = cinta(txt, col, 60, 5)
+    for txt, col, cx in ((antes, 'rojo', 0.31), (despues, 'verde', 0.61)):
+        c = sticker(txt, col, 96, 5)
         pega(c, W * cx - c.width / 2, 8)
     # la columna derecha: logo oficial, sello y las dos píldoras
     logo = logo_marca(marca)
@@ -724,6 +724,56 @@ def titulo_gpt(partes, estilo, salida):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
     cv2.imwrite(salida, img)
     return salida
+
+
+# las etiquetas de arriba (NEW 2026, ANTES, DESPUÉS, BEFORE…) dibujadas por GPT 2.5 una sola vez y guardadas para todos
+# los videos (fabian, 30/10/2026: las que dibuja la app se ven genéricas)
+ETIQUETAS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'etiquetas')
+COLORES_ETIQUETA = {'rojo': ((226, 30, 36), 'roja (rojo vivo arriba, rojo oscuro abajo)'),
+                    'verde': ((34, 168, 64), 'verde (verde vivo arriba, verde oscuro abajo)'),
+                    'azul': ((24, 104, 235), 'azul eléctrico (celeste arriba, azul oscuro abajo)')}
+
+
+def archivo_etiqueta(texto, color):
+    import unicodedata
+    slug = re.sub(r'[^a-z0-9]+', '_', unicodedata.normalize('NFKD', texto.lower()).encode('ascii', 'ignore').decode()).strip('_')
+    return os.path.join(ETIQUETAS_DIR, f'{slug or "etiqueta"}_{color}.png')
+
+
+def etiqueta_gpt(texto, color):
+    """La etiqueta dibujada por GPT 2.5 (fondo transparente). Si ya está guardada no gasta nada. Devuelve el archivo."""
+    f = archivo_etiqueta(texto, color)
+    if os.path.exists(f):
+        return f
+    refs = [os.path.join(ESTILO, x) for x in ('honor_antes_despues.jpg', 'samsung_a56_antes_despues.jpg')]
+    refs = [x for x in refs if os.path.exists(x)] + [os.path.join(TITULOS_REF, 'metal_bypass_ios.png')]
+    prompt = ('Diseña SOLO una etiqueta (sticker) para una miniatura de YouTube, sobre fondo TRANSPARENTE: nada más, sin '
+              'teléfonos ni fondo. Estilo premium como las etiquetas «ANTES/DESPUÉS» y los títulos de las imágenes de '
+              f'referencia: una placa {COLORES_ETIQUETA[color][1]} levemente inclinada, con volumen 3D, brillo arriba, borde '
+              'blanco grueso y sombra suave; encima, el texto en letra muy gruesa y condensada, blanca, con borde oscuro, '
+              f'relieve y brillo. El texto exacto, perfectamente escrito y nada más: «{texto}». Centrada y completa, sin cortar.')
+    print(f'· GPT dibuja la etiqueta «{texto}» ({color}); queda guardada para siempre…', flush=True)
+    img = imagen_gpt(prompt, [x for x in refs if os.path.exists(x)], size='1536x1024', transparente=True)
+    if img.ndim == 3 and img.shape[2] == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+    a = img[..., 3] > 60
+    ys, xs = np.where(a)
+    if len(xs):
+        img = img[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    os.makedirs(ETIQUETAS_DIR, exist_ok=True)
+    cv2.imwrite(f, img)
+    return f
+
+
+def sticker(texto, color, alto, angulo):
+    """La etiqueta de GPT si ya está guardada; si no, la que dibuja la app."""
+    from PIL import Image
+    f = archivo_etiqueta(texto, color)
+    if os.path.exists(f):
+        im = Image.open(f).convert('RGBA')
+        k = alto / im.height
+        return im.resize((max(1, int(im.width * k)), alto), Image.LANCZOS)
+    return cinta(texto, COLORES_ETIQUETA[color][0], int(alto * 0.62) if len(texto) <= 10 else int(alto * 0.5), angulo)
 
 
 def traducciones_titulo(d, lineas):
@@ -791,6 +841,10 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
                 if not os.path.exists(png):
                     print(f'· GPT dibuja el título «{" ".join(tr.get(idioma, lineas))}» ({estilo})…', flush=True)
                     titulo_gpt(tr.get(idioma, lineas), estilo, png)
+            if titulo_por_gpt:  # las etiquetas de arriba también de GPT (solo la primera vez: después quedan guardadas)
+                for txt, col in zip(ANTES_DESPUES[idioma] + tuple(x.upper() for x in esq[idioma]), ('rojo', 'verde', 'rojo', 'azul')):
+                    if txt:
+                        etiqueta_gpt(txt, col)
             componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo, png, esq[idioma])
             hechas.append(os.path.basename(f))
             print(f'· {os.path.basename(f)} lista', flush=True)

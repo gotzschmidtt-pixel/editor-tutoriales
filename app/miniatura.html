@@ -84,7 +84,7 @@
         <option value="pincel">Pincelada verde y azul</option>
         <option value="metal">Letras 3D doradas</option>
       </select></label>
-      <label title="El título lo dibuja GPT 2.5 copiando tus estilos (se ve menos genérico que el de la app). Gasta 1 imagen por estilo y por idioma"><input type="checkbox" id="tituloGpt" checked> ✨ Título dibujado por GPT 2.5</label>
+      <label title="El título lo dibuja GPT 2.5 copiando tus estilos (se ve menos genérico que el de la app). Gasta 1 imagen por estilo y por idioma"><input type="checkbox" id="tituloGpt" checked> ✨ Título y etiquetas dibujados por GPT 2.5</label>
     </div>
     <p class="aviso" id="costo"></p>
     <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
@@ -182,7 +182,7 @@ function pintarCosto() {
   $('#titulo').parentElement.style.display = $('#tituloGpt').parentElement.style.display = $('#modo').value === 'mixta' ? '' : 'none';  // con «Todo GPT» el título lo dibuja GPT
   const n = imagenes();
   $('#costo').textContent = `Gasta ${n} imagen${n > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad alta` +
-    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas' + ($('#tituloGpt').checked ? '; el título, una por estilo e idioma).' : ').') : ' (una por idioma).');
+    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas' + ($('#tituloGpt').checked ? '; el título, una por estilo e idioma; cada etiqueta nueva de arriba, una sola vez y queda guardada).' : ').') : ' (una por idioma).');
 }
 $('#fondo').onchange = $('#modo').onchange = $('#titulo').onchange = $('#tituloGpt').onchange = pintarCosto;
 
