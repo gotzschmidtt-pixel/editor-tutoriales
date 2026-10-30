@@ -18,7 +18,7 @@ en el segundo de la captura.
 tipo: web | archivo | dato | precio | pin | consejo. color: solo para "pin" (color del cable).
 Van abajo a la izquierda; si ahí taparían el teléfono o tu cara y a la derecha no, van abajo a la derecha (deteccion/).
 """
-import argparse, json, os, shutil, subprocess, sys, unicodedata
+import argparse, json, os, pathlib, shutil, struct, subprocess, sys, unicodedata
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -139,6 +139,19 @@ def lado_libre(video, ini, dur, items):
     return 'derecha' if tapadas >= 2 else 'izquierda'
 
 
+KIT = os.path.join(RAIZ, 'mis_conocimientos', 'estilo_video')  # el kit de GPT 2.5 (pedido de fabian, 30/10/2026)
+
+
+def placa_gpt(tipo):
+    """La placa de GPT para ese tipo de etiqueta (con su ícono), o None si no está el kit: va el diseño de siempre."""
+    for n in (f'placa_{tipo}.png', 'placa_dato.png'):
+        f = os.path.join(KIT, n)
+        if os.path.exists(f):
+            w, h = struct.unpack('>II', open(f, 'rb').read(24)[16:24])
+            return {'url': pathlib.Path(f).as_uri(), 'w': w, 'h': h}
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--guion', required=True)
@@ -191,7 +204,7 @@ def main():
     for k, g in enumerate(grupos, 1):
         total = round(g['fin'] - g['ini'], 2)
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
-                  'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
+                  'at': round(i['t'] - g['ini'], 2), 'placa': placa_gpt(i['tipo'])} for i in g['items']]
         lado = lado_libre(a.video, g['ini'], total, g['items'])
         for i in g['items']:
             i['lado'] = lado

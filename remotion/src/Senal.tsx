@@ -1,4 +1,4 @@
-import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {estilo} from './estilo';
 
 // Flechas, círculos y recuadros que se dibujan solos y siguen al objeto (posiciones por cuadro).
@@ -12,9 +12,12 @@ export type SenalProps = {
   foco?: boolean; // oscurece el resto de la imagen
   angulo?: number; // de dónde viene la flecha, en grados (0 = desde la derecha)
   hueco?: number; // distancia del centro a la punta de la flecha (para no tapar el texto señalado)
+  sprite?: string; // dibujo de GPT 2.5 (en public/), para la flecha o el círculo redondo (pedido de fabian, 30/10/2026)
+  punta?: [number, number]; // dónde está la punta en el dibujo de la flecha (fracción del ancho y del alto)
 };
 
-export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: hDado, color, texto, foco, angulo = -35, hueco = 18}) => {
+export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: hDado, color, texto, foco, angulo = -35, hueco = 18,
+  sprite, punta = [0.97, 0.3]}) => {
   const f = useCurrentFrame();
   const {fps, durationInFrames, width, height} = useVideoConfig();
   const [x, y] = puntos[Math.min(f, puntos.length - 1)];
@@ -48,7 +51,25 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: 
   };
 
   let forma: React.ReactNode = null;
-  if (contorno && tipo === 'circulo') {
+  let dibujo: React.ReactNode = null;  // el de GPT 2.5, encima del lienzo
+  if (sprite && tipo === 'flecha') {
+    // la flecha 3D de GPT: llega desde fuera, con la punta sobre el objeto, y rebota
+    const a = (angulo * Math.PI) / 180;
+    const rebote = Math.sin((f / fps) * Math.PI * 3) * 8 * (f > 0.45 * fps ? 1 : 0);
+    const px = x + Math.cos(a) * (hueco + rebote), py = y + Math.sin(a) * (hueco + rebote);
+    const ancho = r * 2.6, alto = ancho * 0.49;
+    const tx = punta[0] * ancho, ty = punta[1] * alto;
+    const gira = angulo + 180;  // el dibujo apunta a la derecha; así apunta hacia el objeto
+    const espejo = Math.cos(((gira) * Math.PI) / 180) < 0 ? -1 : 1;  // apuntando a la izquierda, que la curva no quede de cabeza
+    const entra = interpolate(f, [0, 0.35 * fps], [0.4, 1], {extrapolateRight: 'clamp'});
+    dibujo = <Img src={staticFile(sprite)} style={{position: 'absolute', left: px - tx, top: py - ty, width: ancho, height: alto,
+      transformOrigin: `${tx}px ${ty}px`, transform: `rotate(${gira}deg) scaleY(${espejo}) scale(${pop * entra})`, opacity: Math.min(1, dibuja * 2)}} />;
+  } else if (sprite && tipo === 'circulo' && !pildora) {
+    // el aro de GPT alrededor del objeto: aparece con un salto suave
+    const d = r * 2.5;
+    dibujo = <Img src={staticFile(sprite)} style={{position: 'absolute', left: x - d / 2, top: y - d / 2, width: d, height: d,
+      transform: `rotate(-8deg) scale(${0.6 + 0.4 * pop})`, opacity: Math.min(1, dibuja * 2)}} />;
+  } else if (contorno && tipo === 'circulo') {
     forma = pildora
       ? <rect x={x - pw / 2} y={y - ph / 2} width={pw} height={ph} rx={Math.min(pw, ph) / 2} {...trazo} {...traza} />
       : <circle cx={x} cy={y} r={r} transform={`rotate(-90 ${x} ${y})`} {...trazo} {...traza} />;
@@ -102,7 +123,8 @@ export const Senal: React.FC<SenalProps> = ({tipo, puntos, r = 70, w: wDado, h: 
         <AbsoluteFill style={{opacity: 0.42 * dibuja,
           background: `radial-gradient(circle at ${x}px ${y}px, transparent ${rf}px, rgba(0,0,0,.85) ${rf + 60}px)`}} />
       )}
-      <svg width={width} height={height} style={{position: 'absolute', filter: brillo}}>{forma}</svg>
+      {forma && <svg width={width} height={height} style={{position: 'absolute', filter: brillo}}>{forma}</svg>}
+      {dibujo}
       {texto && (() => {
         // rótulo tipo píldora: debajo de la marca, o encima si no cabe; nunca se sale del cuadro
         const alto = tipo === 'caja' ? h / 2 : pildora ? ph / 2 : r;

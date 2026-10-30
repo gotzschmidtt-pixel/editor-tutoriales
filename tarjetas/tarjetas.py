@@ -104,6 +104,55 @@ def planificar(tarjetas, subs, total):
     return sorted(plan, key=lambda x: x[0])
 
 
+MARCO = os.path.join(RAIZ, 'mis_conocimientos', 'estilo_video', 'marco_tarjeta.png')  # el marco de GPT 2.5 (fabian, 30/10/2026)
+
+
+def con_marco(ruta, carpeta_tmp):
+    """La captura dentro del marco de GPT (estirado solo en los lados: las esquinas no se deforman). Sin el kit, la de siempre."""
+    if not os.path.exists(MARCO):
+        return ruta
+    try:
+        import numpy as np
+        from PIL import Image, ImageDraw
+        m = Image.open(MARCO).convert('RGBA')
+        a = np.array(m)[..., 3]
+        h, w = a.shape
+        cy, cx = h // 2, w // 2
+        izq = next(x for x in range(cx, 0, -1) if a[cy, x] > 128)
+        der = next(x for x in range(cx, w) if a[cy, x] > 128)
+        arr = next(y for y in range(cy, 0, -1) if a[y, cx] > 128)
+        aba = next(y for y in range(cy, h) if a[y, cx] > 128)
+        L, R, T, B = izq + 1, w - der, arr + 1, h - aba  # lo que es marco de cada lado (no se estira)
+        foto = Image.open(ruta).convert('RGBA')
+        fw, fh = foto.size
+        k = max(0.05, 0.06 * min(fw, fh) / max(1, L))  # el borde, un 6 % del lado corto de la captura
+        l, r, tt, b = [max(1, round(v * k)) for v in (L, R, T, B)]
+        W2, H2 = fw + l + r - round(0.35 * (l + r)), fh + tt + b - round(0.35 * (tt + b))  # el borde pisa un poco la captura
+        lienzo = Image.new('RGBA', (W2, H2), (0, 0, 0, 0))
+        # la captura en el medio, con las puntas redondeadas
+        ox, oy = (W2 - fw) // 2, (H2 - fh) // 2
+        masc = Image.new('L', foto.size, 0)
+        ImageDraw.Draw(masc).rounded_rectangle((0, 0, fw - 1, fh - 1), round(0.04 * min(fw, fh)), fill=255)
+        lienzo.paste(foto, (ox, oy), masc)
+        # el marco en 9 pedazos
+        cajas_src = {'esq': [(0, 0, L, T), (w - R, 0, w, T), (0, h - B, L, h), (w - R, h - B, w, h)]}
+        destino = [(0, 0), (W2 - r, 0), (0, H2 - b), (W2 - r, H2 - b)]
+        tam = [(l, tt), (r, tt), (l, b), (r, b)]
+        for c, d, s in zip(cajas_src['esq'], destino, tam):
+            lienzo.alpha_composite(m.crop(c).resize(s, Image.LANCZOS), d)
+        lados = [((L, 0, w - R, T), (l, 0), (W2 - l - r, tt)), ((L, h - B, w - R, h), (l, H2 - b), (W2 - l - r, b)),
+                 ((0, T, L, h - B), (0, tt), (l, H2 - tt - b)), ((w - R, T, w, h - B), (W2 - r, tt), (r, H2 - tt - b))]
+        for c, d, s in lados:
+            if s[0] > 0 and s[1] > 0:
+                lienzo.alpha_composite(m.crop(c).resize(s, Image.LANCZOS), d)
+        out = os.path.join(carpeta_tmp, 'marco_' + os.path.splitext(os.path.basename(ruta))[0] + '.png')
+        lienzo.save(out)
+        return out
+    except Exception as e:  # si algo falla, la tarjeta va igual, sin marco
+        print(f'· no pude ponerle el marco a {os.path.basename(ruta)} ({e})', flush=True)
+        return ruta
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--video', required=True)
@@ -122,13 +171,16 @@ def main():
 
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     margen = round(H * 0.04)
+    tmp_marcos = os.path.join(os.path.dirname(os.path.abspath(a.salida)), '.tarjetas_marco')  # las capturas ya enmarcadas
+    os.makedirs(tmp_marcos, exist_ok=True)
     for k, (t, dur, c, g, por) in enumerate(plan, 1):
         pos = c.get('posicion') if c.get('posicion') in POSICIONES else 'abajo-derecha'
         ancho = round(W * (0.5 if pos == 'centro' else 0.32)) // 2 * 2
         x = {'abajo-derecha': f'W-w-{margen}', 'arriba-derecha': f'W-w-{margen}', 'centro': '(W-w)/2'}.get(pos, str(margen))
         y = {'arriba-derecha': str(margen), 'arriba-izquierda': str(margen), 'centro': '(H-h)/2'}.get(pos, f'H-h-{margen}')
         desliza = f'{round(H * 0.06)}*max(0,1-(t-{t})/{ENTRA})'  # entra subiendo un poco
-        piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.abspath(os.path.join(carpeta, os.path.basename(c['archivo'])))],
+        imagen = con_marco(os.path.abspath(os.path.join(carpeta, os.path.basename(c['archivo']))), tmp_marcos)
+        piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', imagen],
                        'pre': f"format=rgba,scale='min({ancho},iw*{H * 0.42:.0f}/ih)':-2,"
                               f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={dur - ENTRA:.2f}:d={ENTRA}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",

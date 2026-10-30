@@ -41,6 +41,24 @@ SIN_VER = 15     # si el objeto no se ve por más de esto (0,6 s), ya no se usa 
 CORTE = 30       # diferencia media entre dos cuadros (achicados, 0 a 255) desde la que es otra toma: la señal termina ahí
 
 
+KIT = os.path.join(RAIZ, 'mis_conocimientos', 'estilo_video')  # el kit de estilo de GPT 2.5 (pedido de fabian, 30/10/2026)
+
+
+def kit_gpt(tipo):
+    """'estilo/flecha.png' o 'estilo/circulo.png' (en remotion/public, achicado) si el kit tiene ese dibujo; si no, None."""
+    nombre = {'flecha': 'flecha.png', 'circulo': 'circulo.png'}.get(tipo)
+    origen = os.path.join(KIT, nombre) if nombre else ''
+    if not nombre or not os.path.exists(origen):
+        return None
+    destino = os.path.join(RAIZ, 'remotion', 'public', 'estilo', nombre)
+    if not os.path.exists(destino) or os.path.getmtime(destino) < os.path.getmtime(origen):
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+        img = cv2.imread(origen, cv2.IMREAD_UNCHANGED)
+        k = 700 / max(img.shape[:2])
+        cv2.imwrite(destino, cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA) if k < 1 else img)
+    return 'estilo/' + nombre
+
+
 def seguir(video, t, x, y, n, radio):
     """Sigue el punto (x, y) durante n cuadros desde el segundo t. Devuelve posiciones y cuántos cuadros fueron fiables.
 
@@ -218,6 +236,9 @@ def main():
         else:
             pts = [(s['x'], s['y'])] * n
         props = {k2: s[k2] for k2 in ('tipo', 'r', 'w', 'h', 'color', 'texto', 'foco', 'angulo', 'hueco') if k2 in s}
+        dibujo = kit_gpt(s['tipo'])  # la flecha o el círculo de GPT 2.5 (mis_conocimientos/estilo_video), si está
+        if dibujo:
+            props['sprite'] = dibujo
         props['puntos'] = pts
         salida = os.path.join(tmp, f's{k:02d}.mov')
         trabajos.append({'id': 'Senal', 'props': props, 'salida': salida, 'alfa': True})

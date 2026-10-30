@@ -12,6 +12,7 @@ const [, , outDir, total, itemsJson, lado, recorte] = process.argv;
     '?total=' + total + '&items=' + encodeURIComponent(itemsJson) + (lado ? '&lado=' + lado : '');
   await page.goto(url);
   await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => window.listo || null);  // las placas de GPT ya cargadas
   const [x, y, width, height] = recorte ? recorte.split(',').map(Number) : [];
   const clip = recorte ? { x, y, width, height } : undefined;
   const n = Math.round(+total * 25);
