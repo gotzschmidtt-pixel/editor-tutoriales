@@ -22,6 +22,7 @@ from nitidez import analizar, mejor  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'mejorar'))
 import mejorar  # noqa: E402  «✨ Mejorar imagen» (Real-ESRGAN) en las pausas quietas, si lo pediste
 from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a ElevenLabs
+import encuadres  # noqa: E402  nunca más de 15 s con la misma toma: cambia el encuadre
 
 
 VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
@@ -167,6 +168,21 @@ def cuadros_por_segundo(f):
     return 25
 
 
+def con_encuadres(entrada, previa, segs, fps, res, despues, enc, base, total=None):
+    """El pedazo cortado en sus encuadres (encuadres.py): un archivo por encuadre, contados por cuadro para no correr
+    los tiempos. Cada uno en su propia pasada: partirlo en un solo filtro guardaba cientos de cuadros en memoria."""
+    hechos = []
+    for k, (a, b, z, cx, cy) in enumerate(segs):
+        ini = round(a * fps)
+        fin = round(b * fps) if k < len(segs) - 1 else total
+        tr = f"trim=start_frame={ini}" + (f":end_frame={fin}" if fin is not None else '')
+        f = f'{base}_{k}.mp4'
+        run(entrada + ['-vf', f"{previa},{tr},setpts=PTS-STARTPTS,{encuadres.filtro(z, cx, cy)}scale={res[0]}:{res[1]},setsar=1,{despues}"]
+            + (['-frames:v', str(fin - ini)] if fin is not None else []) + enc + [f])
+        hechos.append(f)
+    return hechos
+
+
 def run(args):
     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + args, check=True)
 
@@ -246,6 +262,7 @@ def main():
     tmp = codificar.temporal('montaje')
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
     umbral_agitada = max(UMBRAL_AGITADA, float(__import__('numpy').percentile(nt[2], 85)))  # en un video muy movido, solo lo más agitado
+    plan = encuadres.planear(d['bloques'], a.original, os.path.splitext(a.original)[0] + '.encuadres.npz')
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
@@ -283,7 +300,8 @@ def main():
         quieto = bool(m.get('quieto')) or agitada
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
         nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
-        clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else []),
+        clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else [])
+                                        + ([plan.get((i, 'a')), plan.get((i, 'b'))] if (i, 'a') in plan or (i, 'b') in plan else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
@@ -302,11 +320,17 @@ def main():
         codificar.USADOS.clear()
         if m['modo'].startswith('lento'):
             f = os.path.join(tmp, f'{i}_a.mp4')
-            run(['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an',
-                 '-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out}{lab}"] + enc + [f])
-            if a.estabilizar:
-                estabilizar(f, enc)
-            partes.append(f)
+            entrada = ['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an']
+            if (i, 'a') in plan:  # la misma toma hace rato: cambia de encuadre
+                hechos = con_encuadres(entrada, f"setpts=PTS/{m.get('velocidad') or 1},{out}", plan[(i, 'a')], FPS, res,
+                                       f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_a'))
+            else:
+                run(entrada + ['-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out}{lab}"] + enc + [f])
+                hechos = [f]
+            for f in hechos:
+                if a.estabilizar:
+                    estabilizar(f, enc)
+                partes.append(f)
         if m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1:
             # una pausa de menos de un cuadro daba un tramo vacío que, al unir, desarmaba los tiempos de todo lo siguiente
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
@@ -320,8 +344,13 @@ def main():
                     mejorar.si_quieres(png, proyecto)
                 z = f'1+0.10*on/{nfr}' if len(partes) % 2 == 0 else f'1.10-0.10*on/{nfr}'
                 # zoompan mueve el recorte de a 1 píxel entero: sobre una imagen 4 veces más grande el zoom sale suave, sin temblar
-                run(['-i', png, '-vf', f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps={FPS},format=yuv420p{lab}",
-                     '-frames:v', str(nfr)] + enc + [f])
+                zp = f"scale={max(3840, res[0] * 4)}:-2,zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={nfr}:s={res[0]}x{res[1]}:fps={FPS}"
+                if (i, 'b') in plan:
+                    hechos = con_encuadres(['-i', png], zp, plan[(i, 'b')], FPS, res, f"format=yuv420p{lab}", enc,
+                                           os.path.join(tmp, f'{i}_b'), nfr)
+                else:
+                    run(['-i', png, '-vf', f"{zp},format=yuv420p{lab}", '-frames:v', str(nfr)] + enc + [f])
+                    hechos = [f]
             else:
                 # la escena se repite en movimiento (ida y vuelta, un poco lenta) en vez de una foto quieta:
                 # tras un tramo, arranca hacia atrás desde el último cuadro, así el empalme no salta
@@ -344,9 +373,14 @@ def main():
                     estabilizar(ida, enc)
                 # sin zoom encima: zoompan sobre video a su tamaño redondea el recorte a píxeles enteros y la imagen
                 # tiembla (y ampliarla 4 veces cuadro a cuadro sería muy lento); el movimiento de la escena ya la mantiene viva
-                run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps={FPS},format=yuv420p{lab}",
-                     '-frames:v', str(nfr)] + enc + [f])
-            partes.append(f)
+                if (i, 'b') in plan:
+                    hechos = con_encuadres(['-stream_loop', '-1', '-i', ida], f"fps={FPS}", plan[(i, 'b')], FPS, res,
+                                           f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_b'), nfr)
+                else:
+                    run(['-stream_loop', '-1', '-i', ida, '-vf', f"fps={FPS},format=yuv420p{lab}",
+                         '-frames:v', str(nfr)] + enc + [f])
+                    hechos = [f]
+            partes += hechos
         if m['modo'] == 'imagen':
             img = m.get('imagen') or a.imagen
             f = os.path.join(tmp, f'{i}_b.mp4')
