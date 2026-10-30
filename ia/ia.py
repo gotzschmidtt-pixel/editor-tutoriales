@@ -1508,6 +1508,12 @@ def llamar(ajustes, texto, caps):
     """Pide a la IA configurada y deja anotada la llamada (bien o mal) para el diagnóstico, sin claves ni contenido."""
     global GUARDAR_RESPUESTA
     GUARDAR_RESPUESTA = bool(ajustes.get('diagnostico_guardar_respuesta'))
+    if not str(ajustes.get('clave') or '').strip():  # la principal quedó vacía: la de ese mismo proveedor en «varias IAs» sirve
+        for ide, (_, _, url, _) in IAS_GUION.items():
+            k = str(((ajustes.get('ias_guion') or {}).get(ide) or {}).get('clave') or '').strip()
+            if k and url.rstrip('/') == str(ajustes.get('url') or '').strip().rstrip('/'):
+                ajustes = {**ajustes, 'clave': k}
+                break
     archivo, funcion = _quien()
     _INTENTOS[funcion] = _INTENTOS.get(funcion, 0) + 1
     det = {}
