@@ -314,7 +314,15 @@ def pedir_imagen(req, intentos=4):
             time.sleep(espera)
 
 
-def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None):
+FONDOS_MINI = {  # pedido de fabian (30/10/2026): probar los dos y quedarse con el que más le guste
+    'escritorio': '(1) fondo = SU escritorio real, el de la imagen 1, tal cual, claro y apenas desenfocado: la laptop, el cartel '
+                  'negro «Frp» y la G de Google grande de 4 colores (no inventes otro fondo); ',
+    'gpt': '(1) fondo generado por ti, como sus miniaturas de iPhone: oscuro azul profundo con estelas de luz de neón celeste y '
+           'violeta, rayos de luz y un piso que refleja; ',
+}
+
+
+def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio'):
     """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
     k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
@@ -333,7 +341,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   'teléfono ya libre, en SU pantalla de inicio con las apps, igual que en la foto (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
                   'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. Las demás imágenes son miniaturas '
                   'suyas: cópiales el estilo (no su texto, ni su teléfono, ni el reloj de duración de YouTube). OBLIGATORIO, todo junto: '
-                  '(1) fondo = su escritorio real, claro y nítido: la laptop, el cartel negro «Frp» y la G de Google grande de 4 colores; '
+                  + FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']) +
                   '(2) los dos teléfonos reales grandes, de frente, sostenidos con guante negro, la pantalla bien legible; '
                   f'(3) etiqueta inclinada roja «{ANTES_DESPUES[idioma][0]}» arriba del bloqueado y verde «{ANTES_DESPUES[idioma][1]}» '
                   'arriba del libre, letra gruesa blanca con borde; (4) flecha gruesa curva amarilla del bloqueado al libre; '
@@ -432,6 +440,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
@@ -492,6 +501,11 @@ def main():
                     for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), lineas[0][0],
                                             idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k)):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · ANTES: {k}', 'segundo': round(clave[k], 1), 'texto': [x for x in lineas[0] if x]})
+            elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
+                for fondo in ('escritorio', 'gpt'):
+                    for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_fondo_{fondo}'),
+                                            lineas[0][0], idiomas=('es',), antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
+                        hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · fondo {fondo}', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt:
                 for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0],
                                         antes_desc=NOMBRE_ANTES.get(antes[0])):
