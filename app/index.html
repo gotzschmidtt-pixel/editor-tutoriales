@@ -2960,7 +2960,7 @@ async function otroGuion() {  // otro guion sin repetir el análisis del video (
 }
 // [id del paso, nombre, qué falta si no se puede, lo prepara la IA sola]
 const EXTRAS = [['etiquetas', '🏷 Etiquetas animadas', '', true], ['senales', '🎯 Flechas y círculos', '', true],
-  ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'],
+  ['tarjetas', '💬 Comentarios y WhatsApp', 'sube tus capturas en «Comentarios y WhatsApp»'], ['logos', '🖼 Logos (Android, MagicOS…) cuando la voz los nombra', '', true],
   ['testimonios', '⭐ Testimonios', 'agrega testimonios en su panel'], ['nuevos_modelos', '📱 Nuevos modelos', 'graba el video de nuevos modelos en su panel'],
   ['trailer', '🎬 Tráiler ANTES · DURANTE · DESPUÉS', 'prepáralo primero en «🎬 Tráiler»', false, true]];
 // ---------- pestaña «Material extra»: cada módulo y dónde va ----------
@@ -3035,12 +3035,13 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
   if (e.archivos['5_etiquetas.mp4'] || juntas.includes('etiquetas')) solo.push('etiquetas');  // lo que ya tenía el video se conserva
   if (e.archivos['6_senales.mp4'] || juntas.includes('senales')) solo.push('senales');
   if (Object.values(TARJ).some(l => l.length)) solo.push('tarjetas');
+  solo.push('logos');  // tus logos fijos van siempre: si la voz no nombra ninguno, no se pone nada
   if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
   if (MODS.MODELOS.length) solo.push('nuevos_modelos');
   const aj = (await api('/api/ajustes')).ajustes;
   if ((e.pasos.find(x => x.id === 'trailer') || {}).puede || (aj.modelo && aj.url)) solo.push('trailer');  // sin plan propio, lo arma la IA
   if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o configura una IA para el tráiler.');
-  const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
+  const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', logos: 'logos (Android, MagicOS…)', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
   if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
   soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }

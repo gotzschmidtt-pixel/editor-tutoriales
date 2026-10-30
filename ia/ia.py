@@ -453,6 +453,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           f"- [{mmss(a)}] ({', '.join(sorted(n))}) «{f[:160]}»" for a, _, f, n in acc))
     if tarea == 'guion' and importantes.leer(d):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
+    if tarea == 'guion' and patron_versiones(d):
+        partes.append(patron_versiones(d))
     sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
@@ -1042,6 +1044,39 @@ def acciones_desfasadas(d, bloques):
     return out
 
 
+# Patrón fijo de todos los guiones de Android (pedido de fabian, 30/10/2026): la voz dice para qué versiones sirve el método y,
+# cuando las nombra, la app pone el logo de cada una (mis_conocimientos/logos, paso «Logos»). En Honor también MagicOS.
+VERSIONES_ANDROID = r'\bandroid (15|quince|16|diecis[eé]is|17|diecisiete)\b'
+VERSIONES_MAGICOS = r'\bmagic ?os (9|nueve|10|diez|11|once)\b'
+
+
+def patron_versiones(d):
+    """La regla para la IA del guion: '' en un video de Apple (ahí no hay Android)."""
+    marca = (conocimiento.marca_de_proyecto(d) or '').lower()
+    if marca == 'apple':
+        return ''
+    txt = ("PATRÓN FIJO DE TODOS LOS GUIONES (pedido del autor): en un bloque del comienzo, donde dices a qué modelos sirve, la voz "
+           "dice con estas palabras «este método sirve para Android quince, dieciséis, diecisiete o superiores» (cuando la voz las "
+           "dice, la app pone el logo de cada versión). Si en este video el autor dice otras versiones, nombra las suyas: manda el video.")
+    if marca == 'honor':
+        txt += " Como es Honor, en esa frase o la siguiente: «y también funciona con MagicOS nueve, diez u once»."
+    return txt
+
+
+def falta_patron_versiones(d, bloques):
+    """Aviso si el guion de un video de Android no dice las versiones (y en Honor, MagicOS)."""
+    if not patron_versiones(d):
+        return []
+    todo = normal(' '.join(str(b.get('texto', '')) for b in bloques))
+    out = []
+    if not re.search(VERSIONES_ANDROID, todo):
+        out.append('patrón fijo: ningún bloque dice para qué versiones sirve («Android quince, dieciséis, diecisiete o superiores»): '
+                   'agrégalo al comienzo, donde dices a qué modelos sirve (así salen los logos)')
+    if (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor' and not re.search(VERSIONES_MAGICOS, todo):
+        out.append('patrón fijo: en Honor la voz también dice «funciona con MagicOS nueve, diez u once» (así sale su logo)')
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
@@ -1078,6 +1113,7 @@ def verificar_orden(d, bloques):
                               f"{mmss(nuevo)}, donde dices eso en tu grabación")
     avisos += desfases(d, bloques)
     avisos += acciones_desfasadas(d, bloques)
+    avisos += falta_patron_versiones(d, bloques)
     if avisos:
         txt = '\n'.join(avisos) + '\n'
     elif palabras:

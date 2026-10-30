@@ -506,7 +506,7 @@ def trailer_pendiente(d):
 
 def ultimo_video(d, hasta):
     """El video más avanzado de la cadena antes del paso `hasta`."""
-    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '9_modelos.mp4']
+    cadena = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '7b_logos.mp4', '8_testimonios.mp4', '9_modelos.mp4']
     previos = cadena[:cadena.index(hasta)] if hasta in cadena else cadena
     for f in reversed(previos):
         if existe(d, f):
@@ -563,6 +563,9 @@ def comandos(paso, d, op):
     if paso == 'tarjetas':
         return [[PY, m('tarjetas', 'tarjetas.py'), '--video', base('7_tarjetas.mp4'), '--tarjetas', os.path.join('tarjetas', 'tarjetas.json'),
                  '--srt', '3_voz.srt', '--salida', '7_tarjetas.mp4'] + capa('tarjetas')]
+    if paso == 'logos':  # tus logos (Android 15, 16, 17, MagicOS…) cuando la voz los nombra: mis_conocimientos/logos
+        return [[PY, m('logos', 'logos.py'), '--video', base('7b_logos.mp4'), '--guion', 'guion.json', '--voz', 'voz',
+                 '--logos', LOGOS_DIR, '--salida', '7b_logos.mp4'] + capa('logos')]
     if paso == 'capas':
         return [[PY, m('capas', 'capas.py'), '--video', ultimo_video(d, '5_etiquetas.mp4'), '--carpeta', CAPAS_DIR,
                  '--orden', ','.join(f"{x}:{next(p['produce'] for p in PASOS if p['id'] == x)}" for x in CAPAS)]]
@@ -671,6 +674,7 @@ PASOS = [
     {'id': 'etiquetas', 'nombre': 'Etiquetas animadas', 'necesita': ['3_voz.mp4', 'etiquetas.json'], 'produce': '5_etiquetas.mp4', 'opcional': True, 'blando': True},
     {'id': 'senales', 'nombre': 'Flechas y círculos', 'necesita': ['3_voz.mp4', 'senales.json'], 'produce': '6_senales.mp4', 'opcional': True, 'blando': True},
     {'id': 'tarjetas', 'nombre': 'Tarjetas de comentarios y WhatsApp', 'necesita': ['3_voz.mp4', 'tarjetas/tarjetas.json'], 'produce': '7_tarjetas.mp4', 'opcional': True, 'blando': True},
+    {'id': 'logos', 'nombre': 'Logos (Android, MagicOS…) cuando la voz los nombra', 'necesita': ['3_voz.mp4', 'guion.json', 'voz'], 'produce': '7b_logos.mp4', 'opcional': True, 'blando': True},
     {'id': 'capas', 'nombre': 'Pegar etiquetas, flechas y tarjetas (una sola pasada)', 'necesita': [], 'produce': '', 'oculto': True, 'blando': True},
     {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
@@ -691,12 +695,13 @@ PASOS = [
     {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ] + mejoras.PASOS
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
+TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'logos', 'testimonios', 'nuevos_modelos', 'trailer']
 # «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
 # así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
-EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'testimonios', 'nuevos_modelos', 'trailer']
-CAPAS = ['etiquetas', 'senales', 'tarjetas']  # se pegan juntos en una sola codificación (capas/capas.py)
+EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'logos', 'testimonios', 'nuevos_modelos', 'trailer']
+CAPAS = ['etiquetas', 'senales', 'tarjetas', 'logos']  # se pegan juntos en una sola codificación (capas/capas.py)
 CAPAS_DIR = '.capas'
+LOGOS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'logos')  # tus logos fijos, para todos los videos (pedido de fabian, 30/10/2026)
 PRUEBA_GUION = 'guion_prueba.json'  # copia con solo los bloques a probar; guion.json no se toca
 
 
@@ -716,7 +721,7 @@ def guion_de_prueba(d, desde, hasta):
 
 
 PREPARA_EXTRA = {'etiquetas_ia': 'etiquetas', 'senales_ia': 'senales', 'trailer_ia': 'trailer'}
-VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
+VIDEOS_EXTRAS = ['5_etiquetas.mp4', '6_senales.mp4', '7_tarjetas.mp4', '7b_logos.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4',
                  '9_modelos.srt', 'trailer.mp4', 'capas_hechas.json']
 
 FALLOS = {}  # proyecto -> {'paso', 'msg'} del último paso que falló
