@@ -31,6 +31,7 @@ import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
 import deteccion  # noqa: E402  dónde está el teléfono, para no taparlo
 FPS = 25
+ANCHO_ZONA, ALTO_ZONA = 1320, 620  # donde caben 3 etiquetas de las largas, con su sombra y su animación
 
 
 def normal(c):
@@ -186,26 +187,40 @@ def main():
         return
     tmp = codificar.temporal('etiquetas')
     ins, filtros, ultimo, piezas = ['-i', a.video], [], '0:v', []
+    trabajos = []
     for k, g in enumerate(grupos, 1):
         total = round(g['fin'] - g['ini'], 2)
         lista = [{'tipo': i['tipo'], 'titulo': i.get('titulo'), 'texto': i['texto'], 'color': i.get('color'),
                   'at': round(i['t'] - g['ini'], 2)} for i in g['items']]
-        carpeta = os.path.join(tmp, f'g{k:02d}')
         lado = lado_libre(a.video, g['ini'], total, g['items'])
         for i in g['items']:
             i['lado'] = lado
-        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista), lado],
+        # solo la zona de abajo y de ese lado (la pila de hasta 3 etiquetas, con su sombra y su entrada animada)
+        ancho = 1920 if max(len(str(i.get('texto') or '')) for i in g['items']) > 38 else ANCHO_ZONA  # una muy larga: todo el ancho
+        x, y = (0 if lado != 'derecha' else 1920 - ancho), 1080 - ALTO_ZONA
+        trabajos.append((k, g, total, lista, lado, os.path.join(tmp, f'g{k:02d}'), (x, y, ancho)))
+
+    def dibujar(tr):
+        k, g, total, lista, lado, carpeta, (x, y, ancho) = tr
+        r = subprocess.run(['node', os.path.join(AQUI, 'render_frames.js'), carpeta, str(total), json.dumps(lista), lado,
+                            f'{x},{y},{ancho},{ALTO_ZONA}'],
                            cwd=RAIZ, capture_output=True, text=True, encoding='utf-8', errors='replace',
-                           env=codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp')))
+                           env=codificar.env_temporal(os.environ, os.path.join(tmp, f'node_tmp{k}')))
         if r.returncode != 0:  # se muestra lo que dijo Node, no solo «exit status 1»
             detalle = ' '.join((r.stderr or r.stdout).split())[-600:]
             if 'playwright' in detalle.lower() and ('cannot find' in detalle.lower() or 'executable' in detalle.lower()):
                 detalle += ' → Falta Playwright: corre instalar.bat (o «npm install» y «npx playwright install chromium» en la carpeta del editor).'
             raise SystemExit(f'ERROR: no pude dibujar las etiquetas con Node: {detalle}')
+
+    # varias pilas a la vez: cada una en su propio navegador (antes, una detrás de otra)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, min(6, (os.cpu_count() or 4) // 3))) as ej:
+        list(ej.map(dibujar, trabajos))
+    for k, g, total, lista, lado, carpeta, (x, y, _) in trabajos:
         piezas.append({'args': ['-framerate', str(FPS), '-i', os.path.join(carpeta, 'f_%04d.png')],
-                       'pre': f"setpts=PTS+{g['ini']}/TB", 'overlay': '0:0:eof_action=pass'})
+                       'pre': f"setpts=PTS+{g['ini']}/TB", 'overlay': f'{x}:{y}:eof_action=pass'})
         ins += piezas[-1]['args']
-        filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay=0:0:eof_action=pass[v{k}]")
+        filtros.append(f"[{k}:v]setpts=PTS+{g['ini']}/TB[e{k}];[{ultimo}][e{k}]overlay={x}:{y}:eof_action=pass[v{k}]")
         ultimo = f'v{k}'
         print(f"{g['ini']:7.2f}s  " + ' + '.join(i['texto'] for i in g['items']) + ('  (a la derecha: a la izquierda tapaba el teléfono)'
                                                                                       if lado == 'derecha' else ''))
