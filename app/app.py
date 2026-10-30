@@ -2266,6 +2266,26 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'mejoras.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/mejoras/'):
                 return mejoras.get(self, ruta, q, carpeta(q['p']))
+            if ruta == '/api/corte':  # «▶ Ver el corte» del editor: solo ese pedazo, para adelantar y volver con libertad
+                d = carpeta(q['p'])
+                f = q.get('f', '')
+                if f not in ('4_musica.mp4', '3_voz.mp4', '1_montaje.mp4', 'FINAL.mp4', 'original.mp4') or not existe(d, f):
+                    return self.error('no existe', 404)
+                desde, hasta = max(0.0, float(q.get('desde') or 0)), float(q.get('hasta') or 0)
+                if hasta <= desde:
+                    return self.error('tramo vacío', 400)
+                cortes = os.path.join(d, '.cortes')
+                os.makedirs(cortes, exist_ok=True)
+                hecho = os.path.join(cortes, f"{f[:-4]}_{desde:.2f}_{hasta:.2f}_{int(os.path.getmtime(os.path.join(d, f)))}.mp4")
+                if not os.path.exists(hecho):
+                    for viejo in sorted(glob.glob(os.path.join(cortes, '*.mp4')), key=os.path.getmtime)[:-30]:
+                        os.remove(viejo)  # solo los últimos 30
+                    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{desde:.2f}', '-to', f'{hasta:.2f}', '-i', os.path.join(d, f),
+                                    '-vf', 'scale=-2:720', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k',
+                                    '-movflags', '+faststart', hecho + '.tmp.mp4'], capture_output=True, **SIN_VENTANA)
+                    if os.path.exists(hecho + '.tmp.mp4'):
+                        os.replace(hecho + '.tmp.mp4', hecho)
+                return self.servir(hecho)
             if ruta == '/api/cuadro':  # miniatura de la grabación en un segundo (en caché)
                 d = carpeta(q['p'])
                 t = round(max(0.0, float(q.get('t') or 0)), 1)

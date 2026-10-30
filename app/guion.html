@@ -341,14 +341,12 @@ function verCorte(i, cual) {
   caja.insertBefore(div, caja.firstChild);
   const v = div.querySelector('video');
   const archivos = cual === 'video' ? VIDEOS_ARMADOS.slice() : ['original.mp4'];
-  const probar = () => {  // el primero que exista
+  const probar = () => {  // el primero que exista; la app corta solo ese pedazo, así la barra es la del bloque y se adelanta libre
     const f = archivos.shift();
     if (!f) { div.querySelector('.meta').textContent = 'Todavía no hay un video armado. Arma el video y vuelve a tocar.'; return; }
-    v.src = `/archivo?p=${q(P)}&f=${q(f)}#t=${desde.toFixed(2)},${hasta.toFixed(2)}`;
+    v.src = `/api/corte?p=${q(P)}&f=${q(f)}&desde=${desde.toFixed(2)}&hasta=${hasta.toFixed(2)}`;
   };
   v.onerror = probar;
-  v.addEventListener('timeupdate', () => { if (v.currentTime >= hasta) { v.pause(); v.currentTime = hasta; } });
-  v.addEventListener('play', () => { if (v.currentTime >= hasta - 0.05 || v.currentTime < desde - 0.5) v.currentTime = desde; });
   probar();
 }
 function cerrarCorte(i) {
