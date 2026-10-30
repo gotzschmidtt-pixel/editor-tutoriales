@@ -1564,6 +1564,30 @@ def yt_srt_final(d):
     return os.path.join(d, f) if existe(d, f) else None
 
 
+def yt_miniaturas(d):
+    """Las miniaturas terminadas del proyecto (sin las escenas sin texto ni los títulos sueltos), la más nueva primero."""
+    fs = glob.glob(os.path.join(d, 'miniatura*.jpg')) + glob.glob(os.path.join(d, 'miniatura*.png'))
+    fs = [f for f in fs if '_escena' not in os.path.basename(f) and not (f.endswith('.png') and '_titulo_' in os.path.basename(f))]
+    return sorted(fs, key=os.path.getmtime, reverse=True)
+
+
+def yt_miniatura(d):
+    """La que elegiste en «▶️ YouTube» (pedido de fabian, 30/10/2026: antes se subía sola la más nueva); si no, la más nueva."""
+    fs = yt_miniaturas(d)
+    try:
+        f = json.load(open(os.path.join(d, 'youtube', 'miniatura.json'), encoding='utf-8')).get('archivo')
+        if f and os.path.join(d, f) in fs:
+            return os.path.join(d, f)
+    except (OSError, ValueError, AttributeError):
+        pass
+    return fs[0] if fs else None
+
+
+def yt_elegir_miniatura(d, archivo):
+    os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
+    json.dump({'archivo': archivo}, open(os.path.join(d, 'youtube', 'miniatura.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+
+
 def yt_bloques(d):
     """Los bloques del guion con el segundo en que empiezan en FINAL.mp4."""
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')) if existe(d, 'guion.json') else {'bloques': []}
@@ -1622,10 +1646,10 @@ def yt_publicar(p, op):
                         youtube.subir_subtitulos(c, vid, lang, lang, subtitulos.srt(d, lang, corre))
             except Exception as e:
                 est['avisos'].append(f'Subtítulos: {e}')
-        mini = sorted(glob.glob(os.path.join(d, 'miniatura*.jpg')) + glob.glob(os.path.join(d, 'miniatura*.png')), key=os.path.getmtime)
+        mini = yt_miniatura(d)
         if op.get('miniatura', True) and mini:
             try:
-                youtube.subir_miniatura(c, vid, mini[-1])
+                youtube.subir_miniatura(c, vid, mini)
             except Exception as e:
                 est['avisos'].append(f'Miniatura: {e}')
         elif op.get('miniatura', True):
@@ -2036,6 +2060,13 @@ class Manejador(BaseHTTPRequestHandler):
             if len(datos) > 2 * 1024 * 1024:
                 return self.error('La miniatura pesa más de 2 MB, el máximo de YouTube.')
             open(os.path.join(d, 'miniatura_subida' + ext), 'wb').write(datos)
+            yt_elegir_miniatura(d, 'miniatura_subida' + ext)  # la que subiste queda elegida
+            return self.responder({'ok': True})
+        if ruta == '/api/youtube/miniatura_elegir':  # tocaste una de las miniaturas del proyecto
+            archivo = str((json.loads(self.rfile.read(largo) or b'{}') or {}).get('archivo') or '')
+            if archivo not in [os.path.basename(f) for f in yt_miniaturas(d)]:
+                return self.error('Esa miniatura no está en el proyecto.')
+            yt_elegir_miniatura(d, archivo)
             return self.responder({'ok': True})
         if ruta == '/api/youtube/publicar':
             if not existe(d, 'FINAL.mp4'):
@@ -2145,10 +2176,11 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/youtube/proyecto':
                 d = carpeta(q['p'])
                 leer_yt = lambda f: json.load(open(os.path.join(d, 'youtube', f), encoding='utf-8')) if existe(d, os.path.join('youtube', f)) else None
-                mini = sorted(glob.glob(os.path.join(d, 'miniatura*.jpg')) + glob.glob(os.path.join(d, 'miniatura*.png')), key=os.path.getmtime)
+                mini = yt_miniatura(d)
                 return self.responder({'final': existe(d, 'FINAL.mp4'), 'metadatos': leer_yt('metadatos.json'), 'publicado': leer_yt('publicado.json'),
                                        'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']),
-                                       'miniatura': os.path.basename(mini[-1]) if mini else ''})
+                                       'miniatura': os.path.basename(mini) if mini else '',
+                                       'miniaturas': [os.path.basename(f) for f in yt_miniaturas(d)][:40]})
             if ruta == '/api/biblioteca':
                 sys.path.insert(0, m('conocimiento'))
                 import biblioteca

@@ -225,7 +225,13 @@ async function cargar() {
   if (!P) return;
   const r = await api(`/api/youtube/proyecto?p=${q(P)}`);
   if (!$('#meta').dataset.listo) { pintarMeta(r.metadatos); $('#meta').dataset.listo = r.metadatos ? '1' : ''; }
-  $('#miniInfo').innerHTML = r.miniatura ? `Se usa <code>${esc(r.miniatura)}</code> del proyecto.` : 'Todavía no hay miniatura en el proyecto.';
+  // tus miniaturas del proyecto: tocas la que va a YouTube (antes se subía sola la más nueva)
+  $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca la que va a YouTube. Elegida: <code>${esc(r.miniatura)}</code></p>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; max-height:420px; overflow:auto">` +
+    r.miniaturas.map(f => `<figure style="margin:0; cursor:pointer; border:3px solid ${f === r.miniatura ? '#38f28a' : 'transparent'}; border-radius:10px; padding:2px"
+      onclick="elegirMini('${esc(f)}')" title="${esc(f)}"><img src="/archivo?p=${q(P)}&f=${q(f)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
+      <figcaption style="font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${f === r.miniatura ? '✓ ' : ''}${esc(f.replace(/^miniatura_?/, '').replace(/\.(jpg|png)$/, ''))}</figcaption></figure>`).join('') + '</div>'
+    : 'Todavía no hay miniatura en el proyecto: hazla en «🖼 Miniatura» o súbela aquí.';
   pintarSubida(r.subida, r.publicado);
   $('#vinculo').innerHTML = r.publicado ? `<p class="ayuda">Video: <a href="${esc(r.publicado.url)}" target="_blank">${esc(r.publicado.titulo)}</a></p>`
     : `<label>¿Ya lo subiste a mano? Pega el link</label><div class="fila"><input type="url" id="link" placeholder="https://youtu.be/..."><button onclick="vincular()">Vincular</button></div>`;
@@ -254,6 +260,9 @@ $('#miniArchivo').onchange = async ev => {
   const f = ev.target.files[0]; if (!f) return;
   try { await api(`/api/youtube/miniatura?p=${q(P)}`, {method: 'POST', body: f, headers: {'Content-Type': f.type}}); cargar(); } catch (x) { alert(x.message); }
 };
+async function elegirMini(f) {
+  try { await api(`/api/youtube/miniatura_elegir?p=${q(P)}`, {method: 'POST', body: JSON.stringify({archivo: f})}); cargar(); } catch (x) { alert(x.message); }
+}
 async function publicar() {
   if (!CONECTADO) return alert('Primero conecta YouTube (arriba).');
   if (!$('#meta').hidden) await guardar();
