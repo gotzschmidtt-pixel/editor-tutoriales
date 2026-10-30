@@ -655,6 +655,9 @@ def guardar_investigacion(marca, x):
                  ('oportunidad', 'Oportunidad para el canal')):
         if r.get(k):
             partes.append(f'- **{n}:** {r[k]}')
+    if r.get('ideas_titulo'):  # los patrones de título que propuso la IA (fabian, 30/10/2026)
+        ideas = r['ideas_titulo'] if isinstance(r['ideas_titulo'], list) else [r['ideas_titulo']]
+        partes.append('- **Patrones de título para usar:** ' + ' | '.join(str(i) for i in ideas[:10]))
     if vids:
         partes.append('- **Videos de otros canales que más vistas por día juntan:** ' +
                       ' | '.join(f"«{v['titulo']}» ({v['canal']}, {v['por_dia']:.0f}/día)" for v in vids))
