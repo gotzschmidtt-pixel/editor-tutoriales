@@ -76,12 +76,12 @@ def diapositiva_gpt(d, plan, antes, despues):
               'con la palabra clave en amarillo; a la derecha los dos teléfonos REALES de este video (las otras imágenes: el '
               'bloqueado con «Verifica tu cuenta» y el libre con la pantalla de inicio), una flecha azul curva del bloqueado al '
               'libre, y entre ellos el candado de Google 3D rompiéndose con pedazos; fondo azul oscuro con luces de neón y piso que '
-              f'refleja. Texto perfectamente escrito{otro}: título «{titulo}», subtítulo «{sub}». Ningún otro texto. Deja libre '
-              'el 9 % de arriba y de abajo (se recorta a 16:9).')
+              f'refleja. Texto perfectamente escrito{otro}: título «{titulo}», subtítulo «{sub}». Ningún otro texto. Todo el diseño '
+              'completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
     imgs = refs[:1] + [x for x in (antes, despues) if x and os.path.exists(x)]
     b = uuid.uuid4().hex
     cuerpo = b''
-    for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x1024', 'quality': 'high', 'output_format': 'png'}.items():
+    for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x864', 'quality': 'high', 'output_format': 'png'}.items():
         cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
     for i, r in enumerate(imgs):
         tipo = 'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'

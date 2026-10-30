@@ -257,10 +257,10 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   'oscuro con brillo de neón o el escritorio real. Abajo, una franja inclinada de color fuerte con el texto GRANDE en '
                   'mayúsculas, tipografía muy gruesa condensada e itálica, blanco y amarillo con borde negro y sombra, perfectamente '
                   f'escrito, en {nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  '. Ningún otro texto, ningún logo ni persona inventados. La imagen se recorta a 16:9: deja libre el 9 % de arriba y el 9 % de abajo, sin texto ni etiquetas ahí.')
+                  '. Ningún otro texto, ningún logo ni persona inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
         b = uuid.uuid4().hex
         cuerpo = b''
-        for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x1024', 'quality': 'high', 'output_format': 'png'}.items():
+        for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x864', 'quality': 'high', 'output_format': 'png'}.items():
             cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
         for i, r in enumerate(refs):
             cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}{os.path.splitext(r)[1]}"\r\nContent-Type: {'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'}\r\n\r\n'.encode()
@@ -272,7 +272,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         r = json.load(urllib.request.urlopen(req, timeout=400))
         img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
         h, w = img.shape[:2]
-        alto = int(w * 9 / 16)  # 1536x1024 → 16:9 recortando arriba y abajo
+        alto = min(h, int(w * 9 / 16))  # ya viene en 16:9 (1536x864): no se corta nada
         img = cv2.resize(img[(h - alto) // 2:(h - alto) // 2 + alto], (W, H), interpolation=cv2.INTER_AREA)
         f = f'{salida_base}_{idioma}.jpg'
         cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
