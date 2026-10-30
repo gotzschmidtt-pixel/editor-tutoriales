@@ -268,7 +268,15 @@ function pintarInvestigacion(x) {
       x.videos.slice(0, 12).map(v => `<a href="https://youtu.be/${esc(v.id)}" target="_blank" style="color:inherit; text-decoration:none">
         <img src="${esc(v.miniatura)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
         <small><b>${esc(v.titulo)}</b><br>${esc(v.canal)}${v.tuyo ? ' (tú)' : ''} · ${fmt(v.vistas)} vistas · ${fmt(v.por_dia)}/día · ${esc(v.publicado)}</small></a>`).join('') + '</div>' : ''}
+    <div class="fila" style="margin-top:10px"><button onclick="guardarEnConocimiento()" title="Lo que funciona con esta marca queda en tu conocimiento (GitHub privado) y lo usan la IA del guion, la de títulos y la de miniaturas en los próximos videos de la marca">🧠 Guardar en Conocimiento</button>
+      <span id="msgConoc" class="msg"></span></div>
   </details>`;
+}
+async function guardarEnConocimiento() {
+  $('#msgConoc').textContent = 'Guardando…'; $('#msgConoc').className = 'msg';
+  try { const r = await api(`/api/youtube/guardar_conocimiento?p=${q(P)}`, {method: 'POST'});
+    $('#msgConoc').textContent = `✓ Guardado en el conocimiento de ${r.marca}: lo usan los próximos videos de la marca.`; $('#msgConoc').className = 'msg ok'; }
+  catch (x) { $('#msgConoc').textContent = x.message; $('#msgConoc').className = 'msg err'; }
 }
 async function investigar() {
   if (!confirm('Voy a mirar YouTube y Google sobre el tema de este video y la IA lo resume (un pedido a tu IA: centavos; la cuota de YouTube es gratis). ¿Sigo?')) return;

@@ -2041,6 +2041,20 @@ class Manejador(BaseHTTPRequestHandler):
             d = os.path.join(PROYECTOS, '.canal')
             return self.responder(yt_ia(d, 'ideas', {'mis_videos': videos, 'comentarios': com, 'busquedas': busq}))
         d = carpeta(q['p'])
+        if ruta == '/api/youtube/guardar_conocimiento':  # «🧠 Guardar en Conocimiento»: lo investigado, para todos los videos de la marca
+            try:
+                x = json.load(open(os.path.join(d, 'youtube', 'investigacion.json'), encoding='utf-8'))
+            except (OSError, ValueError):
+                return self.error('Primero toca «🔎 Investigar el tema».')
+            marca = (conocimiento.marca_de_proyecto(d) or x.get('marca') or '').upper()
+            if not marca:
+                return self.error('No sé de qué marca es este proyecto.')
+            f = conocimiento.guardar_investigacion(marca, x)
+            try:
+                msg = conocimiento.sincronizar(leer_ajustes().get('repo_conocimiento'))
+            except Exception as e:
+                msg = f'(no pude subirlo a GitHub ahora: {e})'
+            return self.responder({'ok': True, 'marca': marca, 'archivo': f, 'mensaje': msg})
         if ruta == '/api/youtube/investigar':  # «🔎 Investigar el tema»: YouTube, Google y tus búsquedas (pedido de fabian, 30/10/2026)
             modelo = str((json.loads(self.rfile.read(largo) or b'{}') or {}).get('modelo') or '').strip()[:60]
             r = subprocess.run([PY, m('youtube', 'investigar.py'), '--proyecto', d, '--ajustes', AJUSTES] + (['--modelo', modelo] if modelo else []),

@@ -637,6 +637,38 @@ def marca_de_proyecto(d):
     return ''
 
 
+def guardar_investigacion(marca, x):
+    """«🧠 Guardar en Conocimiento» de «🔎 Investigar el tema» (pedido de fabian, 30/10/2026): lo que funciona en YouTube para
+    esa marca queda en su archivo (marcas/<MARCA>.md) y lo leen la IA del guion, la de títulos y la de miniaturas. Cada vez
+    que se investiga, esa parte se reemplaza por la nueva (lo demás del archivo no se toca)."""
+    import re as _re
+    m = marca.upper()
+    f = _ruta_marca(m)
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    t = leer(f) if os.path.exists(f) else _plantilla_marca(m)
+    r = x.get('resumen') or {}
+    vids = [v for v in (x.get('videos') or []) if not v.get('tuyo')][:8]
+    partes = [f"## Lo que funciona en YouTube con {m.title()} (investigación del {str(x.get('fecha', ''))[:10]})", '']
+    if r.get('palabras_clave'):
+        partes.append('- **Lo que más se busca:** ' + ', '.join(r['palabras_clave'][:15]))
+    for k, n in (('titulos', 'Títulos que ganan'), ('miniaturas', 'Miniaturas que ganan'), ('competencia', 'Competencia'),
+                 ('oportunidad', 'Oportunidad para el canal')):
+        if r.get(k):
+            partes.append(f'- **{n}:** {r[k]}')
+    if vids:
+        partes.append('- **Videos de otros canales que más vistas por día juntan:** ' +
+                      ' | '.join(f"«{v['titulo']}» ({v['canal']}, {v['por_dia']:.0f}/día)" for v in vids))
+    if x.get('etiquetas'):
+        partes.append('- **Etiquetas que más usan:** ' + ', '.join(e['etiqueta'] for e in x['etiquetas'][:15]))
+    bloque = '<!-- investigacion -->\n' + '\n'.join(partes) + '\n<!-- /investigacion -->'
+    if '<!-- investigacion -->' in t:
+        t = _re.sub(r'<!-- investigacion -->.*?<!-- /investigacion -->', lambda _: bloque, t, flags=_re.S)
+    else:
+        t = t.rstrip('\n') + '\n\n' + bloque + '\n'
+    escribir(f, t)
+    return f
+
+
 def texto_marca_para_ia(d):
     m = marca_de_proyecto(d)
     if not m or not os.path.exists(_ruta_marca(m)):
