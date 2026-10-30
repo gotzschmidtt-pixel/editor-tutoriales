@@ -238,6 +238,24 @@ def referencias_estilo(marca, n=2):
     return [os.path.join(ESTILO, f) for f in suyas[:n]]
 
 
+def pedir_imagen(req, intentos=4):
+    """El pedido a la IA de imágenes; si OpenAI dice «demasiados pedidos» (429) o falla un momento, espera y reintenta."""
+    import time, urllib.error, urllib.request
+    for k in range(intentos):
+        try:
+            return json.load(urllib.request.urlopen(req, timeout=400))
+        except urllib.error.HTTPError as e:
+            cuerpo = e.read().decode(errors='replace')
+            if 'insufficient_quota' in cuerpo or 'credit_balance' in cuerpo:  # sin saldo: reintentar no sirve
+                raise SystemExit('ERROR: tu cuenta de OpenAI se quedó sin saldo para imágenes. Cárgalo en '
+                                 'https://platform.openai.com/settings/organization/billing/ y vuelve a tocar el botón.')
+            if e.code not in (429, 500, 502, 503) or k == intentos - 1:
+                raise SystemExit(f'ERROR: la IA de imágenes respondió {e.code}: {cuerpo[:200]}')
+            espera = 20 * (k + 1)
+            print(f'· OpenAI pide esperar (error {e.code}); reintento en {espera} s…', flush=True)
+            time.sleep(espera)
+
+
 def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
     """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
@@ -281,7 +299,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
                                      headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
         print(f'· la IA de imágenes hace la miniatura en {nombre}…', flush=True)
-        r = json.load(urllib.request.urlopen(req, timeout=400))
+        r = pedir_imagen(req)
         img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
         h, w = img.shape[:2]
         alto = min(h, int(w * 9 / 16))  # ya viene en 16:9 (1536x864): no se corta nada
@@ -293,11 +311,66 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     return hechas
 
 
+SHORTS = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'shorts')  # portadas de Shorts de fabian (ESTILO_SHORTS.md)
+PROMESA = {'es': 'EN INSTANTES - DE RAÍZ', 'en': 'IN SECONDS - PERMANENT', 'pt': 'EM INSTANTES - DE RAIZ'}
+SIN_PC = {'es': 'SIN PC', 'en': 'NO PC', 'pt': 'SEM PC'}
+
+
+def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
+    """La portada vertical (9:16) del Short con el estilo de fabian, una por idioma. Devuelve los archivos."""
+    import base64, urllib.request, uuid
+    k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
+    if not k:
+        raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la portada del Short.')
+    try:
+        suyas = sorted(f for f in os.listdir(SHORTS) if f.lower().endswith(('.jpg', '.png')))
+    except OSError:
+        suyas = []
+    suyas = [f for f in suyas if f.lower().startswith(marca.lower()[:4])] + [f for f in suyas if not f.lower().startswith(marca.lower()[:4])]
+    imgs = list(refs[:1]) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + [os.path.join(SHORTS, f) for f in suyas[:3]]
+    marca_logo = marca.title() if marca != 'TU CELULAR' else 'la marca del teléfono'
+    hechas = []
+    for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
+        partes = [traducir(x, idioma) for x in lineas if x]
+        texto = ' / '.join(f'«{x}»' for x, _ in partes)
+        traduce = any(t for _, t in partes)
+        prompt = ('Portada VERTICAL 9:16 de un YouTube Short del canal Xiaomiunlock de fabian, IDÉNTICA a SU ESTILO. Imagen 1: el '
+                  'teléfono REAL de este video con la pantalla bloqueada. Imagen 2: SU MASCOTA (el conejo con casco «XIAOMIUNLOCK»): '
+                  'chica en una esquina de abajo. Las demás son portadas suyas: cópiales el estilo (no su texto ni su teléfono). '
+                  'OBLIGATORIO: fondo de degradé vivo (violeta, naranja, celeste); el teléfono real ENORME ocupando el centro, con '
+                  'la pantalla bloqueada bien legible y una flecha roja curva hacia ella; ARRIBA el título en una o dos franjas '
+                  'oscuras redondeadas, letra blanca muy gruesa, condensada e itálica, perfectamente escrita, en '
+                  f'{nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
+                  f'; al lado del título el logo de {marca_logo} en un cuadrado; ABAJO una franja azul con «{PROMESA[idioma]}» y '
+                  f'una píldora blanca «{SIN_PC[idioma]}» con una laptop. Letras grandes que se lean en el celular. Ningún otro '
+                  'texto, ningún logo ni persona inventados. Todo completo dentro de la imagen vertical, sin cortar nada.')
+        b = uuid.uuid4().hex
+        cuerpo = b''
+        for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '864x1536', 'quality': 'high', 'output_format': 'png'}.items():
+            cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
+        for i, r in enumerate(imgs):
+            tipo = 'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'
+            cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}{os.path.splitext(r)[1]}"\r\n'
+                       f'Content-Type: {tipo}\r\n\r\n').encode() + open(r, 'rb').read() + b'\r\n'
+        cuerpo += f'--{b}--\r\n'.encode()
+        req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
+                                     headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
+        print(f'· la IA de imágenes hace la portada del Short en {nombre}…', flush=True)
+        r = pedir_imagen(req)
+        img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
+        f = f'{salida_base}_{idioma}.jpg'
+        cv2.imwrite(f, cv2.resize(img, (1080, 1920), interpolation=cv2.INTER_CUBIC), [cv2.IMWRITE_JPEG_QUALITY, 92])
+        hechas.append(os.path.basename(f))
+        print(f'· {os.path.basename(f)} lista', flush=True)
+    return hechas
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
     orig = os.path.join(d, 'original.mp4')
@@ -331,7 +404,7 @@ def main():
                        'telefono': bool(tel[0]), 'escala': escala})
         print(f"· miniatura_{k}.jpg: {nombre}, cuadro de {int(s // 60)}:{int(s % 60):02d}, «{' / '.join(x for x in l if x)}»", flush=True)
     cap.release()
-    if a.gpt and hechas:  # referencias: el cuadro del problema y el del resultado (los mismos que eligió para las suyas)
+    if (a.gpt or a.short) and hechas:  # referencias: el cuadro del problema y el del resultado (los mismos que eligió para las suyas)
         refs = []
         cap = cv2.VideoCapture(orig)
         # el PROBLEMA (lo más nítido del primer 15 %: la pantalla bloqueada) y el RESULTADO (lo más nítido del final: la pantalla de inicio)
@@ -345,8 +418,12 @@ def main():
                 cv2.imwrite(refs[-1], cv2.resize(c, (1280, 720)))
         cap.release()
         try:
-            for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0]):
-                hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
+            if a.gpt:
+                for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0]):
+                    hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
+            if a.short:  # la portada del Short: vertical, con el estilo de sus Shorts
+                for f in portadas_short(d, refs, list(lineas[0]), os.path.join(d, 'portada_short'), lineas[0][0]):
+                    hechas.append({'archivo': f, 'de': 'portada del Short (gpt-image-2.5-flare)', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
         finally:
             for f in refs:
                 os.remove(f)
