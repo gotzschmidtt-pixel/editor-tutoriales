@@ -1184,15 +1184,30 @@ def largo_bloque(mo):
     return ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
 
 
-def ajustar_largo(bloques, voces, minimo, maximo, avisos):
+def bloques_con_su_voz(d, bloques):
+    """{id: copia de su montaje} de los bloques cuya voz ya está hecha con este mismo texto (voz/<id>.voz.json)."""
+    import copy
+    out = {}
+    for b in bloques:
+        try:
+            meta = json.load(open(os.path.join(d, 'voz', f"{b['id']}.voz.json"), encoding='utf-8'))
+        except (OSError, ValueError, KeyError):
+            continue
+        if str(meta.get('texto') or '').strip() == str(b.get('texto') or '').strip() and os.path.exists(os.path.join(d, 'voz', f"{b['id']}.mp3")):
+            out[b['id']] = copy.deepcopy(b['montaje'])
+    return out
+
+
+def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
     """Arreglo sin IA: si el total queda corto, los tramos acelerados van más despacio (hasta velocidad normal y
-    unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz."""
+    unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz.
+    Los bloques «fijos» (con su voz ya hecha y sin cambios desde el editor) no se tocan."""
     t = sum(largo_bloque(b['montaje']) for b in bloques)
     if t < minimo:
         margen = []
         for b, voz in zip(bloques, voces):
             mo = b['montaje']
-            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1 or mo.get('sin_voz'):
+            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1 or mo.get('sin_voz') or b.get('id') in fijos:
                 margen.append(0); continue
             tramo = mo['src_fin'] - mo['src_inicio']
             margen.append(max(0, min(tramo, voz + RELLENO + 6) - tramo / mo['velocidad']))
@@ -1213,7 +1228,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             if sobra <= 0:
                 break
             mo = b['montaje']
-            if mo.get('sin_voz'):
+            if mo.get('sin_voz') or b.get('id') in fijos:
                 continue
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
@@ -1310,6 +1325,9 @@ def revisar(d, tarea, datos):
             vistos[clave] = b.get('id', k)
             unicos.append(b)
         bloques[:] = unicos
+        # guardado desde el editor (pedido de fabian, 30/10/2026: cambió 2 bloques y se rearmaron 13, y se deshizo un tramo que
+        # se había corregido a mano): los bloques que no tocaste y ya tienen su voz quedan exactamente como estaban
+        fijos = {} if VARIAR else bloques_con_su_voz(d, bloques)
         if VARIAR:  # lo que escribió una IA; lo que escribiste tú en el editor solo se avisa (en problemas)
             avisos += variar_muletillas(bloques)
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
@@ -1321,6 +1339,7 @@ def revisar(d, tarea, datos):
             avisos.append(f"OJO: el corte importante {importantes.mmss(x['inicio'])}–{importantes.mmss(x['fin'])}"
                           f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
         avisos += marcar_caras(d, bloques)  # con tu cara en pantalla nunca se acelera
+        desde = len(avisos)
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1396,8 +1415,14 @@ def revisar(d, tarea, datos):
                 avisos.append(f"{b['id']}: la voz no cabía, agregué {extra} s de pausa")
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
+        if fijos:  # vuelven a su montaje de antes (con su voz real ya medida) y sin avisos de retoques que no se hicieron
+            for b in bloques:
+                if b.get('id') in fijos:
+                    b['montaje'] = fijos[b['id']]
+            avisos[desde:] = [a for a in avisos[desde:] if a.split(':')[0] not in fijos]
+            avisos.append(f"dejé como estaban {len(fijos)} bloque(s) que no cambiaste (ya tienen su voz): solo se rehacen los que tocaste")
         meta, minimo, maximo = meta_guion(d, dur)
-        t = ajustar_largo(bloques, [b['voz_estimada_s'] for b in bloques], minimo, maximo, avisos)
+        t = ajustar_largo(bloques, [b['voz_estimada_s'] for b in bloques], minimo, maximo, avisos, fijos)
         if t > maximo:
             avisos.append(f"el video queda en {mmss(t)}, más largo de lo buscado ({mmss(meta)}): hay más texto de voz que video")
         elif t < minimo:
