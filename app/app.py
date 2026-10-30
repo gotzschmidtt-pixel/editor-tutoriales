@@ -2555,7 +2555,8 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + sigue
                     if 'trailer' not in sigue:
                         pasos.append('final_sin_trailer')
-                if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])):
+                if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])) \
+                        and aj.get('revisar_imagen', True) is not False:  # la casilla de «⚙ Ajustes IA» (sí, salvo que la destildes)
                     pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen
                 if pasos[0] == 'voz' and not existe(carpeta(q['p']), 'guion.json'):
                     # sin guion, se escribe solo a partir del MP4 (antes se transcribe si hace falta)

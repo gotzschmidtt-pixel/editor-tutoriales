@@ -923,6 +923,7 @@
     <option value="2">Normal: 1 cada 4 o 5 bloques</option><option value="3">Mucho: 1 cada 3 bloques</option></select></label>
   <p class="aviso">La app cuenta los bloques con chiste. Si la IA se pasa, se queda con los mejores (nunca dos seguidos, nunca en pasos delicados, sin repetir tema) y quita el resto.</p>
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
+  <label class="aviso"><input type="checkbox" id="ajRevImg"> 🔎 Revisar el guion contra las imágenes antes de la voz: al empezar «▶ Hacer todo», la IA mira el comienzo, el medio y el final del tramo de cada bloque (y el texto de la pantalla en los pasos clave) y, si la voz habla de algo que se ve en otro momento, mueve el tramo. Se hace una sola vez por guion, antes de pagar la voz. Tarda unos 15 a 30 min y hace algunos pedidos a la IA con imágenes. Sin tildar, «Hacer todo» va directo a la voz (puedes hacerla igual cuando quieras con «🔎 Revisar con imágenes»)</label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con varias IAs a la vez</b> (GPT, Claude, Gemini y DeepSeek): las que tengan clave y modelo escriben el guion
     al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
@@ -2527,7 +2528,7 @@ async function ajustesIA() {
   $('#ajProv').innerHTML = Object.keys(PROV).map(p => `<option>${p}</option>`).join('') + '<option>Otro</option>';
   $('#ajProv').value = a.proveedor || 'OpenAI (GPT)';
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
-  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
+  pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajRevImg').checked = a.revisar_imagen !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
   $('#ajTres').checked = !!a.tres_ia; $('#ajAprVarias').checked = !!a.aprender_varias;
   const ias = a.ias_guion || {};
   $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
@@ -2596,7 +2597,7 @@ async function guardarAjustes() {
     return alert('Esa clave está recortada (tiene «...» en el medio): es la versión corta que muestra la lista de claves, no la clave real.\n\nEn console.anthropic.com → API Keys pulsa «Create Key» y copia la clave COMPLETA que aparece una sola vez (es larga, de unos 100 caracteres). Pégala aquí.');
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
-    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
+    tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, revisar_imagen: $('#ajRevImg').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
     tres_ia: $('#ajTres').checked, aprender_varias: $('#ajAprVarias').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
   const ke = $('#ajEleven').value.trim();
   if (ke) { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: ke})}); verEleven(); }
