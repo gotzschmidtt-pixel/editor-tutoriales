@@ -75,8 +75,11 @@ def main():
     prompt = ('Eres el que hace las miniaturas del canal de YouTube Xiaomiunlock (fabian, técnico que desbloquea celulares: '
               'cuentas Google/FRP, iCloud, patrones, MDM). Propón 8 títulos distintos para la miniatura de ESTE video, que '
               'den ganas de hacer clic sin mentir: solo promete lo que el video muestra. ' + REGLAS + '\n\n' + contexto(d) +
+              '\nAdemás propón 8 textos MUY cortos (máximo 14 letras, en MAYÚSCULAS) para las cintas de las esquinas de arriba '
+              'de la miniatura, que sumen confianza o urgencia sin mentir (por ejemplo «NEW 2026», «100% REAL», «MÉTODO 2026», '
+              '«FUNCIONA»), con su traducción.'
               '\nResponde SOLO con JSON: {"titulos": [{"es": ["PARTE 1", "PARTE 2"], "en": ["…", "…"], "pt": ["…", "…"], '
-              '"por_que": "una frase corta"}, …]}')
+              '"por_que": "una frase corta"}, …], "esquinas": [{"es": "…", "en": "…", "pt": "…"}, …]}')
     r = ia.extraer_json(ia.llamar(ajustes, prompt, []))
     titulos = []
     for x in (r.get('titulos') if isinstance(r, dict) else None) or []:
@@ -88,8 +91,18 @@ def main():
             v = [str(p).strip().upper() for p in (x.get(idioma) or []) if str(p).strip()][:2]
             t[idioma] = v if len(v) == len(es) else es
         titulos.append(t)
-    json.dump({'titulos': titulos}, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    print(json.dumps({'ok': True, 'titulos': titulos}, ensure_ascii=False))
+    esquinas = []
+    for x in (r.get('esquinas') if isinstance(r, dict) else None) or []:
+        es = str((x or {}).get('es') or '').strip().upper()[:22] if isinstance(x, dict) else ''
+        if es and not (re.search(r'\bSIN PC\b', es) and 'NUNCA PONGAS' in prompt.upper()):
+            esquinas.append({'es': es, **{i: str(x.get(i) or es).strip().upper()[:22] for i in ('en', 'pt')}})
+    try:  # las traducciones que ya se pidieron antes se conservan
+        viejo = json.load(open(os.path.join(d, ARCHIVO), encoding='utf-8'))
+    except (OSError, ValueError):
+        viejo = {}
+    json.dump({**viejo, 'titulos': titulos, 'esquinas': esquinas}, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'),
+              ensure_ascii=False, indent=1)
+    print(json.dumps({'ok': True, 'titulos': titulos, 'esquinas': esquinas}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

@@ -67,6 +67,7 @@
       <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: 100% REAL" maxlength="22" style="width:11em; text-transform:uppercase"></label>
       <span class="aviso">(con texto a la derecha, el logo baja un poco)</span>
     </div>
+    <div class="sugeridos" id="sugEsquinas"></div>
     <p class="msg" id="sugMsg"></p>
     <div class="fila">
       <label>Fondo <select id="fondo">
@@ -165,9 +166,16 @@ function pintarSugeridos() {
     <span class="b">${esc(x.es[0] || '')}</span> <span class="a">${esc(x.es[1] || '')}</span>
     <small>EN: ${esc((x.en || []).join(' '))} · PT: ${esc((x.pt || []).join(' '))}</small></button>`).join('');
 }
+function pintarEsquinas() {
+  const t = E.esquinas_ia || [];
+  $('#sugEsquinas').innerHTML = t.length ? '<span class="aviso" style="align-self:center">Para las esquinas:</span>' + t.map((x, i) => `<span class="sug" title="EN: ${esc(x.en)} · PT: ${esc(x.pt)}">
+    <span class="a">${esc(x.es)}</span> <button onclick="esquina('#esqIzq', ${i})" title="Ponerlo arriba a la izquierda">↖</button>
+    <button onclick="esquina('#esqDer', ${i})" title="Ponerlo arriba a la derecha">↗</button></span>`).join('') : '';
+}
+function esquina(campo, i) { $(campo).value = E.esquinas_ia[i].es; }
 function usar(i) { const x = E.titulos_ia[i]; $('#linea1').value = x.es[0] || ''; $('#linea2').value = x.es[1] || ''; pintarSugeridos(); }
 async function sugerir() {
-  if (!confirm('La IA de la app (⚙ Ajustes IA) va a proponer 8 títulos. Es un pedido corto de texto: gasta centavos. ¿Sigo?')) return;
+  if (!confirm('La IA de la app (⚙ Ajustes IA) va a proponer 8 títulos y 8 textos para las esquinas. Es un pedido corto de texto: gasta centavos. ¿Sigo?')) return;
   aviso('#sugMsg', 'La IA está pensando títulos (unos segundos)…');
   try { await api(`/api/mejoras/titulos_ia?p=${q(P)}`, {method: 'POST', body: '{}'}); aviso('#sugMsg', '✓ Toca uno para usarlo (puedes editarlo después).', 'ok'); await cargar(); }
   catch (e) { aviso('#sugMsg', e.message, 'err'); }
@@ -211,6 +219,7 @@ async function cargar() {
   E = await api(`/api/mejoras/estado?p=${q(P)}`);
   pintarFotos();
   pintarSugeridos();
+  pintarEsquinas();
   const m = (E.miniaturas_fotos || {}).miniaturas || [];
   $('#ver').innerHTML = m.length ? m.map(x => `<figure><a href="${arch(x.archivo)}" target="_blank"><img src="${arch(x.archivo)}" alt=""></a>
     <figcaption>${esc(x.archivo)} · ${esc(x.de)}</figcaption></figure>`).join('') : '<p class="aviso">Todavía no hiciste ninguna con tus fotos.</p>';

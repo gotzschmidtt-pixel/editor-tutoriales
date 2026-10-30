@@ -789,6 +789,9 @@ def traducciones_titulo(d, lineas):
     for t in datos.get('titulos', []) + datos.get('traducidos', []):
         if [x.upper() for x in t.get('es', [])] == [x.upper() for x in es] and t.get('en') and t.get('pt'):
             return {'es': es, 'en': t['en'], 'pt': t['pt']}
+    sueltas = {str(t.get('es', '')).upper(): t for t in datos.get('esquinas', []) if isinstance(t, dict)}  # las de las esquinas
+    if es and all(x.upper() in sueltas for x in es):
+        return {'es': es, **{i: [sueltas[x.upper()].get(i) or x for x in es] for i in ('en', 'pt')}}
     out = {'es': es, **{i: [traducir(x, i)[0] for x in es] for i in ('en', 'pt')}}
     if not any(traducir(x, 'en')[1] and x.upper() not in MARCAS and not re.fullmatch(r'(NEW\s*)?(20\d\d)?|[\d%+.\s]+', x.upper()) for x in es):
         return out

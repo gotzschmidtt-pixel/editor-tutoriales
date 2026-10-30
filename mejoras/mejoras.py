@@ -188,6 +188,7 @@ def estado(d):
         'fotos_miniatura': {k[5:]: _fecha(d, f) for k, f in SUBIDAS.items() if k.startswith('foto_') and os.path.exists(os.path.join(d, f))},
         'miniaturas_fotos': _leer(d, 'miniatura_fotos.json'),
         'titulos_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('titulos', []),
+        'esquinas_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('esquinas', []),
     }
 
 
