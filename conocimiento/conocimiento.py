@@ -235,6 +235,34 @@ def _sin_comentarios(md):
     return re.sub(r'\n{3,}', '\n\n', re.sub(r'<!--.*?-->', '', md, flags=re.S)).strip()
 
 
+def texto_marca_completo(m):
+    """«⬇ Bajar CONOCIMIENTO HONOR»: todo lo aprendido de una marca en un archivo para el chat de otra IA (Claude…): lo de la
+    marca, tus respuestas en sus proyectos, sus guiones aprobados, los guiones de las IAs de sus módulos y, al final, lo general."""
+    m = _nombre_marca(m)
+    asegurar()
+    partes = [f'# CONOCIMIENTO {m} · {time.strftime("%Y-%m-%d")}\n\n> Todo lo que el canal aprendió de {m}: úsalo para guiones, '
+              'etiquetas y tráileres de esta marca. Lo de la marca manda sobre lo general; no inventes datos que no estén aquí ni en el video.']
+    t = _sin_comentarios(leer(_ruta_marca(m))) if os.path.exists(_ruta_marca(m)) else ''
+    if t and _normal(t) != _normal(_sin_comentarios(_plantilla_marca(m))):
+        partes.append(f'## Lo de la marca {m}\n\n{t}')
+    proyectos = os.path.join(RAIZ, 'mis_proyectos')
+    de_marca = {n for n in (os.listdir(proyectos) if os.path.isdir(proyectos) else []) if marca_de_proyecto(os.path.join(proyectos, n)) == m}
+    secs = [s for n, s in _secciones_aprendido(leer(APRENDIDO)).items() if n in de_marca]
+    if secs:
+        partes.append('## Tus respuestas en los proyectos de esta marca\n\n' + '\n\n'.join(secs))
+    for f in sorted(os.listdir(GUIONES)) if os.path.isdir(GUIONES) else []:
+        if f.endswith('.md') and f[:-3] in {re.sub(r'[^\w\-]', '_', n) for n in de_marca}:
+            partes.append('## Guion aprobado\n\n' + leer(os.path.join(GUIONES, f)).strip())
+    for mod in lista_guiones_ia():
+        if mod['modulo'].split(' ')[0] == m.lower():
+            partes.append(f"## Guiones de las IAs · {mod['modulo']} (sin aprobar: para ver qué pasos y explicaciones hacen falta)\n\n"
+                          + '\n\n'.join(leer(g['md']).strip() for g in mod['guiones']))
+    general = '\n\n'.join(p for p in (_sin_comentarios(leer(PRINCIPAL)),) if p)
+    if general:
+        partes.append('## Lo general del canal (todas las marcas)\n\n' + general)
+    return '\n\n'.join(partes) + '\n'
+
+
 def texto_completo():
     """CONOCIMIENTO.md y lo aprendido de los proyectos, en un solo texto (lo que se baja para otra IA)."""
     asegurar()

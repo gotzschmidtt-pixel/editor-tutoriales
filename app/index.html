@@ -659,7 +659,9 @@
           <button onclick="marcaUrl_()" title="Lee el video (título, descripción y lo que dice, por sus subtítulos) o el texto de la página, y lo agrega a la marca">🔗 Agregar link</button>
         </div>
         <textarea id="marcaNota" rows="4" style="width:100%; margin-top:6px; min-height:0; height:6.5em; resize:vertical" placeholder="Escribe o pega aquí: una pregunta, una idea o un texto largo (procesos, modelos, respuestas…)"></textarea>
-        <div class="fila"><button class="principal" onclick="marcaAnotar()">➕ Agregar a la marca</button><span class="msg" id="marcaMsg"></span></div>
+        <div class="fila"><button class="principal" onclick="marcaAnotar()">➕ Agregar a la marca</button>
+          <a id="marcaBajar" href="#" download><button title="Un solo archivo con todo lo aprendido de esta marca (y lo general), para subirlo al chat de Claude u otra IA">⬇ Bajar CONOCIMIENTO de la marca</button></a>
+          <span class="msg" id="marcaMsg"></span></div>
         <details style="margin-top:6px"><summary class="aviso" id="marcaSum">Ver y editar todo lo de esta marca</summary>
           <textarea id="marcaTexto" rows="14" style="width:100%; margin-top:6px; font: 13px/1.4 Consolas, monospace" oninput="$('#marcaMsg').textContent = 'Sin guardar'"></textarea>
           <div class="fila"><button onclick="marcaGuardar()">💾 Guardar cambios de la marca</button></div></details>
@@ -1948,6 +1950,9 @@ function pintarMarca(r, msg) {
     + '<button onclick="marcaNueva()">+ Marca</button>';
   $('#marcaRuta').innerHTML = `📄 <b>${esc(r.ruta)}</b>`;
   $('#marcaSum').textContent = `Ver y editar todo lo de ${r.marca}`;
+  $('#marcaBajar').href = `/api/conocimiento/bajar?marca=${q(r.marca)}`;
+  $('#marcaBajar').download = `CONOCIMIENTO_${r.marca}.md`;
+  $('#marcaBajar').querySelector('button').textContent = `⬇ Bajar CONOCIMIENTO ${r.marca}`;
   if (!$('#marcaTexto').matches(':focus') || msg !== undefined) $('#marcaTexto').value = r.texto;
   $('#marcaMsg').className = 'msg ok'; $('#marcaMsg').textContent = msg || '';
 }

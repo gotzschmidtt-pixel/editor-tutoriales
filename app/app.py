@@ -2109,10 +2109,11 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
                 return self.responder(self._marca(q.get('m') or '', q.get('p') or ''))
             if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
-                cuerpo = conocimiento.texto_completo().encode('utf-8')
+                m = re.sub(r'[^\w\-]', '', q.get('marca') or '').upper()  # «⬇ Bajar CONOCIMIENTO HONOR»: solo lo de esa marca (y lo general)
+                cuerpo = (conocimiento.texto_marca_completo(m) if m else conocimiento.texto_completo()).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/markdown; charset=utf-8')
-                self.send_header('Content-Disposition', 'attachment; filename="CONOCIMIENTO.md"')
+                self.send_header('Content-Disposition', f'attachment; filename="CONOCIMIENTO{"_" + m if m else ""}.md"')
                 self.send_header('Content-Length', str(len(cuerpo)))
                 self.end_headers()
                 self.wfile.write(cuerpo)
