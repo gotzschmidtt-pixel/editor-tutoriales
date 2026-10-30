@@ -25,6 +25,7 @@ from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a Elev
 
 
 VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
+UMBRAL_AGITADA = 17.0  # movimiento medio (nitidez/) por encima del cual la escena de la pausa se ve rara repetida: queda quieta
 LENTO_ESCENA = 0.7  # la repetición va un poco más lenta para que se note menos
 FUNDIDO = 0.4       # con una cara en la escena: se repite solo hacia adelante, con este fundido en cada vuelta
 
@@ -216,6 +217,8 @@ def main():
     # framerate (no fps): en un tramo acelerado o lento, fps se salta cuadros de forma despareja (2, 2, 3, 2…) y el
     # movimiento tiembla; framerate arma cada cuadro en su momento exacto
     out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps={FPS},format=yuv420p"
+    # en la pausa (más lenta que el original) «framerate» mezcla cuadros vecinos y aparecen manos fantasma: ahí va «fps»
+    out_pausa = out.replace(f'framerate=fps={FPS}', f'fps={FPS}')
     fuente = next((f for f in ('C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if os.path.exists(f)), None)
 
     def rotulo(txt):
@@ -228,6 +231,7 @@ def main():
                                         capture_output=True, text=True, check=True).stdout)
     tmp = codificar.temporal('montaje')
     nt = analizar(a.original, os.path.splitext(a.original)[0] + '.nitidez.npz')
+    umbral_agitada = max(UMBRAL_AGITADA, float(__import__('numpy').percentile(nt[2], 85)))  # en un video muy movido, solo lo más agitado
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
@@ -253,9 +257,19 @@ def main():
                 r = tramo_con_cara(a.original, *ventana)
                 if r is not None:
                     cara, ventana, tocada = r[0], (r[1], s1), True
+        # pedido de fabian (30/10/2026, L22 del HONOR 8 LITE): si la escena de la pausa se mueve mucho (manos rápidas, el
+        # teléfono girando), repetirla de ida y vuelta se ve rara; ahí la pausa queda en el cuadro más nítido y quieto del
+        # final, con un zoom lento. «repetir»: «ida_vuelta» o «adelante» en el montaje del bloque lo evita
+        agitada = False
+        if ventana and m.get('repetir') not in ('adelante', 'ida_vuelta'):  # también con cara: quieta se ve mejor que agitada
+            sel = (nt[0] >= ventana[0]) & (nt[0] <= ventana[1])
+            agitada = bool(sel.any() and nt[2][sel].mean() > umbral_agitada)
+            if agitada:
+                print(i, '· la escena de la pausa se mueve mucho: queda quieta en su mejor cuadro, con zoom lento', flush=True)
+        quieto = bool(m.get('quieto')) or agitada
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
-        nitido = bool(m.get('quieto') and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
-        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []),
+        nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
+        clave = hashlib.sha1(json.dumps(base_huella + [m, lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
@@ -282,10 +296,10 @@ def main():
         if m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1:
             # una pausa de menos de un cuadro daba un tramo vacío que, al unir, desarmaba los tiempos de todo lo siguiente
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
-            t = m.get('cuadro', mejor(*nt, *v))
+            t = m.get('cuadro', mejor(*nt, *((m['src_fin'] - 2, m['src_fin']) if agitada else v)))
             f = os.path.join(tmp, f'{i}_b.mp4')
             nfr = int(round(m['congelar_s'] * FPS))
-            if m.get('quieto'):  # cuadro fijo con zoom lento (como antes)
+            if quieto:  # cuadro fijo con zoom lento (como antes)
                 png = os.path.join(tmp, f'{i}.png')
                 run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
                 if nitido:
@@ -306,11 +320,11 @@ def main():
                     L = (s1 - s0) / LENTO_ESCENA
                     D = min(FUNDIDO, L / 3)
                     print(i, '· pausa con cara: se repite hacia adelante (sin retroceder)', flush=True)
-                    filtro = (f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[a][b];[a]trim=start={D:.3f},setpts=PTS-STARTPTS[m];"
+                    filtro = (f"[0]setpts=PTS/{LENTO_ESCENA},{out_pausa},split[a][b];[a]trim=start={D:.3f},setpts=PTS-STARTPTS[m];"
                               f"[b]trim=end={D:.3f},setpts=PTS-STARTPTS[h];[m][h]xfade=transition=fade:duration={D:.3f}:offset={L - 2 * D:.3f}[o]")
                 else:
                     orden = '[rv][f]' if tras_tramo else '[f][rv]'
-                    filtro = f"[0]setpts=PTS/{LENTO_ESCENA},{out},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]"
+                    filtro = f"[0]setpts=PTS/{LENTO_ESCENA},{out_pausa},split[f][r];[r]reverse[rv];{orden}concat=n=2:v=1:a=0[o]"
                 run(['-ss', f'{s0:.2f}', '-t', f'{s1 - s0:.2f}', '-i', a.original, '-an', '-filter_complex', filtro, '-map', '[o]'] + enc + [ida])
                 if a.estabilizar:
                     estabilizar(ida, enc)
