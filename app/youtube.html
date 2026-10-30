@@ -232,11 +232,12 @@ async function cargar() {
   if (!$('#meta').dataset.listo) { pintarMeta(r.metadatos); $('#meta').dataset.listo = r.metadatos ? '1' : ''; }
   if (!$('#investigacion').innerHTML) pintarInvestigacion(r.investigacion);
   if (r.investigacion && r.investigacion.modelo && !$('#modeloInv').value) $('#modeloInv').value = r.investigacion.modelo;
-  // tus miniaturas del proyecto: tocas la que va a YouTube (antes se subía sola la más nueva)
-  $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca la que va a YouTube. Elegida: <code>${esc(r.miniatura)}</code></p>
+  // tus miniaturas del proyecto: tocas una y se ve en grande, y ahí eliges la que va a YouTube
+  MINIS = r.miniaturas || []; MINI_ELEGIDA = r.miniatura || '';
+  $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca una para verla en grande y elegirla. Va a YouTube: <code>${esc(r.miniatura)}</code></p>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; max-height:420px; overflow:auto">` +
     r.miniaturas.map(f => `<figure style="margin:0; cursor:pointer; border:3px solid ${f === r.miniatura ? '#38f28a' : 'transparent'}; border-radius:10px; padding:2px"
-      onclick="elegirMini('${esc(f)}')" title="${esc(f)}"><img src="/archivo?p=${q(P)}&f=${q(f)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
+      onclick="verMini(${r.miniaturas.indexOf(f)})" title="${esc(f)}"><img src="/archivo?p=${q(P)}&f=${q(f)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
       <figcaption style="font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${f === r.miniatura ? '✓ ' : ''}${esc(f.replace(/^miniatura_?/, '').replace(/\.(jpg|png)$/, ''))}</figcaption></figure>`).join('') + '</div>'
     : 'Todavía no hay miniatura en el proyecto: hazla en «🖼 Miniatura» o súbela aquí.';
   pintarSubida(r.subida, r.publicado);
@@ -305,8 +306,39 @@ $('#miniArchivo').onchange = async ev => {
   try { await api(`/api/youtube/miniatura?p=${q(P)}`, {method: 'POST', body: f, headers: {'Content-Type': f.type}}); cargar(); } catch (x) { alert(x.message); }
 };
 async function elegirMini(f) {
-  try { await api(`/api/youtube/miniatura_elegir?p=${q(P)}`, {method: 'POST', body: JSON.stringify({archivo: f})}); cargar(); } catch (x) { alert(x.message); }
+  try { await api(`/api/youtube/miniatura_elegir?p=${q(P)}`, {method: 'POST', body: JSON.stringify({archivo: f})}); await cargar(); } catch (x) { alert(x.message); }
 }
+let MINIS = [], MINI_ELEGIDA = '', MINI_VER = -1;
+function verMini(k) {  // la miniatura en grande, con flechas (← →) y «✓ Usar esta» (pedido de fabian, 30/10/2026)
+  if (!MINIS.length) return;
+  MINI_VER = (k + MINIS.length) % MINIS.length;
+  const f = MINIS[MINI_VER];
+  let caja = $('#miniGrande');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'miniGrande';
+    caja.style.cssText = 'position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px';
+    caja.onclick = ev => { if (ev.target === caja) cerrarMini(); };
+    document.body.appendChild(caja);
+  }
+  const usada = f === MINI_ELEGIDA;
+  caja.innerHTML = `<img src="/archivo?p=${q(P)}&f=${q(f)}" alt="" style="max-width:min(96vw, 1280px); max-height:78vh; border-radius:10px; box-shadow:0 10px 40px #000">
+    <div style="color:#e8ecff; font-size:14px">${esc(f)} · ${MINI_VER + 1} de ${MINIS.length}</div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center">
+      <button onclick="verMini(MINI_VER - 1)">← Anterior</button>
+      <button class="principal" ${usada ? 'disabled' : ''} onclick="usarMini()">${usada ? '✓ Es la que va a YouTube' : '✓ Usar esta para YouTube'}</button>
+      <button onclick="verMini(MINI_VER + 1)">Siguiente →</button>
+      <a href="/archivo?p=${q(P)}&f=${q(f)}" target="_blank"><button>↗ Abrir aparte</button></a>
+      <button onclick="cerrarMini()">✕ Cerrar</button></div>`;
+}
+async function usarMini() { const k = MINI_VER; await elegirMini(MINIS[k]); verMini(k); }
+function cerrarMini() { const c = $('#miniGrande'); if (c) c.remove(); MINI_VER = -1; }
+document.addEventListener('keydown', ev => {
+  if (MINI_VER < 0) return;
+  if (ev.key === 'Escape') cerrarMini();
+  else if (ev.key === 'ArrowLeft') verMini(MINI_VER - 1);
+  else if (ev.key === 'ArrowRight') verMini(MINI_VER + 1);
+});
 async function publicar() {
   if (!CONECTADO) return alert('Primero conecta YouTube (arriba).');
   if (!$('#meta').hidden) await guardar();
