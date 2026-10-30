@@ -9,7 +9,10 @@ Gratis, en tu PC:
   3. Pone el texto grande con tus colores (remotion/src/estilo.ts) y una flecha hacia el teléfono.
 Deja miniatura_1.jpg, miniatura_2.jpg, miniatura_3.jpg y miniatura.json (de dónde sale cada una).
 
-Uso: python miniatura.py --proyecto . [--texto "MOTOROLA|SIN CUENTA"] (la | parte en dos líneas; sin texto, lo arma solo)
+Con --gpt (gasta: 3 imágenes de gpt-image-2.5-flare en calidad alta), además, la miniatura hecha por la IA de imágenes con tus
+cuadros de referencia (el problema y el resultado), en español, inglés y portugués: miniatura_gpt_es/en/pt.jpg.
+
+Uso: python miniatura.py --proyecto . [--texto "MOTOROLA|SIN CUENTA"] [--gpt] (la | parte en dos líneas; sin texto, lo arma solo)
 """
 import argparse, json, os, re, sys
 import cv2
@@ -21,13 +24,14 @@ for sub in ('nitidez', 'deteccion', 'mejorar', 'pantalla'):
 import deteccion  # noqa: E402
 import mejorar  # noqa: E402
 import enderezar  # noqa: E402  el rectángulo de la pantalla: el recorte más limpio del teléfono
-from nitidez import analizar  # noqa: E402
+from nitidez import analizar, mejor  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 
 W, H = 1280, 720
 FUENTES = ['C:/Windows/Fonts/impact.ttf', 'C:/Windows/Fonts/ariblk.ttf', 'C:/Windows/Fonts/arialbd.ttf',
            '/usr/share/fonts/opentype/inter/InterDisplay-Black.otf', '/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf',
            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']
-MARCAS = {'MOTOROLA': r'\bmoto(rola)?\b', 'IPHONE': r'iphone|icloud|\bios\b', 'SAMSUNG': r'samsung|galaxy', 'XIAOMI': r'xiaomi|redmi|\bpoco\b',
+MARCAS = {'MOTOROLA': r'\bmoto(rola)?\b', 'IPHONE': r'iphone|icloud|\bios\b', 'SAMSUNG': r'samsung|galaxy', 'XIAOMI': r'\bxiaomi\b(?!\s*unlock)|redmi|\bpoco\b',
           'HONOR': r'\bhonor\b', 'HUAWEI': r'huawei'}
 PROBLEMAS = [(r'\bfrp\b|cuenta (de )?google', 'SIN CUENTA GOOGLE'), (r'icloud|hello|activaci', 'SIN ICLOUD'),
              (r'\bmdm\b', 'ADIÓS MDM'), (r'bypass', 'BYPASS FÁCIL'), (r'sold', 'PASO A PASO')]
@@ -54,7 +58,13 @@ def textos(d):
         todo = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() + ' ' + todo
     except OSError:
         pass
-    marca = next((m for m, rx in MARCAS.items() if re.search(rx, todo, re.I)), 'TU CELULAR')
+    try:  # la marca del proyecto (su nombre o idea.txt) manda sobre lo que se nombra en el guion
+        import conocimiento
+        marca = (conocimiento.marca_de_proyecto(d) or '').upper()
+    except Exception:
+        marca = ''
+    if marca not in MARCAS:
+        marca = next((m for m, rx in MARCAS.items() if re.search(rx, todo, re.I)), 'TU CELULAR')
     problema = next((t for rx, t in PROBLEMAS if re.search(rx, todo, re.I)), 'PASO A PASO')
     anio = re.search(r'\b20(2\d)\b', todo)
     return [(marca, problema), (problema.split()[0] + ' ' + (problema.split()[1] if len(problema.split()) > 1 else ''), 'EN 1 CLIC'),
@@ -193,10 +203,69 @@ def componer(c, tel, lineas, col, salida):
     lienzo.convert('RGB').save(salida, quality=90)
 
 
+# las frases de la miniatura en inglés y portugués (pedido de fabian, 30/10/2026: todo texto en 3 idiomas)
+TRADUCE = {'SIN CUENTA GOOGLE': ('NO GOOGLE ACCOUNT', 'SEM CONTA GOOGLE'), 'SIN ICLOUD': ('NO ICLOUD', 'SEM ICLOUD'),
+           'ADIÓS MDM': ('BYE BYE MDM', 'ADEUS MDM'), 'BYPASS FÁCIL': ('EASY BYPASS', 'BYPASS FÁCIL'),
+           'PASO A PASO': ('STEP BY STEP', 'PASSO A PASSO'), 'EN 1 CLIC': ('IN 1 CLICK', 'EM 1 CLIQUE'),
+           '¡FUNCIONA!': ('IT WORKS!', 'FUNCIONA!'), 'TU CELULAR': ('YOUR PHONE', 'SEU CELULAR')}
+
+
+def traducir(linea, idioma):
+    """La línea en inglés o portugués si es una de las frases conocidas; si no, la IA de imágenes la traduce."""
+    if idioma == 'es':
+        return linea, False
+    for es, (en, pt) in TRADUCE.items():
+        if linea.strip().upper() == es:
+            return (en if idioma == 'en' else pt), False
+    return linea, True
+
+
+def miniaturas_gpt(d, refs, lineas, salida_base):
+    """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
+    import base64, urllib.request, uuid
+    k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
+    if not k:
+        raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
+    hechas = []
+    for idioma, nombre in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')):
+        partes = [traducir(x, idioma) for x in lineas if x]
+        texto = ' / '.join(f'«{x}»' for x, _ in partes)
+        traduce = any(t for _, t in partes)
+        prompt = ('Miniatura de YouTube para un video tutorial de técnicos de celulares, muy llamativa y profesional, estilo de canal '
+                  'grande: colores fuertes, alto contraste, brillo neón rosa #ff2bd6 y celeste #2bd9ff sobre fondo oscuro. Imagen 1: el '
+                  'teléfono REAL del video bloqueado (el problema): ponlo grande, nítido, de frente, con la pantalla bien visible y un '
+                  'candado rojo brillante encima. Imagen 2: el resultado (el teléfono ya libre): chico al costado con un check verde. '
+                  'Una flecha gruesa del problema al resultado. Texto GRANDE en dos líneas, en mayúsculas, tipografía muy gruesa con '
+                  f'borde, perfectamente escrito, en {nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
+                  '. Ningún otro texto, ningún logo inventado. El texto a la izquierda, el teléfono a la derecha.')
+        b = uuid.uuid4().hex
+        cuerpo = b''
+        for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x1024', 'quality': 'high', 'output_format': 'png'}.items():
+            cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
+        for i, r in enumerate(refs):
+            cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode()
+                       + open(r, 'rb').read() + b'\r\n')
+        cuerpo += f'--{b}--\r\n'.encode()
+        req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
+                                     headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
+        print(f'· la IA de imágenes hace la miniatura en {nombre}…', flush=True)
+        r = json.load(urllib.request.urlopen(req, timeout=400))
+        img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
+        h, w = img.shape[:2]
+        alto = int(w * 9 / 16)  # 1536x1024 → 16:9 recortando arriba y abajo
+        img = cv2.resize(img[(h - alto) // 2:(h - alto) // 2 + alto], (W, H), interpolation=cv2.INTER_AREA)
+        f = f'{salida_base}_{idioma}.jpg'
+        cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        hechas.append(os.path.basename(f))
+        print(f'· {os.path.basename(f)} lista', flush=True)
+    return hechas
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
+    ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
     orig = os.path.join(d, 'original.mp4')
@@ -230,6 +299,25 @@ def main():
                        'telefono': bool(tel[0]), 'escala': escala})
         print(f"· miniatura_{k}.jpg: {nombre}, cuadro de {int(s // 60)}:{int(s % 60):02d}, «{' / '.join(x for x in l if x)}»", flush=True)
     cap.release()
+    if a.gpt and hechas:  # referencias: el cuadro del problema y el del resultado (los mismos que eligió para las suyas)
+        refs = []
+        cap = cv2.VideoCapture(orig)
+        # el PROBLEMA (lo más nítido del primer 15 %: la pantalla bloqueada) y el RESULTADO (lo más nítido del final: la pantalla de inicio)
+        nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
+        total = float(nt[0][-1]) if len(nt[0]) else 60.0
+        for k, s in enumerate((mejor(*nt, total * 0.02, total * 0.15), mejor(*nt, total * 0.93, total * 0.995))):
+            cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
+            ok, c = cap.read()
+            if ok:
+                refs.append(os.path.join(d, f'.ref_miniatura_{k}.png'))
+                cv2.imwrite(refs[-1], cv2.resize(c, (1280, 720)))
+        cap.release()
+        try:
+            for f in miniaturas_gpt(d, refs, list(lineas[0]), os.path.join(d, 'miniatura_gpt')):
+                hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
+        finally:
+            for f in refs:
+                os.remove(f)
     json.dump({'miniaturas': hechas}, open(os.path.join(d, 'miniatura.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'Listo: {len(hechas)} miniaturas para probar en YouTube (prueba A/B).', flush=True)
 
