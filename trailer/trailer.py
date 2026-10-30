@@ -218,6 +218,16 @@ def main():
         shutil.copyfile(diapo, os.path.join(PUB, 'diapositiva.png'))
         props['diapositiva'] = 'trailer/diapositiva.png'
         print(f'· placa final de GPT: {os.path.basename(diapo)}', flush=True)
+    # los sellos ANTES / DURANTE / DESPUÉS dibujados por GPT 2.5 (los de la miniatura, guardados para todos los videos)
+    sellos = {}
+    for fase, color in (('ANTES', 'rojo'), ('DURANTE', 'naranja'), ('DESPUÉS', 'verde')):
+        n = {'ANTES': 'antes', 'DURANTE': 'durante', 'DESPUÉS': 'despues'}[fase]
+        f = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'etiquetas', f'{n}_{color}.png')
+        if os.path.exists(f):
+            shutil.copyfile(f, os.path.join(PUB, f'sello_{n}.png'))
+            sellos[fase] = f'trailer/sello_{n}.png'
+    if sellos:
+        props['sellos'] = sellos
     fondo = None if diapo else fondo_de_marca(d_proy)
     if fondo:  # «fondo Honor», «fondo Motorola»…: el de la marca, detrás del título (pedido de fabian, 30/10/2026)
         shutil.copyfile(fondo, os.path.join(PUB, 'fondo' + os.path.splitext(fondo)[1]))

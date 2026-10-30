@@ -5,7 +5,8 @@ export type Fase = 'ANTES' | 'DURANTE' | 'DESPUÉS';
 export type Clip = {src: string; dur: number; fase: Fase};
 // fondo: la imagen de la marca para la placa final (mis_conocimientos/fondos, hecha con gpt-image-2.5 sin texto); el título va encima
 // diapositiva: la placa final entera hecha por gpt-image-2.5 (con el título ya escrito), con el estilo que eligió fabian
-export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string; fondo?: string; diapositiva?: string};
+export type TrailerProps = {clips: Clip[]; titulo: string; subtitulo?: string; audio?: string; fondo?: string; diapositiva?: string;
+  sellos?: Record<string, string>}; // sellos: ANTES / DURANTE / DESPUÉS dibujados por GPT 2.5 (en public/trailer)
 
 const CIERRE = 2.4; // segundos de la placa final con el título
 const FLASH = 4; // cuadros de destello entre cortes
@@ -15,7 +16,7 @@ export const duracionTrailer = (p: TrailerProps, fps: number) =>
 
 // Sello ANTES / DURANTE / DESPUÉS: entra con golpe, tiembla un poco y se queda. Va chico y arriba a la izquierda: grande y
 // abajo tapaba el teléfono (pedido de fabian, 30/10/2026, tráiler de HONOR 8 LITE)
-const Sello: React.FC<{fase: Fase; nuevo: boolean}> = ({fase, nuevo}) => {
+const Sello: React.FC<{fase: Fase; nuevo: boolean; img?: string}> = ({fase, nuevo, img}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
   const s = nuevo ? spring({frame: f, fps, config: {damping: 9, stiffness: 180}}) : 1;
@@ -24,15 +25,16 @@ const Sello: React.FC<{fase: Fase; nuevo: boolean}> = ({fase, nuevo}) => {
   return (
     <div style={{position: 'absolute', left: 60, top: 100, transform: `scale(${0.4 + 0.6 * s}) rotate(${-3 + sacudida * 0.3}deg)`,
       transformOrigin: 'left top', opacity: s}}>
+      {img ? <Img src={staticFile(img)} style={{height: 130}} /> :  /* el sello dibujado por GPT 2.5, si está */
       <div style={{fontFamily: estilo.fuente, fontWeight: 900, fontSize: 78, letterSpacing: 3, color: 'white',
         padding: '2px 22px', background: color, borderRadius: 12,
         boxShadow: `0 0 0 4px rgba(255,255,255,.9), 0 0 30px ${color}, 0 10px 24px rgba(0,0,0,.5)`,
-        textShadow: '0 6px 0 rgba(0,0,0,.25)'}}>{fase}</div>
+        textShadow: '0 6px 0 rgba(0,0,0,.25)'}}>{fase}</div>}
     </div>
   );
 };
 
-const Toma: React.FC<{clip: Clip; nuevo: boolean}> = ({clip, nuevo}) => {
+const Toma: React.FC<{clip: Clip; nuevo: boolean; sellos?: Record<string, string>}> = ({clip, nuevo, sellos}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
   const n = clip.dur * fps;
@@ -47,7 +49,7 @@ const Toma: React.FC<{clip: Clip; nuevo: boolean}> = ({clip, nuevo}) => {
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%)'}} />
       <div style={{position: 'absolute', top: 0, left: 0, right: 0, height: 70, background: 'black'}} />
       <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, background: 'black'}} />
-      <Sello fase={clip.fase} nuevo={nuevo} />
+      <Sello fase={clip.fase} nuevo={nuevo} img={sellos?.[clip.fase]} />
       <AbsoluteFill style={{backgroundColor: 'white', opacity: flash}} />
     </AbsoluteFill>
   );
@@ -96,7 +98,7 @@ const Cierre: React.FC<{titulo: string; subtitulo?: string; fondo?: string; diap
   );
 };
 
-export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio, fondo, diapositiva}) => {
+export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio, fondo, diapositiva, sellos}) => {
   const {fps} = useVideoConfig();
   let desde = 0;
   return (
@@ -105,7 +107,7 @@ export const Trailer: React.FC<TrailerProps> = ({clips, titulo, subtitulo, audio
         const n = Math.round(c.dur * fps);
         const seq = (
           <Sequence key={k} from={desde} durationInFrames={n}>
-            <Toma clip={c} nuevo={k === 0 || clips[k - 1].fase !== c.fase} />
+            <Toma clip={c} nuevo={k === 0 || clips[k - 1].fase !== c.fase} sellos={sellos} />
           </Sequence>
         );
         desde += n;

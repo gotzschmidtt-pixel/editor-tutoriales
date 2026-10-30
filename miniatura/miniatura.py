@@ -740,7 +740,8 @@ def titulo_gpt(partes, estilo, salida):
 ETIQUETAS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'etiquetas')
 COLORES_ETIQUETA = {'rojo': ((226, 30, 36), 'roja (rojo vivo arriba, rojo oscuro abajo)'),
                     'verde': ((34, 168, 64), 'verde (verde vivo arriba, verde oscuro abajo)'),
-                    'azul': ((24, 104, 235), 'azul eléctrico (celeste arriba, azul oscuro abajo)')}
+                    'azul': ((24, 104, 235), 'azul eléctrico (celeste arriba, azul oscuro abajo)'),
+                    'naranja': ((245, 140, 20), 'naranja (amarillo anaranjado arriba, naranja oscuro abajo)')}
 
 
 def archivo_etiqueta(texto, color):
