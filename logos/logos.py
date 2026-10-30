@@ -4,6 +4,8 @@ Los logos son de fabian y sirven para todos los videos: mis_conocimientos/logos/
 Cada logo tiene su "nombre" («Android 15») y sus "palabras" («android quince»). Con los tiempos por letra de la voz se busca
 cuándo se dice cada uno; en «Android quince, dieciséis o diecisiete» salen los tres, uno al lado del otro, cada uno cuando se
 nombra, y se van juntos. Van arriba a la derecha, chicos, para no tapar el teléfono. Un mismo logo no se repite antes de 30 s.
+Tablas y textos van en español, inglés y portugués («idiomas» en logos.json: pedido de fabian, 30/10/2026): en la versión
+del video en otro idioma sale la suya.
 
 Uso (la app lo llama sola, paso «Logos»):
   python logos.py --video 4_musica.mp4 --guion guion.json --voz voz --logos ../../mis_conocimientos/logos --salida 7b_logos.mp4 [--capa .capas/logos.json]
@@ -21,7 +23,12 @@ NO_REPETIR = 30.0
 ALTO = 0.19       # alto de cada logo, en parte del alto del video
 ENTRA = 0.3
 NUMEROS = {'nueve': 9, 'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15, 'dieciseis': 16,
-           'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20}
+           'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20,
+           # la versión del video en inglés o en portugués («Android fifteen», «Android quinze»)
+           'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16,
+           'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+           'nove': 9, 'dez': 10, 'onze': 11, 'doze': 12, 'treze': 13, 'quatorze': 14, 'catorze': 14, 'quinze': 15,
+           'dezesseis': 16, 'dezessete': 17, 'dezoito': 18, 'dezenove': 19, 'vinte': 20}
 FAMILIA = re.compile(r'\b(android|magic ?os)\b')
 NUMERO = re.compile(r'\b(\d{1,2}|' + '|'.join(NUMEROS) + r')\b')
 
@@ -101,6 +108,12 @@ def tamano(v):
     return int(w), int(h)
 
 
+def del_idioma(logo, carpeta, idioma):
+    """El archivo del logo en el idioma del video: "idiomas": {"en": "x_en.png", "pt": "x_pt.png"}; si no hay, el de siempre."""
+    otro = (logo.get('idiomas') or {}).get(idioma)
+    return otro if otro and os.path.isfile(os.path.join(carpeta, otro)) else logo['archivo']
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--video', required=True)
@@ -116,6 +129,10 @@ def main():
         print('No hay biblioteca de logos (mis_conocimientos/logos/logos.json): no pongo nada.')
         return
     logos = [l for l in lib.get('logos', []) if os.path.isfile(os.path.join(a.logos, l.get('archivo', '')))]
+    try:  # versión del video en otro idioma (idioma_video.json, como la voz y las etiquetas): sus tablas y textos traducidos
+        idioma = json.load(open(os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'idioma_video.json'), encoding='utf-8')).get('idioma') or 'es'
+    except (OSError, ValueError, AttributeError):
+        idioma = 'es'
     filas = plan(json.load(open(a.guion, encoding='utf-8')), a.voz, logos)
     if not filas:
         print('La voz no nombra ninguno de tus logos: no pongo nada.')
@@ -132,7 +149,7 @@ def main():
                 continue
             dur = hasta - t
             x = W - margen - (len(fila) - k) * caja - (len(fila) - 1 - k) * hueco
-            piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.abspath(os.path.join(a.logos, l['archivo']))],
+            piezas.append({'args': ['-loop', '1', '-t', f'{dur:.2f}', '-i', os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))],
                            'pre': f"format=rgba,scale={caja}:{caja}:force_original_aspect_ratio=decrease,"
                                   f"pad={caja}:{caja}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,"
                                   f"fade=t=in:st=0:d={ENTRA}:alpha=1,fade=t=out:st={max(0, dur - ENTRA):.2f}:d={ENTRA}:alpha=1,"
