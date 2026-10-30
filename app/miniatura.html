@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🖼 Miniatura</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  h2 { font-size: 16px; margin: 0 0 6px; }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 13px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  input, select { background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  main { padding: 18px 20px; display: grid; gap: 16px; max-width: 1400px; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .fila { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .msg { font-size: 13px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .foto { border: 2px dashed var(--borde); border-radius: 12px; padding: 10px; cursor: pointer; display: grid; gap: 6px; align-content: start; }
+  .foto.elegida { border-color: var(--rosa); border-style: solid; }
+  .foto.encima { border-color: var(--amarillo); }
+  .foto b { font-size: 15px; }
+  .foto .vacia { aspect-ratio: 4/3; display: grid; place-items: center; text-align: center; color: var(--suave); font-size: 13px; background: #0f1426; border-radius: 8px; padding: 10px; }
+  .foto img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #000; border-radius: 8px; }
+  .tira { display: flex; gap: 12px; flex-wrap: wrap; }
+  .tira figure { margin: 0; width: 380px; max-width: 100%; }
+  .tira img { width: 100%; border-radius: 8px; border: 1px solid var(--borde); }
+  .tira figcaption { font-size: 12px; color: var(--suave); margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🖼 Miniatura · <span id="nombre"></span></h1>
+  <span class="msg" id="estadoTrabajo"></span>
+</header>
+<main>
+  <section>
+    <h2>1 · Tus fotos HD</h2>
+    <p class="aviso">Sube tus tomas o fotos en buena calidad. Toca un recuadro para elegir el archivo, arrástrala encima, o tócalo y pega con
+      <b>Ctrl + V</b> (lo que copió ShareX). La del ANTES es obligatoria; si falta la del DESPUÉS, la app usa la pantalla de inicio del final de tu video.</p>
+    <div class="fotos" id="fotos"></div>
+    <input type="file" id="archivo" accept="image/*" hidden>
+    <p class="msg" id="fotoMsg"></p>
+  </section>
+
+  <section>
+    <h2>2 · Cómo la quieres</h2>
+    <div class="fila"><input type="text" id="texto" placeholder="Texto (opcional): HONOR|SIN CUENTA GOOGLE — la | parte en dos" style="flex:1; min-width:18em"></div>
+    <div class="fila">
+      <label>Fondo <select id="fondo">
+        <option value="foto">El de tus fotos</option>
+        <option value="gpt">Uno hecho por GPT (azul con neón)</option>
+        <option value="ambos">Los dos, para comparar</option>
+      </select></label>
+      <label>Cómo <select id="modo">
+        <option value="mixta">🧩 Mixta: GPT la escena, la app los textos y el logo (recomendada)</option>
+        <option value="gpt">✨ Todo GPT (textos incluidos)</option>
+      </select></label>
+    </div>
+    <p class="aviso" id="costo"></p>
+    <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
+  </section>
+
+  <section>
+    <h2>3 · Resultado</h2>
+    <p class="aviso">Español, inglés y portugués. Toca una para verla en grande.</p>
+    <div class="tira" id="ver"></div>
+  </section>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const FOTOS = [['antes', 'ANTES', 'El teléfono bloqueado (Verifica tu cuenta, fastboot, Bienvenido…). Obligatoria'],
+               ['despues', 'DESPUÉS', 'El teléfono ya libre, en la pantalla de inicio'],
+               ['extra1', 'Otra toma', 'Opcional: otro ángulo del mismo teléfono'],
+               ['extra2', 'Otra toma', 'Opcional: otro ángulo del mismo teléfono']];
+let E = {}, ELEGIDA = 'antes';
+$('#nombre').textContent = P;
+document.title = '🖼 Miniatura · ' + P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+const aviso = (sel, t, c = '') => { const m = $(sel); m.className = 'msg ' + c; m.textContent = t; };
+const arch = (f, v) => `/archivo?p=${q(P)}&f=${q(f)}&v=${q(v || Date.now())}`;
+
+function pintarFotos() {
+  const hay = E.fotos_miniatura || {};
+  $('#fotos').innerHTML = FOTOS.map(([k, titulo, ayuda]) => `
+    <div class="foto ${k === ELEGIDA ? 'elegida' : ''}" data-k="${k}" onclick="elegir('${k}')" ondblclick="abrirArchivo('${k}')"
+         ondragover="event.preventDefault(); this.classList.add('encima')" ondragleave="this.classList.remove('encima')" ondrop="soltar(event, '${k}')">
+      <b>${titulo}</b>
+      ${hay[k] ? `<img src="${arch('foto_miniatura_' + k + '.jpg', hay[k])}" alt="${titulo}">` : `<div class="vacia">${esc(ayuda)}<br><br>Toca, arrastra o Ctrl + V</div>`}
+      <div class="fila" style="margin:0"><button onclick="event.stopPropagation(); abrirArchivo('${k}')">📂 Elegir</button>
+        ${hay[k] ? `<button onclick="event.stopPropagation(); borrar('${k}')">🗑 Quitar</button>` : ''}</div>
+    </div>`).join('');
+}
+function elegir(k) { ELEGIDA = k; pintarFotos(); }
+function abrirArchivo(k) { ELEGIDA = k; pintarFotos(); $('#archivo').value = ''; $('#archivo').click(); }
+$('#archivo').onchange = () => { const f = $('#archivo').files[0]; if (f) subir(ELEGIDA, f); };
+function soltar(ev, k) {
+  ev.preventDefault();
+  const f = [...(ev.dataTransfer.files || [])].find(x => x.type.startsWith('image/'));
+  if (f) { ELEGIDA = k; subir(k, f); }
+}
+document.addEventListener('paste', ev => {  // Ctrl + V de una captura (ShareX la deja en el portapapeles)
+  if (ev.target.matches && ev.target.matches('input[type=text]')) return;
+  const it = [...(ev.clipboardData.items || [])].find(x => x.type.startsWith('image/'));
+  if (it) { ev.preventDefault(); subir(ELEGIDA, it.getAsFile()); }
+});
+async function subir(k, f) {
+  aviso('#fotoMsg', 'Subiendo la foto…');
+  try {
+    await api(`/api/mejoras/subir?p=${q(P)}&tipo=foto_${k}`, {method: 'POST', body: f});
+    aviso('#fotoMsg', '✓ Foto guardada.', 'ok');
+    const sig = FOTOS.map(x => x[0]).find(x => x !== k && !(E.fotos_miniatura || {})[x]);
+    if (sig) ELEGIDA = sig;  // la próxima Ctrl + V va al siguiente recuadro vacío
+    await cargar();
+  } catch (e) { aviso('#fotoMsg', e.message, 'err'); }
+}
+async function borrar(k) {
+  try { await api(`/api/mejoras/borrar_foto?p=${q(P)}&tipo=foto_${k}`, {method: 'POST', body: '{}'}); await cargar(); }
+  catch (e) { aviso('#fotoMsg', e.message, 'err'); }
+}
+
+function imagenes() { const n = $('#modo').value === 'mixta' ? 1 : 3; return $('#fondo').value === 'ambos' ? 2 * n : n; }
+function pintarCosto() {
+  const n = imagenes();
+  $('#costo').textContent = `Gasta ${n} imagen${n > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad alta` +
+    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas).' : ' (una por idioma).');
+}
+$('#fondo').onchange = $('#modo').onchange = pintarCosto;
+
+async function hacer() {
+  if (!(E.fotos_miniatura || {}).antes) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
+  const r = prompt(`⚠ Esto gasta ${imagenes()} imagen(es) de gpt-image-2.5-flare en calidad alta.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+  if (r === null) return;
+  if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
+  aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
+      body: JSON.stringify({texto: $('#texto').value, fondo: $('#fondo').value, modo: $('#modo').value, confirmo: 'SI'})});
+    for (let k = 0; k < 900; k++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const e = await api(`/api/estado?p=${q(P)}`);
+      if (e.trabajo && e.trabajo.proyecto) { if (e.trabajo.linea) aviso('#msg', '… ' + e.trabajo.linea.slice(0, 140)); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló: mira el registro');
+      break;
+    }
+    aviso('#msg', '✓ Lista.', 'ok');
+  } catch (e) { aviso('#msg', e.message, 'err'); }
+  await cargar();
+}
+
+async function cargar() {
+  E = await api(`/api/mejoras/estado?p=${q(P)}`);
+  pintarFotos();
+  const m = (E.miniaturas_fotos || {}).miniaturas || [];
+  $('#ver').innerHTML = m.length ? m.map(x => `<figure><a href="${arch(x.archivo)}" target="_blank"><img src="${arch(x.archivo)}" alt=""></a>
+    <figcaption>${esc(x.archivo)} · ${esc(x.de)}</figcaption></figure>`).join('') : '<p class="aviso">Todavía no hiciste ninguna con tus fotos.</p>';
+}
+
+setInterval(async () => {  // qué está haciendo la app (si otra pestaña corre un paso)
+  try { const e = await api(`/api/estado?p=${q(P)}`); $('#estadoTrabajo').textContent = e.trabajo && e.trabajo.proyecto ? `Trabajando: ${e.trabajo.paso || ''}` : ''; } catch (e) {}
+}, 4000);
+pintarCosto();
+cargar().catch(e => alert(e.message));
+</script>
+</body>
+</html>

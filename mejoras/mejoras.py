@@ -37,6 +37,7 @@ PASOS = [
     {'id': 'm_revisar', 'nombre': 'Revisar el video terminado', 'necesita': [], 'produce': 'revision_final.json', 'oculto': True},
     {'id': 'm_shorts', 'nombre': 'Varios Shorts', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'shorts.json', 'oculto': True},
     {'id': 'm_miniatura', 'nombre': 'Miniatura automática', 'necesita': ['original.mp4'], 'produce': 'miniatura.json', 'oculto': True},
+    {'id': 'm_miniatura_fotos', 'nombre': 'Miniatura con tus fotos', 'necesita': [], 'produce': 'miniatura_fotos.json', 'oculto': True},
     {'id': 'm_avisos', 'nombre': 'Avisos de cuidado', 'necesita': ['guion.json'], 'produce': '', 'oculto': True},
     {'id': 'm_sonidos', 'nombre': 'Crear los efectos de sonido', 'necesita': [], 'produce': '', 'oculto': True},
     {'id': 'm_esrgan', 'nombre': 'Bajar Real-ESRGAN y probarlo', 'necesita': [], 'produce': '', 'oculto': True},
@@ -46,7 +47,7 @@ USAN_ELEVEN = {'m_sonidos'}  # solo con «Crear con ElevenLabs»; los demás no 
 EDITABLES = {'sonidos': bool, 'sonidos_volumen': float, 'sonidos_tipos': list, 'emocion_voz': bool, 'mejorar_imagen': bool}
 ARCHIVOS_ZOOM = ('material.mp4', 'original.mp4')
 RESPALDOS = {'zoom': '_sin_zoom', 'color': '_sin_color', 'limpiar': '_sin_limpiar'}
-SUBIDAS = {'pantalla': 'pantalla_grabada.mp4'}
+SUBIDAS = {'pantalla': 'pantalla_grabada.mp4', **{f'foto_{k}': f'foto_miniatura_{k}.jpg' for k in ('antes', 'despues', 'extra1', 'extra2')}}
 
 
 def m(*p):
@@ -91,6 +92,13 @@ def comandos(paso, d, op, py, ajustes):
                 + (['--fondos'] if op.get('fondos') and op.get('gpt') else [])
                 + (['--mixta'] if op.get('mixta') and op.get('gpt') else [])
                 + (['--short'] if op.get('short') and str(op.get('confirmo') or '').upper() in ('SI', 'SÍ') else [])]
+    if paso == 'm_miniatura_fotos':  # el módulo «🖼 Miniatura»: con tus fotos HD (siempre con GPT: hay que escribir SI)
+        if str(op.get('confirmo') or '').upper() not in ('SI', 'SÍ'):
+            raise ValueError('La miniatura con tus fotos usa GPT y gasta: escribe SI para confirmar.')
+        texto = str(op.get('texto') or '').strip()[:80]
+        fondo = op.get('fondo') if op.get('fondo') in ('foto', 'gpt', 'ambos') else 'foto'
+        return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo]
+                + (['--mixta'] if op.get('modo', 'mixta') == 'mixta' else []) + (['--texto', texto] if texto else [])]
     if paso == 'm_avisos':
         return [[py, m('avisos', 'avisos_legales.py'), '--proyecto', '.']]
     if paso == 'm_sonidos':
@@ -173,6 +181,8 @@ def estado(d):
         'revision': _leer(d, 'revision_final.json'), 'shorts': _leer(d, 'shorts.json'), 'miniaturas': _leer(d, 'miniatura.json'),
         'zoom': _leer(d, 'zoom_pc.json'), 'pantalla': _leer(d, 'pantalla_celular.json'),
         'legales': legales,
+        'fotos_miniatura': {k[5:]: _fecha(d, f) for k, f in SUBIDAS.items() if k.startswith('foto_') and os.path.exists(os.path.join(d, f))},
+        'miniaturas_fotos': _leer(d, 'miniatura_fotos.json'),
     }
 
 
@@ -203,8 +213,26 @@ def post(h, ruta, q, largo, d):
             os.remove(destino + '.parcial')
             return h.error('La subida se cortó antes de terminar. Vuelve a subir el archivo.')
         os.replace(destino + '.parcial', destino)
+        if q.get('tipo', '').startswith('foto_'):  # tu foto HD para la miniatura: JPG de hasta 2048 px (PNG, HEIC de captura, etc.)
+            import cv2
+            import numpy as np
+            img = cv2.imdecode(np.fromfile(destino, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                os.remove(destino)
+                return h.error('No pude abrir esa foto. Usa JPG o PNG.')
+            k = min(1.0, 2048 / max(img.shape[:2]))
+            if k < 1:
+                img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
+            cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(destino)
         return h.responder({'ok': True})
     datos = json.loads(h.rfile.read(largo) or b'{}')
+    if ruta == '/api/mejoras/borrar_foto':  # quitar una de tus fotos de la miniatura
+        nombre = SUBIDAS.get(q.get('tipo'))
+        if not nombre or not nombre.startswith('foto_'):
+            return h.error('foto no válida')
+        if os.path.exists(os.path.join(d, nombre)):
+            os.remove(os.path.join(d, nombre))
+        return h.responder({'ok': True})
     if ruta == '/api/mejoras/pronunciacion':
         actual = pronunciacion.leer()
         actual['reglas'] = pronunciacion.limpiar(datos.get('reglas'))

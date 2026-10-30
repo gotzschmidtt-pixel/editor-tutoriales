@@ -2150,6 +2150,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'vista.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/trailer':  # el módulo del tráiler, aparte del video: proponer, contestar, editar y armar
                 return self.responder(open(os.path.join(AQUI, 'trailer.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta == '/miniatura':  # «🖼 Miniatura»: tus fotos HD y la app/IA pone fondo, textos y logo
+                return self.responder(open(os.path.join(AQUI, 'miniatura.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/mejoras':  # «🎛 Audio e imagen», en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'mejoras.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/mejoras/'):

@@ -317,12 +317,13 @@ def pedir_imagen(req, intentos=4):
 FONDOS_MINI = {  # pedido de fabian (30/10/2026): probar los dos y quedarse con el que más le guste
     'escritorio': '(1) fondo = SU escritorio real, el que se ve alrededor del teléfono en las fotos de su video, tal cual, claro y apenas desenfocado: la laptop, el cartel '
                   'negro «Frp» y la G de Google grande de 4 colores (no inventes otro fondo); ',
+    'foto': '(1) fondo = el fondo REAL de sus fotos HD, tal cual, claro y apenas desenfocado (no inventes otro fondo); ',
     'gpt': '(1) fondo generado por ti, como sus miniaturas de iPhone: oscuro azul profundo con estelas de luz de neón celeste y '
            'violeta, rayos de luz y un piso que refleja; ',
 }
 
 
-def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio'):
+def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=()):
     """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
     k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
@@ -331,7 +332,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     hechas = []
     marca_logo = marca.title() if marca != 'TU CELULAR' else 'la marca del teléfono'
     # 1 y 2: tus cuadros; 3: tu mascota; después, 3 miniaturas tuyas (las de la misma marca primero)
-    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + referencias_estilo(marca, 3)
+    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 3)
     for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
         partes = [traducir(x, idioma) for x in lineas if x]
         texto = ' / '.join(f'«{x}»' for x, _ in partes)
@@ -339,7 +340,9 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         prompt = ('Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian, técnico de celulares, IDÉNTICA a SU ESTILO. '
                   f'Imagen 1: el teléfono REAL de este video ANTES: {antes_desc or "bloqueado"}; muéstralo tal cual. Imagen 2: el mismo '
                   'teléfono ya libre, en SU pantalla de inicio con las apps, igual que en la foto (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
-                  'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. Las demás imágenes son miniaturas '
+                  'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. '
+                  + (f'Imágenes 4 a {3 + len(extras)}: más fotos HD reales del mismo teléfono, para copiarlo fiel. ' if extras else '') +
+                  'Las demás imágenes son miniaturas '
                   'suyas: cópiales el estilo (no su texto, ni su teléfono, ni el reloj de duración de YouTube). OBLIGATORIO, todo junto: '
                   + FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']) +
                   '(2) los dos teléfonos reales grandes, de frente, sostenidos con guante negro, la pantalla bien legible; '
@@ -567,9 +570,9 @@ def componer_mixta(escena, lineas, marca, idioma, salida):
     lienzo.convert('RGB').save(salida, quality=92)
 
 
-def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio'):
+def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=()):
     """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
-    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + referencias_estilo(marca, 2)
+    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 2)
     fondo_txt = FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']).replace('(1) fondo', 'FONDO')
     prompt = ('Escena para una miniatura de YouTube 16:9 del canal Xiaomiunlock, al estilo de las miniaturas de las últimas '
               'imágenes (solo el estilo de la escena: sin su texto). ' + fondo_txt +
@@ -579,7 +582,9 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
               'DESPUÉS al 61 %, los dos desde el 15 % hasta el 85 % del alto. Entre los dos, una flecha gruesa curva amarilla '
               'del de ANTES al de DESPUÉS y, debajo, un candado abierto azul con la G de Google. Imagen 3: SU MASCOTA (el conejo '
               'Mi con casco de soldar y el androide verde con herramientas), a la izquierda abajo, entre el 45 % y el 82 % del '
-              'alto, sin tapar el teléfono. MUY IMPORTANTE: NO escribas ningún texto, letra, número, logo, sello, etiqueta, '
+              'alto, sin tapar el teléfono. '
+              + (f'Imágenes 4 a {3 + len(extras)}: más fotos HD reales del mismo teléfono, para copiarlo fiel. ' if extras else '') +
+              'MUY IMPORTANTE: NO escribas ningún texto, letra, número, logo, sello, etiqueta, '
               'píldora ni marca de agua fuera de las pantallas de los teléfonos: los pondré yo después. Deja LIBRE (solo fondo) '
               'la franja derecha (del 79 % al 100 % del ancho) y la franja de arriba a la izquierda (hasta el 20 % del ancho y '
               'el 14 % del alto). Colores saturados, mucho contraste, bien iluminado. Todo dentro de la imagen 16:9.')
@@ -653,17 +658,68 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     return hechas
 
 
+FOTOS = ('antes', 'despues', 'extra1', 'extra2')  # las fotos HD que subes en «🖼 Miniatura» (foto_miniatura_*.jpg)
+
+
+def con_fotos(d, a):
+    """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video; GPT y la app
+    ponen fondo, textos, sello, píldoras y logo."""
+    fotos = {k: os.path.join(d, f'foto_miniatura_{k}.jpg') for k in FOTOS if os.path.exists(os.path.join(d, f'foto_miniatura_{k}.jpg'))}
+    if 'antes' not in fotos:
+        raise SystemExit('ERROR: falta la foto del ANTES (el teléfono bloqueado). Súbela en «🖼 Miniatura».')
+    if not a.gpt:
+        raise SystemExit('ERROR: la miniatura con tus fotos la hace GPT: escribe SI para confirmar el gasto.')
+    temporal = None
+    if 'despues' not in fotos:  # sin foto del DESPUÉS: la pantalla de inicio del final de tu video
+        orig = os.path.join(d, 'original.mp4')
+        if not os.path.exists(orig):
+            raise SystemExit('ERROR: falta la foto del DESPUÉS (el teléfono ya libre). Súbela en «🖼 Miniatura».')
+        nt = analizar(orig, os.path.splitext(orig)[0] + '.nitidez.npz')
+        total = float(nt[0][-1]) if len(nt[0]) else 60.0
+        s = cuadros_clave(d, nt).get('inicio') or mejor(*nt, total * 0.975, total * 0.998)
+        cap = cv2.VideoCapture(orig)
+        cap.set(cv2.CAP_PROP_POS_MSEC, s * 1000)
+        ok, c = cap.read()
+        cap.release()
+        if not ok:
+            raise SystemExit('ERROR: falta la foto del DESPUÉS (el teléfono ya libre). Súbela en «🖼 Miniatura».')
+        temporal = fotos['despues'] = os.path.join(d, '.ref_miniatura_inicio.png')
+        cv2.imwrite(temporal, c)
+        print(f'· sin foto del DESPUÉS: uso tu video en {int(s // 60)}:{int(s % 60):02d}', flush=True)
+    lineas = list(a.texto.split('|')[:2]) if a.texto else list(textos(d)[0])
+    extras = [fotos[k] for k in FOTOS[2:] if k in fotos]
+    marca = next((x.strip().upper() for x in lineas if x.strip().upper() in MARCAS), textos(d)[0][0])  # para el logo oficial
+    hechas = []
+    try:
+        for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
+            hacer = miniaturas_mixtas if a.mixta else miniaturas_gpt
+            base = os.path.join(d, f"miniatura_fotos_{'mixta' if a.mixta else 'gpt'}_{fondo}")
+            for f in hacer(d, [fotos['antes'], fotos['despues']], lineas, base, marca, antes_desc='tal como está en la foto HD',
+                           fondo=fondo, extras=extras):
+                hechas.append({'archivo': f, 'de': f"tus fotos · {'mixta' if a.mixta else 'todo GPT'} · fondo {'de tus fotos' if fondo == 'foto' else 'de GPT'}",
+                               'texto': [x for x in lineas if x]})
+    finally:
+        if temporal:
+            os.remove(temporal)
+    json.dump({'miniaturas': hechas}, open(os.path.join(d, 'miniatura_fotos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print(f'Listo: {len(hechas)} miniaturas con tus fotos.', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--texto', help='las dos líneas separadas por |, para las 3 opciones')
     ap.add_argument('--gpt', action='store_true', help='además, la miniatura de gpt-image-2.5-flare en 3 idiomas (gasta)')
+    ap.add_argument('--fotos', action='store_true', help='con --gpt: usa tus fotos HD (foto_miniatura_*.jpg) en vez de los cuadros del video')
+    ap.add_argument('--fondo', choices=('foto', 'gpt', 'ambos'), default='foto', help='con --fotos: el fondo de tus fotos, uno de GPT o los dos')
     ap.add_argument('--mixta', action='store_true', help='con --gpt: GPT hace solo la escena y la app pone textos y logos (1 imagen para los 3 idiomas)')
     ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
+    if a.fotos:
+        return con_fotos(d, a)
     orig = os.path.join(d, 'original.mp4')
     if not os.path.exists(orig):
         raise SystemExit('ERROR: falta tu grabación (original.mp4).')
