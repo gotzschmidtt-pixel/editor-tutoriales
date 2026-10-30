@@ -184,6 +184,7 @@ def estado(d):
         'legales': legales,
         'fotos_miniatura': {k[5:]: _fecha(d, f) for k, f in SUBIDAS.items() if k.startswith('foto_') and os.path.exists(os.path.join(d, f))},
         'miniaturas_fotos': _leer(d, 'miniatura_fotos.json'),
+        'titulos_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('titulos', []),
     }
 
 
@@ -227,6 +228,14 @@ def post(h, ruta, q, largo, d):
             cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(destino)
         return h.responder({'ok': True})
     datos = json.loads(h.rfile.read(largo) or b'{}')
+    if ruta == '/api/mejoras/titulos_ia':  # «💡 Sugerir con IA» en «🖼 Miniatura» (un pedido corto de texto a tu IA)
+        import subprocess
+        r = subprocess.run([sys.executable, m('miniatura', 'titulos.py'), '--proyecto', d], capture_output=True, text=True,
+                           encoding='utf-8', timeout=400, cwd=d)
+        try:
+            return h.responder(json.loads(r.stdout.strip().splitlines()[-1]))
+        except (ValueError, IndexError):
+            return h.error('La IA no pudo sugerir títulos: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
     if ruta == '/api/mejoras/borrar_foto':  # quitar una de tus fotos de la miniatura
         nombre = SUBIDAS.get(q.get('tipo'))
         if not nombre or not nombre.startswith('foto_'):

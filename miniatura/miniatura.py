@@ -677,6 +677,35 @@ def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa'):
     lienzo.convert('RGB').save(salida, quality=92)
 
 
+def traducciones_titulo(d, lineas):
+    """{'es': [...], 'en': [...], 'pt': [...]}: la traducción que dio la IA al sugerir ese título, las frases conocidas, o se
+    la pide a la IA (un pedido corto de texto) y la guarda para la próxima."""
+    import subprocess
+    es = [x.strip() for x in lineas if x and x.strip()]
+    f = os.path.join(d, 'titulos_miniatura_ia.json')
+    try:
+        datos = json.load(open(f, encoding='utf-8'))
+    except (OSError, ValueError):
+        datos = {'titulos': []}
+    for t in datos.get('titulos', []) + datos.get('traducidos', []):
+        if [x.upper() for x in t.get('es', [])] == [x.upper() for x in es] and t.get('en') and t.get('pt'):
+            return {'es': es, 'en': t['en'], 'pt': t['pt']}
+    out = {'es': es, **{i: [traducir(x, i)[0] for x in es] for i in ('en', 'pt')}}
+    if not any(traducir(x, 'en')[1] and x.upper() not in MARCAS for x in es):
+        return out
+    try:  # una frase tuya que no conozco: la traduce la IA de la app
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'titulos.py'), '--proyecto', d,
+                            '--traducir', '|'.join(es)], capture_output=True, text=True, encoding='utf-8', timeout=300)
+        t = json.loads(r.stdout.strip().splitlines()[-1])['titulo']
+        out.update(en=t['en'], pt=t['pt'])
+        datos.setdefault('traducidos', []).append(t)
+        json.dump(datos, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        print(f"· título traducido: {' / '.join(t['en'])} · {' / '.join(t['pt'])}", flush=True)
+    except Exception as e:
+        print(f'· no pude traducir el título con la IA ({e}): en inglés y portugués queda en español', flush=True)
+    return out
+
+
 def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',)):
     """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
     refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 2)
@@ -699,10 +728,11 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
     escena = imagen_gpt(prompt, refs)
     cv2.imwrite(f'{salida_base}_escena.png', escena)
     hechas = []
+    tr = traducciones_titulo(d, lineas)
     for estilo in estilos:
         for idioma in idiomas:
             f = f'{salida_base}_{estilo}_{idioma}.jpg' if len(estilos) > 1 else f'{salida_base}_{idioma}.jpg'
-            componer_mixta(escena, lineas, marca, idioma, f, estilo)
+            componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo)
             hechas.append(os.path.basename(f))
             print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas
