@@ -213,7 +213,7 @@ def main():
     ref_a, ref_d = os.path.join(PUB, 'ref_antes.png'), os.path.join(PUB, 'ref_despues.png')
     ff(['-sseof', '-0.1', '-i', os.path.join(PUB, 'c1.mp4'), '-frames:v', '1', ref_a])
     ff(['-sseof', '-0.1', '-i', os.path.join(PUB, f'c{len(clips)}.mp4'), '-frames:v', '1', ref_d])
-    diapo = diapositiva_gpt(d_proy, plan, ref_a, ref_d) if plan.get('diapositiva_gpt', True) is not False else None
+    diapo = diapositiva_gpt(d_proy, plan, ref_a, ref_d) if plan.get('diapositiva_gpt') is True else None
     if diapo:
         shutil.copyfile(diapo, os.path.join(PUB, 'diapositiva.png'))
         props['diapositiva'] = 'trailer/diapositiva.png'
