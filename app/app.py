@@ -48,6 +48,8 @@ import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
 
 
 def estado_subs(d):
@@ -1743,6 +1745,32 @@ def costo_voz(d, desde=None, hasta=None):
         os.remove(f.name)
 
 
+FRASE = re.compile(r'[^.?!¿¡]*[¿¡]?[^.?!]*[.?!…]+|\S[^.?!]*$')
+
+
+def frases_guion(d):
+    """«🎞 Frase por frase» del editor de guion: por bloque cuya voz ya está hecha con su texto actual, cuándo dice la voz
+    cada frase (segundos desde que empieza su voz). Los bloques sin voz o con el texto cambiado los estima el editor.
+    Es la revisión que destapó los bloques corridos de HONOR 8 LITE (29/10/2026): ver qué se ve mientras se dice cada frase."""
+    try:
+        g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for b in g.get('bloques', []):
+        try:
+            al = json.load(open(os.path.join(d, 'voz', f"{b['id']}.align.json"), encoding='utf-8'))
+            txt, t0, t1 = ''.join(al['characters']), al['character_start_times_seconds'], al['character_end_times_seconds']
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if not txt.strip() or txt.strip() not in (str(b.get('texto') or '').strip(), texto_voz(b.get('texto'))):
+            continue  # la voz es de otro texto: el editor estima
+        out[b['id']] = {'texto': b.get('texto') or '',  # el editor usa estos tiempos solo mientras el texto siga igual
+                        'frases': [{'texto': m.group().strip(), 't0': t0[m.start()], 't1': t1[min(m.end(), len(t1)) - 1]}
+                                   for m in FRASE.finditer(txt) if len(m.group().strip()) > 1]}
+    return out
+
+
 def gasto_sin_confirmar(d, paso, pasos, datos):
     """Si el trabajo gastaría créditos de ElevenLabs (la voz del video o una música nueva) y no viene con «SI» escrito,
     el motivo para no arrancarlo; None si puede arrancar. Pedido de fabian (29/10/2026): un «▶ Hacer todo» generó la voz
@@ -2238,6 +2266,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
                 return self.responder(costo_voz(carpeta(q['p']), q.get('desde'), q.get('hasta')))
+            if ruta == '/api/frases':  # «🎞 Frase por frase»: cuándo dice la voz real cada frase de cada bloque
+                return self.responder(frases_guion(carpeta(q['p'])))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden
                 d = carpeta(q['p'])
                 leer = lambda n: open(os.path.join(d, n), encoding='utf-8').read() if existe(d, n) else ''
