@@ -158,7 +158,7 @@ async function api(url, op) {
   return d;
 }
 const vozS = txt => txt.trim().split(/\s+/).filter(Boolean).length / PALABRAS_POR_S + 1;
-const largo = m => (m.modo.startsWith('lento') ? (m.src_fin - m.src_inicio) / (m.velocidad || 1) : 0) + (m.congelar_s || 0);
+const largo = m => ((m.modo || '').startsWith('lento') ? (m.src_fin - m.src_inicio) / (m.velocidad || 1) : 0) + (m.congelar_s || 0);
 
 let VERSION = null;  // el guion tal como estaba al abrirlo: si alguien lo guarda después, no se pisa sin avisar
 const versionGuion = async () => { try { return (await api(`/api/version_guion?p=${q(P)}`)).v; } catch (e) { return null; } };
