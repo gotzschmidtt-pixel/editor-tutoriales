@@ -52,6 +52,11 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   (`{"video": "...mp4", "hasta": segundos}`), el paso «Video final sin tráiler» lo vuelve a poner encima del FINAL con
   `inicio/inicio_fijo.py`. El audio no cambia, y las etiquetas de ese tramo se redibujan encima. En el HONOR 8 LITE se
   perdió el inicio nuevo y el difuminado del precio al rehacer el final, y por eso existe esto.
+- **Datos personales en pantalla, siempre difuminados.** Los videos son públicos: correo, teléfono, nombre y saldo de la
+  cuenta (como en la cabecera de xiaomiunlock.com) no pueden leerse. Para esto está `privacidad/difuminar_datos.py`: con
+  `difuminar_datos.json` (imágenes de referencia de la cabecera con los recuadros de los datos y los tramos del video),
+  sigue esos datos aunque la cámara se mueva (puntos SIFT + homografía) y los difumina. «Video final sin tráiler» lo corre
+  solo después del inicio fijo. Revisa el video completo (cámara, material extra, inicio) antes de entregar.
 - La vista previa de etiquetas y flechas siempre se revisa antes de ponerlas: la app se detiene ahí y nada se pone hasta
   pulsar «▶ Ponerlas en el video».
 

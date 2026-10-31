@@ -714,6 +714,8 @@ def comandos(paso, d, op):
         c = [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
         if existe(d, 'inicio_fijo.json'):  # un inicio hecho aparte se vuelve a poner solo (antes se perdía al rehacer el final)
             c.append([PY, m('inicio', 'inicio_fijo.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
+        if existe(d, 'difuminar_datos.json'):  # datos personales en pantalla (correo, saldo…): se difuminan siguiéndolos
+            c.append([PY, m('privacidad', 'difuminar_datos.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
         return c
     raise ValueError(paso)
 
