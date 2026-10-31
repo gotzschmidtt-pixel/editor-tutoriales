@@ -374,6 +374,7 @@ function pintar() {
         <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
         <div class="orto" id="orto${i}"></div>
         <div class="frases" id="frases${i}"></div>
+        <div id="vers${i}"></div>
         ${(b.alternativas || []).map((x, k) => `<div class="alt" style="margin:8px 0; padding:8px; border:1px dashed var(--borde); border-radius:10px">
           <div class="meta">Opción ${String.fromCharCode(66 + k)} (no se usa hasta que la elijas)</div>
           <textarea data-alt="${i}" data-k="${k}" spellcheck="true" lang="es" style="min-height:4em">${esc(x)}</textarea>
@@ -382,6 +383,7 @@ function pintar() {
         <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
           <button onclick="copiarTramo(${i})" title="Hace una copia del texto como otra opción, para escribir una versión distinta y quedarte con la que más te guste">📑 Hacer otra opción</button>
           <button onclick="ortoBloque(${i})" title="Revisa tildes y ortografía de este bloque (LanguageTool, gratis)">🔤 Ortografía</button>
+          <button onclick="versiones(${i})" title="Los textos que tuvo este bloque antes (la app guarda cada versión del guion): elige uno para volver a ponerlo">🕘 Versiones anteriores</button>
           <button onclick="quitar(${i})">✕ Quitar bloque</button>
           ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
   }).join('') + (porLugar[G.bloques.length] || []).join('');
@@ -460,6 +462,26 @@ const esTilde = x => x.opciones[0] && x.original !== x.opciones[0] && sinTilde(x
 // varias versiones de un bloque (pedido de fabian, 30/10/2026): la voz usa solo el texto del bloque; las opciones esperan
 function copiarTramo(i) { const b = G.bloques[i]; (b.alternativas = b.alternativas || []).push(b.texto); sucio = true; pintar(); }
 function usarAlternativa(i, k) { const b = G.bloques[i]; [b.texto, b.alternativas[k]] = [b.alternativas[k], b.texto]; sucio = true; pintar(); }
+// «🕘 Versiones anteriores» (pedido de fabian, 31/10/2026): volver a un texto que tuvo el bloque
+let VERS = {};
+async function versiones(i) {
+  const caja = $('#vers' + i); caja.innerHTML = '<div class="meta">Buscando versiones…</div>';
+  try {
+    const r = await api(`/api/versiones_bloque?p=${q(P)}&id=${q(G.bloques[i].id)}`);
+    VERS[i] = r.versiones;
+    caja.innerHTML = !r.versiones.length ? '<div class="meta">Este bloque no tuvo otro texto antes.</div>' :
+      r.versiones.map((v, k) => `<div style="margin:8px 0; padding:8px; border:1px dashed var(--borde); border-radius:10px">
+        <div class="meta">Versión del ${esc(v.fecha)}</div><div>${esc(v.texto)}</div>
+        <div class="acciones"><button onclick="usarVersion(${i}, ${k})" title="Vuelve a poner este texto; el de ahora queda como opción, por si lo quieres de nuevo">↩ Volver a este</button></div></div>`).join('')
+      + `<a href="#" onclick="$('#vers${i}').innerHTML=''; return false">✕ cerrar</a>`;
+  } catch (e) { caja.innerHTML = `<div class="meta">No pude buscarlas: ${esc(e.message)}</div>`; }
+}
+function usarVersion(i, k) {
+  const b = G.bloques[i];
+  (b.alternativas = b.alternativas || []).push(b.texto);
+  b.texto = VERS[i][k].texto; sucio = true; pintar();
+  const m = $('#msg'); if (m) { m.textContent = `${b.id}: volvió el texto del ${VERS[i][k].fecha}. Toca «💾 Guardar» para que quede.`; m.className = 'msg ok'; }
+}
 function borrarAlternativa(i, k) { const b = G.bloques[i]; b.alternativas.splice(k, 1); if (!b.alternativas.length) delete b.alternativas; sucio = true; pintar(); }
 async function ortoBloque(i) {  // la ortografía de un solo bloque (pedido de fabian, 30/10/2026)
   const el = $('#orto' + i); if (el) el.textContent = 'Revisando…';

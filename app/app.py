@@ -2280,6 +2280,27 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'mejoras.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/mejoras/'):
                 return mejoras.get(self, ruta, q, carpeta(q['p']))
+            if ruta == '/api/versiones_bloque':  # «🕘 Versiones anteriores» de un bloque (pedido de fabian, 31/10/2026)
+                d = carpeta(q['p'])
+                bid = q.get('id', '')
+                fuentes = glob.glob(os.path.join(d, 'historial_guion', 'guion_*.json'))
+                fuentes += [f for f in glob.glob(os.path.join(d, 'guion*.json*')) if os.path.basename(f) != 'guion.json']
+                actual, vistos, salida = None, set(), []
+                try:
+                    actual = next((b.get('texto') for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques'] if b.get('id') == bid), None)
+                except (OSError, ValueError, KeyError):
+                    pass
+                for f in sorted(fuentes, key=os.path.getmtime, reverse=True):
+                    try:
+                        bl = json.load(open(f, encoding='utf-8')).get('bloques') or []
+                    except (OSError, ValueError, AttributeError):
+                        continue
+                    t = next((b.get('texto') for b in bl if isinstance(b, dict) and b.get('id') == bid), None)
+                    if not t or t == actual or t.strip() in vistos:
+                        continue
+                    vistos.add(t.strip())
+                    salida.append({'texto': t, 'fecha': time.strftime('%d/%m %H:%M', time.localtime(os.path.getmtime(f)))})
+                return self.responder({'versiones': salida[:15]})
             if ruta == '/api/corte':  # «▶ Ver el corte» del editor: solo ese pedazo, para adelantar y volver con libertad
                 d = carpeta(q['p'])
                 f = q.get('f', '')
