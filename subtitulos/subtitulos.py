@@ -90,26 +90,71 @@ def frases(texto, maximo, letras=0):
     return out
 
 
+ORACION = re.compile(r'(?<=[.?!…])\s+')
+
+
+def _alineacion(d, bid):
+    """(texto, inicio de cada letra, fin de cada letra) de la voz del bloque (voz/<id>.align.json), o None."""
+    try:
+        al = json.load(open(os.path.join(d, 'voz', f'{bid}.align.json'), encoding='utf-8'))
+        return ''.join(al['characters']), al['character_start_times_seconds'], al.get('character_end_times_seconds') or al['character_start_times_seconds']
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def _oraciones(t):
+    """[(inicio en el texto, oración)]."""
+    out, pos = [], 0
+    for o in ORACION.split(t.strip()):
+        if o.strip():
+            i = t.find(o, pos)
+            out.append((i, o))
+            pos = i + len(o)
+    return out
+
+
+def _tramos_de_voz(t, al, ini):
+    """[(desde, hasta, oración)] de un texto traducido, con los tiempos de la voz (en español) que dice cada oración:
+    si las dos tienen las mismas oraciones, cada una entra justo cuando la voz empieza la suya (nunca antes); si no,
+    la posición en el texto traducido se lleva a la misma proporción del texto hablado y de ahí a su segundo."""
+    habla, ts, te = al
+    if not habla.strip():
+        return None
+    o_es, o_tr = _oraciones(habla), _oraciones(t)
+    fin_voz = ini + te[-1]
+    if len(o_es) == len(o_tr):
+        empiezan = [ini + ts[min(i, len(ts) - 1)] for i, _ in o_es]
+    else:
+        empiezan = [ini + ts[min(len(ts) - 1, int(i / max(1, len(t)) * len(habla)))] for i, _ in o_tr]
+    return [(a, (empiezan[k + 1] if k + 1 < len(empiezan) else fin_voz), o) for k, (a, (_, o)) in enumerate(zip(empiezan, o_tr))]
+
+
 def eventos(d, lang, estilo, offset=0.0):
-    """[(inicio, fin, [(palabra, inicio, fin)…])] de todo el video."""
+    """[(inicio, fin, [(palabra, inicio, fin)…])] de todo el video. En un idioma traducido, cada oración usa los tiempos
+    de la voz que la dice (voz/<id>.align.json), así el subtítulo no se adelanta (fabian, 31/10/2026); sin alineación,
+    el tiempo del bloque se reparte por letras, como antes."""
     out, tx = [], textos(d, lang)
+    maximo, letras = int(estilo.get('palabras') or 6), int(estilo.get('letras') or 0)
     for b in bloques(d):
         t = tx.get(b['id'], '').strip()
         if not t:
             continue
         ini = b['inicio_min'] + DESFASE + offset
         dur = float(b.get('voz_real_s') or (b['fin_max'] - b['inicio_min'] - DESFASE))
-        partes = frases(t, int(estilo.get('palabras') or 6), int(estilo.get('letras') or 0))
-        total = sum(len(''.join(p)) + len(p) for p in partes) or 1
-        cur = ini
-        for p in partes:
-            largo = dur * (len(''.join(p)) + len(p)) / total
-            ws, c = [], cur
-            for w in p:
-                dw = largo * (len(w) + 1) / (len(''.join(p)) + len(p))
-                ws.append((w, c, c + dw)); c += dw
-            out.append((cur, cur + largo, ws))
-            cur += largo
+        al = _alineacion(d, b['id']) if lang != 'es' else None
+        tramos = (_tramos_de_voz(t, al, ini) if al else None) or [(ini, ini + dur, t)]
+        for desde, hasta, texto in tramos:
+            partes = frases(texto, maximo, letras)
+            total = sum(len(''.join(p)) + len(p) for p in partes) or 1
+            cur = desde
+            for p in partes:
+                largo = (hasta - desde) * (len(''.join(p)) + len(p)) / total
+                ws, c = [], cur
+                for w in p:
+                    dw = largo * (len(w) + 1) / (len(''.join(p)) + len(p))
+                    ws.append((w, c, c + dw)); c += dw
+                out.append((cur, cur + largo, ws))
+                cur += largo
     return out
 
 
