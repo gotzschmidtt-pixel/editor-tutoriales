@@ -2483,8 +2483,20 @@ class Manejador(BaseHTTPRequestHandler):
                         subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f if os.path.isdir(f) else os.path.dirname(f)])
                     return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
+            if ruta == '/mis':  # enlaces que se abren con un clic a lo de mis_conocimientos (logos, kit…): pedido de fabian, 31/10/2026
+                base = os.path.realpath(os.path.join(RAIZ, 'mis_conocimientos'))
+                f = os.path.realpath(os.path.join(base, q.get('f', '')))
+                if not (f == base or f.startswith(base + os.sep)) or os.path.basename(f).startswith('.'):
+                    return self.error('no existe', 404)
+                if os.path.isdir(f):  # una carpeta: la lista de sus archivos, cada uno con su enlace
+                    rel = os.path.relpath(f, base).replace(os.sep, '/').strip('.')
+                    filas = ''.join(f'<li><a href="/mis?f={urllib.parse.quote((rel + "/" if rel else "") + n)}">{n}</a></li>'
+                                    for n in sorted(os.listdir(f)) if not n.startswith('.'))
+                    return self.responder(f'<meta charset="utf-8"><title>{rel or "mis_conocimientos"}</title>'
+                                          f'<body style="font-family:sans-serif"><h3>{f}</h3><ul>{filas}</ul>'.encode(), 'text/html; charset=utf-8')
+                return self.servir(f)
             if ruta == '/archivo':
-                sub = q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz', 'vista_extras'] + [g[0] for g in GRUPOS.values()] else ''
+                sub =q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz', 'vista_extras'] + [g[0] for g in GRUPOS.values()] else ''
                 return self.servir(os.path.join(carpeta(q['p']), sub, os.path.basename(q['f'])), q.get('nombre', ''))
             if ruta == '/api/pistas':
                 sub, nombre, apartados, _ = GRUPOS[q.get('g', 'pistas')]
