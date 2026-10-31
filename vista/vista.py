@@ -216,19 +216,21 @@ def main():
     # tus marcas de «🎯 Flechas y círculos» (marcas_senales/marcas.json) también salen, aunque todavía no estén en senales.json
     # (las que ya se copiaron allí, con el mismo segundo, no se repiten). Se editan en ese panel de la app.
     ya = {round(float(s['src_t']), 1) for s in senales_ if s.get('src_t') is not None}
+    copiadas = {str(s['de_marca']) for s in senales_ if isinstance(s, dict) and s.get('de_marca')}  # editadas en el editor de la vista previa
     marcas = leer(os.path.join('marcas_senales', 'marcas.json'))
     for i, m in enumerate(marcas.get('MARCAS', []) if isinstance(marcas, dict) else []):
         z, seg = m.get('zona'), str(m.get('segundo') or '')
         if not z or ':' not in seg or m.get('video', 'original.mp4') != 'original.mp4':
             continue
         src_t = int(seg.split(':')[0]) * 60 + float(seg.split(':')[1])
-        if round(src_t, 1) in ya:
+        if round(src_t, 1) in ya or seg in copiadas:
             continue
         forma = m.get('forma') if m.get('forma') in ('circulo', 'flecha', 'caja') else 'circulo'
         items.append(('marca', i, {'src_t': src_t, 'tipo': forma, 'x': round(z['x'] * 19.2), 'y': round(z['y'] * 10.8),
                                    'r': max(40, round(max(z['w'] * 19.2, z['h'] * 10.8) / 2)), 'w': round(z['w'] * 19.2),
                                    'h': round(z['h'] * 10.8), 'texto': m.get('etiqueta') or '', 'dur': 3,
                                    'por_que': 'tu marca de «🎯 Flechas y círculos» (se edita en ese panel de la app)'}))
+    seg_marca = {i: str(m.get('segundo') or '') for i, m in enumerate(marcas.get('MARCAS', []) if isinstance(marcas, dict) else [])}
     lista = []
     for clase, i, x in items:
         clave = f'{clase}:{i}'
@@ -271,7 +273,9 @@ def main():
         lista.append({'clase': clase, 'idx': i, 'archivo': nombre, 't': t, 'aviso': aviso, 'bloque': x.get('bloque'),
                       'frase': x.get('frase'), 'tipo': x.get('tipo'), 'titulo': x.get('titulo'), 'texto': x.get('texto'),
                       'por_que': x.get('por_que'), 'duda': x.get('duda'), 'aprobado': bool(x.get('aprobado')),
-                      'x': x.get('x'), 'y': x.get('y'), 'manual': bool(x.get('manual'))})
+                      'x': x.get('x'), 'y': x.get('y'), 'manual': bool(x.get('manual')), 'r': x.get('r'), 'w': x.get('w'), 'h': x.get('h'),
+                      'dur': x.get('dur'), 'angulo': x.get('angulo'), 'color': x.get('color'), 'hueco': x.get('hueco'),
+                      'src_t': x.get('src_t'), 'segundo': seg_marca.get(i) if clase == 'marca' else None})
     # un círculo con rótulo abajo a la izquierda, mientras está la etiqueta: se tapan entre sí
     etqs = [z for z in lista if z['clase'] == 'etiqueta' and z['t'] is not None]
     for z in lista:

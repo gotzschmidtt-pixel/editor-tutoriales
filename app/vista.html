@@ -36,6 +36,25 @@
   #mano input[type=text], #mano select, #mano input[type=number] { background: #0f1426; color: var(--texto); border: 1px solid var(--borde);
     border-radius: 8px; padding: 6px 8px; font: inherit; }
   #tiempo { flex: 1; min-width: 200px; }
+  #editor { background: var(--panel); border: 2px solid #3a4a8a; border-radius: 14px; padding: 12px 14px; margin-bottom: 18px; }
+  #editor .eMarco { position: relative; width: min(100%, calc(56vh * 16 / 9)); aspect-ratio: 16 / 9; margin: 6px auto 0; }
+  #editor video { width: 100%; height: 100%; display: block; background: #000; border-radius: 10px; }
+  #eLienzo { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #editor .fila, #eSel { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  #eSel { min-height: 40px; background: #0f1426; border-radius: 10px; padding: 6px 10px; }
+  #editor input[type=text], #editor select, #editor input[type=number] { background: #0f1426; color: var(--texto); border: 1px solid var(--borde);
+    border-radius: 8px; padding: 6px 8px; font: inherit; }
+  #eSel input[type=text] { background: #141a2e; }
+  #eScroll { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--borde); border-radius: 8px; background: #0b0e1a; margin-top: 8px; }
+  #ePista { position: relative; height: 176px; cursor: pointer; user-select: none; touch-action: none; }
+  #eMarcas { position: absolute; left: 0; top: 84px; height: 92px; width: 100%; pointer-events: none; }
+  .eMarca { position: absolute; height: 20px; border: 2px solid; border-radius: 5px; box-sizing: border-box; font-size: 11px; line-height: 16px;
+    padding: 0 6px; color: #fff; white-space: nowrap; overflow: hidden; pointer-events: auto; cursor: grab; }
+  .eMarca.sel { outline: 2px solid #fff; z-index: 2; }
+  .eMarca::before, .eMarca::after { content: ''; position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
+  .eMarca::before { left: 0; } .eMarca::after { right: 0; }
+  button.vel { padding: 6px 10px; } button.vel.activa { background: var(--rosa); border-color: var(--rosa); color: #fff; }
+  .diapo.elegida { box-shadow: 0 0 0 3px #fff; }
 </style>
 </head>
 <body>
@@ -66,6 +85,43 @@
   <p class="aviso">Cada diapositiva es el cuadro del video donde aparece esa etiqueta o ese círculo, dibujado como va a quedar
   (sin la animación). Apruébala, cambia el texto o quítala. En los círculos, <b>haz clic en la imagen</b> para moverlo a ese lugar.
   Nada se pone en el video hasta que pulses «▶ Ponerlas en el video».</p>
+  <section id="editor">
+    <b>🎞 Editor sobre el video</b> <span class="aviso">Lo que sale en cada momento se dibuja encima del video:
+    <b>arrastra</b> un círculo o recuadro para moverlo, su cuadrito blanco para cambiar el tamaño; en las flechas arrastra la punta o el
+    otro extremo. En la línea de tiempo: arrastra una marca para cambiar cuándo sale y sus bordes para cuánto dura.
+    Teclas: Espacio ▶/⏸ · ← → 1 s (Mayús 5 s) · , . cuadro a cuadro · I empieza · O termina.</span>
+    <div class="eMarco"><video id="eVideo" preload="metadata"></video><canvas id="eLienzo" width="1920" height="1080"></canvas></div>
+    <div class="fila" style="justify-content:center">
+      <button onclick="eSaltar(-5)" title="5 s atrás (Mayús + ←)">⏪ 5 s</button>
+      <button id="ePlay" style="min-width:7em" onclick="eV.paused ? eV.play() : eV.pause()" title="Reproducir o pausar (Espacio)">▶ Play</button>
+      <button onclick="eSaltar(5)" title="5 s adelante (Mayús + →)">5 s ⏩</button>
+      <span id="eHora" class="chip">0:00.0</span>
+      <span class="aviso" style="margin-left:14px">Velocidad</span>
+      <button class="vel activa" onclick="eVel(1, this)">×1</button><button class="vel" onclick="eVel(1.5, this)">×1,5</button>
+      <button class="vel" onclick="eVel(2, this)">×2</button><button class="vel" onclick="eVel(3, this)">×3</button><button class="vel" onclick="eVel(4, this)">×4</button>
+    </div>
+    <div class="fila" style="justify-content:center">
+      <button onclick="eInicio()" title="La marca elegida empieza en este segundo (tecla I)">● Empieza aquí</button>
+      <button onclick="eFin()" title="La marca elegida termina en este segundo (tecla O)">■ Termina aquí</button>
+      <span class="aviso" style="margin-left:14px">Nueva:</span>
+      <select id="eTipo"><option value="circulo">⭕ Círculo</option><option value="flecha">➡ Flecha</option>
+        <option value="caja">▭ Recuadro</option><option value="etiqueta">🏷 Etiqueta de texto</option></select>
+      <button class="principal" onclick="eAgregar()" title="Pone una nueva en este segundo, en el centro: después la arrastras a su lugar">➕ Agregar aquí</button>
+      <span class="aviso" style="margin-left:14px">🔍</span>
+      <button onclick="eZoom(-1)">−</button>
+      <input type="range" id="eZoomR" min="1" max="30" step="0.5" value="1" oninput="ePintar(true)" style="width:8em">
+      <button onclick="eZoom(1)">+</button>
+    </div>
+    <div id="eScroll"><div id="ePista">
+      <canvas id="eRegla" height="22" style="position:absolute; left:0; top:0; height:22px"></canvas>
+      <canvas id="eTira" height="56" style="position:absolute; left:0; top:24px; height:56px; border-radius:4px"></canvas>
+      <div id="eMarcas"></div>
+      <div id="eCabezal" style="position:absolute; top:0; width:2px; height:176px; background:#ff2b4a; pointer-events:none; z-index:3">
+        <div style="position:absolute; top:0; left:-6px; width:14px; height:14px; border-radius:50%; background:#ff2b4a"></div></div>
+    </div></div>
+    <div class="aviso" style="margin-top:4px">🟨 etiqueta · 🟪 círculo · 🟦 flecha · 🟩 recuadro · 🟧 tu marca 🎯 · ✓ aprobada · ✋ hecha o cambiada a mano</div>
+    <div id="eSel"></div>
+  </section>
   <section id="mano">
     <b>➕ Marcar a mano</b> <span class="aviso">Pausa en el momento que quieras, elige qué poner y haz clic en el video:
     círculo = clic en el centro · recuadro = arrastra · flecha = clic en la punta y después clic de dónde viene · etiqueta = un clic.
@@ -127,18 +183,29 @@ function pintar() {
   $('#grilla').innerHTML = LISTA.map((x, k) => `<div class="diapo ${x.aprobado ? 'aprobada' : ''}" id="d${k}">
     <img src="/archivo?p=${q(P)}&sub=vista_extras&f=${x.archivo}&v=${V}" onclick="mover(event, ${k})" title="${x.clase === 'senal' ? 'Clic: mover el círculo aquí' : ''}">
     <div class="info"><div class="cab"><b>${x.clase === 'etiqueta' ? '🏷 Etiqueta' : x.tipo === 'caja' ? '▭ Recuadro' : x.tipo === 'flecha' ? '➡ Flecha' : '⭕ Círculo'}</b>
-      <span class="chip">${esc(x.bloque || '')}</span><span class="chip">${mmss(x.t)} del video</span>${x.aprobado ? '<span class="chip ok">✓ aprobada</span>' : ''}${x.manual ? '<span class="chip">✋ a mano</span>' : ''}${x.clase === 'marca' ? '<span class="chip">🎯 tu marca</span>' : ''}</div>
+      <span class="chip">${esc(x.bloque || '')}</span><span class="chip">${mmss(x.t)} del video</span>${x.aprobado ? '<span class="chip ok">✓ aprobada</span>' : ''}${x.manual ? '<span class="chip">✋ a mano</span>' : ''}${x.clase === 'marca' ? '<span class="chip">🎯 tu marca</span>' : ''}${x.t != null && !x.aviso ? `<button style="margin-left:auto; padding:3px 10px" onclick="eElegir('${x.clase}:${x.idx}', true)" title="Ir a este momento en el editor de arriba para moverla o cambiarle el tiempo">🎞 En el editor</button>` : ''}</div>
       ${x.aviso ? `<div class="malo">⚠ ${esc(x.aviso)}</div>` : ''}
       ${x.duda ? `<div class="duda">❓ ${esc(x.duda)}</div>` : ''}
       ${x.por_que ? `<div class="aviso">${esc(x.por_que)}</div>` : ''}
       ${x.clase === 'etiqueta' ? `<input data-k="${k}" data-c="titulo" value="${esc(x.titulo)}" placeholder="Título">` : ''}
       <input data-k="${k}" data-c="texto" value="${esc(x.texto)}" placeholder="${x.clase === 'etiqueta' ? 'Texto' : 'Rótulo (vacío = sin rótulo)'}">
       ${x.frase ? `<div class="aviso">aparece cuando la voz dice «${esc(x.frase)}»</div>` : ''}
+      ${x.clase === 'senal' ? `<div class="acciones" style="align-items:center">
+        <select data-k="${k}" data-c="tipo" title="Forma">${['circulo', 'flecha', 'caja'].map(f => `<option value="${f}" ${x.tipo === f || (!x.tipo && f === 'circulo') ? 'selected' : ''}>${{circulo: '⭕ Círculo', flecha: '➡ Flecha', caja: '▭ Recuadro'}[f]}</option>`).join('')}</select>
+        ${x.tipo === 'caja' ? `<label class="aviso">Ancho <input data-k="${k}" data-c="w" type="number" value="${x.w || 200}" style="width:5em"></label>
+          <label class="aviso">Alto <input data-k="${k}" data-c="h" type="number" value="${x.h || 80}" style="width:5em"></label>`
+          : `<label class="aviso">Tamaño <input data-k="${k}" data-c="r" type="number" value="${x.r || 70}" style="width:5em"></label>`}
+        ${x.tipo === 'flecha' ? `<label class="aviso">Ángulo <input data-k="${k}" data-c="angulo" type="number" value="${x.angulo ?? -35}" style="width:5em" title="De dónde viene: 0 = derecha, 90 = abajo, 180 = izquierda, -90 = arriba"></label>` : ''}
+        <label class="aviso">Dura <input data-k="${k}" data-c="dur" type="number" step="0.5" value="${x.dur || 3}" style="width:4.5em"> s</label>
+        <button onclick="correr(${k}, -0.5)" title="Que aparezca medio segundo antes">◀ 0,5 s</button>
+        <button onclick="correr(${k}, 0.5)" title="Que aparezca medio segundo después">0,5 s ▶</button>
+      </div><div class="aviso">Clic en la imagen = mover ahí. Cambia forma, tamaño o duración y pulsa «💾 Guardar texto y ver».</div>` : ''}
       ${x.clase === 'marca' ? `<div class="acciones"><button onclick="open('/?p=' + q(P) + '#panelMarcas')">🎯 Editar en «Flechas y círculos»</button></div></div></div>` : `<div class="acciones">
         <button onclick="aprobar(${k})">${x.aprobado ? '↺ Quitar aprobación' : '✓ Aprobar'}</button>
         <button onclick="guardarTexto(${k})">💾 Guardar texto y ver</button>
         <button onclick="quitar(${k})">🗑 Quitar</button>
       </div></div></div>`}`).join('');
+  eRefrescar();
 }
 async function cambiar(k, fn) {  // cambia la marca en etiquetas.json o senales.json (lo mismo que lee el armado)
   const x = LISTA[k], f = ARCH[x.clase];
@@ -152,7 +219,11 @@ async function aprobar(k) {
   catch (e) { msg(e.message, 'err'); }
 }
 async function guardarTexto(k) {
-  const vals = {}; document.querySelectorAll(`#d${k} input[data-c]`).forEach(i => vals[i.dataset.c] = i.value.trim());
+  const vals = {}; document.querySelectorAll(`#d${k} [data-c]`).forEach(i => {
+    const v = i.value.trim();
+    vals[i.dataset.c] = i.type === 'number' ? (v === '' ? undefined : +v) : v;
+  });
+  Object.keys(vals).forEach(c => vals[c] === undefined && delete vals[c]);
   try { await cambiar(k, (d, e) => Object.assign(e, vals)); await generar(`${LISTA[k].clase}:${LISTA[k].idx}`); }
   catch (e) { msg(e.message, 'err'); }
 }
@@ -168,6 +239,18 @@ async function mover(ev, k) {
   const nx = Math.round((ev.clientX - r.left) * f), ny = Math.round((ev.clientY - r.top) * f);
   try { await cambiar(k, (d, e) => { e.x = nx; e.y = ny; }); await generar(`${x.clase}:${x.idx}`); }
   catch (e) { msg(e.message, 'err'); }
+}
+async function correr(k, s) {
+  const x = LISTA[k];
+  try {
+    await cambiar(k, (d, e) => {
+      if (e.t != null) e.t = Math.max(0, Math.round((+e.t + s) * 100) / 100);
+      else if (e.src_t != null) e.src_t = Math.max(0, Math.round((+e.src_t + s) * 100) / 100);
+      else if (e.en != null) e.en = Math.max(0, Math.round((+e.en + s) * 100) / 100);
+      else e.retraso = Math.round(((+e.retraso || 0) + s) * 100) / 100;
+    });
+    await generar(`${x.clase}:${x.idx}`);
+  } catch (e) { msg(e.message, 'err'); }
 }
 async function generar(solo = '') {
   $('#btnGen').disabled = true;
@@ -279,6 +362,364 @@ async function mGuardar() {
     await guardarJson('senales.json', datos);
     mLimpiar(); await generar(`senal:${datos.length - 1}`);
   } catch (e) { msg(e.message, 'err'); }
+}
+
+// ── 🎞 Editor sobre el video con línea de tiempo (pedido de fabian, 31/10/2026) ───────────────────────────────────────
+// La misma línea de tiempo de «⭐ Cortes importantes» (miniaturas, regla, zoom, teclas), pero con las etiquetas y los círculos
+// como marcas que se arrastran, y lo que sale en cada momento dibujado encima del video para moverlo con el mouse.
+// Guarda en etiquetas.json / senales.json (lo mismo que lee el armado). Lo cambiado aquí queda «manual»: la IA no lo borra.
+// Una marca 🎯 de «Flechas y círculos» se copia a senales.json (con «de_marca») y la original ya no se repite.
+const eV = $('#eVideo'), eL = $('#eLienzo'), eG = eL.getContext('2d');
+const ED = {dur: 0, sel: null, tira: '', n: 0, img: null, arr: null, lienzo: null, cola: Promise.resolve(), video: '4_musica.mp4'};
+const clave = x => `${x.clase}:${x.idx}`;
+const eItem = () => LISTA.find(x => clave(x) === ED.sel);
+const durDe = x => +x.dur || (x.clase === 'etiqueta' ? 4 : 3);
+const redondo = v => Math.round(v * 100) / 100;
+const COLOR_TIPO = {etiqueta: '#ffd23f', circulo: '#ff2bd6', flecha: '#22d3ee', caja: '#38f28a', marca: '#ff9f1c'};
+const colorTipo = x => x.clase === 'etiqueta' ? COLOR_TIPO.etiqueta : x.clase === 'marca' ? COLOR_TIPO.marca : COLOR_TIPO[x.tipo] || COLOR_TIPO.circulo;
+const icono = x => x.clase === 'etiqueta' ? '🏷' : x.tipo === 'flecha' ? '➡' : x.tipo === 'caja' ? '▭' : '⭕';
+const nombreDe = x => x.clase === 'etiqueta' ? 'Etiqueta' : x.tipo === 'flecha' ? 'Flecha' : x.tipo === 'caja' ? 'Recuadro' : 'Círculo';
+(async () => {  // el mismo video de la vista previa (con voz y música): los segundos coinciden con las diapositivas
+  try { const r = await fetch(`/archivo?p=${q(P)}&f=4_musica.mp4`, {headers: {Range: 'bytes=0-0'}}); if (!r.ok) ED.video = '3_voz.mp4'; }
+  catch (e) { ED.video = '3_voz.mp4'; }
+  eV.src = `/archivo?p=${q(P)}&f=${ED.video}`;
+})();
+
+// ── línea de tiempo ──
+const eX = t => t / (ED.dur || 1) * $('#ePista').clientWidth;
+const eT = px => Math.max(0, Math.min(ED.dur, px / $('#ePista').clientWidth * ED.dur));
+function eIniciar() {
+  ED.dur = eV.duration || 0;
+  if (!ED.dur) return;
+  const n = Math.max(40, Math.min(120, Math.round(ED.dur / 3)));
+  const url = `/api/miniaturas?p=${q(P)}&f=${ED.video}&n=${n}`;
+  if (ED.tira !== url) {
+    ED.tira = url; ED.n = n; ED.img = new Image();
+    ED.img.onload = () => ePintar(true);  // la tira tarda la primera vez (después queda en caché)
+    ED.img.src = url;
+  }
+  ePintar();
+}
+function eMiniaturas(W) {
+  const c = $('#eTira'); c.width = W; c.style.width = W + 'px';
+  const g = c.getContext('2d'), img = ED.img;
+  g.fillStyle = '#151a2e'; g.fillRect(0, 0, W, 56);
+  if (!img || !img.complete || !img.naturalWidth) return;
+  const fw = img.naturalWidth / ED.n, fh = img.naturalHeight, ancho = 100;
+  for (let x = 0; x < W; x += ancho) {
+    const k = Math.min(ED.n - 1, Math.floor((x + ancho / 2) / W * ED.n));
+    g.drawImage(img, k * fw, 0, fw, fh, x, 0, ancho, 56);
+    g.fillStyle = '#0b0e1a'; g.fillRect(x + ancho - 1, 0, 1, 56);
+  }
+}
+function ePintar(mantener) {
+  if (!ED.dur) return;
+  const sc = $('#eScroll'), pista = $('#ePista');
+  const centro = mantener ? (sc.scrollLeft + sc.clientWidth / 2) / (pista.clientWidth || 1) : null;
+  const W = Math.round(sc.clientWidth * +$('#eZoomR').value);
+  if (pista.clientWidth !== W) { pista.style.width = W + 'px'; eMiniaturas(W); } else if (mantener) eMiniaturas(W);
+  if (centro !== null) sc.scrollLeft = centro * W - sc.clientWidth / 2;
+  const c = $('#eRegla'); c.width = W; c.style.width = W + 'px';
+  const g = c.getContext('2d'); g.clearRect(0, 0, W, 22);
+  const paso = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(s => s / ED.dur * W >= 90) || 600;
+  g.fillStyle = '#9aa3c0'; g.strokeStyle = '#3a4266'; g.font = '11px system-ui';
+  for (let t = 0; t <= ED.dur; t += paso / 5) {
+    const x = Math.round(t / ED.dur * W) + 0.5, grande = Math.abs(t / paso - Math.round(t / paso)) < 1e-6;
+    g.beginPath(); g.moveTo(x, grande ? 8 : 15); g.lineTo(x, 22); g.stroke();
+    if (grande) g.fillText(`${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, x + 3, 10);
+  }
+  // marcas: las etiquetas en la primera fila; círculos, flechas y recuadros repartidos en las otras para que no se tapen
+  const fin = [];
+  $('#eMarcas').innerHTML = LISTA.filter(x => x.t != null && !x.aviso).sort((a, b) => a.t - b.t).map(x => {
+    let fila = 0;
+    if (x.clase !== 'etiqueta') { fila = 1; while (fila < 3 && (fin[fila] ?? -1) > x.t) fila++; }
+    fin[fila] = Math.max(fin[fila] ?? -1, x.t + durDe(x));
+    const k = clave(x), c = colorTipo(x), a = eX(x.t), w = Math.max(10, eX(x.t + durDe(x)) - a);
+    const est = (x.aprobado ? '✓' : '') + (x.manual ? '✋' : '') + (x.clase === 'marca' ? '🎯' : '');
+    return `<div class="eMarca ${k === ED.sel ? 'sel' : ''}" data-k="${k}" style="left:${a}px; width:${w}px; top:${fila * 23}px; background:${c}44; border-color:${c}"
+      title="${esc(nombreDe(x) + ' · ' + mmss(x.t) + ' · ' + durDe(x) + ' s · ' + (x.texto || x.titulo || ''))}">${icono(x)}${est} ${esc(x.texto || x.titulo || '')}</div>`;
+  }).join('');
+  eCabezal();
+}
+function eCabezal() {
+  if (!ED.dur) return;
+  const x = eX(eV.currentTime), sc = $('#eScroll');
+  $('#eCabezal').style.left = (x - 1) + 'px';
+  if (!ED.arr && (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 40)) sc.scrollLeft = x - sc.clientWidth / 4;
+}
+function eZoom(d) { $('#eZoomR').value = Math.max(1, Math.min(30, +$('#eZoomR').value * (d > 0 ? 1.5 : 1 / 1.5))); ePintar(true); }
+const eSaltar = s => { eV.currentTime = Math.max(0, Math.min(ED.dur || 0, eV.currentTime + s)); };
+function eVel(v, b) { eV.playbackRate = v; document.querySelectorAll('button.vel').forEach(x => x.classList.toggle('activa', x === b)); }
+{
+  const pista = $('#ePista');
+  eV.addEventListener('loadedmetadata', eIniciar);
+  const mover = () => { eCabezal(); eDibujar(); $('#eHora').textContent = mmss(eV.currentTime); };
+  eV.addEventListener('timeupdate', mover); eV.addEventListener('seeked', mover);
+  const bucle = () => { if (!eV.paused) { mover(); requestAnimationFrame(bucle); } };
+  eV.addEventListener('play', () => requestAnimationFrame(bucle));
+  const botonPlay = () => { $('#ePlay').textContent = eV.paused ? '▶ Play' : '⏸ Pausa'; };
+  eV.addEventListener('play', botonPlay); eV.addEventListener('pause', botonPlay); eV.addEventListener('ended', botonPlay);
+  addEventListener('resize', () => ePintar(true));
+  const tiempo = e => eT(e.clientX - pista.getBoundingClientRect().left);
+  pista.onpointerdown = e => {
+    if (!ED.dur) return;
+    pista.setPointerCapture(e.pointerId);
+    const m = e.target.closest('.eMarca'), x = m && LISTA.find(z => clave(z) === m.dataset.k);
+    if (x) {  // una marca: cerca del borde = cambia cuándo empieza o cuándo termina; en el medio = la corre entera
+      const r = m.getBoundingClientRect(), o = e.clientX - r.left;
+      const modo = r.width > 18 && o < 7 ? 'ini' : r.width > 18 && o > r.width - 7 ? 'fin' : 'mover';
+      ED.arr = {modo, x, cx: e.clientX, t: x.t, dur: durDe(x), movido: false};
+      eV.pause(); eElegir(clave(x), false);
+      eV.currentTime = modo === 'fin' ? x.t + durDe(x) - 0.05 : x.t + 0.05;
+    } else { ED.arr = {modo: 'buscar'}; eV.currentTime = tiempo(e); }
+  };
+  pista.onpointermove = e => {
+    const a = ED.arr;
+    if (!a) return;
+    if (a.modo === 'buscar') { eV.currentTime = tiempo(e); return; }
+    if (!a.movido && Math.abs(e.clientX - a.cx) < 4) return;
+    a.movido = true;
+    const dt = (e.clientX - a.cx) / pista.clientWidth * ED.dur, x = a.x;
+    if (a.modo === 'mover') x.t = redondo(Math.max(0, Math.min(ED.dur - 0.3, a.t + dt)));
+    else if (a.modo === 'ini') { const t = Math.max(0, Math.min(a.t + a.dur - 0.5, a.t + dt)); x.t = redondo(t); x.dur = redondo(a.t + a.dur - t); }
+    else x.dur = redondo(Math.max(0.5, Math.min(30, a.dur + dt)));
+    eV.currentTime = a.modo === 'fin' ? x.t + x.dur - 0.05 : x.t + 0.05;
+    ePintar(); eResumen();
+  };
+  pista.onpointerup = () => { const a = ED.arr; ED.arr = null; if (a && a.movido) eGuardar(a.x, true); };
+  $('#eScroll').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); eZoom(e.deltaY < 0 ? 1 : -1); } }, {passive: false});
+  addEventListener('keydown', e => {  // sin estar escribiendo
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || !ED.dur) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); eV.paused ? eV.play() : eV.pause(); }
+    else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); eSaltar((k === 'arrowright' ? 1 : -1) * (e.shiftKey ? 5 : 1)); }
+    else if (k === ',' || k === '.') { eV.pause(); eV.currentTime += k === '.' ? 1 / 25 : -1 / 25; }
+    else if (k === 'i') eInicio();
+    else if (k === 'o') eFin();
+  });
+}
+
+// ── dibujo encima del video (las mismas medidas que la vista previa y el armado, en píxeles de 1920 × 1080) ──
+function eActivos() { const ct = eV.currentTime; return LISTA.filter(x => x.t != null && !x.aviso && ct >= x.t - 0.02 && ct <= x.t + durDe(x)); }
+function geo(x) {
+  const X = x.x ?? 960, Y = x.y ?? 540, r = +x.r || 70;
+  if (x.clase === 'etiqueta') return {tipo: 'etiqueta'};
+  if (x.tipo === 'flecha') {
+    const a = (x.angulo ?? -35) * Math.PI / 180, hu = x.hueco ?? 18, px = X + Math.cos(a) * hu, py = Y + Math.sin(a) * hu;
+    return {tipo: 'flecha', X, Y, a, hu, r, px, py, ox: px + Math.cos(a) * r * 2.2, oy: py + Math.sin(a) * r * 2.2, alto: r};
+  }
+  if (x.tipo === 'caja') { const w = +x.w || 200, h = +x.h || 80; return {tipo: 'caja', X, Y, w, h, hx: X + w / 2, hy: Y + h / 2, extra: 0, alto: h / 2, radio: Math.min(h / 2, 22)}; }
+  if (x.w && x.h) { const w = +x.w + 24, h = +x.h + 24; return {tipo: 'pildora', X, Y, w, h, hx: X + w / 2, hy: Y + h / 2, extra: 24, alto: h / 2, radio: Math.min(w, h) / 2}; }
+  return {tipo: 'circulo', X, Y, r, hx: X + r * 0.7071, hy: Y + r * 0.7071, alto: r};
+}
+function eDibujar() {
+  eG.clearRect(0, 0, 1920, 1080);
+  const act = eActivos();
+  act.filter(x => clave(x) !== ED.sel).forEach(x => dibujarItem(x, false));
+  act.filter(x => clave(x) === ED.sel).forEach(x => dibujarItem(x, true));  // la elegida, encima
+}
+function dibujarItem(x, sel) {
+  const g = geo(x), c = x.color || (x.clase === 'etiqueta' ? '#ff2d95' : '#ff2bd6');
+  eG.save();
+  eG.strokeStyle = c; eG.fillStyle = c; eG.lineWidth = sel ? 9 : 7; eG.shadowColor = c; eG.shadowBlur = 14; eG.lineCap = 'round'; eG.lineJoin = 'round';
+  if (g.tipo === 'etiqueta') {  // el armado las pone arriba a la derecha (posición fija)
+    eG.shadowBlur = 0;
+    const tit = String(x.titulo || '').toUpperCase(), txt = String(x.texto || '');
+    eG.font = 'bold 44px system-ui'; const wt = eG.measureText(txt).width; eG.font = 'bold 24px system-ui';
+    const ancho = Math.max(wt, eG.measureText(tit).width) + 130, left = 1920 - 60 - ancho, top = 50;
+    eG.fillStyle = '#ff2d95'; eG.beginPath(); eG.roundRect(left - 3, top - 3, ancho + 6, 110, 60); eG.fill();
+    eG.fillStyle = '#141124'; eG.beginPath(); eG.roundRect(left, top, ancho, 104, 58); eG.fill();
+    eG.fillStyle = '#22d3ee'; eG.beginPath(); eG.arc(left + 54, top + 52, 34, 0, 7); eG.fill();
+    eG.fillStyle = '#9aa3c7'; eG.fillText(tit, left + 110, top + 36);
+    eG.fillStyle = '#fff'; eG.font = 'bold 44px system-ui'; eG.fillText(txt, left + 110, top + 84);
+    if (sel) { eG.strokeStyle = '#fff'; eG.lineWidth = 4; eG.setLineDash([12, 8]); eG.strokeRect(left - 12, top - 12, ancho + 24, 128); }
+    eG.restore(); return;
+  }
+  eG.beginPath();
+  if (g.tipo === 'circulo') eG.arc(g.X, g.Y, g.r, 0, 7);
+  else if (g.tipo === 'caja' || g.tipo === 'pildora') eG.roundRect(g.X - g.w / 2, g.Y - g.h / 2, g.w, g.h, g.radio);
+  else {
+    const cx = (g.px + g.ox) / 2 - Math.sin(g.a) * 30, cy = (g.py + g.oy) / 2 + Math.cos(g.a) * 30;
+    eG.moveTo(g.ox, g.oy); eG.quadraticCurveTo(cx, cy, g.px, g.py);
+    eG.moveTo(g.px + Math.cos(g.a + 0.5) * 34, g.py + Math.sin(g.a + 0.5) * 34); eG.lineTo(g.px, g.py);
+    eG.lineTo(g.px + Math.cos(g.a - 0.5) * 34, g.py + Math.sin(g.a - 0.5) * 34);
+  }
+  eG.stroke();
+  eG.shadowBlur = 0;
+  if (x.texto) {  // el rótulo: debajo de la marca, o encima si no cabe
+    const ancho = Math.min(620, 60 + String(x.texto).length * 26), abajo = g.Y + g.alto + 110 < 1080;
+    const left = Math.min(Math.max(g.X - ancho / 2, 24), 1920 - ancho - 24), top = abajo ? g.Y + g.alto + 24 : g.Y - g.alto - 24 - 74;
+    eG.fillStyle = '#141124'; eG.lineWidth = 4; eG.beginPath(); eG.roundRect(left - 4, top - 4, ancho + 8, 82, 40); eG.fill(); eG.stroke();
+    eG.fillStyle = '#fff'; eG.font = '40px system-ui'; eG.textAlign = 'center'; eG.textBaseline = 'middle';
+    eG.fillText(String(x.texto), left + ancho / 2, top + 37, ancho - 30);
+  }
+  if (sel) {  // los cuadritos para arrastrar
+    const asa = (hx, hy) => { eG.fillStyle = '#fff'; eG.strokeStyle = '#000'; eG.lineWidth = 3; eG.fillRect(hx - 13, hy - 13, 26, 26); eG.strokeRect(hx - 13, hy - 13, 26, 26); };
+    if (g.tipo === 'flecha') { asa(g.X, g.Y); asa(g.ox, g.oy); } else asa(g.hx, g.hy);
+  }
+  eG.restore();
+}
+const ePunto = ev => { const r = eL.getBoundingClientRect(); return [(ev.clientX - r.left) * 1920 / r.width, (ev.clientY - r.top) * 1080 / r.height]; };
+function eTocar(x, px, py, sel) {  // qué parte de la forma está bajo el mouse
+  const g = geo(x), d = (a, b) => Math.hypot(px - a, py - b);
+  if (g.tipo === 'etiqueta') return px > 1000 && py < 220 ? 'elegir' : null;
+  if (g.tipo === 'flecha') {
+    if (sel && d(g.X, g.Y) < 34) return 'punta';
+    if (sel && d(g.ox, g.oy) < 40) return 'origen';
+    const L = Math.hypot(g.ox - g.X, g.oy - g.Y) || 1, u = Math.max(0, Math.min(1, ((px - g.X) * (g.ox - g.X) + (py - g.Y) * (g.oy - g.Y)) / (L * L)));
+    return d(g.X + (g.ox - g.X) * u, g.Y + (g.oy - g.Y) * u) < 45 ? 'mover' : null;
+  }
+  if (sel && d(g.hx, g.hy) < 30) return g.tipo === 'circulo' ? 'radio' : 'esquina';
+  if (g.tipo === 'circulo') return d(g.X, g.Y) < g.r + 14 ? 'mover' : null;
+  return Math.abs(px - g.X) < g.w / 2 + 14 && Math.abs(py - g.Y) < g.h / 2 + 14 ? 'mover' : null;
+}
+const CURSOR = {mover: 'move', radio: 'nwse-resize', esquina: 'nwse-resize', punta: 'crosshair', origen: 'crosshair', elegir: 'pointer'};
+eL.onpointerdown = ev => {
+  const [px, py] = ePunto(ev), act = eActivos();
+  for (const x of [...act.filter(z => clave(z) === ED.sel), ...act.filter(z => clave(z) !== ED.sel)]) {
+    const parte = eTocar(x, px, py, clave(x) === ED.sel);
+    if (!parte) continue;
+    eV.pause();
+    if (clave(x) !== ED.sel) eElegir(clave(x), false);
+    const parte2 = eTocar(x, px, py, true);  // ya elegida: el cuadrito también vale
+    if (parte2 !== 'elegir') { eL.setPointerCapture(ev.pointerId); ED.lienzo = {parte: parte2, x, px, py, orig: {...x}, movido: false}; }
+    return;
+  }
+  if (act.length) { ED.sel = null; eRefrescar(); }
+  else eV.paused ? eV.play() : eV.pause();  // sin nada encima: clic = play / pausa, como un reproductor
+};
+eL.onpointermove = ev => {
+  const [px, py] = ePunto(ev), a = ED.lienzo;
+  if (!a) {
+    const act = eActivos(), sel = act.find(z => clave(z) === ED.sel);
+    const parte = (sel && eTocar(sel, px, py, true)) || act.map(z => eTocar(z, px, py, false)).find(Boolean);
+    eL.style.cursor = CURSOR[parte] || 'default'; return;
+  }
+  const o = a.orig, x = a.x, lim = (v, m) => Math.round(Math.max(0, Math.min(m, v))), g = geo(o);
+  a.movido = true;
+  if (a.parte === 'mover') { x.x = lim(g.X + px - a.px, 1920); x.y = lim(g.Y + py - a.py, 1080); }
+  else if (a.parte === 'radio') x.r = Math.max(20, Math.round(Math.hypot(px - g.X, py - g.Y)));
+  else if (a.parte === 'esquina') { x.w = Math.max(20, Math.round(Math.abs(px - g.X) * 2 - g.extra)); x.h = Math.max(16, Math.round(Math.abs(py - g.Y) * 2 - g.extra)); }
+  else if (a.parte === 'punta') {  // la punta se mueve y el otro extremo queda donde estaba
+    x.x = lim(px, 1920); x.y = lim(py, 1080);
+    x.angulo = Math.round(Math.atan2(g.oy - py, g.ox - px) * 180 / Math.PI);
+    x.r = Math.max(20, Math.round((Math.hypot(g.ox - px, g.oy - py) - g.hu) / 2.2));
+  } else if (a.parte === 'origen') {
+    x.angulo = Math.round(Math.atan2(py - g.Y, px - g.X) * 180 / Math.PI);
+    x.r = Math.max(20, Math.round((Math.hypot(px - g.X, py - g.Y) - g.hu) / 2.2));
+  }
+  eDibujar(); eResumen();
+};
+eL.onpointerup = () => { const a = ED.lienzo; ED.lienzo = null; if (a && a.movido) eGuardar(a.x, false); };
+
+// ── la marca elegida ──
+function eElegir(k, ir) {
+  ED.sel = k;
+  const x = eItem();
+  if (x && ir) { eV.pause(); eV.currentTime = x.t + 0.05; $('#editor').scrollIntoView({behavior: 'smooth'}); }
+  eRefrescar();
+}
+function eRefrescar() {  // después de cargar la lista o de elegir otra: línea, panel, dibujo y diapositiva marcada
+  if (ED.sel && !eItem()) ED.sel = null;
+  ePintar(); ePanel(); eDibujar();
+  LISTA.forEach((x, k) => { const d = document.getElementById('d' + k); if (d) d.classList.toggle('elegida', clave(x) === ED.sel); });
+}
+function ePanel() {
+  const x = eItem(), box = $('#eSel');
+  if (!x) { box.innerHTML = '<span class="aviso">Elige una marca en la línea de tiempo (o haz clic sobre ella en el video) para moverla, cambiarle el texto o el tiempo.</span>'; return; }
+  const k = LISTA.indexOf(x);
+  box.innerHTML = `<b>${icono(x)} ${nombreDe(x)}</b>${x.clase === 'marca' ? ' <span class="chip">🎯 tu marca: al cambiarla se copia a las señales</span>' : ''}
+    <span class="chip" id="eRes"></span>
+    ${x.clase === 'etiqueta' ? `<input type="text" id="eTitulo" value="${esc(x.titulo)}" placeholder="Título" style="width:9em">` : ''}
+    <input type="text" id="eTexto" value="${esc(x.texto)}" placeholder="${x.clase === 'etiqueta' ? 'Texto' : 'Rótulo (vacío = sin rótulo)'}" style="flex:1; min-width:10em">
+    ${x.clase !== 'etiqueta' ? `<select id="eForma">${['circulo', 'flecha', 'caja'].map(f => `<option value="${f}" ${(x.tipo || 'circulo') === f ? 'selected' : ''}>${{circulo: '⭕ Círculo', flecha: '➡ Flecha', caja: '▭ Recuadro'}[f]}</option>`).join('')}</select>` : ''}
+    <label class="aviso">Color <input type="color" id="eColor" value="${x.color || (x.clase === 'etiqueta' ? '#ff2d95' : '#ff2bd6')}"></label>
+    <button onclick="eGuardar(eItem(), false)">💾 Guardar</button>
+    ${x.clase !== 'marca' ? `<button onclick="aprobar(${k})">${x.aprobado ? '↺ Quitar aprobación' : '✓ Aprobar'}</button><button onclick="quitar(${k})">🗑 Quitar</button>` : ''}
+    <button onclick="document.getElementById('d${k}').scrollIntoView({behavior: 'smooth', block: 'center'})">⬇ Ver su diapositiva</button>`;
+  const vivo = (id, campo, fn = v => v) => { const i = document.getElementById(id); if (i) i.addEventListener('input', () => { x[campo] = fn(i.value); eDibujar(); ePintar(); }); };
+  vivo('eTexto', 'texto'); vivo('eTitulo', 'titulo'); vivo('eColor', 'color'); vivo('eForma', 'tipo');
+  ['eTexto', 'eTitulo'].forEach(id => document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') eGuardar(x, false); }));
+  eResumen();
+}
+function eResumen() {
+  const x = eItem(), r = document.getElementById('eRes');
+  if (x && r) r.textContent = `${mmss(x.t)} → ${mmss(x.t + durDe(x))} · ${durDe(x)} s`;
+}
+function eInicio() {
+  const x = eItem();
+  if (!x) return msg('Elige primero una marca (en la línea de tiempo o en el video).', 'err');
+  const ct = redondo(eV.currentTime), fin = x.t + durDe(x);
+  if (ct < fin - 0.5) x.dur = redondo(fin - ct);  // el final queda donde estaba
+  x.t = ct; eRefrescar(); eGuardar(x, true);
+}
+function eFin() {
+  const x = eItem();
+  if (!x) return msg('Elige primero una marca (en la línea de tiempo o en el video).', 'err');
+  if (eV.currentTime < x.t + 0.5) return msg('El final tiene que ir después de donde empieza.', 'err');
+  x.dur = redondo(eV.currentTime - x.t); eRefrescar(); eGuardar(x, false);
+}
+async function bloqueDe(t) {  // las etiquetas van por bloque: «en» = segundos desde que empieza su bloque (+0,3 s de la voz)
+  GUION = GUION || (await leerJson('guion.json')).bloques || [];
+  const b = [...GUION].reverse().find(z => z.inicio_min <= t - 0.3) || GUION[0];
+  return {bloque: b.id, en: Math.max(0, redondo(t - b.inicio_min - 0.3))};
+}
+function eGuardar(x, tiempo) {  // en fila: si arrastras varias veces seguidas, se guardan en orden
+  if (!x) return;
+  ED.cola = ED.cola.then(async () => {
+    msg('Guardando…');
+    const campos = {};
+    ['tipo', 'x', 'y', 'r', 'w', 'h', 'angulo', 'dur', 'texto', 'titulo', 'color'].forEach(c => { if (x[c] != null && x[c] !== '') campos[c] = x[c]; });
+    let nueva;
+    if (x.clase === 'marca') {  // tu marca 🎯 pasa a senales.json (marcada con su segundo para no repetirla)
+      delete campos.titulo;
+      const s = {tipo: 'circulo', dur: 3, ...campos, manual: true, aprobado: true, de_marca: x.segundo || mmss(x.src_t)};
+      if (tiempo || x.src_t == null) s.t = redondo(x.t); else s.src_t = x.src_t;
+      const datos = await leerJson('senales.json');
+      datos.push(s); await guardarJson('senales.json', datos);
+      nueva = `senal:${datos.length - 1}`;
+    } else {
+      const f = ARCH[x.clase], datos = await leerJson(f), e = datos[x.idx];
+      if (!e) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
+      if (x.clase === 'senal') { delete campos.titulo; if (!x.texto) delete e.texto; }
+      else ['tipo', 'x', 'y', 'r', 'w', 'h', 'angulo'].forEach(c => delete campos[c]);  // la etiqueta tiene su lugar fijo
+      Object.assign(e, campos);
+      if (tiempo && x.clase === 'senal') { e.t = redondo(x.t); delete e.src_t; }  // segundo del video ya armado
+      if (tiempo && x.clase === 'etiqueta') { Object.assign(e, await bloqueDe(x.t)); delete e.frase; }
+      e.manual = true;
+      await guardarJson(f, datos);
+      nueva = clave(x);
+    }
+    ED.sel = nueva;
+    await generar(nueva);
+  }).catch(e => msg(e.message, 'err'));
+}
+function eAgregar() {
+  const tipo = $('#eTipo').value, t = redondo(eV.currentTime);
+  if (!ED.dur) return msg('Espera a que cargue el video.', 'err');
+  eV.pause();
+  let texto = '';
+  if (tipo === 'etiqueta') { texto = prompt('Texto de la etiqueta:'); if (!texto) return; }
+  ED.cola = ED.cola.then(async () => {
+    let nueva;
+    if (tipo === 'etiqueta') {
+      const datos = await leerJson('etiquetas.json');
+      datos.push({...await bloqueDe(t), tipo: 'consejo', titulo: '', texto, dur: 4, manual: true, aprobado: true});
+      await guardarJson('etiquetas.json', datos);
+      nueva = `etiqueta:${datos.length - 1}`;
+    } else {
+      const s = {t, tipo, x: 960, y: 540, dur: 3, manual: true, aprobado: true};
+      if (tipo === 'caja') Object.assign(s, {w: 320, h: 120}); else s.r = 70;
+      if (tipo === 'flecha') s.angulo = -35;
+      const datos = await leerJson('senales.json');
+      datos.push(s); await guardarJson('senales.json', datos);
+      nueva = `senal:${datos.length - 1}`;
+    }
+    ED.sel = nueva;
+    await generar(nueva);
+    eV.currentTime = t + 0.05;
+    msg('✓ Agregada: arrástrala a su lugar en el video.', 'ok');
+  }).catch(e => msg(e.message, 'err'));
 }
 mLimpiar();
 cargar();

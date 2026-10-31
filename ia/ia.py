@@ -2074,9 +2074,14 @@ def marcas_autor(d):
         datos = json.load(open(os.path.join(d, MARCAS_DIR, 'marcas.json'), encoding='utf-8'))
     except (OSError, ValueError):
         return [], []
+    try:  # las que ya editaste en la vista previa quedaron copiadas en senales.json como «manual»: no se piden otra vez
+        copiadas = {str(s['de_marca']) for s in json.load(open(os.path.join(d, 'senales.json'), encoding='utf-8'))
+                    if isinstance(s, dict) and s.get('de_marca')}
+    except (OSError, ValueError, TypeError):
+        copiadas = set()
     capturas_, pedidos = [], []
     for p in datos.get('MARCAS', []):
-        if not isinstance(p, dict):
+        if not isinstance(p, dict) or (p.get('segundo') and str(p['segundo']) in copiadas):
             continue
         tipo, nota = p.get('tipo'), (p.get('nota') or '').strip()
         if tipo == 'captura' and p.get('archivo'):
