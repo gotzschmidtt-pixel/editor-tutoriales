@@ -159,8 +159,9 @@ def main():
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     uno = [x for fila in filas for x in fila]
     for k, (t, l) in enumerate(uno):
-        sig = uno[k + 1][0] if k + 1 < len(uno) else t + QUEDA
-        hasta = min(total - 0.1, t + QUEDA, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
+        queda = float(l.get('queda') or QUEDA)  # «queda» en logos.json: más tiempo para leerlo (la tarjeta de WhatsApp)
+        sig = uno[k + 1][0] if k + 1 < len(uno) else t + queda
+        hasta = min(total - 0.1, t + queda, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
         if hasta - t < MINIMO:
             continue
         dur = hasta - t
