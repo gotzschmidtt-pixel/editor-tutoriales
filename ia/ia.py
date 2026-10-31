@@ -564,6 +564,8 @@ Escribe el guion por bloques. Cada bloque tiene:
   sonidos como "ríe", "se ríe bajito" o "suspira" (estos pocas veces, una o dos por video, donde de verdad tiene gracia
   o se espera). Se pueden juntar dos: "ríe, alegre". Varía: no repitas la misma emoción en dos bloques seguidos ni la
   uses en todos; los bloques sin emoción salen con la voz de siempre. No escribas la emoción dentro de "texto".
+  POCAS (regla del autor, 31/10/2026: con muchas, la voz y el avatar exageran): como máximo una emoción cada 3 o 4
+  bloques, nunca en dos bloques seguidos, "ríe" casi nunca (mejor "se ríe bajito") y "susurra" una sola vez en el video.
 - AVISO LEGAL Y DE RIESGO: si el video quita una cuenta (FRP, cuenta Google, iCloud, MDM), hace un bypass, abre el equipo,
   suelda o flashea, en el bloque donde empieza ese proceso la voz dice UNA frase corta y natural de cuidado, por ejemplo
   «hazlo solo en un equipo tuyo o con permiso del dueño» o «si no tienes práctica soldando, esto puede dañar la placa».

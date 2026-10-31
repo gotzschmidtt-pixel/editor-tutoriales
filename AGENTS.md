@@ -60,6 +60,14 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - **Subtítulos quemados, estilo por defecto (elegido por fabian, «C +50 %»):** una línea corta de 2–3 palabras (máx. ~14
   letras), Arial Black blanca con borde negro, la palabra que se dice en amarillo y un poco más grande, abajo al centro y
   algo separada del borde (`subtitulos/subtitulos.py`, `ESTILO`). Muestras en `mis_proyectos/HONOR 8 LITE/subtitulos_en/`.
+- **Pocas emociones en la voz (ElevenLabs v4).** Máximo 3 etiquetas por minuto de voz (≈ cada 150 palabras), nunca dos
+  seguidas, sin [excited] en la primera frase si ya empieza con «¡…!», [chuckles] en vez de [laughs] y [whispers] una sola
+  vez en el video; lo demás narrado natural. `voz/emociones.py` recorta solo antes de generar (y avisa cuántas quitó) y el
+  guion de la IA pide una emoción cada 3 o 4 bloques como mucho. Motivo: el bloque 1 de Movistar salió con 13 emociones
+  en 1:41 y el avatar de HeyGen exageró las caras («se ve raro»).
+- **Avatares (HeyGen):** por defecto «Más expresivo» APAGADO y movimiento tranquilo: «Calm, friendly news host talking to
+  the camera. Natural small smiles, soft hand gestures, gentle nods. No exaggerated facial expressions, no puckered lips,
+  no big laughs. Stays seated and does not touch the microphone.» Rehacer en HeyGen gasta sus créditos: hacerlo una vez.
 - La vista previa de etiquetas y flechas siempre se revisa antes de ponerlas: la app se detiene ahí y nada se pone hasta
   pulsar «▶ Ponerlas en el video».
 

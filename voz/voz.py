@@ -70,7 +70,17 @@ def emocion(b, a):
 
 def texto_pedido(b, a):
     e = emocion(b, a)
-    return (f'[{e}] ' if e else '') + texto_voz(b['texto'])
+    t = (f'[{e}] ' if e else '') + texto_voz(b['texto'])
+    if a.modelo.startswith(CON_EMOCION) and '[' in t:  # pocas emociones (fabian, 31/10/2026): ver emociones.py
+        import emociones
+        t, n = emociones.moderar(t)
+        if n and b.get('id') not in _AVISADO:
+            _AVISADO.add(b.get('id'))
+            print(f"{b.get('id')} · quité o suavicé {n} emociones (máx. 3 por minuto, nunca seguidas)", flush=True)
+    return t
+
+
+_AVISADO = set()
 
 
 def firma(b, a):
