@@ -3563,6 +3563,14 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
     progreso(100, 'Listo')
 
 
+
+def manuales(archivo):
+    """Las etiquetas o flechas marcadas a mano («manual»: true, desde «➕ Marcar a mano» de la vista previa) del archivo actual."""
+    try:
+        return [x for x in json.load(open(archivo, encoding='utf-8')) if isinstance(x, dict) and x.get('manual')]
+    except (OSError, ValueError, TypeError):
+        return []
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', required=True)
@@ -3602,6 +3610,7 @@ def main():
         if a.modo != 'api':
             raise SystemExit('ERROR: las flechas automáticas necesitan una IA con visión configurada (⚙ Ajustes IA).')
         datos = senales_auto(d, json.load(open(a.ajustes, encoding='utf-8')), a.video or os.path.join(d, '3_voz.mp4'))
+        datos = datos + manuales(destino)  # las que marcaste a mano en la vista previa: la IA no las borra ni las cambia
         if os.path.exists(destino):
             os.replace(destino, destino + '.anterior')
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -3854,6 +3863,8 @@ def main():
         # así ves el guion apenas la IA lo escribe y, si no te gusta, pides otro sin esperarla
         datos['revision_imagen_pendiente'] = 'ia' if todo_ia else 'ocr'
         avisos.append('la revisión de cada bloque contra su imagen se hace cuando pulses «Seguir con todo»')
+    if a.tarea == 'etiquetas' and isinstance(datos, list):
+        datos = datos + manuales(destino)  # las que pusiste a mano en la vista previa se quedan tal cual
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

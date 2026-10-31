@@ -15,6 +15,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
 
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
+import traceback
 import glob, hashlib, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -660,6 +661,8 @@ def comandos(paso, d, op):
         mo[mo.index('guion.json')], mo[mo.index('1_montaje.mp4')] = PRUEBA_GUION, 'prueba_montaje.mp4'
         return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'] + voz_args(d), mo,
                 [PY, m('voz', 'mezclar_voz.py'), 'prueba_montaje.mp4', PRUEBA_GUION, 'voz', 'prueba_bloques.mp4']]
+    if paso == 'vista_previa':  # las diapositivas de «👀 Vista previa» (no pone nada en el video)
+        return [[PY, m('vista', 'vista.py'), '--proyecto', '.']]
     if paso == 'final_sin_trailer':
         return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
     raise ValueError(paso)
@@ -683,6 +686,8 @@ PASOS = [
     {'id': 'testimonios', 'nombre': 'Testimonios de clientes', 'necesita': ['3_voz.mp4', 'testimonios/testimonios.json'], 'produce': '8_testimonios.mp4', 'opcional': True, 'blando': True},
     {'id': 'nuevos_modelos', 'nombre': 'Nuevos modelos', 'necesita': ['3_voz.mp4', 'nuevos_modelos/modelos.json'], 'produce': '9_modelos.mp4', 'opcional': True, 'blando': True},
     {'id': 'trailer', 'nombre': 'Tráiler ANTES · DURANTE · DESPUÉS', 'necesita': ['3_voz.mp4', 'trailer.json'], 'produce': 'FINAL.mp4', 'opcional': True, 'blando': True},
+    {'id': 'vista_previa', 'nombre': 'Diapositivas de etiquetas y flechas para aprobar', 'necesita': ['3_voz.mp4'], 'produce': 'vista_extras',
+     'oculto': True, 'blando': True},
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'prueba', 'nombre': 'Probar solo unos bloques', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'prueba_bloques.mp4', 'oculto': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': [], 'produce': '', 'oculto': True},
@@ -2868,6 +2873,25 @@ class Manejador(BaseHTTPRequestHandler):
                         guion_de_prueba(carpeta(q['p']), datos.get('desde'), datos.get('hasta'))
                     except (ValueError, KeyError, IndexError) as e:
                         return self.error(str(e))
+                if aj.get('revisar_extras', True) is not False and not datos.get('revisado')                         and (any(x in pasos for x in ('etiquetas', 'senales')) or datos.get('_pausa') == 'extras'):
+                    # pedido de fabian (31/10/2026): nada de etiquetas ni flechas en el video sin pasar antes por «👀 Vista previa».
+                    # Se arma todo lo demás (sin ellas), se dibujan las diapositivas y se para: «▶ Ponerlas en el video» las pone
+                    # (llama con revisado). En la cola de noche el video queda armado y las etiquetas quedan pendientes de aprobar.
+                    pasos = [x for x in pasos if x not in ('etiquetas', 'senales')]
+                    ia_ = [i for i, x in enumerate(pasos) if x in ('etiquetas_ia', 'senales_ia')]
+                    pasos.insert(ia_[-1] + 1 if ia_ else len(pasos), 'vista_previa')
+                    datos['_pausa'] = 'vista'
+                    datos.pop('_seguir', None)
+                    try:
+                        json.dump({'desde': time.strftime('%Y-%m-%d %H:%M'), 'paso': q['paso']},
+                                  open(os.path.join(carpeta(q['p']), 'vista_pendiente.json'), 'w', encoding='utf-8'))
+                    except OSError:
+                        pass
+                elif datos.get('revisado') and any(x in pasos for x in ('etiquetas', 'senales')):
+                    try:  # ya las aprobaste en la vista previa: deja de estar pendiente
+                        os.remove(os.path.join(carpeta(q['p']), 'vista_pendiente.json'))
+                    except OSError:
+                        pass
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 falta_si = gasto_sin_confirmar(carpeta(q['p']), q['paso'], pasos, datos)
@@ -3278,7 +3302,8 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/vista_extras':  # dibuja las diapositivas de la vista previa (todas, o solo q['solo'] = «senal:2»)
                 d = carpeta(q['p'])
                 solo = re.sub(r'[^a-z:0-9]', '', q.get('solo', ''))
-                r = subprocess.run([PY, m('vista', 'vista.py'), '--proyecto', '.'] + (['--solo', solo] if solo else []), cwd=d,
+                # sin m(): dentro de do_POST «m» es una variable local y fallaba con UnboundLocalError («Failed to fetch»)
+                r = subprocess.run([PY, os.path.join(RAIZ, 'vista', 'vista.py'), '--proyecto', '.'] + (['--solo', solo] if solo else []), cwd=d,
                                    capture_output=True, text=True, encoding='utf-8', errors='replace', **SIN_VENTANA)
                 if r.returncode:
                     return self.error((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'falló la vista previa')
@@ -3637,6 +3662,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True, 'url': 'http://localhost:3000'})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
+        except Exception as e:  # cualquier otro error contesta con su mensaje (antes cortaba la conexión: «Failed to fetch»)
+            traceback.print_exc()
+            return self.error(f'{type(e).__name__}: {e}', 500)
         self.error('no encontrado', 404)
 
 

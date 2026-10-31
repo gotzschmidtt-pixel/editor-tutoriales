@@ -211,11 +211,28 @@ def main():
             return float(x['t']), None
         return segundo_de_frase(d, inicio, x.get('bloque'), x.get('frase') or x.get('texto') or ''), None
 
-    items = [('etiqueta', i, e) for i, e in enumerate(leer('etiquetas.json'))] +             [('senal', i, s) for i, s in enumerate(leer('senales.json'))]
+    senales_ = leer('senales.json')
+    items = [('etiqueta', i, e) for i, e in enumerate(leer('etiquetas.json'))] +             [('senal', i, s) for i, s in enumerate(senales_)]
+    # tus marcas de «🎯 Flechas y círculos» (marcas_senales/marcas.json) también salen, aunque todavía no estén en senales.json
+    # (las que ya se copiaron allí, con el mismo segundo, no se repiten). Se editan en ese panel de la app.
+    ya = {round(float(s['src_t']), 1) for s in senales_ if s.get('src_t') is not None}
+    marcas = leer(os.path.join('marcas_senales', 'marcas.json'))
+    for i, m in enumerate(marcas.get('MARCAS', []) if isinstance(marcas, dict) else []):
+        z, seg = m.get('zona'), str(m.get('segundo') or '')
+        if not z or ':' not in seg or m.get('video', 'original.mp4') != 'original.mp4':
+            continue
+        src_t = int(seg.split(':')[0]) * 60 + float(seg.split(':')[1])
+        if round(src_t, 1) in ya:
+            continue
+        forma = m.get('forma') if m.get('forma') in ('circulo', 'flecha', 'caja') else 'circulo'
+        items.append(('marca', i, {'src_t': src_t, 'tipo': forma, 'x': round(z['x'] * 19.2), 'y': round(z['y'] * 10.8),
+                                   'r': max(40, round(max(z['w'] * 19.2, z['h'] * 10.8) / 2)), 'w': round(z['w'] * 19.2),
+                                   'h': round(z['h'] * 10.8), 'texto': m.get('etiqueta') or '', 'dur': 3,
+                                   'por_que': 'tu marca de «🎯 Flechas y círculos» (se edita en ese panel de la app)'}))
     lista = []
     for clase, i, x in items:
         clave = f'{clase}:{i}'
-        nombre = f"{'e' if clase == 'etiqueta' else 's'}{i:02d}.jpg"
+        nombre = f"{ {'etiqueta': 'e', 'senal': 's', 'marca': 'm'}[clase] }{i:02d}.jpg"
         if a.solo and a.solo != clave and (clase, i) in previa:
             lista.append({**previa[(clase, i)], 'aprobado': bool(x.get('aprobado'))}); continue
         t, aviso = momento(clase, x)
@@ -254,11 +271,11 @@ def main():
         lista.append({'clase': clase, 'idx': i, 'archivo': nombre, 't': t, 'aviso': aviso, 'bloque': x.get('bloque'),
                       'frase': x.get('frase'), 'tipo': x.get('tipo'), 'titulo': x.get('titulo'), 'texto': x.get('texto'),
                       'por_que': x.get('por_que'), 'duda': x.get('duda'), 'aprobado': bool(x.get('aprobado')),
-                      'x': x.get('x'), 'y': x.get('y')})
+                      'x': x.get('x'), 'y': x.get('y'), 'manual': bool(x.get('manual'))})
     # un círculo con rótulo abajo a la izquierda, mientras está la etiqueta: se tapan entre sí
     etqs = [z for z in lista if z['clase'] == 'etiqueta' and z['t'] is not None]
     for z in lista:
-        if z['clase'] == 'senal' and z['t'] is not None and z.get('texto') and (z.get('x') or 0) < 1000 and (z.get('y') or 0) > 560:
+        if z['clase'] in ('senal', 'marca') and z['t'] is not None and z.get('texto') and (z.get('x') or 0) < 1000 and (z.get('y') or 0) > 560:
             if any(abs(e['t'] - z['t']) < 4.5 for e in etqs) and not z.get('aviso'):
                 z['duda'] = (z.get('duda') + ' · ' if z.get('duda') else '') + 'su rótulo cae sobre la etiqueta de abajo a la izquierda que sale al mismo tiempo: muévelo o quita el rótulo'
     lista.sort(key=lambda z: (z['t'] is None, z['t'] or 0))

@@ -28,6 +28,14 @@
   .malo { color: var(--rojo); font-size: 13px; margin: 4px 0; }
   .info input { width: 100%; box-sizing: border-box; background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; margin: 3px 0; font: inherit; }
   .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  #mano { display: none; background: var(--panel); border: 2px solid var(--rosa); border-radius: 14px; padding: 14px; margin-bottom: 18px; }
+  #mano .marco { position: relative; max-width: 1100px; }
+  #mano video { width: 100%; display: block; border-radius: 10px; background: #000; }
+  #mano canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  #mano .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  #mano input[type=text], #mano select, #mano input[type=number] { background: #0f1426; color: var(--texto); border: 1px solid var(--borde);
+    border-radius: 8px; padding: 6px 8px; font: inherit; }
+  #tiempo { flex: 1; min-width: 200px; }
 </style>
 </head>
 <body>
@@ -50,6 +58,7 @@
   </script>
   <h1>👀 Vista previa · <span id="nombre"></span></h1>
   <button onclick="generar()" id="btnGen" title="Dibuja cada etiqueta y cada círculo sobre el cuadro exacto del video (1–2 min). No gasta nada">🔄 Generar / actualizar</button>
+  <button onclick="abrirMano()" id="btnMano" title="Pausa el video donde quieras y pon tú un círculo, una flecha, un recuadro o una etiqueta">➕ Marcar a mano</button>
   <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min, sin gastar créditos)">▶ Ponerlas en el video</button>
   <span class="msg" id="msg"></span>
 </header>
@@ -57,6 +66,30 @@
   <p class="aviso">Cada diapositiva es el cuadro del video donde aparece esa etiqueta o ese círculo, dibujado como va a quedar
   (sin la animación). Apruébala, cambia el texto o quítala. En los círculos, <b>haz clic en la imagen</b> para moverlo a ese lugar.
   Nada se pone en el video hasta que pulses «▶ Ponerlas en el video».</p>
+  <section id="mano">
+    <b>➕ Marcar a mano</b> <span class="aviso">Pausa en el momento que quieras, elige qué poner y haz clic en el video:
+    círculo = clic en el centro · recuadro = arrastra · flecha = clic en la punta y después clic de dónde viene · etiqueta = un clic.
+    Lo que marques aquí la IA nunca lo borra ni lo cambia.</span>
+    <div class="marco"><video id="mVideo" preload="metadata"></video><canvas id="mLienzo" width="1920" height="1080"></canvas></div>
+    <div class="fila">
+      <button onclick="mPlay()" id="mPlayBtn">▶</button>
+      <button onclick="mSaltar(-1)">−1 s</button><button onclick="mSaltar(-0.2)">−0,2</button>
+      <button onclick="mSaltar(0.2)">+0,2</button><button onclick="mSaltar(1)">+1 s</button>
+      <input type="range" id="tiempo" min="0" max="1" step="0.05" value="0" oninput="mVideoEl.currentTime = +this.value">
+      <span id="mHora" class="chip">0:00.0</span>
+    </div>
+    <div class="fila">
+      <select id="mTipo" onchange="mLimpiar()"><option value="circulo">⭕ Círculo</option><option value="flecha">➡ Flecha</option>
+        <option value="caja">▭ Recuadro</option><option value="etiqueta">🏷 Etiqueta de texto</option></select>
+      <input type="text" id="mTitulo" placeholder="Título (solo etiqueta)" style="width:10em">
+      <input type="text" id="mTexto" placeholder="Texto o rótulo (opcional en círculos)" style="flex:1; min-width:12em" oninput="mDibujar()">
+      <label class="aviso">Dura <input type="number" id="mDur" value="3" min="1" max="15" step="0.5" style="width:4.5em"> s</label>
+      <label class="aviso">Color <input type="color" id="mColor" value="#ff2bd6" oninput="mDibujar()"></label>
+      <button class="principal" onclick="mGuardar()" id="mGuardarBtn" disabled>💾 Agregar</button>
+      <button onclick="mLimpiar()">✕ Borrar trazo</button>
+    </div>
+    <div class="aviso" id="mAyuda"></div>
+  </section>
   <p id="resumen" class="aviso"></p>
   <div class="grilla" id="grilla"></div>
 </main>
@@ -93,19 +126,19 @@ function pintar() {
   $('#resumen').textContent = LISTA.length ? `${LISTA.length} en total · ${ap} aprobadas · ${LISTA.filter(x => x.duda).length} con duda` + (malas ? ` · ${malas} que no se pondrían` : '') : '';
   $('#grilla').innerHTML = LISTA.map((x, k) => `<div class="diapo ${x.aprobado ? 'aprobada' : ''}" id="d${k}">
     <img src="/archivo?p=${q(P)}&sub=vista_extras&f=${x.archivo}&v=${V}" onclick="mover(event, ${k})" title="${x.clase === 'senal' ? 'Clic: mover el círculo aquí' : ''}">
-    <div class="info"><div class="cab"><b>${x.clase === 'etiqueta' ? '🏷 Etiqueta' : x.tipo === 'caja' ? '⭕ Recuadro' : '⭕ Círculo'}</b>
-      <span class="chip">${esc(x.bloque || '')}</span><span class="chip">${mmss(x.t)} del video</span>${x.aprobado ? '<span class="chip ok">✓ aprobada</span>' : ''}</div>
+    <div class="info"><div class="cab"><b>${x.clase === 'etiqueta' ? '🏷 Etiqueta' : x.tipo === 'caja' ? '▭ Recuadro' : x.tipo === 'flecha' ? '➡ Flecha' : '⭕ Círculo'}</b>
+      <span class="chip">${esc(x.bloque || '')}</span><span class="chip">${mmss(x.t)} del video</span>${x.aprobado ? '<span class="chip ok">✓ aprobada</span>' : ''}${x.manual ? '<span class="chip">✋ a mano</span>' : ''}${x.clase === 'marca' ? '<span class="chip">🎯 tu marca</span>' : ''}</div>
       ${x.aviso ? `<div class="malo">⚠ ${esc(x.aviso)}</div>` : ''}
       ${x.duda ? `<div class="duda">❓ ${esc(x.duda)}</div>` : ''}
       ${x.por_que ? `<div class="aviso">${esc(x.por_que)}</div>` : ''}
       ${x.clase === 'etiqueta' ? `<input data-k="${k}" data-c="titulo" value="${esc(x.titulo)}" placeholder="Título">` : ''}
       <input data-k="${k}" data-c="texto" value="${esc(x.texto)}" placeholder="${x.clase === 'etiqueta' ? 'Texto' : 'Rótulo (vacío = sin rótulo)'}">
       ${x.frase ? `<div class="aviso">aparece cuando la voz dice «${esc(x.frase)}»</div>` : ''}
-      <div class="acciones">
+      ${x.clase === 'marca' ? `<div class="acciones"><button onclick="open('/?p=' + q(P) + '#panelMarcas')">🎯 Editar en «Flechas y círculos»</button></div></div></div>` : `<div class="acciones">
         <button onclick="aprobar(${k})">${x.aprobado ? '↺ Quitar aprobación' : '✓ Aprobar'}</button>
         <button onclick="guardarTexto(${k})">💾 Guardar texto y ver</button>
         <button onclick="quitar(${k})">🗑 Quitar</button>
-      </div></div></div>`).join('');
+      </div></div></div>`}`).join('');
 }
 async function cambiar(k, fn) {  // cambia la marca en etiquetas.json o senales.json (lo mismo que lee el armado)
   const x = LISTA[k], f = ARCH[x.clase];
@@ -162,6 +195,92 @@ async function poner() {
   } catch (e) { msg(e.message, 'err'); }
   $('#btnPoner').disabled = false;
 }
+// ── ➕ Marcar a mano (pedido de fabian, 31/10/2026) ─────────────────────────────────────────────────────────────
+// Se marca sobre el mismo video que usa la vista previa (con voz y música): el segundo coincide con las diapositivas.
+const mVideoEl = $('#mVideo'), mLienzo = $('#mLienzo'), mCtx = mLienzo.getContext('2d');
+let mTrazo = null, mAbajo = null, GUION = null;
+async function abrirMano() {
+  const caja = $('#mano');
+  if (caja.style.display === 'block') { caja.style.display = 'none'; mVideoEl.pause(); return; }
+  caja.style.display = 'block';
+  if (!mVideoEl.src) {
+    const hay = async f => { const r = await fetch(`/archivo?p=${q(P)}&f=${f}`, {headers: {Range: 'bytes=0-0'}}); return r.ok; };
+    mVideoEl.src = `/archivo?p=${q(P)}&f=${await hay('4_musica.mp4') ? '4_musica.mp4' : '3_voz.mp4'}`;
+  }
+  caja.scrollIntoView({behavior: 'smooth'});
+}
+mVideoEl.addEventListener('loadedmetadata', () => { $('#tiempo').max = mVideoEl.duration; });
+mVideoEl.addEventListener('timeupdate', () => { $('#tiempo').value = mVideoEl.currentTime; $('#mHora').textContent = mmss(mVideoEl.currentTime); });
+mVideoEl.addEventListener('play', () => { $('#mPlayBtn').textContent = '⏸'; mLimpiar(); });
+mVideoEl.addEventListener('pause', () => { $('#mPlayBtn').textContent = '▶'; });
+const mPlay = () => mVideoEl.paused ? mVideoEl.play() : mVideoEl.pause();
+const mSaltar = s => { mVideoEl.pause(); mVideoEl.currentTime = Math.max(0, mVideoEl.currentTime + s); };
+const mPunto = ev => { const r = mLienzo.getBoundingClientRect();
+  return [Math.round((ev.clientX - r.left) * 1920 / r.width), Math.round((ev.clientY - r.top) * 1080 / r.height)]; };
+function mLimpiar() {
+  mTrazo = null; mAbajo = null; mCtx.clearRect(0, 0, 1920, 1080); $('#mGuardarBtn').disabled = true;
+  $('#mAyuda').textContent = {circulo: 'Haz clic en el centro de lo que quieres marcar.', caja: 'Arrastra para dibujar el recuadro.',
+    flecha: 'Clic en la punta (a dónde apunta) y después clic de dónde viene.',
+    etiqueta: 'Un clic en el video: la etiqueta sale en este segundo.'}[$('#mTipo').value];
+}
+function mDibujar() {
+  mCtx.clearRect(0, 0, 1920, 1080);
+  if (!mTrazo) return;
+  const t = mTrazo, c = $('#mColor').value;
+  mCtx.strokeStyle = c; mCtx.fillStyle = c; mCtx.lineWidth = 10;
+  if (t.tipo === 'circulo') { mCtx.beginPath(); mCtx.ellipse(t.x, t.y, t.r * 1.35, t.r * 0.85, 0, 0, 7); mCtx.stroke(); }
+  if (t.tipo === 'caja') mCtx.strokeRect(t.x - t.w / 2, t.y - t.h / 2, t.w, t.h);
+  if (t.tipo === 'flecha') {
+    mCtx.beginPath(); mCtx.arc(t.x, t.y, 14, 0, 7); mCtx.fill();
+    if (t.ox != null) { mCtx.beginPath(); mCtx.moveTo(t.ox, t.oy); mCtx.lineTo(t.x, t.y); mCtx.stroke(); }
+  }
+  if (t.tipo === 'etiqueta') { mCtx.font = 'bold 44px system-ui'; mCtx.fillText('🏷 ' + ($('#mTexto').value || 'etiqueta'), 60, 1000); }
+}
+mLienzo.addEventListener('mousedown', ev => {
+  if (!mVideoEl.paused) mVideoEl.pause();
+  const [x, y] = mPunto(ev), tipo = $('#mTipo').value;
+  if (tipo === 'caja') { mAbajo = [x, y]; mTrazo = {tipo, x, y, w: 0, h: 0}; }
+  else if (tipo === 'flecha' && mTrazo && mTrazo.tipo === 'flecha' && mTrazo.ox == null) {
+    // de dónde viene: el mismo ángulo que usa la vista previa (0 = desde la derecha)
+    mTrazo.ox = x; mTrazo.oy = y; mTrazo.angulo = Math.round(Math.atan2(y - mTrazo.y, x - mTrazo.x) * 180 / Math.PI);
+  } else if (tipo === 'flecha') { mTrazo = {tipo, x, y, r: 70}; $('#mAyuda').textContent = 'Ahora clic de dónde viene la flecha.'; }
+  else mTrazo = {tipo, x, y, r: 70};
+  mDibujar();
+  $('#mGuardarBtn').disabled = !(mTrazo && (tipo !== 'flecha' || mTrazo.ox != null) && tipo !== 'caja');
+});
+mLienzo.addEventListener('mousemove', ev => {
+  if (!mAbajo) return;
+  const [x, y] = mPunto(ev);
+  mTrazo = {tipo: 'caja', x: Math.round((x + mAbajo[0]) / 2), y: Math.round((y + mAbajo[1]) / 2), w: Math.abs(x - mAbajo[0]), h: Math.abs(y - mAbajo[1])};
+  mDibujar();
+});
+mLienzo.addEventListener('mouseup', () => { if (mAbajo) { mAbajo = null; $('#mGuardarBtn').disabled = !(mTrazo && mTrazo.w > 10 && mTrazo.h > 10); } });
+async function mGuardar() {
+  if (!mTrazo) return;
+  const t = Math.round(mVideoEl.currentTime * 100) / 100, dur = +$('#mDur').value || 3, color = $('#mColor').value;
+  const texto = $('#mTexto').value.trim();
+  $('#mGuardarBtn').disabled = true;
+  try {
+    if (mTrazo.tipo === 'etiqueta') {  // las etiquetas van por bloque: «en» = segundos desde que empieza su bloque (como el editor por pistas)
+      GUION = GUION || (await leerJson('guion.json')).bloques || [];
+      const b = [...GUION].reverse().find(z => z.inicio_min <= t - 0.3) || GUION[0];
+      const datos = await leerJson('etiquetas.json');
+      datos.push({bloque: b.id, en: Math.max(0, Math.round((t - b.inicio_min - 0.3) * 100) / 100), tipo: 'consejo',
+                  titulo: $('#mTitulo').value.trim(), texto, dur, color, manual: true, aprobado: true});
+      await guardarJson('etiquetas.json', datos);
+      mLimpiar(); return await generar(`etiqueta:${datos.length - 1}`);
+    }
+    const s = {t, tipo: mTrazo.tipo, x: mTrazo.x, y: mTrazo.y, dur, color, manual: true, aprobado: true};
+    if (mTrazo.tipo === 'caja') Object.assign(s, {w: mTrazo.w, h: mTrazo.h}); else s.r = mTrazo.r;
+    if (mTrazo.tipo === 'flecha') s.angulo = mTrazo.angulo;
+    if (texto) s.texto = texto;
+    const datos = await leerJson('senales.json');
+    datos.push(s);
+    await guardarJson('senales.json', datos);
+    mLimpiar(); await generar(`senal:${datos.length - 1}`);
+  } catch (e) { msg(e.message, 'err'); }
+}
+mLimpiar();
 cargar();
 </script>
 </body>
