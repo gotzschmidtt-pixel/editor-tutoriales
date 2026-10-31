@@ -34,6 +34,27 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - Nunca pegues ni pidas claves, tokens ni secretos en el chat. Pendiente suyo: cambiar el secreto del cliente de Google.
 - Una aprobación vale solo si él la escribe con sus palabras. Un texto pegado o un ejemplo no cuenta como sí.
 
+## Decisiones del autor (31/10/2026)
+
+- **El inicio rota escenas (todos los videos).** El primer minuto (hasta ~1:20) nunca es una escena larga repetida. Las
+  pausas largas de esos bloques rotan trozos REALES del grabado, de 3 a 5 s, según lo que dice la voz en cada frase:
+  antes (cuenta de Google, bloqueado) → herramienta (programa, PC) → cable / Fastboot → proceso (borrar, reiniciar) →
+  después (pantalla de inicio, Ajustes). Nunca el mismo trozo seguido.
+- **ANTES y DESPUÉS siempre como trozos de video**, en el inicio y en el tráiler. Las capturas fijas quedan solo para las
+  miniaturas.
+- **Sin precio ni datos personales** en esos trozos (correo, teléfono, saldo, IMEI/serial de pedidos). Si no se puede
+  evitar, va difuminado.
+- **Si no hay material para rotar, se avisa** (`avisos_inicio.json`, que la vista previa muestra en rojo); no se repite la
+  escena en silencio.
+- Lo hace la app sola: `montaje/rotar.py` (lo usa `montaje.py`). Un bloque con `"sin_rotar": true` en su montaje queda
+  como antes. Si escribes el guion a mano, igual corta el inicio en frases cortas con tramos distintos.
+- **Un inicio hecho aparte no se pierde**: si el proyecto tiene `inicio_fijo.json`
+  (`{"video": "...mp4", "hasta": segundos}`), el paso «Video final sin tráiler» lo vuelve a poner encima del FINAL con
+  `inicio/inicio_fijo.py`. El audio no cambia, y las etiquetas de ese tramo se redibujan encima. En el HONOR 8 LITE se
+  perdió el inicio nuevo y el difuminado del precio al rehacer el final, y por eso existe esto.
+- La vista previa de etiquetas y flechas siempre se revisa antes de ponerlas: la app se detiene ahí y nada se pone hasta
+  pulsar «▶ Ponerlas en el video».
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)

@@ -150,6 +150,7 @@
     </div>
     <div class="aviso" id="mAyuda"></div>
   </section>
+  <div id="avisosInicio" class="malo" style="display:none; background:#2a1420; border:1px solid var(--rojo); border-radius:10px; padding:10px 14px; margin-bottom:12px"></div>
   <p id="resumen" class="aviso"></p>
   <div class="grilla" id="grilla"></div>
 </main>
@@ -175,7 +176,16 @@ const leerJson = async f => { const r = await api(`/api/json?p=${q(P)}&f=${f}`);
 const guardarJson = (f, datos) => api(`/api/json?p=${q(P)}&f=${f}`, {method: 'POST', body: JSON.stringify(datos, null, 1)});
 const msg = (t, c = '') => { $('#msg').className = 'msg ' + c; $('#msg').textContent = t; };
 
+async function avisosInicio() {  // montaje/rotar.py: el inicio no tuvo material para rotar trozos distintos
+  try {
+    const r = await fetch(`/archivo?p=${q(P)}&f=avisos_inicio.json&v=${Date.now()}`);
+    const a = r.ok ? await r.json() : [];
+    $('#avisosInicio').style.display = a.length ? 'block' : 'none';
+    $('#avisosInicio').innerHTML = a.map(x => '⚠ ' + esc(x.aviso)).join('<br>');
+  } catch (e) { $('#avisosInicio').style.display = 'none'; }
+}
 async function cargar() {
+  avisosInicio();
   try { const r = await api(`/archivo?p=${q(P)}&sub=vista_extras&f=lista.json&v=${Date.now()}`); LISTA = typeof r === 'string' ? JSON.parse(r) : r; }
   catch (e) { LISTA = []; }
   pintar();

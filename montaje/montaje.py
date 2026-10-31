@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'mejorar'))
 import mejorar  # noqa: E402  «✨ Mejorar imagen» (Real-ESRGAN) en las pausas quietas, si lo pediste
 from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a ElevenLabs
 import encuadres  # noqa: E402  nunca más de 15 s con la misma toma: cambia el encuadre
+import rotar  # noqa: E402  el inicio rota trozos reales del grabado (regla de fabian, 31/10/2026)
 
 
 VENTANA = 2.4       # segundos de escena que se repiten (ida y vuelta) en vez de congelar un cuadro
@@ -266,6 +267,9 @@ def main():
     mini = encuadres.miniaturas(a.original, os.path.splitext(a.original)[0] + '.encuadres.npz')
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
+    # regla de fabian (31/10/2026): en el inicio, las pausas largas rotan trozos reales del grabado (rotar.py)
+    rota = rotar.planear(d['bloques'], os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'mapa_video.json'),
+                         carpeta_voz, dur_original, FPS)
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
     os.makedirs(cache, exist_ok=True)
     usadas = set()
@@ -298,11 +302,12 @@ def main():
             agitada = bool(sel.any() and nt[2][sel].mean() > umbral_agitada)
             if agitada:
                 print(i, '· la escena de la pausa se mueve mucho: queda quieta en su mejor cuadro, con zoom lento', flush=True)
-        quieto = bool(m.get('quieto')) or agitada
+        quieto = (bool(m.get('quieto')) or agitada) and i not in rota
         cambio = cara or tocada  # solo cambia la clave de las pausas tocadas: las demás no se rehacen
         nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
         clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else [])
-                                        + ([plan.get((i, 'a')), plan.get((i, 'b')), 'otro_momento'] if (i, 'a') in plan or (i, 'b') in plan else []),
+                                        + ([plan.get((i, 'a')), plan.get((i, 'b')), 'otro_momento'] if (i, 'a') in plan or (i, 'b') in plan else [])
+                                        + (['rota', rota[i]] if i in rota else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         try:
@@ -338,7 +343,14 @@ def main():
             t = m.get('cuadro', mejor(*nt, *((m['src_fin'] - 2, m['src_fin']) if agitada else v)))
             f = os.path.join(tmp, f'{i}_b.mp4')
             nfr = int(round(m['congelar_s'] * FPS))
-            if quieto:  # cuadro fijo con zoom lento (como antes)
+            if i in rota:  # inicio: trozos reales distintos del grabado, uno tras otro, a velocidad normal
+                hechos = []
+                for k, (s_k, n_k) in enumerate(rota[i]):
+                    f_k = os.path.join(tmp, f'{i}_r{k}.mp4')
+                    run(['-ss', f'{s_k:.2f}', '-t', f'{n_k / FPS + 1:.2f}', '-i', a.original, '-an', '-vf', f"{out},tpad=stop_mode=clone:stop_duration=2{lab}",
+                         '-frames:v', str(n_k)] + enc + [f_k])
+                    hechos.append(f_k)
+            elif quieto:  # cuadro fijo con zoom lento (como antes)
                 png = os.path.join(tmp, f'{i}.png')
                 run(['-ss', str(t), '-i', a.original, '-frames:v', '1', png])
                 if nitido:

@@ -711,7 +711,10 @@ def comandos(paso, d, op):
     if paso == 'vista_previa':  # las diapositivas de «👀 Vista previa» (no pone nada en el video)
         return [[PY, m('vista', 'vista.py'), '--proyecto', '.']]
     if paso == 'final_sin_trailer':
-        return [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
+        c = [['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', ultimo_video(d, None), '-c', 'copy', 'FINAL.mp4']]
+        if existe(d, 'inicio_fijo.json'):  # un inicio hecho aparte se vuelve a poner solo (antes se perdía al rehacer el final)
+            c.append([PY, m('inicio', 'inicio_fijo.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
+        return c
     raise ValueError(paso)
 
 
