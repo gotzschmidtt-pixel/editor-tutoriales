@@ -2477,18 +2477,18 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/conocimiento/guiones_ia':  # «📚 Guiones de las IAs»: cada módulo con sus versiones, para leerlas
                 ver = lambda f: '/ver?ruta=' + urllib.parse.quote(os.path.relpath(f, RAIZ).replace('\\', '/'))
                 mods = conocimiento.lista_guiones_ia()
-                for m in mods:
-                    for g in m['guiones']:
+                for mod in mods:  # (no «m»: taparía el ayudante m() en todo do_GET)
+                    for g in mod['guiones']:
                         g['ver'], g['ver_json'] = ver(g['md']), ver(g['json'])
                 return self.responder({'modulos': mods, 'este': conocimiento.modulo_de_proyecto(carpeta(q['p'])) if q.get('p') else ''})
             if ruta == '/api/conocimiento/marca':  # una marca (MOTOROLA, APPLE…): su texto, su ruta y la lista de marcas
                 return self.responder(self._marca(q.get('m') or '', q.get('p') or ''))
             if ruta == '/api/conocimiento/bajar':  # todo en un solo archivo, para subirlo al chat de otra IA
-                m = re.sub(r'[^\w\-]', '', q.get('marca') or '').upper()  # «⬇ Bajar CONOCIMIENTO HONOR»: solo lo de esa marca (y lo general)
-                cuerpo = (conocimiento.texto_marca_completo(m) if m else conocimiento.texto_completo()).encode('utf-8')
+                marca = re.sub(r'[^\w\-]', '', q.get('marca') or '').upper()  # «⬇ Bajar CONOCIMIENTO HONOR»: solo lo de esa marca (y lo general)
+                cuerpo = (conocimiento.texto_marca_completo(marca) if marca else conocimiento.texto_completo()).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/markdown; charset=utf-8')
-                self.send_header('Content-Disposition', f'attachment; filename="CONOCIMIENTO{"_" + m if m else ""}.md"')
+                self.send_header('Content-Disposition', f'attachment; filename="CONOCIMIENTO{"_" + marca if marca else ""}.md"')
                 self.send_header('Content-Length', str(len(cuerpo)))
                 self.end_headers()
                 self.wfile.write(cuerpo)
@@ -3030,9 +3030,9 @@ class Manejador(BaseHTTPRequestHandler):
                 if antes is not None and mias:
                     resp = {re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower(): x for x in mias}
                     for x in antes.get('preguntas') or []:
-                        m = resp.get(re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower())
-                        if m:
-                            x['respuesta'], x['hecha'] = m['respuesta'], m.get('hecha', False)
+                        previa = resp.get(re.sub(r'\W+', ' ', str(x.get('pregunta') or '')).strip().lower())
+                        if previa:  # (no «m»: taparía el ayudante m() en todo do_POST — «UnboundLocalError», 31/10/2026)
+                            x['respuesta'], x['hecha'] = previa['respuesta'], previa.get('hecha', False)
                 if mias:
                     try:
                         conocimiento.aprender_de_proyecto(d)
