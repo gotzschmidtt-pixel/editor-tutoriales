@@ -108,13 +108,48 @@ def ruta_segura(rel):
     return f
 
 
-PAGINA_ABIERTO = ('<!doctype html><meta charset="utf-8"><title>Abierto</title><body style="background:#0b0e1a;color:#e8ecff;'
-                  'font:16px system-ui;padding:40px">✓ Lo abrí en tu PC. Ya puedes cerrar esta pestaña.'
-                  '<script>setTimeout(() => window.close(), 1200)</script></body>')
+# Windows no deja que una ventana nueva le quite el foco al navegador: el Explorador quedaba detrás de Chrome (fabian, 31/10/2026).
+# Este PowerShell abre la carpeta, busca su ventana y la trae al frente (el «Alt» simulado es lo que Windows pide para permitirlo).
+# La ruta va por variable de entorno, nunca dentro del texto del comando; y solo se muestran carpetas, no se ejecuta nada.
+PS_AL_FRENTE = r"""
+$d = $env:ESTUDIO_CARPETA; $sel = $env:ESTUDIO_MARCAR
+Add-Type 'using System; using System.Runtime.InteropServices; public class VentanaEstudio {
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+ [DllImport("user32.dll")] public static extern void keybd_event(byte b, byte s, uint f, UIntPtr e); }'
+$sh = New-Object -ComObject Shell.Application
+if ($sel) { Start-Process explorer.exe -ArgumentList ('/select,"' + $sel + '"') } else { $sh.Open($d) }
+for ($i = 0; $i -lt 20; $i++) {
+  Start-Sleep -Milliseconds 250
+  $w = $sh.Windows() | Where-Object { try { $_.Document.Folder.Self.Path -eq $d } catch { $false } } | Select-Object -Last 1
+  if ($w) {
+    $h = [IntPtr]$w.HWND
+    [VentanaEstudio]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [VentanaEstudio]::ShowWindow($h, 9) | Out-Null
+    [VentanaEstudio]::SetForegroundWindow($h) | Out-Null
+    [VentanaEstudio]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    break
+  }
+}
+"""
 
 
-def pagina_carpeta(d):
-    """Una carpeta de la app en el navegador: escuchas los audios, ves los videos e imágenes, y la abres en el Explorador."""
+def abrir_al_frente(f):
+    """Abre la carpeta (o la carpeta de un archivo, con él marcado) en el Explorador y la trae delante del navegador."""
+    if sys.platform != 'win32':
+        return subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f if os.path.isdir(f) else os.path.dirname(f)])
+    d = f if os.path.isdir(f) else os.path.dirname(f)
+    env = {**os.environ, 'ESTUDIO_CARPETA': os.path.normpath(d), 'ESTUDIO_MARCAR': '' if os.path.isdir(f) else os.path.normpath(f)}
+    try:
+        subprocess.Popen(['powershell', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', PS_AL_FRENTE],
+                         env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except OSError:  # sin PowerShell: como antes (puede quedar detrás del navegador)
+        subprocess.Popen(['explorer', f] if os.path.isdir(f) else ['explorer', '/select,', f])
+
+
+def pagina_carpeta(d, abierto=False):
+    """Una carpeta de la app en el navegador: escuchas los audios, ves los videos e imágenes, y la abres en el Explorador.
+    Con abierto=True es la página que queda en el navegador después de «/abrir» (la carpeta ya se abrió en la PC)."""
     import html
     if os.path.isfile(d):
         d = os.path.dirname(d)
@@ -134,7 +169,7 @@ def pagina_carpeta(d):
             filas.append(f'<div class="f">🎬 <b>{nom}</b> <span>({os.path.getsize(p) / 1e6:.0f} MB)</span><br>'
                          f'<video controls preload="metadata" src="/ver?ruta={enc(p)}"></video></div>')
         elif e in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
-            filas.append(f'<div class="f">🖼 <b>{nom}</b><br><img src="/ver?ruta={enc(p)}"></div>')
+            filas.append(f'<div class="f">🖼 <b>{nom}</b><br><img loading="lazy" src="/ver?ruta={enc(p)}"></div>')
         else:
             filas.append(f'<div class="f">📄 <a href="/ver?ruta={enc(p)}" target="_blank">{nom}</a></div>')
     arriba = '' if os.path.realpath(d) == os.path.realpath(RAIZ) else f'<a href="/carpeta?ruta={enc(os.path.dirname(d))}">⬆ Subir</a> · '
@@ -142,10 +177,22 @@ def pagina_carpeta(d):
 <style>body{{background:#0b0e1a;color:#e8ecff;font:15px system-ui;padding:20px;max-width:1100px;margin:auto}}a{{color:#7cc4ff}}
 .f{{background:#151a2e;border:1px solid #2a3150;border-radius:10px;padding:10px 12px;margin:8px 0}}audio{{width:100%;margin-top:6px}}
 video,img{{max-width:100%;max-height:60vh;margin-top:6px;border-radius:8px}}span{{color:#9aa3c0}}
+.mini{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}}.mini .f{{margin:0}}.mini img{{max-height:200px;width:100%;object-fit:contain}}
 .b{{display:inline-block;background:#ff2bd6;color:#fff;padding:8px 14px;border-radius:10px;text-decoration:none}}</style>
-<h2>📁 {html.escape(os.path.basename(d))}</h2><p style="color:#9aa3c0">{html.escape(d)}</p>
-<p>{arriba}<a class="b" href="/abrir?ruta={enc(d)}" target="_blank">📂 Abrir en el Explorador</a></p>
-{''.join(filas) or '<p>Carpeta vacía.</p>'}"""
+{'<p style="background:#12351f;border:1px solid #38f28a;border-radius:10px;padding:12px 14px;font-size:17px">📂 <b>Abrí la carpeta en tu PC</b> '
+ '(si no la ves, mira la barra de tareas).</p>' if abierto else ''}
+<h2>📁 {html.escape(os.path.basename(d))}</h2>
+<p><code id="ruta" style="background:#151a2e;padding:6px 10px;border-radius:8px;user-select:all">{html.escape(os.path.normpath(d))}</code>
+<button class="b" style="border:0;cursor:pointer;font:inherit" onclick="copiar()" title="Para pegarla en el cuadro «Subir archivo» de HeyGen o de cualquier web (Ctrl+V en la barra de dirección de esa ventana)">📋 Copiar ruta</button>
+<span id="copiado" style="color:#38f28a"></span></p>
+<script>function copiar() {{
+  const t = document.getElementById('ruta').textContent, ok = () => document.getElementById('copiado').textContent = '✓ Copiada';
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(ok, () => viejo(t, ok)); else viejo(t, ok);
+}}
+function viejo(t, ok) {{ const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select();
+  try {{ document.execCommand('copy'); ok(); }} catch (e) {{ prompt('Copia la ruta (Ctrl+C):', t); }} a.remove(); }}</script>
+<p>{arriba}<a class="b" href="/abrir?ruta={enc(d)}">📂 Abrir en el Explorador</a></p>
+<div class="{'mini' if abierto else ''}">{''.join(filas) or '<p>Carpeta vacía.</p>'}</div>"""
 
 
 def estado_idiomas(d, lang=''):
@@ -2479,14 +2526,8 @@ class Manejador(BaseHTTPRequestHandler):
                 if ruta == '/abrir':
                     # solo muestra carpetas: un archivo (.py, .bat, .exe…) nunca se ejecuta, se abre su carpeta con él marcado.
                     # Cualquier página web puede pedirle esta dirección a tu navegador, así que no debe poder correr nada.
-                    if sys.platform == 'win32':
-                        if os.path.isdir(f):
-                            subprocess.Popen(['explorer', f])
-                        else:
-                            subprocess.Popen(['explorer', '/select,', f])
-                    else:
-                        subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', f if os.path.isdir(f) else os.path.dirname(f)])
-                    return self.responder(PAGINA_ABIERTO.encode('utf-8'), 'text/html; charset=utf-8')
+                    abrir_al_frente(f)
+                    return self.responder(pagina_carpeta(f, abierto=True).encode('utf-8'), 'text/html; charset=utf-8')
                 return self.responder(pagina_carpeta(f).encode('utf-8'), 'text/html; charset=utf-8')
             if ruta == '/archivo':
                 sub =q.get('sub') if q.get('sub') in ['ia_capturas', 'diagnosticos', 'voz', 'vista_extras'] + [g[0] for g in GRUPOS.values()] else ''
