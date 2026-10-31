@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>👀 Vista previa de etiquetas y círculos</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 14px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { padding: 18px 20px; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .msg { font-size: 14px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; }
+  .diapo { background: var(--panel); border: 2px solid var(--borde); border-radius: 14px; overflow: hidden; }
+  .diapo.aprobada { border-color: var(--verde); }
+  .diapo.quitada { opacity: .35; }
+  .diapo img { width: 100%; display: block; cursor: crosshair; }
+  .info { padding: 10px 14px 14px; }
+  .info .cab { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .chip { background: #222a4a; border-radius: 20px; padding: 2px 10px; font-size: 12px; }
+  .duda { color: var(--amarillo); font-size: 13px; margin: 4px 0; }
+  .malo { color: var(--rojo); font-size: 13px; margin: 4px 0; }
+  .info input { width: 100%; box-sizing: border-box; background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; margin: 3px 0; font: inherit; }
+  .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" onclick="return volverInicio()" title="Volver a la pantalla principal del Estudio (con este proyecto abierto)"
+     style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
+            background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
+  <script>
+  function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
+    const p = new URLSearchParams(location.search).get('p');
+    const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
+    let principal = null;  // si la abrió la ventana principal, cierro esta pestaña y queda la principal (sin abrir otra igual)
+    try { if (window.opener && !window.opener.closed && window.opener.location.pathname === '/') principal = window.opener; } catch (e) {}
+    if (!principal) { location.href = url; return false; }
+    try { principal.focus(); } catch (e) {}
+    window.close();
+    setTimeout(() => { if (!window.closed && document.visibilityState === 'visible') location.href = url; }, 600);
+    return false;
+  }
+  </script>
+  <h1>👀 Vista previa · <span id="nombre"></span></h1>
+  <button onclick="generar()" id="btnGen" title="Dibuja cada etiqueta y cada círculo sobre el cuadro exacto del video (1–2 min). No gasta nada">🔄 Generar / actualizar</button>
+  <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min, sin gastar créditos)">▶ Ponerlas en el video</button>
+  <span class="msg" id="msg"></span>
+</header>
+<main>
+  <p class="aviso">Cada diapositiva es el cuadro del video donde aparece esa etiqueta o ese círculo, dibujado como va a quedar
+  (sin la animación). Apruébala, cambia el texto o quítala. En los círculos, <b>haz clic en la imagen</b> para moverlo a ese lugar.
+  Nada se pone en el video hasta que pulses «▶ Ponerlas en el video».</p>
+  <p id="resumen" class="aviso"></p>
+  <div class="grilla" id="grilla"></div>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mmss = s => s == null ? '—' : `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+const ARCH = {etiqueta: 'etiquetas.json', senal: 'senales.json'};
+let LISTA = [], V = Date.now();
+$('#nombre').textContent = P;
+document.title = '👀 Vista previa · ' + P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+const leerJson = async f => { const r = await api(`/api/json?p=${q(P)}&f=${f}`); return (typeof r === 'string' ? JSON.parse(r || '[]') : r) || []; };
+const guardarJson = (f, datos) => api(`/api/json?p=${q(P)}&f=${f}`, {method: 'POST', body: JSON.stringify(datos, null, 1)});
+const msg = (t, c = '') => { $('#msg').className = 'msg ' + c; $('#msg').textContent = t; };
+
+async function cargar() {
+  try { const r = await api(`/archivo?p=${q(P)}&sub=vista_extras&f=lista.json&v=${Date.now()}`); LISTA = typeof r === 'string' ? JSON.parse(r) : r; }
+  catch (e) { LISTA = []; }
+  pintar();
+  if (!LISTA.length) msg('Todavía no hay vista previa: pulsa «🔄 Generar / actualizar».');
+}
+function pintar() {
+  const ap = LISTA.filter(x => x.aprobado).length, malas = LISTA.filter(x => x.aviso).length;
+  $('#resumen').textContent = LISTA.length ? `${LISTA.length} en total · ${ap} aprobadas · ${LISTA.filter(x => x.duda).length} con duda` + (malas ? ` · ${malas} que no se pondrían` : '') : '';
+  $('#grilla').innerHTML = LISTA.map((x, k) => `<div class="diapo ${x.aprobado ? 'aprobada' : ''}" id="d${k}">
+    <img src="/archivo?p=${q(P)}&sub=vista_extras&f=${x.archivo}&v=${V}" onclick="mover(event, ${k})" title="${x.clase === 'senal' ? 'Clic: mover el círculo aquí' : ''}">
+    <div class="info"><div class="cab"><b>${x.clase === 'etiqueta' ? '🏷 Etiqueta' : x.tipo === 'caja' ? '⭕ Recuadro' : '⭕ Círculo'}</b>
+      <span class="chip">${esc(x.bloque || '')}</span><span class="chip">${mmss(x.t)} del video</span>${x.aprobado ? '<span class="chip ok">✓ aprobada</span>' : ''}</div>
+      ${x.aviso ? `<div class="malo">⚠ ${esc(x.aviso)}</div>` : ''}
+      ${x.duda ? `<div class="duda">❓ ${esc(x.duda)}</div>` : ''}
+      ${x.por_que ? `<div class="aviso">${esc(x.por_que)}</div>` : ''}
+      ${x.clase === 'etiqueta' ? `<input data-k="${k}" data-c="titulo" value="${esc(x.titulo)}" placeholder="Título">` : ''}
+      <input data-k="${k}" data-c="texto" value="${esc(x.texto)}" placeholder="${x.clase === 'etiqueta' ? 'Texto' : 'Rótulo (vacío = sin rótulo)'}">
+      ${x.frase ? `<div class="aviso">aparece cuando la voz dice «${esc(x.frase)}»</div>` : ''}
+      <div class="acciones">
+        <button onclick="aprobar(${k})">${x.aprobado ? '↺ Quitar aprobación' : '✓ Aprobar'}</button>
+        <button onclick="guardarTexto(${k})">💾 Guardar texto y ver</button>
+        <button onclick="quitar(${k})">🗑 Quitar</button>
+      </div></div></div>`).join('');
+}
+async function cambiar(k, fn) {  // cambia la marca en etiquetas.json o senales.json (lo mismo que lee el armado)
+  const x = LISTA[k], f = ARCH[x.clase];
+  const datos = await leerJson(f);
+  if (!datos[x.idx]) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
+  fn(datos, datos[x.idx]);
+  await guardarJson(f, datos);
+}
+async function aprobar(k) {
+  try { const v = !LISTA[k].aprobado; await cambiar(k, (d, e) => { e.aprobado = v; }); LISTA[k].aprobado = v; pintar(); }
+  catch (e) { msg(e.message, 'err'); }
+}
+async function guardarTexto(k) {
+  const vals = {}; document.querySelectorAll(`#d${k} input[data-c]`).forEach(i => vals[i.dataset.c] = i.value.trim());
+  try { await cambiar(k, (d, e) => Object.assign(e, vals)); await generar(`${LISTA[k].clase}:${LISTA[k].idx}`); }
+  catch (e) { msg(e.message, 'err'); }
+}
+async function quitar(k) {
+  if (!confirm('¿Quitar esta del video? (Se puede volver a agregar a mano en el editor por pistas.)')) return;
+  try { const x = LISTA[k]; await cambiar(k, d => d.splice(x.idx, 1)); await generar(); }  // cambian los números: se rehace todo
+  catch (e) { msg(e.message, 'err'); }
+}
+async function mover(ev, k) {
+  const x = LISTA[k];
+  if (x.clase !== 'senal') return;
+  const r = ev.target.getBoundingClientRect(), f = 1920 / r.width;
+  const nx = Math.round((ev.clientX - r.left) * f), ny = Math.round((ev.clientY - r.top) * f);
+  try { await cambiar(k, (d, e) => { e.x = nx; e.y = ny; }); await generar(`${x.clase}:${x.idx}`); }
+  catch (e) { msg(e.message, 'err'); }
+}
+async function generar(solo = '') {
+  $('#btnGen').disabled = true;
+  msg(solo ? 'Redibujando esa diapositiva…' : 'Dibujando cada etiqueta y círculo sobre su cuadro (1–2 min)…');
+  try {
+    await api(`/api/vista_extras?p=${q(P)}&solo=${q(solo)}`, {method: 'POST', body: '{}'});
+    V = Date.now(); await cargar();
+    msg('✓ Listo.', 'ok');
+  } catch (e) { msg(e.message, 'err'); }
+  $('#btnGen').disabled = false;
+}
+async function poner() {
+  if (!confirm('Pongo en el video las etiquetas y los círculos que no quitaste (unos 15 min). No gasta créditos. ¿Seguir?')) return;
+  $('#btnPoner').disabled = true; msg('Poniéndolas en el video…');
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({solo: ['etiquetas', 'senales'], revisado: true, sin_ia: true})});
+    for (;;) {
+      await new Promise(r => setTimeout(r, 4000));
+      const e = await api(`/api/estado?p=${q(P)}`);
+      if (e.trabajo.proyecto) { if (e.trabajo.linea) msg('… ' + e.trabajo.linea.slice(0, 120)); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló: mira el registro en la app');
+      break;
+    }
+    msg('✓ Puestas en el video. Míralo en la app («3 · Ver resultado»).', 'ok');
+  } catch (e) { msg(e.message, 'err'); }
+  $('#btnPoner').disabled = false;
+}
+cargar();
+</script>
+</body>
+</html>

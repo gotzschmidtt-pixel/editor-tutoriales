@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tráiler</title>
+<style>
+  :root {
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  /* contraste: campos oscuros con texto claro (también los que no dicen type), casillas visibles y textos de ayuda legibles */
+  input:not([type]), input[type=text], input[type=number], input[type=password], select, textarea { background-color: var(--panel2); color: var(--texto); }
+  input:not([type]) { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
+  select, input, textarea, button { font: inherit; color: var(--texto); }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid var(--borde);
+    background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
+  .total { color: var(--suave); font-size: 14px; }
+  .total b.ok { color: var(--verde); } .total b.mal { color: var(--amarillo); }
+  .espacio { flex: 1; }
+  button { cursor: pointer; border-radius: 10px; padding: 8px 14px; font-weight: 600; background: var(--panel2); border: 1px solid var(--borde); }
+  button:hover { border-color: var(--azul); }
+  button.principal { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
+  .ayuda { color: var(--suave); font-size: 13.5px; margin: 0 0 14px; }
+  .bloque { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+  .bloque.cambiado { border-color: var(--rosa); }
+  .bloque img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
+  .meta { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
+  .meta b { color: var(--texto); }
+  .cab { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--suave); margin-bottom: 6px; flex-wrap: wrap; }
+  .cab .id { font-weight: 700; color: var(--azul); }
+  .chip { border-radius: 99px; padding: 1px 9px; background: var(--panel2); border: 1px solid var(--borde); }
+  .chip.mal { color: var(--amarillo); border-color: #ffd23f66; }
+  .chip.ok { color: var(--verde); border-color: #38f28a55; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; background: #0e111b; border: 1px solid var(--borde); border-radius: 10px;
+    padding: 10px 12px; line-height: 1.55; font-size: 15.5px; }
+  textarea:focus { outline: none; border-color: var(--azul); }
+  .acciones { display: flex; gap: 6px; margin-top: 6px; }
+  .acciones button { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  .acciones button.guardarAqui { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; font-weight: 700; }
+  dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
+  dialog textarea { min-height: 300px; font-size: 13.5px; }
+  .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
+  .orto { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 13px; }
+  .orto:empty { display: none; }
+  .sug { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #ffd23f66; border-radius: 99px; padding: 2px 4px 2px 10px; }
+  .sug s { color: var(--amarillo); text-decoration-color: var(--rojo); }
+  .sug button { padding: 1px 8px; font-size: 12.5px; font-weight: 600; border-radius: 99px; }
+  .sug button.no { background: transparent; border: 0; color: var(--suave); }
+  .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; }
+  .panel.preg { border-color: #f0c36d; }
+  .panel summary { cursor: pointer; font-weight: 600; }
+  .panel ul { margin: 6px 0; padding-left: 20px; font-size: 13.5px; color: var(--suave); }
+  .pregunta { margin: 10px 0; } .pregunta input { width: 100%; background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; } .opciones button { padding: 3px 10px; font-size: 13px; font-weight: 500; }
+  @media (max-width: 700px) { .bloque { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+</style>
+<style>
+  .campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .campos label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--suave); }
+  .campos input, .campos select, .clip input, .clip select { background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .campos .ancho { grid-column: 1 / -1; }
+  .fase { margin: 18px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+  .fase h2 { margin: 0; font-size: 17px; }
+  .fase .aviso { color: var(--suave); font-size: 14px; }
+  .clip { display: grid; grid-template-columns: 180px 180px 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 10px; margin-bottom: 10px; }
+  .clip img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; cursor: pointer; }
+  .clip .pie { font-size: 12px; color: var(--suave); text-align: center; margin-top: 3px; }
+  .clip .datos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  .clip .datos input { width: 6.5em; }
+  .clip .porque { width: 100%; margin-top: 8px; }
+  video { width: 100%; max-height: 360px; border-radius: 12px; background: #000; display: block; }
+  .vacio { color: var(--suave); font-size: 13.5px; padding: 6px 0; }
+  @media (max-width: 760px) { .clip { grid-template-columns: 1fr 1fr; } .clip > div:last-child { grid-column: 1 / -1; } .campos { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" onclick="return volverInicio()" title="Volver a la pantalla principal del Estudio (con este proyecto abierto)"
+     style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
+            background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
+  <script>
+let SELLO_LUGAR = 'arriba-izquierda';  // dónde van los sellos (pedido de fabian, 30/10/2026)
+fetch('/api/mejoras/estado?p=' + encodeURIComponent(new URLSearchParams(location.search).get('p') || '')).then(r => r.json())
+  .then(e => { SELLO_LUGAR = (e.edicion || {}).sello_lugar || SELLO_LUGAR; const s = document.getElementById('selloLugar'); if (s) s.value = SELLO_LUGAR; }).catch(() => {});
+async function lugarSello(v) {
+  SELLO_LUGAR = v;
+  await fetch('/api/mejoras/edicion?p=' + encodeURIComponent(new URLSearchParams(location.search).get('p') || ''), {method: 'POST', body: JSON.stringify({sello_lugar: v})});
+  alert('Listo: los sellos van ' + document.getElementById('selloLugar').selectedOptions[0].text.toLowerCase() + '. Vuelve a tocar «sin voz (gratis)» o «▶ Ver con voz» para verlo.');
+}
+
+  function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
+    const p = new URLSearchParams(location.search).get('p');
+    const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
+    let principal = null;  // si la abrió la ventana principal, cierro esta pestaña y queda la principal (sin abrir otra igual)
+    try { if (window.opener && !window.opener.closed && window.opener.location.pathname === '/') principal = window.opener; } catch (e) {}
+    if (!principal) { location.href = url; return false; }
+    try { principal.focus(); } catch (e) {}
+    window.close();
+    setTimeout(() => { if (!window.closed && document.visibilityState === 'visible') location.href = url; }, 600);
+    return false;
+  }
+  </script>
+  <h1>🎬 <b>Tráiler</b> · <span id="nombre"></span></h1>
+  <span class="total" id="total"></span>
+  <span class="espacio"></span>
+  <button onclick="if (!sucio || confirm('Tienes cambios sin guardar en las tomas: se pierden al recargar. ¿Recargar igual?')) { sucio = false; location.reload(); }" title="Recarga la página (como F5) para ver lo último que armó la app">🔄 Recargar</button>
+  <label class="aviso" title="GPT, Claude y DeepSeek (las que tengan modelo y clave en «⚙ Ajustes IA») proponen cada una su tráiler, a la vez. Después eliges el mejor. Se paga una propuesta a cada una"><input type="checkbox" id="varias"> Con varias IAs</label>
+  <button id="btnProponer" onclick="proponer()" title="La IA de la app (⚙ Ajustes IA) mira tu video, tu guion ya aprobado y tus respuestas, y propone las mejores tomas ANTES · DURANTE · DESPUÉS. Gasta un pedido a la IA, no ElevenLabs">✨ Proponer con la IA</button>
+  <button onclick="encargoChat()" title="Copia el pedido completo del tráiler (lo mismo que la app le manda a la IA) para pegarlo en el chat de Claude, ChatGPT o DeepSeek, sin gastar la API. También queda en ia_prompt_trailer.txt">📋 Copiar encargo para un chat (gratis)</button>
+  <button id="btnGuardar" onclick="guardar()">💾 Guardar</button>
+  <button id="btnSolo" onclick="armarSolo()" title="Arma solo el tráiler (trailer.mp4) para verlo, sin necesitar el video terminado. La frase de voz se hace con ElevenLabs una sola vez: al unirlo después no se vuelve a pagar">🎬 Ver solo el tráiler</button>
+  <button class="principal" id="btnArmar" onclick="armar()" title="Arma el tráiler y lo une a tu video. La frase de voz se hace con ElevenLabs (si ya la hiciste con «Ver solo el tráiler», no se vuelve a pagar)">▶ Armar y unir al video</button>
+</header>
+<main>
+  <p class="ayuda">El tráiler es un módulo aparte: puedes hacerlo primero, solo con tu grabación (con el guion aprobado la IA elige mejor), o al final. Con todo lo que la IA ve,
+    te propone las mejores tomas de <b>ANTES</b> (el problema), <b>DURANTE</b> (el paso clave) y <b>DESPUÉS</b> (el resultado), y te pregunta
+    lo que no le quedó claro. Tú contestas, cambias las tomas que quieras y lo armas cuando te guste.</p>
+  <p class="msg" id="msg"></p>
+  <style>@keyframes latido { from { opacity: .25 } to { opacity: .7 } }</style>
+  <div id="progreso"></div>
+  <div id="requisitos"></div>
+  <div id="largo"></div>
+  <div id="versiones"></div>
+  <div id="preguntas"></div>
+  <div id="mejoras"></div>
+  <div id="ver"></div>
+  <div id="plan"></div>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mmss = s => { s = Math.max(0, +s || 0); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${(Math.round(r * 10) / 10).toFixed(1).padStart(4, '0')}`; };
+const segundos = t => { t = String(t).trim().replace(',', '.'); const p = t.split(':').map(Number); return p.some(isNaN) ? NaN : p.reduce((a, x) => a * 60 + x, 0); };
+const FASES = [['ANTES', '😟 ANTES', 'el problema: el teléfono bloqueado, la pantalla que pide la cuenta'],
+  ['DURANTE', '⚙️ DURANTE', 'el paso clave: cuando se pone la key o el código y se ve avanzar'],
+  ['DESPUÉS', '✅ DESPUÉS', 'el resultado: ya desbloqueado, en la pantalla de inicio']];
+let T = null, E = null, DUR = 0, sucio = false, DONDE = 'inicio', OBJ = 10, ESPERANDO = false;
+// ⏱ cuánto dura el tráiler: la IA arma las tomas para ese largo (edicion.json «trailer_segundos»)
+const LARGOS = [[6, 'Gancho rápido', 'el problema y el resultado, casi sin el medio. Ideal si lo vas a reusar en Shorts.'],
+  [10, 'Recomendado', 'ANTES, el paso clave y DESPUÉS. No hace esperar al que ya buscó el tutorial: retiene en los primeros 30 s.'],
+  [15, 'Con más contexto', 'dos tomas por fase: se entiende mejor qué pasa con la key o el programa.'],
+  [20, 'Para videos largos', 'si el video pasa los 15 minutos y el proceso tiene varias etapas.'],
+  [30, 'Tipo presentación', 'casi un resumen del video. Solo si el tráiler va al final o como video aparte.']];
+function verLargo() {
+  $('#largo').innerHTML = `<details class="panel"><summary>⏱ Largo del tráiler: <b>${OBJ} s</b> (${esc((LARGOS.find(x => x[0] === OBJ) || [0, 'a tu medida'])[1])}) · cambiar</summary>
+    <p class="msg">La IA arma las tomas para ese largo cuando propone (ya propuesto, pide «✨ Proponer» otra vez).</p>
+    ${LARGOS.map(([s, nombre, que]) => `<div class="acciones" style="align-items:center"><button ${s === OBJ ? 'class="principal"' : ''} onclick="ponerLargo(${s})">${s === OBJ ? '✓ ' : ''}${s} s · ${nombre}</button><span class="msg">${que}</span></div>`).join('')}
+    <div class="acciones" style="align-items:center">Otro: <input id="largoOtro" type="number" min="5" max="40" value="${OBJ}" style="width:5em"> s <button onclick="ponerLargo(+$('#largoOtro').value)">Usar</button></div></details>`;
+}
+async function ponerLargo(s) {
+  s = Math.min(40, Math.max(5, Math.round(+s || 10)));
+  try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_segundos: s})}); OBJ = s; verLargo(); if (T) resumen(); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
+}
+$('#nombre').textContent = P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+async function esperar() {  // hasta que la app termine el paso que se pidió, con una barra de progreso
+  const t0 = Date.now();
+  try {
+    for (let k = 0; k < 1800; k++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const e = await api(`/api/estado?p=${q(P)}`), t = e.trabajo || {};
+      if (t.proyecto) { barra(t, (Date.now() - t0) / 1000); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
+      return;
+    }
+  } finally { $('#progreso').innerHTML = ''; }
+}
+function barra(t, s) {  // el % real del paso si lo escribe; si no, lo que tardó la última vez
+  const pct = t.pct_paso != null ? t.pct_paso : t.antes_s ? Math.min(95, Math.round(s / t.antes_s * 100)) : null;
+  const linea = (t.ultimas || []).slice(-1)[0] || t.linea || '';
+  s = Math.max(s, t.segundos || 0);
+  $('#progreso').innerHTML = `<div class="panel"><b>⏳ ${esc((t.plan || [])[t.i || 0] || t.paso || 'Trabajando')}</b> · ${mmss(s)}${t.antes_s ? ` (la última vez tardó ${mmss(t.antes_s)})` : ''}
+    <div style="height:10px; border-radius:6px; background:#ffffff1a; margin:8px 0; overflow:hidden"><div style="height:100%; width:${pct ?? 100}%; background:linear-gradient(90deg,#ff2bd6,#8f5bff);${pct == null ? ' opacity:.45; animation: latido 1.2s ease-in-out infinite alternate' : ''}"></div></div>
+    <div class="msg">${pct != null ? pct + ' % · ' : ''}${esc(linea.slice(0, 180))}</div></div>`;
+}
+const hay = f => !!(E && E.archivos[f]);
+async function cargar() {
+  E = await api(`/api/estado?p=${q(P)}`);
+  DUR = E.duracion_original || 0;
+  if (E.trabajo && E.trabajo.proyecto === P && !ESPERANDO) {  // abriste la página con algo trabajando: también ves la barra
+    ESPERANDO = true;
+    esperar().then(() => { ESPERANDO = false; cargar(); })
+      .catch(x => { ESPERANDO = false; $('#msg').className = 'msg err'; $('#msg').textContent = x.message; });
+  }
+  try { T = JSON.parse(await api(`/api/json?p=${q(P)}&f=trailer.json`) || 'null'); } catch (e) { T = null; }
+  try { const ed = await api(`/api/edicion?p=${q(P)}`); DONDE = ed.trailer_donde || 'inicio'; OBJ = +ed.trailer_segundos || 10; } catch (e) {}
+  verLargo();
+  const avisos = [];
+  if (!hay('guion.json')) avisos.push('Todavía no hay guion: la IA propone con tu grabación y la transcripción (con el guion aprobado elige mejor los pasos clave).');
+  if (!hay('3_voz.mp4')) avisos.push('Todavía no está el video con voz: puedes proponer y «🎬 Ver solo el tráiler»; para unirlo al video, primero «▶ Hacer todo» en la app.');
+  $('#requisitos').innerHTML = avisos.length ? `<div class="panel preg">${avisos.join('<br>')}</div>` : '';
+  $('#btnProponer').disabled = !hay('original.mp4');
+  $('#btnSolo').disabled = !hay('original.mp4') || !T;
+  $('#btnArmar').disabled = !hay('3_voz.mp4') || !T;
+  verVersiones(); verPreguntas(); verVideo(); pintar(); verIdeas();
+}
+async function verIdeas() {  // ideas_trailer.md: cómo haría Claude el tráiler (lo trae «📥 Importar lo de Claude»)
+  let t = '';
+  if (hay('ideas_trailer.md')) try { t = await api(`/archivo?p=${q(P)}&f=ideas_trailer.md&v=${E.archivos['ideas_trailer.md'].fecha}`); } catch (e) {}
+  $('#mejoras').innerHTML = t ? `<details class="panel preg" open><summary>💡 Cómo haría Claude el tráiler: ideas, guion de la voz y por qué esas tomas</summary>
+    <pre style="white-space:pre-wrap; font:inherit; margin:0">${esc(t)}</pre></details>` : '';
+}
+function verVideo() {
+  $('#ver').innerHTML = hay('trailer.mp4') ? `<details class="panel" open><summary>▶ Tráiler armado</summary>
+    <video controls preload="metadata" src="/archivo?p=${q(P)}&f=trailer.mp4&v=${E.archivos['trailer.mp4'].fecha}"></video></details>` : '';
+}
+let PREGUNTAS = [];
+async function verPreguntas() {  // preguntas_trailer.json: lo que la IA no vio claro y sus ideas para que enganche más
+  try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_trailer.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
+  const una = ([x, k]) => `<div class="pregunta"><div>${esc(x.pregunta)}</div>
+    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="this.closest('.pregunta').querySelector('input').value = this.textContent">${esc(o)}</button>`).join('')}</div>
+    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta"></div>`;
+  const todas = PREGUNTAS.map((x, k) => [x, k]);
+  const pend = todas.filter(([x]) => !String(x.respuesta || '').trim()), hechas = todas.length - pend.length;
+  const porFase = FASES.map(([f, nombre]) => [nombre, todas.filter(([x]) => fase(x.fase) === f)]).filter(([, l]) => l.length);
+  const sinFase = todas.filter(([x]) => !x.fase);
+  const datos = sinFase.filter(([x]) => x.tipo !== 'mejora'), ideas = sinFase.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntas').innerHTML = !todas.length ? '' : `<details class="panel preg"${pend.length ? ' open' : ''}><summary>❓ La IA te pregunta sobre el tráiler (${pend.length} sin contestar${hechas ? `, ${hechas} contestadas` : ''})</summary>
+    <p class="msg">Elige una opción o escribe la respuesta. Las vacías no cambian nada. Con «Rehacer» la IA vuelve a proponer el tráiler con tus respuestas.</p>
+    ${porFase.map(([nombre, l]) => `<p><b>${nombre}: ¿la toma y su duración están bien?</b></p>${l.map(una).join('')}`).join('')}
+    ${datos.length ? `<p><b>Lo que no le quedó claro</b></p>${datos.map(una).join('')}` : ''}
+    ${ideas.length ? `<p><b>💡 Ideas para que enganche más</b></p>${ideas.map(una).join('')}` : ''}
+    <div class="acciones"><button class="principal" onclick="responder()" title="Guarda tus respuestas y la IA de la app vuelve a proponer el tráiler con ellas (gasta un pedido a la IA)">✨ Rehacer con mis respuestas</button>
+    <button onclick="responder(true)" title="Solo guarda: las usa la próxima propuesta, o DeepSeek con «video.py preguntas»">💾 Solo guardar respuestas</button>
+    <span class="msg" id="msgPreg"></span></div></details>`;
+}
+async function responder(soloGuardar) {
+  document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
+  const m = $('#msgPreg');
+  try {
+    await api(`/api/json?p=${q(P)}&f=preguntas_trailer.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    if (soloGuardar) { m.className = 'msg ok'; m.textContent = '✓ Guardadas. Las usa la próxima propuesta (o dile a DeepSeek «ya respondí»).'; return; }
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; return; }
+  await proponer(true);
+}
+async function proponer(conRespuestas) {
+  if (sucio && !confirm('Tienes cambios sin guardar en las tomas. La IA propone un tráiler nuevo y los reemplaza (el actual queda como trailer.json.anterior). ¿Seguir?')) return;
+  if (!conRespuestas && T && !confirm('La IA propone otro tráiler (el actual queda como trailer.json.anterior). Gasta un pedido a la IA de la app, no ElevenLabs. ¿Seguir?')) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'La IA mira el video y el guion y elige las tomas…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_ia`, {method: 'POST', body: JSON.stringify({varias: $('#varias').checked})});
+    await esperar(); sucio = false; await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Propuesta lista. Revisa las tomas y contesta sus preguntas.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function encargoChat() {
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Preparo el encargo…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'trailer', modo: 'prompt'})});
+    await esperar();
+    const t = await api(`/archivo?p=${q(P)}&f=ia_prompt_trailer.txt&v=${Date.now()}`);
+    try { await navigator.clipboard.writeText(t); msg.textContent = '✓ Encargo copiado (también quedó en ia_prompt_trailer.txt). DeepSeek lo entrega con «video.py entregar trailer».'; }
+    catch (e) { msg.textContent = '✓ El encargo quedó en ia_prompt_trailer.txt, en la carpeta del proyecto.'; }
+    msg.className = 'msg ok';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+function pintar() {
+  if (!T) { $('#plan').innerHTML = `<p class="vacio">Todavía no hay tráiler. ${hay('guion.json') ? 'Pulsa «✨ Proponer con la IA» o arma las tomas a mano:' : ''}</p>` + (hay('original.mp4') ? `<button onclick="nuevo()">+ Empezar a mano</button>` : ''); $('#total').textContent = ''; return; }
+  T.clips = T.clips || [];
+  const campo = (k, rotulo, extra = '') => `<label${extra}>${rotulo}<input data-k="${k}" value="${esc(T[k] || '')}"></label>`;
+  let h = `<div class="panel"><div class="campos">${campo('titulo', 'Título (máx. 5 palabras)')}${campo('subtitulo', 'Subtítulo (gancho corto)')}
+    <label class="ancho">Frase de la voz (ElevenLabs, ~1 crédito por letra; vacía = sin voz) <span id="largoVoz"></span><input data-k="voz" value="${esc(T.voz || '')}"></label>
+    <label>¿Dónde va?<select id="donde"><option value="inicio">⏮ Al inicio (abre el video)</option><option value="final">⏭ Al final (cierra el video)</option></select></label></div></div>`;
+  for (const [f, nombre, ayuda] of FASES) {
+    const lista = T.clips.map((c, i) => [c, i]).filter(([c]) => fase(c.fase) === f);
+    const seg = lista.reduce((a, [c]) => a + (+c.dur || 0), 0);
+    h += `<div class="fase"><h2>${nombre}</h2><span class="aviso">${lista.length} toma${lista.length === 1 ? '' : 's'} · ${seg.toFixed(1).replace(".", ",")} s · ${ayuda}</span><span class="espacio"></span><button onclick="agregar('${f}')">+ Toma</button></div>`;
+    h += lista.length ? lista.map(([c, i]) => clip(c, i)).join('') : '<p class="vacio">Sin tomas en esta fase.</p>';
+  }
+  $('#plan').innerHTML = h;
+  $('#donde').value = DONDE;
+  $('#donde').onchange = async e => { DONDE = e.target.value; try { await api(`/api/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({trailer_donde: DONDE})}); } catch (x) { alert(x.message); } };
+  document.querySelectorAll('.campos input[data-k]').forEach(i => i.oninput = () => { T[i.dataset.k] = i.value; cambio(); });
+  document.querySelectorAll('.clip [data-c]').forEach(i => i.onchange = () => editar(+i.dataset.c, i.dataset.campo, i.value));
+  resumen();
+}
+const fase = f => ({DESPUES: 'DESPUÉS'})[String(f || '').toUpperCase()] || String(f || '').toUpperCase();
+function clip(c, i) {
+  const [a, b] = c.ventana || [0, 0];
+  const img = t => `<img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${(+t).toFixed(1)}" title="Clic: ver este momento del video" onclick="verMomento(${+t})">`;
+  const inp = (campo, v, w) => `<input data-c="${i}" data-campo="${campo}" value="${esc(v)}" style="width:${w}">`;
+  return `<div class="clip" id="c${i}">
+    <div>${img(a)}<div class="pie">desde ${mmss(a)}</div></div>
+    <div>${img(b)}<div class="pie">hasta ${mmss(b)}</div></div>
+    <div><div class="datos">Fase <select data-c="${i}" data-campo="fase">${FASES.map(([f]) => `<option${fase(c.fase) === f ? ' selected' : ''}>${f}</option>`).join('')}</select>
+      Desde ${inp('desde', mmss(a), '6.5em')} Hasta ${inp('hasta', mmss(b), '6.5em')} Dura ${inp('dur', c.dur ?? 1.6, '4.5em')} s
+      <span class="espacio"></span><button onclick="mover(${i}, -1)" title="Antes">↑</button><button onclick="mover(${i}, 1)" title="Después">↓</button><button onclick="quitar(${i})">✕</button></div>
+      <input class="porque" data-c="${i}" data-campo="por_que" value="${esc(c.por_que || '')}" placeholder="Qué se ve y por qué va (nota para ti; no sale en el video)">
+      <p class="msg">La app busca, dentro de «desde–hasta», el momento más nítido y quieto, y corta ahí «dura» segundos.</p></div></div>`;
+}
+function editar(i, campo, v) {
+  const c = T.clips[i], msg = $('#msg');
+  if (campo === 'desde' || campo === 'hasta') {
+    const s = segundos(v);
+    if (isNaN(s) || s < 0 || (DUR && s > DUR)) { msg.className = 'msg err'; msg.textContent = `«${v}» no es un momento de tu grabación (0:00 a ${mmss(DUR)}).`; pintar(); return; }
+    c.ventana = c.ventana || [0, 0]; c.ventana[campo === 'desde' ? 0 : 1] = Math.round(s * 10) / 10;
+    if (c.ventana[1] < c.ventana[0]) c.ventana.reverse();
+  } else if (campo === 'dur') {
+    const s = parseFloat(String(v).replace(',', '.'));
+    if (!(s > 0.3 && s < 8)) { msg.className = 'msg err'; msg.textContent = 'La duración de una toma va de 0,4 a 8 s.'; pintar(); return; }
+    c.dur = Math.round(s * 10) / 10;
+  } else c[campo] = v;
+  msg.textContent = ''; cambio(); pintar();
+}
+function ordenar() {  // el tráiler va en orden ANTES → DURANTE → DESPUÉS; dentro de cada fase, el orden que elegiste
+  const k = f => FASES.findIndex(([x]) => x === fase(f));
+  T.clips = T.clips.map((c, i) => [c, i]).sort((a, b) => k(a[0].fase) - k(b[0].fase) || a[1] - b[1]).map(([c]) => c);
+}
+function mover(i, d) {
+  const f = fase(T.clips[i].fase), mismos = T.clips.map((c, k) => k).filter(k => fase(T.clips[k].fase) === f), p = mismos.indexOf(i), j = mismos[p + d];
+  if (j === undefined) return;
+  [T.clips[i], T.clips[j]] = [T.clips[j], T.clips[i]]; cambio(); pintar();
+}
+function quitar(i) { T.clips.splice(i, 1); cambio(); pintar(); }
+function agregar(f) {
+  const ult = [...T.clips].reverse().find(c => fase(c.fase) === f), a = ult ? Math.min(ult.ventana[1], Math.max(0, DUR - 4)) : (f === 'ANTES' ? 0 : f === 'DESPUÉS' ? Math.max(0, DUR - 15) : DUR / 2);
+  T.clips.push({fase: f, ventana: [Math.round(a * 10) / 10, Math.round(Math.min(DUR || a + 4, a + 4) * 10) / 10], dur: 1.6});
+  ordenar(); cambio(); pintar();
+}
+function nuevo() { T = {titulo: '', subtitulo: '', voz: '', clips: []}; FASES.forEach(([f]) => agregar(f)); }
+function verMomento(t) {
+  $('#ver').innerHTML = `<div class="panel"><b>Tu grabación en ${mmss(t)}</b> <button onclick="verVideo()" style="float:right">✕</button>
+    <video controls autoplay muted src="/archivo?p=${q(P)}&f=original.mp4#t=${t}"></video></div>`;
+  $('#ver').scrollIntoView({behavior: 'smooth'});
+}
+function cambio() { sucio = true; resumen(); }
+function resumen() {
+  const n = f => T.clips.filter(c => fase(c.fase) === f).length, dura = T.clips.reduce((a, c) => a + (+c.dur || 0), 0);
+  const v = (T.voz || '').trim();
+  if ($('#largoVoz')) $('#largoVoz').textContent = v ? `· ${v.length} letras` : '· sin voz';
+  const faltan = FASES.filter(([f]) => !n(f)).map(([f]) => f);
+  $('#total').innerHTML = `${T.clips.length} tomas · unos <b class="${Math.abs(dura - OBJ) <= Math.max(2, OBJ * 0.25) ? 'ok' : 'mal'}">${dura.toFixed(1)} s</b> de ${OBJ} s elegidos` + (faltan.length ? ` · <b class="mal">falta ${faltan.join(' y ')}</b>` : '');
+  $('#btnGuardar').classList.toggle('principal', sucio);
+  $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar';
+  $('#btnArmar').disabled = !hay('3_voz.mp4') || !T.clips.length;
+  $('#btnSolo').disabled = !hay('original.mp4') || !T.clips.length;
+}
+let TEXTOS = {}, TEXTOS_ABIERTO = '';
+const SOLO = new URLSearchParams(location.search).get('solo') || '';  // «↗ Abrir en pestaña nueva»: un solo tráiler
+async function guardarTextos(id, rehacer) {  // título, subtítulo y voz de esa IA; con «rehacer», su tráiler se arma de nuevo con voz
+  const datos = {};
+  document.querySelectorAll(`.textos[data-v="${id}"] [data-t]`).forEach(i => datos[i.dataset.t] = i.value.trim());
+  const msg = $('#msg');
+  try {
+    await api(`/api/trailer_version_texto?p=${q(P)}&v=${q(id)}`, {method: 'POST', body: JSON.stringify(datos)});
+    TEXTOS_ABIERTO = id;
+    if (rehacer) return verTrailerIA(id, false);
+    await cargar(); msg.className = 'msg ok'; msg.textContent = '✓ Textos guardados. «▶ Ver con voz» para verlos en el tráiler.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una, para elegir la que más te guste
+  let vs = [];
+  if (hay('versiones_trailer.json')) try { const r = await api(`/archivo?p=${q(P)}&f=versiones_trailer.json&v=${Date.now()}`); vs = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
+  TEXTOS = {};
+  for (const v of vs.filter(x => x.archivo)) try { const r = await api(`/archivo?p=${q(P)}&f=${q(v.archivo)}&v=${Date.now()}`); TEXTOS[v.id] = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) {}
+  if (SOLO) vs = vs.filter(v => v.id === SOLO);  // «↗ Abrir en pestaña nueva»: solo ese tráiler, en grande
+  const caja = 'width:100%; box-sizing:border-box; font:inherit; padding:10px; border-radius:10px; resize:vertical';
+  $('#versiones').innerHTML = !vs.length ? '' : `<div class="panel preg"><b>🎬 ${SOLO ? 'Tráiler de ' + esc(vs[0].nombre) : 'Tráileres de cada IA'}</b>
+    <label style="margin-left:14px" title="Dónde aparecen los sellos ANTES / DURANTE / DESPUÉS. Se aplica al volver a armar el tráiler">📍 Sellos:
+      <select id="selloLugar" onchange="lugarSello(this.value)">${[['arriba-izquierda', 'Arriba a la izquierda'], ['arriba-centro', 'Arriba al centro'],
+        ['arriba-derecha', 'Arriba a la derecha'], ['centro', 'Al centro'], ['abajo-izquierda', 'Abajo a la izquierda'], ['abajo-centro', 'Abajo al centro'],
+        ['abajo-derecha', 'Abajo a la derecha']].map(([v, n]) => `<option value="${v}" ${v === SELLO_LUGAR ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    ${SOLO ? `<p class="msg"><a href="/trailer?p=${q(P)}">← Ver los de todas las IAs</a></p>` : '<p class="msg">Ves el marcado con ✓. Elegir otro guarda el actual como trailer.json.anterior; tus respuestas se conservan.</p>'}
+    ${vs.map(v => `<div style="border:1px solid #ffffff22; border-radius:14px; padding:12px; margin:12px 0">${v.archivo
+      ? `<div class="acciones" style="align-items:center; flex-wrap:wrap">
+           <button ${v.elegida ? 'class="principal"' : ''} onclick="elegirTrailer('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
+           <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Arma el tráiler de ${esc(v.nombre)} con su frase de voz, para compararlo: gasta unos ${(v.voz || '').length} créditos de ElevenLabs (una sola vez por frase)">▶ Ver con voz</button>
+           <button onclick="verTrailerIA('${esc(v.id)}', true)" title="Sin la frase de voz: no gasta nada">sin voz (gratis)</button>
+           ${SOLO ? '' : `<a href="/trailer?p=${q(P)}&solo=${q(v.id)}" target="_blank"><button title="Solo este tráiler, en grande, para editarlo cómodo">↗ Abrir en pestaña nueva</button></a>`}</div>
+         <p class="msg" style="margin:8px 0">${esc(v.modelo)} · ${v.tomas} tomas${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</p>
+         <div style="display:grid; grid-template-columns:${SOLO ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)'}; gap:14px; align-items:start">
+           <div data-v="${esc(v.id)}" class="textos">
+             <label style="display:block; margin-bottom:8px">✏️ Título de la diapositiva (intro, máx. 5 palabras)
+               <textarea data-t="titulo" rows="2" style="${caja}">${esc((TEXTOS[v.id] || {}).titulo ?? v.titulo ?? '')}</textarea></label>
+             <label style="display:block; margin-bottom:8px">Subtítulo (el texto de abajo)
+               <textarea data-t="subtitulo" rows="2" style="${caja}">${esc((TEXTOS[v.id] || {}).subtitulo ?? '')}</textarea></label>
+             <label style="display:block; margin-bottom:8px">🔊 Frase de la voz (vacía = sin voz)
+               <textarea data-t="voz" rows="3" style="${caja}">${esc((TEXTOS[v.id] || {}).voz ?? v.voz ?? '')}</textarea></label>
+             <div class="acciones"><button class="principal" onclick="guardarTextos('${esc(v.id)}', true)" title="Guarda y vuelve a armar este tráiler con voz (la frase nueva gasta sus créditos de ElevenLabs)">💾 Guardar y rehacer</button>
+               <button onclick="guardarTextos('${esc(v.id)}', false)">Solo guardar</button></div></div>
+           <div>${hay('trailer_' + v.id + '.mp4') ? `<video controls preload="metadata" style="width:100%; max-height:${SOLO ? '70vh' : '320px'}" src="/archivo?p=${q(P)}&f=trailer_${esc(v.id)}.mp4&v=${E.archivos['trailer_' + v.id + '.mp4'].fecha}"></video>`
+             : '<p class="msg">Todavía no está armado: «▶ Ver con voz».</p>'}</div></div>`
+      : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
+}
+async function verTrailerIA(id, sinVoz) {  // el tráiler de esa IA armado aparte (trailer_<ia>.mp4), sin tocar el elegido
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz})});
+    await esperar(); await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Listo: lo ves debajo de su propuesta, en «Tráileres de cada IA».';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function elegirTrailer(id) {
+  if (sucio && !confirm('Tienes cambios sin guardar en las tomas: se pierden al elegir otra propuesta. ¿Seguir?')) return;
+  try { await api(`/api/elegir_version_trailer?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); sucio = false; await cargar(); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
+}
+async function armarSolo() {
+  const v = (T && T.voz || '').trim();
+  if (!confirm('Armo solo el tráiler (trailer.mp4) para que lo veas; tu video no se toca.\n\n' +
+    (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos, una sola vez (al unirlo después no se vuelve a pagar mientras no cambies la frase).` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({})});
+    await esperar(); await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Tráiler listo: míralo arriba. Cuando el video esté terminado, «▶ Armar y unir al video».';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function guardar() {
+  if (!T) return true;
+  if (!T.clips.length) { $('#msg').className = 'msg err'; $('#msg').textContent = 'El tráiler necesita al menos una toma.'; return false; }
+  ordenar();
+  const b = $('#btnGuardar'), msg = $('#msg');
+  b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando las tomas…';
+  try {
+    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(T)});
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'trailer', modo: 'revisar'})});
+    await esperar(); sucio = false; await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Guardado (el anterior quedó como trailer.json.anterior).';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
+  b.disabled = false;
+  return true;
+}
+async function armar() {
+  const v = (T && T.voz || '').trim();
+  if (!confirm(`Armo el tráiler y lo uno ${DONDE === 'final' ? 'al final' : 'al inicio'} de tu video (queda en FINAL.mp4 y aparte en trailer.mp4).\n\n` +
+    (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos.` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({})});
+    await esperar(); await cargar();
+    msg.className = 'msg ok'; msg.textContent = '✓ Tráiler armado y unido a tu video (FINAL.mp4). Míralo arriba.';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
+cargar();
+</script>
+</body>
+</html>

@@ -8,7 +8,14 @@ remotion/public/trailer/
 *.wav
 mis_proyectos/
 app/ajustes.json
+app/ajustes.json.copia
+app/ajustes.json.tmp
 Estudio.exe
 app/registro_app.txt
 mis_estilos/
 descargas_app/
+ffmpeg_nvidia/
+mis_conocimientos/
+mis_sonidos/
+*.keystore
+remotion/public/estilo/

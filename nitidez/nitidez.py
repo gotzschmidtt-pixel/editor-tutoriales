@@ -99,10 +99,10 @@ def main():
     if a.ventana:
         print(mejor(t, n, m, *a.ventana))
     if a.plan:
-        res = {k: mejor(t, n, m, *v) for k, v in json.load(open(a.plan)).items()}
+        res = {k: mejor(t, n, m, *v) for k, v in json.load(open(a.plan, encoding='utf-8')).items()}
         print(json.dumps(res, indent=1))
         if a.salida:
-            json.dump(res, open(a.salida, 'w'), indent=1)
+            json.dump(res, open(a.salida, 'w', encoding='utf-8'), indent=1)
     if a.top:
         print(destacados(t, n, m, a.top, a.separacion))
 

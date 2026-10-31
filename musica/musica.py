@@ -8,7 +8,7 @@ Uso:
 Sin --pista genera una nueva (cuesta créditos de ElevenLabs; unos 2.950 por 3:35).
 La clave la pone el proxy del entorno para api.elevenlabs.io.
 """
-import argparse, json, os, shutil, subprocess, tempfile, urllib.request
+import argparse, json, math, os, shutil, subprocess, tempfile, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -64,7 +64,8 @@ def main():
         if a.guardar_pista:
             shutil.copy(pista, a.guardar_pista)
     larga = os.path.join(tmp, 'larga.wav')
-    vueltas = int(total // duracion(pista)) + 1
+    largo_pista = duracion(pista)
+    vueltas = max(1, math.ceil((total - 4) / max(largo_pista - 4, 1)))  # cada fundido cruzado se come 4 s de la pista
     # repite la pista con fundido cruzado de 4 s hasta cubrir el video, con entrada y salida suaves
     ins = sum([['-i', pista] for _ in range(vueltas)], [])
     cadena, prev = [], '0:a'
@@ -75,9 +76,11 @@ def main():
     # la voz del video controla el compresor de la música: cuando hay voz, la música baja
     mezcla = (f'[0:a]asplit=2[v][sc];[1:a]volume={a.volumen}[mu];'
               '[mu][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[duck];'
-              '[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89[a]')
+              '[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89,'
+              'aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]')  # loudnorm deja 96 kHz: el navegador no siempre lo suena
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', a.video, '-i', larga, '-filter_complex', mezcla,
                     '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', a.salida], check=True)
+    shutil.rmtree(tmp, ignore_errors=True)  # larga.wav pesa unos 100 MB cada 10 min
 
 
 if __name__ == '__main__':

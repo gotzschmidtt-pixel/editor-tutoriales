@@ -6,11 +6,16 @@
 <title>Editor de guion</title>
 <style>
   :root {
-    --fondo: #0b0d14; --panel: #141826; --panel2: #1b2033; --borde: #2a3150;
-    --texto: #eef1fb; --suave: #9aa3c0; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
+    --fondo: #06070c; --panel: #0f121c; --panel2: #161a28; --borde: #343c5e;
+    --texto: #ffffff; --suave: #c9d0e8; --rosa: #ff2bd6; --azul: #2bd9ff; --verde: #38f28a; --rojo: #ff4d6d; --amarillo: #ffd23f;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.5 "Segoe UI", Inter, system-ui, sans-serif; }
+  /* contraste: campos oscuros con texto claro (también los que no dicen type), casillas visibles y textos de ayuda legibles */
+  input:not([type]), input[type=text], input[type=number], input[type=password], select, textarea { background-color: var(--panel2); color: var(--texto); }
+  input:not([type]) { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  ::placeholder { color: #8e97b8; opacity: 1; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--azul); width: 17px; height: 17px; vertical-align: -3px; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid var(--borde);
     background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
@@ -25,9 +30,12 @@
   button:disabled { opacity: .4; cursor: not-allowed; }
   main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
   .ayuda { color: var(--suave); font-size: 13.5px; margin: 0 0 14px; }
-  .bloque { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel); border: 1px solid var(--borde);
+  .bloque { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; background: var(--panel); border: 1px solid var(--borde);
     border-radius: 14px; padding: 12px; margin-bottom: 12px; }
   .bloque.cambiado { border-color: var(--rosa); }
+  .bloque.quitado { opacity: .55; border-style: dashed; }
+  .bloque.quitado:hover { opacity: .9; }
+  .bloque.quitado .texto { text-decoration: line-through; white-space: pre-wrap; margin: 6px 0; }
   .bloque img { width: 100%; border-radius: 8px; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
   .meta { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
   .meta b { color: var(--texto); }
@@ -41,28 +49,84 @@
   textarea:focus { outline: none; border-color: var(--azul); }
   .acciones { display: flex; gap: 6px; margin-top: 6px; }
   .acciones button { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  .acciones button.guardarAqui { background: linear-gradient(90deg, var(--rosa), #b84dff); border: 0; font-weight: 700; }
   dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--borde); border-radius: 16px; width: min(760px, 94vw); }
   dialog textarea { min-height: 300px; font-size: 13.5px; }
   .msg { font-size: 13.5px; color: var(--suave); } .msg.ok { color: var(--verde); } .msg.err { color: var(--rojo); }
-  @media (max-width: 700px) { .bloque { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+  .orto { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 13px; }
+  .orto:empty { display: none; }
+  .sug { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #ffd23f66; border-radius: 99px; padding: 2px 4px 2px 10px; }
+  .sug s { color: var(--amarillo); text-decoration-color: var(--rojo); }
+  .sug button { padding: 1px 8px; font-size: 12.5px; font-weight: 600; border-radius: 99px; }
+  .sug button.no { background: transparent; border: 0; color: var(--suave); }
+  .panel { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; }
+  .panel.preg { border-color: #f0c36d; }
+  .panel summary { cursor: pointer; font-weight: 600; }
+  .panel ul { margin: 6px 0; padding-left: 20px; font-size: 13.5px; color: var(--suave); }
+  .pregunta { margin: 10px 0; } .pregunta input { width: 100%; background: #0e111b; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; } .opciones button { padding: 3px 10px; font-size: 13px; font-weight: 500; }
+  .tira { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 2px; }
+  .tira figure { margin: 0; flex: 0 0 168px; cursor: zoom-in; }
+  .bloque .tira img { width: 168px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; }
+  .tira figcaption { font-size: 11.5px; color: var(--suave); line-height: 1.3; margin-top: 3px; }
+  .tira .pausa { color: var(--amarillo); }
+  @media (max-width: 700px) { .bloque { grid-template-columns: minmax(0, 1fr); } header { padding: 10px 16px; } }
 </style>
 </head>
 <body>
 <header>
+  <a href="/" onclick="return volverInicio()" title="Volver a la pantalla principal del Estudio (con este proyecto abierto)"
+     style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
+            background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
+  <script>
+  function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
+    const p = new URLSearchParams(location.search).get('p');
+    const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
+    let principal = null;  // si la abrió la ventana principal, cierro esta pestaña y queda la principal (sin abrir otra igual)
+    try { if (window.opener && !window.opener.closed && window.opener.location.pathname === '/') principal = window.opener; } catch (e) {}
+    if (!principal) { location.href = url; return false; }
+    try { principal.focus(); } catch (e) {}
+    window.close();
+    setTimeout(() => { if (!window.closed && document.visibilityState === 'visible') location.href = url; }, 600);
+    return false;
+  }
+  </script>
   <h1>📝 <b>Editor de guion</b> · <span id="nombre"></span></h1>
   <span class="total" id="total"></span>
   <span class="espacio"></span>
+  <button onclick="pedirIdeas()" title="La IA relee este guion con lo que se dice y se ve en tu grabación y te deja dudas e ideas para mejorarlo (un pedido a la IA, solo texto; no gasta ElevenLabs)">💡 Ideas y dudas</button>
   <button onclick="dlgGpt.showModal(); prepararGpt()">🤖 Mejorar con ChatGPT u otra IA</button>
+  <button onclick="revisarOrtografia()" title="Revisa tildes y ortografía de todos los bloques con LanguageTool (gratis; manda el texto del guion a languagetool.org). Tú eliges qué cambiar">🔤 Ortografía</button>
   <button onclick="bajarWord()">⬇ Word</button>
-  <button class="principal" id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
+  <label class="chip" title="Muestra u oculta la emoción de ElevenLabs de cada bloque, entre corchetes como la recibe la voz"><input type="checkbox" id="verEmo" checked
+    onchange="document.body.classList.toggle('sinEmo', !this.checked); try { localStorage.verEmo = this.checked ? '1' : '0'; } catch (e) {}"> 😀 [emociones]</label>
+  <style>body.sinEmo .emoChip { display: none }</style>
+  <label class="chip" title="Debajo de cada bloque, el cuadro de tu grabación que se ve mientras la voz dice cada frase (con la voz hecha, sus tiempos reales; si no, estimados). Sirve para ver antes de pagar la voz si una frase cae sobre otra pantalla"><input type="checkbox" id="verFrases" onchange="verFrases()"> 🎞 Frase por frase</label>
+  <button id="btnGuardar" onclick="guardar()">💾 Guardar en la app</button>
+  <button class="principal" id="btnSeguir" onclick="seguir()" title="Guarda lo que cambiaste y arma el video: voz con ElevenLabs (gasta créditos, solo en los bloques nuevos o cambiados), montaje, subtítulos y música">▶ Guardar y seguir con todo</button>
 </header>
 <main>
   <p class="ayuda">Corrige lo que dice la voz en cada bloque. La imagen es el momento de tu grabación donde arranca el bloque.
     El aviso de cada bloque compara lo que tarda la voz en decir el texto con lo que dura su imagen. Al guardar, la app revisa el
     guion (duración y orden) y guarda el anterior como <code>guion.json.anterior</code>. Solo los bloques que cambiaste gastan voz nueva.</p>
   <p class="msg" id="msg"></p>
+  <div id="aprendido" hidden style="border:1px solid var(--borde); border-radius:12px; padding:10px 14px; margin:8px 0"></div>
+  <div id="preguntas"></div>
+  <div id="mejoras"></div>
   <div id="bloques"></div>
 </main>
+
+<dialog id="dlgQuitar">
+  <h3 style="margin-top:0">Quitar el bloque <span id="qId"></span></h3>
+  <p class="msg" id="qAviso"></p>
+  <div class="acciones" style="flex-direction:column; align-items:stretch; gap:8px">
+    <button class="principal" id="qVoz" onclick="quitarSoloVoz()">🔇 Quitar solo lo que dice: la imagen del paso se queda, unida al bloque anterior y más rápida</button>
+    <div style="display:flex; gap:6px; align-items:center"><button style="flex:1" onclick="quitarAcelerado()">⏩ Quitar lo que dice y dejar su tramo acelerado, sin voz (con música)</button>
+      <select id="qVel" title="Velocidad del tramo"><option value="2">×2</option><option value="4" selected>×4</option><option value="8">×8</option><option value="16">×16</option></select></div>
+    <button onclick="quitarTodo()">✕ Quitar lo que dice y su parte del video</button>
+    <button onclick="dlgQuitar.close()">Cancelar</button>
+  </div>
+</dialog>
 
 <dialog id="dlgGpt">
   <h3 style="margin-top:0">🤖 Mejorar con otra IA</h3>
@@ -75,6 +139,7 @@
   </div>
 </dialog>
 
+<datalist id="emociones"><option value="emocionado"><option value="calmado"><option value="susurra"><option value="intrigado"><option value="alegre"><option value="serio"><option value="sorprendido"><option value="seguro"><option value="entusiasmado"><option value="orgulloso"><option value="pícaro"><option value="aliviado"><option value="confiado"><option value="cercano"></datalist>
 <script>
 const P = new URLSearchParams(location.search).get('p') || '';
 const PALABRAS_POR_S = 2.6;
@@ -82,7 +147,7 @@ const $ = s => document.querySelector(s);
 const q = encodeURIComponent;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const mmss = s => `${Math.floor((s || 0) / 60)}:${String(Math.round((s || 0) % 60)).padStart(2, '0')}`;
-let G = null, ORIGINAL = {}, DUR = 0, sucio = false;
+let G = null, ORIGINAL = {}, EMO_ORIGINAL = {}, DUR = 0, sucio = false;
 $('#nombre').textContent = P;
 
 async function api(url, op) {
@@ -95,46 +160,415 @@ async function api(url, op) {
 const vozS = txt => txt.trim().split(/\s+/).filter(Boolean).length / PALABRAS_POR_S + 1;
 const largo = m => (m.modo.startsWith('lento') ? (m.src_fin - m.src_inicio) / (m.velocidad || 1) : 0) + (m.congelar_s || 0);
 
+let VERSION = null;  // el guion tal como estaba al abrirlo: si alguien lo guarda después, no se pisa sin avisar
+const versionGuion = async () => { try { return (await api(`/api/version_guion?p=${q(P)}`)).v; } catch (e) { return null; } };
+async function sinCambiosAjenos() {
+  const v = await versionGuion();
+  if (VERSION === null || v === null || v === VERSION) return true;
+  alert('El guion cambió desde que abriste esta pestaña (lo guardó otra pestaña, la app o Claude). No guardo para no pisar ese cambio.\n\n'
+    + 'Copia lo que estabas escribiendo, pulsa F5 para ver la versión nueva y vuelve a hacer tu cambio.');
+  return false;
+}
 async function cargar() {
+  VERSION = await versionGuion();
   try { G = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion.json`) || 'null'); } catch (e) { G = null; }
   if (!G || !(G.bloques || []).length) { $('#bloques').innerHTML = '<p class="msg err">Todavía no hay guion en este proyecto. Pídelo primero a la IA en la app.</p>'; return; }
   ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.texto]));
+EMO_ORIGINAL = Object.fromEntries(G.bloques.map(b => [b.id, b.emocion || '']));
+  try { QUITADOS = JSON.parse(await api(`/api/json?p=${q(P)}&f=guion_quitados.json`) || '[]') || []; } catch (e) { QUITADOS = []; }
   try { DUR = (await api(`/api/estado?p=${q(P)}`)).duracion_original || 0; } catch (e) {}
+  FRASES = null;  // los tiempos de la voz se vuelven a pedir: la voz o el guion pudieron cambiar
+  try { if (localStorage.verFrases === '1') $('#verFrases').checked = true; } catch (e) {}
+  if ($('#verFrases').checked) { try { FRASES = await api(`/api/frases?p=${q(P)}`); } catch (e) { FRASES = {}; } }
   pintar();
+  verMejoras(); verPreguntas();
+}
+async function verMejoras() {  // lo que la app corrigió o avisa al revisar el guion (mejoras_guion.txt)
+  let rv = {mejoras: []};
+  try { rv = await api(`/api/revision_guion?p=${q(P)}`); } catch (e) {}
+  const l = rv.mejoras || [];
+  $('#mejoras').innerHTML = `<details class="panel"${l.length && l.length <= 8 ? ' open' : ''}><summary>${l.length ? `🔎 Lo que la app corrigió o te avisa (${l.length})` : '✓ La app revisó el guion: no tuvo que corregir nada'}</summary>
+    ${l.length ? `<ul>${l.map(x => `<li>${conSegundos(x)}</li>`).join('')}</ul>` : ''}</details>`;
+}
+// los segundos que nombra la IA o la revisión («la captura de 439.9», «en 7:18», «en 458») se tocan para ver ese cuadro de tu grabación
+function conSegundos(txt) {
+  return esc(txt).replace(/(^|[^\w#.:])(\d{1,2}:\d{2}(?:\.\d)?|\d{1,4}\.\d|(?<=\b(?:en|de|a|y|hasta|entre|segundo|segundos|el|del|al) )\d{2,4})(?![\w.:]*\d)(?!\s*(?:%|×|x\b|bloques|palabras|MB|GB))/gi, (m, antes, s, i, todo) => {
+    const p = s.split(':'), t = p.length > 1 ? +p[0] * 60 + +p[1] : +s;
+    const largo = /(dura|estimada|unos|largo|busco)\s*$/i.test(todo.slice(Math.max(0, i - 20), i + antes.length));  // una duración, no un momento
+    return t > 0 && !largo && t < 4 * 3600 ? `${antes}<a href="#" class="seg" title="Ver el cuadro de tu grabación en ${esc(s)}" onclick="verSegundo(${t}, '${esc(s)}'); return false">${esc(s)}</a>` : m;
+  });
+}
+function verSegundo(t, como) {
+  let d = document.getElementById('verSeg');
+  if (!d) {
+    d = document.createElement('div');
+    d.id = 'verSeg';
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99;gap:10px;cursor:zoom-out';
+    d.onclick = () => d.remove();
+    document.body.appendChild(d);
+  }
+  d.innerHTML = `<img src="/api/cuadro?p=${q(P)}&t=${t}" style="max-width:94vw;max-height:84vh;border-radius:8px" alt="">
+    <div class="msg">Tu grabación en ${esc(como)} (${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}) · toca para cerrar ·
+      <a href="#" onclick="event.stopPropagation(); verSegundo(${Math.max(0, t - 1)}, '${esc(como)} −1 s'); return false">◀ 1 s antes</a> ·
+      <a href="#" onclick="event.stopPropagation(); verSegundo(${t + 1}, '${esc(como)} +1 s'); return false">1 s después ▶</a></div>`;
+}
+let PREGUNTAS = [];
+async function verPreguntas() {  // las preguntas de la IA (preguntas_guion.json): datos que no vio claros e ideas para mejorar
+  try { PREGUNTAS = JSON.parse(await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`) || '[]') || []; } catch (e) { PREGUNTAS = []; }
+  const pend = PREGUNTAS.map((x, k) => [x, k]).filter(([x]) => !x.hecha);
+  const una = ([x, k]) => `<div class="pregunta"><div>${x.bloque ? `<b>${esc(x.bloque)}</b> · ` : ''}${conSegundos(x.pregunta)}</div>
+    <div class="opciones">${(x.opciones || []).map(o => `<button onclick="const i = this.closest('.pregunta').querySelector('input'); i.value = this.textContent; respuestaAlVuelo(i)">${esc(o)}</button>`).join('')}</div>
+    ${x.sugerida ? `<div class="opciones"><button title="Ya contestaste una pregunta casi igual en ${esc(x.sugerida_de || 'otro video')}: tócala para usar esa respuesta" onclick="const i = this.closest('.pregunta').querySelector('input'); i.value = this.dataset.r; respuestaAlVuelo(i)" data-r="${esc(x.sugerida)}">🧠 Ya lo contestaste en ${esc(x.sugerida_de || 'otro video')}: «${esc(x.sugerida)}»</button></div>` : ''}
+    <input type="text" data-k="${k}" value="${esc(x.respuesta || '')}" placeholder="Tu respuesta" onchange="respuestaAlVuelo(this)"></div>`;
+  const datos = pend.filter(([x]) => x.tipo !== 'mejora'), mejoras = pend.filter(([x]) => x.tipo === 'mejora');
+  $('#preguntas').innerHTML = !pend.length ? '' : `<div class="panel preg"><b>❓ La IA te deja ${pend.length} pregunta${pend.length > 1 ? 's' : ''}</b>
+    <p class="msg">Elige una opción o escribe la respuesta (para dictar en Windows: ⊞ Win + H). Las que dejes vacías no cambian nada.</p>
+    ${datos.length ? `<p><b>Datos que no vio claros</b></p>${datos.map(una).join('')}` : ''}
+    ${mejoras.length ? `<p><b>💡 Ideas para mejorarlo</b></p>${mejoras.map(una).join('')}` : ''}
+    <div class="acciones"><button class="principal" onclick="responder()" title="La IA de la app corrige solo los bloques que tocan tus respuestas (gasta un pedido a la IA)">✓ Responder y corregir con la IA de la app</button>
+    <button onclick="responder(true)" title="Guarda tus respuestas sin gastar la IA: quedan aprendidas, y las aplicas cuando quieras con «Responder y corregir» o desde el chat de Claude o DeepSeek">💾 Solo guardar respuestas (sin gastar IA)</button>
+    <span class="msg" id="msgPreg"></span></div></div>`;
+}
+async function esperar() {  // hasta que la app termine el paso que se pidió
+  for (let k = 0; k < 900; k++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const e = await api(`/api/estado?p=${q(P)}`);
+    if (e.trabajo.proyecto) continue;
+    if (e.fallo) throw new Error(e.fallo.msg || 'falló; mira el registro en la app');
+    return;
+  }
+}
+async function respuestaAlVuelo(i) {  // cada respuesta se guarda apenas la eliges o escribes: si sales y vuelves, sigue ahí
+  PREGUNTAS[+i.dataset.k].respuesta = i.value.trim();
+  try { await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)}); $('#msgPreg').textContent = '✓ Respuesta guardada'; $('#msgPreg').className = 'msg ok'; } catch (e) {}
+}
+async function responder(soloGuardar) {
+  document.querySelectorAll('#preguntas input[data-k]').forEach(i => PREGUNTAS[+i.dataset.k].respuesta = i.value.trim());
+  const m = $('#msgPreg');
+  if (!PREGUNTAS.some(x => !x.hecha && x.respuesta)) { m.textContent = 'Escribe o elige al menos una respuesta'; m.className = 'msg err'; return; }
+  if (sucio && !(await sinCambiosAjenos())) return;
+  try {
+    if (sucio) {  // tus cambios sin guardar van primero, también los bloques que quitaste (como «Guardar en la app»)
+      await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
+      await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)}); VERSION = await versionGuion();
+    }
+    await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});
+    sucio = false;
+    if (soloGuardar) { try { await api(`/api/conocimiento/aprender?p=${q(P)}`, {method: 'POST', body: '{}'}); } catch (e) {}
+      m.textContent = '✓ Guardadas y aprendidas. Para aplicarlas al guion: «Responder y corregir», o dile a Claude o DeepSeek «ya respondí».'; m.className = 'msg ok'; return; }
+    m.className = 'msg'; m.textContent = 'La IA corrige el guion con tus respuestas…';
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({respuestas: true, editor: true})});
+    await esperar(); await cargar();
+    $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Guion corregido con tus respuestas. Revísalo.';
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function pedirIdeas() {
+  if (sucio && !await guardar()) return;
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'La IA relee el guion y piensa en dudas e ideas…';
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=guion_ia`, {method: 'POST', body: JSON.stringify({ideas: true, editor: true})});
+    await esperar(); await verPreguntas();
+    msg.className = 'msg ok'; msg.textContent = '✓ Listo: contesta arriba las que quieras y pulsa «Responder y corregir». Las vacías no cambian nada.';
+    $('#preguntas').scrollIntoView({behavior: 'smooth'});
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+async function seguir() {
+  if (sucio && !await guardar()) return;
+  let c = null; try { c = await api(`/api/costo_voz?p=${q(P)}`); } catch (e) {}
+  let est = null; try { est = await api(`/api/estado?p=${q(P)}`); } catch (e) {}
+  const gasta = [];
+  if (!c || c.desconocido) gasta.push('la voz que falte (no pude calcular cuánta)');
+  else if (c.caracteres) gasta.push(`unos ${c.caracteres.toLocaleString('es')} créditos de voz (${c.bloques.length} bloques: ${c.bloques.join(', ')})`);
+  if (!est || !(est.musica_fija || est.archivos['musica.mp3'])) gasta.push('una música nueva (unos 2.950 créditos)');
+  if (!gasta.length) {
+    if (!confirm('Armo el video sin generar voz nueva (todas se reutilizan): montaje, subtítulos y música. ¿Seguir?')) return;
+  } else {
+    // segunda confirmación (pedido de fabian, 29/10/2026): un clic no alcanza para gastar ElevenLabs, hay que escribir SI
+    const r = prompt(`⚠ Armo el video: montaje, subtítulos y música, y esto gasta ElevenLabs: ${gasta.join(' y ')}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+    if (r === null) return;
+    if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
+  }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({confirmo: 'SI'})}); }
+  catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
+  $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
+}
+// Los bloques quitados quedan a la vista (apagados) en su lugar, por si te arrepientes: «↩ Volver a ponerlo»
+let QUITADOS = [];  // guion_quitados.json: [{bloque, vecino}] (vecino: a qué lado se unió su imagen con «quitar solo lo que dice»)
+const srcDe = b => +((b.montaje || {}).src_inicio ?? 0);
+function lugarQuitado(x) {  // va antes del primer bloque cuyo tramo empieza después (los id cambian al revisar; el segundo no)
+  const k = G.bloques.findIndex(b => srcDe(b) > srcDe(x.bloque));
+  return k < 0 ? G.bloques.length : k;
+}
+function fantasma(x, k) {
+  const b = x.bloque, m = b.montaje || {};
+  return `<div class="bloque quitado"><div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${m.src_inicio ?? 0}" alt="">
+      <div class="meta">de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div></div>
+    <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">🗑 quitado${x.vecino ? ' · su imagen quedó en el bloque de al lado' : ''}</span></div>
+      <div class="texto">${esc(b.texto)}</div>
+      <div class="acciones"><button class="principal" onclick="reponer(${k})">↩ Volver a ponerlo</button>
+        <button onclick="olvidar(${k})" title="Ya no aparece aquí (sigue en el historial del guion)">Olvidar</button></div></div></div>`;
+}
+function reponer(k) {
+  const x = QUITADOS[k], b = x.bloque, m = b.montaje || {};
+  if (x.vecino) for (const o of G.bloques) {  // le devuelve al vecino solo su tramo
+    const n = o.montaje || {};
+    if (x.vecino === 'antes' && Math.abs(n.src_fin - m.src_fin) < 0.05) { n.src_fin = m.src_inicio; delete n.unido; break; }
+    if (x.vecino === 'despues' && Math.abs(n.src_inicio - m.src_inicio) < 0.05) { n.src_inicio = m.src_fin; delete n.unido; break; }
+  }
+  G.bloques.splice(lugarQuitado(x), 0, b);
+  QUITADOS.splice(k, 1); sucio = true; pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ ${b.id} volvió a su lugar. Pulsa «Guardar cambios».`;
+}
+function olvidar(k) { QUITADOS.splice(k, 1); sucio = true; pintar(); }
+function reponerVoz(i) {  // «sin voz, acelerado»: vuelve lo que decía
+  const b = G.bloques[i], m = b.montaje;
+  b.texto = m.texto_quitado; m.velocidad = m.velocidad_antes || 1; if (m.modo_antes) m.modo = m.modo_antes; if (m.congelar_antes != null) m.congelar_s = m.congelar_antes;
+  ['texto_quitado', 'velocidad_antes', 'modo_antes', 'congelar_antes', 'sin_voz'].forEach(c => delete m[c]);
+  sucio = true; pintar();
+}
+// «▶ Ver el corte» (pedido de fabian, 30/10/2026): el bloque en el último video armado, o su tramo de la grabación, ahí mismo
+const VIDEOS_ARMADOS = ['4_musica.mp4', '3_voz.mp4', '1_montaje.mp4', 'FINAL.mp4'];  // sin tráiler: los segundos del guion coinciden
+function verCorte(i, cual) {
+  const b = G.bloques[i], m = b.montaje || {}, caja = document.querySelector(`#b${i} > div`);
+  const desde = cual === 'video' ? +b.inicio_min : +(m.src_inicio ?? 0);
+  const hasta = cual === 'video' ? +b.fin_max : +(m.src_fin ?? desde + 5);
+  caja.querySelectorAll('.corte').forEach(x => x.remove());
+  const img = caja.querySelector('img'); if (img) img.hidden = true;
+  const div = document.createElement('div'); div.className = 'corte';
+  div.innerHTML = `<video controls autoplay playsinline style="width:100%; border-radius:8px; background:#000"></video>
+    <div class="meta">${cual === 'video' ? 'Del último video armado' : 'De tu grabación'} · ${mmss(desde)}–${mmss(hasta)} ·
+      <a href="#" onclick="cerrarCorte(${i}); return false">✕ cerrar</a></div>`;
+  caja.insertBefore(div, caja.firstChild);
+  const v = div.querySelector('video');
+  const archivos = cual === 'video' ? VIDEOS_ARMADOS.slice() : ['original.mp4'];
+  const probar = () => {  // el primero que exista; la app corta solo ese pedazo, así la barra es la del bloque y se adelanta libre
+    const f = archivos.shift();
+    if (!f) { div.querySelector('.meta').textContent = 'Todavía no hay un video armado. Arma el video y vuelve a tocar.'; return; }
+    v.src = `/api/corte?p=${q(P)}&f=${q(f)}&desde=${desde.toFixed(2)}&hasta=${hasta.toFixed(2)}`;
+  };
+  v.onerror = probar;
+  probar();
+}
+function cerrarCorte(i) {
+  const caja = document.querySelector(`#b${i} > div`);
+  caja.querySelectorAll('.corte').forEach(x => x.remove());
+  const img = caja.querySelector('img'); if (img) img.hidden = false;
 }
 function pintar() {
+  const porLugar = {};
+  QUITADOS.forEach((x, k) => (porLugar[lugarQuitado(x)] = porLugar[lugarQuitado(x)] || []).push(fantasma(x, k)));
   $('#bloques').innerHTML = G.bloques.map((b, i) => {
     const m = b.montaje || {}, t = m.src_inicio ?? 0;
-    return `<div class="bloque" id="b${i}">
+    return (porLugar[i] || []).join('') + `<div class="bloque" id="b${i}">
       <div><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
         <div class="meta"><b>${mmss(b.inicio_min)}–${mmss(b.fin_max)}</b> del video · de tu grabación ${mmss(m.src_inicio)}${m.src_fin != null ? '–' + mmss(m.src_fin) : ''}</div>
-        ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}</div>
+        ${b.ancla ? `<div class="meta">En pantalla: ${esc(b.ancla)}</div>` : ''}
+        ${b.ve_inicio || b.ve_fin ? `<div class="meta">Se ve al empezar: ${esc(b.ve_inicio || '—')} · al terminar: ${esc(b.ve_fin || '—')}</div>` : ''}
+        <div class="meta" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px">
+          <button onclick="verCorte(${i}, 'video')" title="Este bloque en el último video armado, con la voz y la música">▶ Ver el corte</button>
+          <button onclick="verCorte(${i}, 'grabacion')" title="El tramo de tu grabación que usa este bloque, sin cortes ni voz">🎞 Tu grabación</button></div></div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
-        <span class="chip" id="aviso${i}"></span></div>
-        <textarea data-i="${i}">${esc(b.texto)}</textarea>
-        <div class="acciones"><button onclick="quitar(${i})">✕ Quitar bloque</button></div></div></div>`;
-  }).join('');
-  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].texto = t.value; sucio = true; avisos(); });
+        <span class="chip" id="aviso${i}"></span>
+        <label class="chip emoChip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀 [
+          <input list="emociones" class="emo" data-i="${i}" value="${esc(b.emocion || '')}" placeholder="como siempre" style="width:8.5em; background:transparent; border:0; color:inherit; font:inherit">]</label></div>
+        <textarea data-i="${i}" spellcheck="true" lang="es" placeholder="${m.sin_voz ? `(sin voz: el tramo pasa a ×${m.velocidad}, con música. Escribe aquí si quieres que vuelva a tener voz)` : ''}">${esc(b.texto)}</textarea>
+        <div class="orto" id="orto${i}"></div>
+        <div class="frases" id="frases${i}"></div>
+        ${(b.alternativas || []).map((x, k) => `<div class="alt" style="margin:8px 0; padding:8px; border:1px dashed var(--borde); border-radius:10px">
+          <div class="meta">Opción ${String.fromCharCode(66 + k)} (no se usa hasta que la elijas)</div>
+          <textarea data-alt="${i}" data-k="${k}" spellcheck="true" lang="es" style="min-height:4em">${esc(x)}</textarea>
+          <div class="acciones"><button onclick="usarAlternativa(${i}, ${k})" title="Pasa esta opción a ser el texto del bloque; el texto de ahora queda como opción">⇄ Usar esta</button>
+            <button onclick="borrarAlternativa(${i}, ${k})">🗑 Borrar opción</button></div></div>`).join('')}
+        <div class="acciones"><button class="guardarAqui" onclick="guardarBloque(${i})" title="Guarda el guion con lo que cambiaste (este bloque y los demás)">💾 Guardar</button>
+          <button onclick="copiarTramo(${i})" title="Hace una copia del texto como otra opción, para escribir una versión distinta y quedarte con la que más te guste">📑 Hacer otra opción</button>
+          <button onclick="ortoBloque(${i})" title="Revisa tildes y ortografía de este bloque (LanguageTool, gratis)">🔤 Ortografía</button>
+          <button onclick="quitar(${i})">✕ Quitar bloque</button>
+          ${m.sin_voz && m.texto_quitado ? `<button class="principal" onclick="reponerVoz(${i})">↩ Volver a poner lo que decía</button>` : ''}</div></div></div>`;
+  }).join('') + (porLugar[G.bloques.length] || []).join('');
+  document.querySelectorAll('textarea[data-alt]').forEach(t => t.oninput = () => { G.bloques[t.dataset.alt].alternativas[+t.dataset.k] = t.value; sucio = true; });
+  document.querySelectorAll('input.emo').forEach(t => t.oninput = () => { G.bloques[t.dataset.i].emocion = t.value.trim(); sucio = true; avisos(); });
+  document.querySelectorAll('textarea[data-i]').forEach(t => t.oninput =() => { G.bloques[t.dataset.i].texto = t.value; sucio = true; SUG[t.dataset.i] = []; pintarOrto(+t.dataset.i); avisos();
+    clearTimeout(t._frases); t._frases = setTimeout(() => pintarFrases(+t.dataset.i), 900); });
+  SUG = {};
   avisos();
+  G.bloques.forEach((b, i) => pintarFrases(i));
+}
+// «🎞 Frase por frase»: debajo de cada bloque, el cuadro de tu grabación que se ve mientras la voz dice cada frase. En HONOR 8
+// LITE (29/10/2026) así se vio que «mantienes presionado el botón de encendido y lo apagas, como se ve aquí» caía sobre el
+// teléfono ya apagado, y «¿lo ves? ya aparece omitir» sobre la contraseña del WiFi. Con la voz hecha usa sus tiempos reales
+let FRASES = null;
+const FRASE_RX = /[^.?!¿¡]*[¿¡]?[^.?!]*[.?!…]+|\S[^.?!]*$/g;
+function frasesEstimadas(txt) {  // sin voz de este texto: 2,6 palabras por segundo, repartidas por letra
+  const total = txt.trim().split(/\s+/).filter(Boolean).length / PALABRAS_POR_S, n = txt.length || 1, out = [];
+  for (const m of txt.matchAll(FRASE_RX)) {
+    const s = m[0].trim();
+    if (s.length > 1) out.push({texto: s, t0: total * m.index / n, t1: total * (m.index + m[0].length) / n});
+  }
+  return out;
+}
+function enGrabacion(m, t) {  // [segundo de tu grabación que se ve t s después de que empieza el bloque, si es la pausa]
+  if ((m.modo || '').startsWith('lento')) {
+    const tramo = (m.src_fin - m.src_inicio) / (m.velocidad || 1);
+    if (t <= tramo) return [m.src_inicio + t * (m.velocidad || 1), false];
+    return [Math.max(m.src_inicio, m.src_fin - 1.2), true];  // la pausa repite el final del tramo
+  }
+  return [m.src_inicio || 0, true];
+}
+function pintarFrases(i) {
+  const el = $('#frases' + i); if (!el) return;
+  if (!$('#verFrases').checked) { el.innerHTML = ''; return; }
+  const b = G.bloques[i], m = b.montaje || {}, hecha = FRASES && FRASES[b.id];
+  const real = hecha && (hecha.texto || '').trim() === (b.texto || '').trim();
+  const fr = real ? hecha.frases : frasesEstimadas(b.texto || '');
+  el.innerHTML = !fr.length ? '' : `<div class="msg">🎞 ${real ? 'Con los tiempos de la voz ya hecha' : 'Tiempos estimados (todavía no hay voz de este texto)'}: lo que se ve mientras dice cada frase. Toca un cuadro para verlo grande.</div>
+    <div class="tira">${fr.map((f, k) => {
+      const [s, pausa] = enGrabacion(m, 0.3 + (f.t0 + f.t1) / 2), t = Math.round(s * 10) / 10, pal = f.texto.split(/\s+/);
+      return `<figure onclick="verSegundo(${t}, '${esc(b.id)} · frase ${k + 1}')" title="${esc(f.texto)}"><img loading="lazy" src="/api/cuadro?p=${q(P)}&t=${t}" alt="">
+        <figcaption><b>${k + 1}</b> · ${mmss(t)}${pausa ? ' · <span class="pausa">pausa</span>' : ''} · ${esc(pal.slice(0, 9).join(' '))}${pal.length > 9 ? '…' : ''}</figcaption></figure>`;
+    }).join('')}</div>`;
+}
+async function verFrases() {
+  try { localStorage.verFrases = $('#verFrases').checked ? '1' : '0'; } catch (e) {}
+  if ($('#verFrases').checked && !FRASES) { try { FRASES = await api(`/api/frases?p=${q(P)}`); } catch (e) { FRASES = {}; } }
+  if (G) G.bloques.forEach((b, i) => pintarFrases(i));
 }
 function avisos() {
   let total = 0;
   G.bloques.forEach((b, i) => {
-    const v = vozS(b.texto), l = largo(b.montaje || {}), el = $('#aviso' + i);
+    const v = b.texto.trim() ? vozS(b.texto) : 0, l = largo(b.montaje || {}), el = $('#aviso' + i);
     total += Math.max(v, l);
-    $('#b' + i).classList.toggle('cambiado', b.texto !== ORIGINAL[b.id]);
+    const cambio = b.texto !== ORIGINAL[b.id] || (b.emocion || '') !== (EMO_ORIGINAL[b.id] || '');
+    $('#b' + i).classList.toggle('cambiado', cambio);
+    const g = $('#b' + i + ' .guardarAqui'); if (g) { g.classList.toggle('principal', cambio); g.textContent = cambio ? '💾 Guardar cambios' : '💾 Guardar'; }
     if (!el) return;
     const pal = b.texto.trim().split(/\s+/).filter(Boolean).length;
+    if (!pal) { el.className = 'chip'; el.textContent = `sin voz · ${l.toFixed(0)} s de imagen`; return; }
     if (v > l + 1.5) { el.className = 'chip mal'; el.textContent = `${pal} palabras · la voz (~${v.toFixed(0)} s) alarga el bloque ${(v - l).toFixed(0)} s`; }
     else if (l > v + 6) { el.className = 'chip mal'; el.textContent = `${pal} palabras · sobran ~${(l - v).toFixed(0)} s de imagen sin voz`; }
     else { el.className = 'chip ok'; el.textContent = `${pal} palabras · ~${v.toFixed(0)} s de voz`; }
   });
+  $('#btnGuardar').classList.toggle('principal', sucio);
+  $('#btnGuardar').textContent = sucio ? '💾 Guardar cambios' : '💾 Guardar en la app';
   const meta = DUR, ok = !DUR || (total >= meta * 0.9 && total <= meta * 1.15);
   $('#total').innerHTML = `${G.bloques.length} bloques · video de unos <b class="${ok ? 'ok' : 'mal'}">${mmss(total)}</b>` + (DUR ? ` (tu grabación: ${mmss(DUR)})` : '');
 }
+// ORTOGRAFÍA: LanguageTool marca tildes («esta» → «está», «aqui» → «aquí») y errores; tú eliges qué cambiar
+let SUG = {};
+const sinTilde = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const IGNORADAS = new Set((() => { try { return JSON.parse(localStorage.getItem('ortografia_ignorar') || '[]'); } catch (e) { return []; } })());
+const esTilde = x => x.opciones[0] && x.original !== x.opciones[0] && sinTilde(x.original) === sinTilde(x.opciones[0]);
+// varias versiones de un bloque (pedido de fabian, 30/10/2026): la voz usa solo el texto del bloque; las opciones esperan
+function copiarTramo(i) { const b = G.bloques[i]; (b.alternativas = b.alternativas || []).push(b.texto); sucio = true; pintar(); }
+function usarAlternativa(i, k) { const b = G.bloques[i]; [b.texto, b.alternativas[k]] = [b.alternativas[k], b.texto]; sucio = true; pintar(); }
+function borrarAlternativa(i, k) { const b = G.bloques[i]; b.alternativas.splice(k, 1); if (!b.alternativas.length) delete b.alternativas; sucio = true; pintar(); }
+async function ortoBloque(i) {  // la ortografía de un solo bloque (pedido de fabian, 30/10/2026)
+  const el = $('#orto' + i); if (el) el.textContent = 'Revisando…';
+  try {
+    const texto = G.bloques[i].texto;
+    const r = await api('/api/ortografia', {method: 'POST', body: JSON.stringify({texto})});
+    SUG[i] = r.cambios.map(c => ({desde: c.desde, largo: c.largo, original: texto.substr(c.desde, c.largo), opciones: c.opciones, mensaje: c.mensaje}))
+      .filter(x => x.original.trim() && !IGNORADAS.has(x.original.toLowerCase()));
+    pintarOrto(i);
+    if (el && !SUG[i].length) el.textContent = '✓ Sin errores de ortografía.';
+  } catch (e) { if (el) el.textContent = 'No pude revisar: ' + e.message; }
+}
+async function revisarOrtografia() {
+  const msg = $('#msg');
+  msg.className = 'msg'; msg.textContent = 'Revisando la ortografía…';
+  SUG = {};
+  const tandas = [[]];  // el corrector acepta unos 18 000 caracteres por pedido: se manda el guion en tandas de bloques
+  G.bloques.forEach((b, i) => { const t = tandas[tandas.length - 1]; if (t.reduce((n, k) => n + G.bloques[k].texto.length + 2, 0) + b.texto.length > 17000) tandas.push([]); tandas[tandas.length - 1].push(i); });
+  try {
+    for (const t of tandas) {
+      if (!t.length) continue;
+      const inicio = []; let txt = '';
+      for (const i of t) { inicio.push(txt.length); txt += G.bloques[i].texto + '\n\n'; }
+      const r = await api('/api/ortografia', {method: 'POST', body: JSON.stringify({texto: txt})});
+      for (const c of r.cambios) {
+        let k = t.length - 1; while (k > 0 && inicio[k] > c.desde) k--;
+        const i = t[k], desde = c.desde - inicio[k], original = G.bloques[i].texto.substr(desde, c.largo);
+        if (!original.trim() || IGNORADAS.has(original.toLowerCase())) continue;
+        (SUG[i] = SUG[i] || []).push({desde, largo: c.largo, original, opciones: c.opciones, mensaje: c.mensaje});
+      }
+      if (tandas.length > 1) await new Promise(r => setTimeout(r, 3500));  // el corrector gratis acepta pocos pedidos por minuto
+    }
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No pude revisar la ortografía: ' + e.message; return; }
+  G.bloques.forEach((b, i) => pintarOrto(i));
+  const todas = Object.values(SUG).flat(), tildes = todas.filter(esTilde).length;
+  msg.className = 'msg ok';
+  msg.innerHTML = !todas.length ? '✓ Sin errores de ortografía.' : `🔤 ${todas.length} posible${todas.length > 1 ? 's' : ''} error${todas.length > 1 ? 'es' : ''}, marcados debajo de cada bloque. ` +
+    (tildes ? `<button onclick="aplicarTildes()">Aplicar las ${tildes} tilde${tildes > 1 ? 's' : ''}</button> ` : '') +
+    'Revisa el resto uno por uno (nombres de programas como UnlockTool salen marcados: pulsa «ignorar»).';
+}
+function pintarOrto(i) {
+  const el = $('#orto' + i); if (!el) return;
+  el.innerHTML = (SUG[i] || []).map((x, k) => `<span class="sug" title="${esc(x.mensaje)}"><s>${esc(x.original)}</s>→
+    ${x.opciones.slice(0, 3).map((o, j) => `<button onclick="aplicarSug(${i}, ${k}, ${j})">${esc(o)}</button>`).join('')}
+    <button class="no" onclick="ignorarSug(${i}, ${k})" title="No es un error (por ejemplo, el nombre de un programa): no lo marques más">ignorar</button></span>`).join('');
+}
+function aplicarSug(i, k, j) {
+  const b = G.bloques[i], x = SUG[i][k], nuevo = x.opciones[j];
+  b.texto = b.texto.slice(0, x.desde) + nuevo + b.texto.slice(x.desde + x.largo);
+  const d = nuevo.length - x.largo;
+  SUG[i].splice(k, 1);
+  SUG[i].forEach(y => { if (y.desde > x.desde) y.desde += d; });
+  const t = document.querySelector(`textarea[data-i="${i}"]`); if (t) t.value = b.texto;
+  sucio = true; pintarOrto(i); avisos();
+}
+function ignorarSug(i, k) {
+  IGNORADAS.add(SUG[i][k].original.toLowerCase());
+  try { localStorage.setItem('ortografia_ignorar', JSON.stringify([...IGNORADAS])); } catch (e) {}
+  const w = SUG[i][k].original.toLowerCase();
+  for (const j in SUG) { SUG[j] = SUG[j].filter(y => y.original.toLowerCase() !== w); pintarOrto(+j); }
+}
+function aplicarTildes() {
+  for (const i in SUG) {
+    for (let k = SUG[i].length - 1; k >= 0; k--) if (esTilde(SUG[i][k])) aplicarSug(+i, k, 0);
+  }
+  $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Tildes aplicadas (bloques resaltados). Revisa el resto y pulsa «Guardar cambios».';
+}
+// Quitar un bloque: si es un paso, conviene que su imagen siga en el video (unida al bloque de al lado y más rápida),
+// así el espectador no pierde lo que se hace aunque la voz ya no lo explique
+let QUITAR = -1;
+const PASO_RE = /\b(paso|selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|configura|copia|pega|key|clave|c[oó]digo|instala|descarga|conecta)/i;
+function vecino(i) {  // el bloque al que se une la imagen: el anterior si el tramo sigue justo después; si no, el siguiente
+  const m = G.bloques[i].montaje || {}, ok = n => n && (n.montaje || {}).modo?.startsWith('lento') && m.modo?.startsWith('lento');
+  const a = G.bloques[i - 1], s = G.bloques[i + 1];
+  if (ok(a) && Math.abs(a.montaje.src_fin - m.src_inicio) <= 3) return i - 1;
+  if (ok(s) && Math.abs(m.src_fin - s.montaje.src_inicio) <= 3) return i + 1;
+  return -1;
+}
 function quitar(i) {
-  if (!confirm(`¿Quitar el bloque ${G.bloques[i].id}? Su parte del video sale del montaje.`)) return;
-  G.bloques.splice(i, 1); sucio = true; pintar();
+  QUITAR = i;
+  const b = G.bloques[i], v = vecino(i);
+  $('#qId').textContent = b.id;
+  $('#qVoz').disabled = v < 0;
+  $('#qAviso').textContent = (PASO_RE.test(b.texto) ? 'Este bloque muestra un paso: si quitas también su imagen, el espectador no verá cómo se hace. ' : '') +
+    (v < 0 ? 'Su tramo no sigue justo al de un bloque vecino, así que su imagen no se puede unir a otro bloque.'
+           : `Si quitas solo lo que dice, su imagen (${mmss(b.montaje.src_inicio)}–${mmss(b.montaje.src_fin)} de tu grabación) se une a ${G.bloques[v].id} y la app la acelera para que quepa en su voz.`) +
+    ' Después revisa que la numeración de los pasos siga en orden: la app te avisa al guardar.';
+  dlgQuitar.showModal();
+}
+function quitarSoloVoz() {
+  const i = QUITAR, v = vecino(i); if (v < 0) return;
+  const m = G.bloques[i].montaje, n = G.bloques[v].montaje;
+  if (v < i) n.src_fin = m.src_fin; else n.src_inicio = m.src_inicio;
+  n.unido = true;  // la app no recorta este tramo al revisar: trae la imagen del paso que quitaste
+  QUITADOS.push({bloque: JSON.parse(JSON.stringify(G.bloques[i])), vecino: v < i ? 'antes' : 'despues'});
+  G.bloques.splice(i, 1); sucio = true; dlgQuitar.close(); pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ Quité lo que decía; su imagen quedó en el bloque de al lado. Pulsa «Guardar cambios».`;
+}
+function quitarAcelerado() {
+  const b = G.bloques[QUITAR], m = b.montaje || {};
+  if (m.src_inicio == null || !(m.modo || '').startsWith('lento')) { alert('Este bloque no muestra un tramo de tu grabación (es una imagen): usa otra opción.'); return; }
+  if (b.texto.trim()) Object.assign(m, {texto_quitado: b.texto, velocidad_antes: m.velocidad || 1, modo_antes: m.modo, congelar_antes: m.congelar_s ?? null});
+  b.texto = ''; m.modo = 'lento'; m.congelar_s = null; m.velocidad = +$('#qVel').value; m.sin_voz = true;
+  sucio = true; dlgQuitar.close(); pintar();
+  $('#msg').className = 'msg ok'; $('#msg').textContent = `✓ ${b.id} queda sin voz, con su tramo a ×${m.velocidad}. Pulsa «Guardar cambios». Si después le escribes texto, vuelve a tener voz.`;
+}
+function quitarTodo() {
+  QUITADOS.push({bloque: JSON.parse(JSON.stringify(G.bloques[QUITAR])), vecino: null});
+  G.bloques.splice(QUITAR, 1); sucio = true; dlgQuitar.close(); pintar();
 }
 function comoTexto() {
   return G.bloques.map(b => `### ${b.id} · ${mmss(b.inicio_min)}–${mmss(b.fin_max)}${b.ancla ? ' · en pantalla: ' + b.ancla.replace(/\s+/g, ' ') : ''}\n${b.texto.trim()}`).join('\n\n');
@@ -144,6 +578,8 @@ function prepararGpt() {
     `Cada bloque va sobre una parte del video que ya está cortada; el texto de cada bloque debe durar más o menos lo mismo al leerlo ` +
     `(unas ${PALABRAS_POR_S * 60 | 0} palabras por minuto; el tiempo de cada bloque está en su encabezado).\n` +
     `Mejora la redacción, corrige errores y hazlo más claro y entretenido. NO inventes datos (pines, precios, nombres de archivo) que no estén.\n` +
+    `Humor medido: como mucho un remate corto (una frase) cada 6 a 8 bloques, nunca dos bloques seguidos, sin repetir tema, nunca en los pasos exactos (códigos, keys, pines, botones, copiar, borrar), ` +
+    `y que la invitación a comentar del inicio lleve un chiste.\n` +
     `Devuélveme TODOS los bloques en el MISMO formato: cada uno con su línea "### Lxx · …" igual, y debajo solo el texto nuevo. Nada más.\n\n` + comoTexto();
   $('#msgCopia').textContent = '';
 }
@@ -172,23 +608,54 @@ function bajarWord() {
 }
 async function guardar() {
   const b = $('#btnGuardar'), msg = $('#msg');
+  if (!(await sinCambiosAjenos())) return false;
   b.disabled = true; msg.className = 'msg'; msg.textContent = 'Guardando y revisando el guion…';
   try {
-    await api(`/api/pegar?p=${q(P)}`, {method: 'POST', body: JSON.stringify(G)});
-    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar'})});
-    for (let k = 0; k < 120; k++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const e = await api(`/api/estado?p=${q(P)}`);
-      if (e.trabajo.proyecto) continue;
-      if (e.fallo) throw new Error(e.fallo.msg || 'la revisión falló; mira el registro en la app');
-      break;
-    }
+    await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
+    // las emociones que cambiaste van primero por «🎛 Audio e imagen»: así la voz ya hecha de ese bloque se rehace con la nueva
+    const emociones = Object.fromEntries(G.bloques.filter(b => b.id in EMO_ORIGINAL && (b.emocion || '') !== EMO_ORIGINAL[b.id]).map(b => [b.id, b.emocion || '']));
+    if (Object.keys(emociones).length) await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})});
+    const pegado = await api(`/api/pegar?p=${q(P)}&editor=1`, {method: 'POST', body: JSON.stringify(G)});
+    if (pegado && pegado.aprendidas) aprenderPatrones(pegado.aprendidas);  // en paralelo: no frena el guardado
+    await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'revisar', editor: true})});
+    await esperar();
     let mej = ''; try { mej = await api(`/archivo?p=${q(P)}&f=mejoras_guion.txt&v=${Date.now()}`); } catch (e) {}
     sucio = false; await cargar();
-    msg.className = 'msg ok'; msg.textContent = '✓ Guardado en la app. ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
-  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; }
+    msg.className = 'msg ok'; msg.textContent = '✓ Guardado en el guion. El video todavía no cambia: para verlo, pulsa «▶ Guardar y seguir con todo». ' + (mej.trim() ? 'La app ajustó: ' + mej.trim().split('\n').slice(-3).join(' · ') : '');
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'No se guardó: ' + e.message; b.disabled = false; return false; }
   b.disabled = false;
+  return true;
 }
+async function aprenderPatrones(n) {  // «🧠 Lo que aprendí»: la IA saca el patrón de lo que corregiste y te pregunta si lo usa siempre
+  const caja = $('#aprendido');
+  caja.hidden = false;
+  caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s). La IA está buscando el patrón para no repetirlo…`;
+  let r;
+  try { r = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'patrones'})}); }
+  catch (e) { caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s) en «🧠 Lo que aprendí». (No pude sacar el patrón con la IA: ${esc(e.message)})`; return; }
+  const nuevas = r.nuevas_reglas || [];
+  if (!nuevas.length) { caja.innerHTML = `🧠 Anoté ${n} cambio(s) tuyo(s) en «🧠 Lo que aprendí». No salió ninguna regla nueva.`; return; }
+  caja.innerHTML = `<b>🧠 De lo que corregiste aprendí esto.</b> ¿Lo uso en todos los guiones?` + nuevas.map(x => `
+    <div class="fila" data-id="${esc(x.id)}" style="margin:6px 0; gap:8px; align-items:center; flex-wrap:wrap">
+      <span style="flex:1; min-width:16em">«${esc(x.texto)}»${x.por_que ? `<br><small class="ayuda">${esc(x.por_que)}</small>` : ''}</span>
+      <button class="principal" onclick="decidirRegla('${esc(x.id)}', 'aprobada', this)">✓ Sí, siempre</button>
+      <button onclick="decidirRegla('${esc(x.id)}', 'rechazada', this)">✗ No</button></div>`).join('') +
+    `<small class="ayuda">Las ves y corriges cuando quieras en <a href="/aprendi" target="_blank">🧠 Lo que aprendí</a>.</small>`;
+}
+async function decidirRegla(id, accion, boton) {
+  try {
+    await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion, id})});
+    boton.parentElement.innerHTML = `<span>${accion === 'aprobada' ? '✓ Listo: la IA lo va a cumplir en los próximos guiones.' : '✗ Descartada: no vuelve a salir.'}</span>`;
+  } catch (e) { alert(e.message); }
+}
+async function guardarBloque(i) {  // el 💾 de cada bloque: guarda todo el guion y avisa ahí mismo, sin subir hasta arriba
+  const g = $('#b' + i + ' .guardarAqui');
+  if (g) { g.disabled = true; g.textContent = 'Guardando…'; }
+  const ok = await guardar();
+  const h = $('#b' + i + ' .guardarAqui');
+  if (h) { h.disabled = false; h.textContent = ok ? '✓ Guardado' : '✗ No se guardó (mira arriba)'; }
+}
+try { if (localStorage.verEmo === '0') { $('#verEmo').checked = false; document.body.classList.add('sinEmo'); } } catch (e) {}
 addEventListener('beforeunload', e => { if (sucio) { e.preventDefault(); e.returnValue = ''; } });
 cargar();
 </script>

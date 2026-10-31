@@ -27,7 +27,11 @@ import argparse, json, os, re, subprocess, sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'nitidez'))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 from nitidez import analizar  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
+import importantes  # noqa: E402  «⭐ Cortes importantes»: lo que no se corta ni se acelera
 
 SIN_VOZ_MIN = 1.5   # un silencio más corto es respirar: no se toca
 MARGEN = 0.3        # lo que queda a cada lado de un corte
@@ -250,7 +254,7 @@ def armar(video, tramos, salida):
     open(script, 'w', encoding='utf-8').write(';\n'.join(fil))
     print(f'Armando el video acortado ({len(partes)} partes)…', flush=True)
     try:
-        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video, '-filter_complex_script', script,
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video, '-filter_complex_script', script,
                         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac',
                         '-b:a', '160k', '-movflags', '+faststart', salida], check=True)
     finally:
@@ -273,6 +277,7 @@ def main():
         plan = leer_json(plan_f, None)
         if not plan:
             raise SystemExit('ERROR: todavía no hay tramos: pulsa «Buscar qué acortar» primero.')
+        plan['tramos'] = importantes.recortar(plan['tramos'], importantes.leer(d))  # por si marcaste uno después
     else:
         objetivo = a.objetivo * 60 if a.objetivo > 0 else 0
         if objetivo and objetivo >= dur:
@@ -287,7 +292,7 @@ def main():
                 tramos += no_importantes(d, aj, pal, dur, objetivo)
             except (SystemExit, Exception) as e:  # sin IA igual queda lo que encontró tu PC
                 print(f'· la IA no pudo ({e}); sigo con lo que encontré yo', flush=True)
-        tramos = sin_choques(tramos)
+        tramos = importantes.recortar(sin_choques(tramos), importantes.leer(d))  # tus «⭐ cortes importantes» no se tocan
         elegir(tramos, dur, objetivo)
         for k, c in enumerate(tramos, 1):
             c['id'] = f'A{k:02d}'

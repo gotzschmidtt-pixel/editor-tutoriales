@@ -8,3 +8,5 @@ anthropic
 yt-dlp
 # lector de texto de pantalla (ubicar flechas y el guion minucioso)
 rapidocr_onnxruntime
+# miniatura automática (texto y recorte del teléfono)
+pillow

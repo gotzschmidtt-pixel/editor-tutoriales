@@ -1,0 +1,114 @@
+ESTUDIO DE TUTORIALES: TODO LO QUE INSTALA Y USA LA APP
+Actualizado el 29/10/2026
+
+======================================================================
+CÓMO SE INSTALA EN UNA PC NUEVA
+======================================================================
+1. Baja el zip de la app:
+   https://github.com/gotzschmidtt-pixel/editor-tutoriales/archive/refs/heads/claude/project-thread-ns2vx0.zip
+   (o copia la carpeta editor-tutoriales ENTERA desde la otra PC, con descargas_app adentro)
+2. Descomprime y haz doble clic en instalar.bat. Hace los 6 pasos de abajo,
+   pregunta por los opcionales y crea el icono "Estudio de tutoriales" en el escritorio.
+3. Si te dice que cierres y vuelvas a abrir instalar.bat, hazlo: Windows acaba de
+   instalar Python, Node.js o ffmpeg y todavía no los ve.
+
+Para llevarla a una PC sin internet (o para no bajar todo de nuevo):
+en la PC que ya funciona corre guardar_para_otra_pc.bat y después copia la carpeta
+entera. instalar.bat usa primero lo guardado en descargas_app y solo baja lo que falte.
+
+Una PC que ya tiene la app: si la carpeta es una copia de git, se actualiza con
+"git pull"; si no, con el botón "Actualizar la app". Después de actualizar conviene
+correr una vez:  python instalador\bajar_todo.py
+
+======================================================================
+PASO 1/6. PROGRAMAS BASE
+======================================================================
+- Python 3.12 ............ corre toda la app            (winget Python.Python.3.12)
+- Node.js LTS ............ etiquetas animadas y Remotion (winget OpenJS.NodeJS.LTS)
+- ffmpeg ................. cortar, unir, comprimir video y audio (winget Gyan.FFmpeg)
+- Opcional, a mano: un ffmpeg compatible con tu tarjeta NVIDIA en la carpeta
+  ffmpeg_nvidia\ (ver README.md). instalar.bat no lo instala.
+
+======================================================================
+PASO 2/6. LIBRERÍAS DE PYTHON  (requirements.txt)
+======================================================================
+Quedan instaladas en Python y con una copia en descargas_app\paquetes.
+- numpy .................. cálculos con imagen y audio
+- opencv-python-headless . leer video, caras, objetos y seguir movimiento
+- faster-whisper ......... transcribir en tu PC, sin internet
+- anthropic .............. Claude como IA (solo si pones su clave)
+- yt-dlp ................. bajar videos de YouTube para "Alimentación"
+- rapidocr_onnxruntime ... leer el texto que aparece en pantalla
+- pillow ................. miniatura automática
+
+======================================================================
+PASO 3/6. MODELOS QUE TRABAJAN EN TU PC  (instalador\bajar_todo.py)
+======================================================================
+Gratis, se bajan una sola vez y no gastan créditos. Si alguno falla, la app lo
+vuelve a intentar sola la primera vez que lo uses.
+- Whisper large-v3-turbo (unos 1,6 GB) ... transcripción
+                                           -> descargas_app\modelos\whisper
+- Detector YOLOX (35 MB) ................. ve teléfono, laptop, monitor, teclado,
+  mouse y manos: el Short sigue al teléfono, los círculos siguen al objeto, las
+  etiquetas no tapan el teléfono y la IA sabe qué se ve en cada parte
+                                           -> descargas_app\modelos
+- Detector de caras YuNet (230 KB) ....... -> descargas_app\modelos
+- Real-ESRGAN (45 MB) .................... "Mejorar imagen"
+                                           -> descargas_app\programas\realesrgan
+- DeepFilterNet (27 MB) .................. "Limpiar voz"
+                                           -> descargas_app\programas
+- RNNoise (300 KB) ....................... "Limpiar voz", versión liviana
+                                           -> descargas_app\modelos
+
+======================================================================
+PASOS 4/6 Y 5/6. NAVEGADORES QUE DIBUJAN LOS EFECTOS
+======================================================================
+- Playwright 1.56.1 + Chromium ........... dibuja las etiquetas animadas
+                                           -> descargas_app\playwright
+- Remotion 4.0.530 + React + su navegador  tráiler y señales
+                                           -> remotion\node_modules
+
+======================================================================
+PASO 6/6. SERVICIOS EN LÍNEA (necesitan cuenta o clave; algunos gastan créditos)
+======================================================================
+- ElevenLabs ............. voz (Mauricio en español, Brian en inglés), musica,
+                           efectos de sonido y transcripción en línea.
+                           La clave se pega en el paso 6/6 o en la app.
+- IA para guion e ideas .. eliges una en "Ajustes IA", cada una con su clave:
+                           Claude (Anthropic), OpenAI (GPT), Gemini (Google),
+                           DeepSeek, Qwen (Alibaba Cloud u OpenRouter).
+                           Clave de Gemini: https://aistudio.google.com/apikey
+- YouTube ................ publicar con capítulos, comentarios y retención.
+                           Es un permiso de Google Cloud con la cuenta del canal;
+                           pasos en la pantalla YouTube de la app y en youtube\LEEME.md
+- Avisos al celular ...... ntfy (gratis): app "ntfy" en el teléfono.
+Las claves quedan en app\ajustes.json o en la variable ELEVENLABS_API_KEY de
+Windows. ajustes.json nunca se sube a GitHub, pero SÍ viaja si copias la
+carpeta entera a otra PC.
+
+======================================================================
+OPCIONALES (instalar.bat pregunta al final)
+======================================================================
+- IA en tu PC con Ollama (instalar_ia_local.bat): funciona sin internet ni créditos.
+  Modelos a elegir: Gemma 3 12B (unos 8 GB), Gemma 3 4B (unos 3 GB),
+  Qwen 2.5 VL 7B (unos 6 GB), Qwen 3 VL 8B (unos 6 GB).
+  guardar_para_otra_pc.bat puede copiarlos a descargas_app\ollama_modelos.
+- Tailscale (winget Tailscale.Tailscale): usar la app desde el celular con datos
+  móviles, fuera del Wi-Fi de casa. En el celular se instala desde Play Store.
+- APK de Android (android\Estudio.apk, 25 KB): abre el estudio en el celular y
+  graba video para subirlo. Pasos en android\LEEME.md.
+- Abrir la app sola al prender el PC: deja un archivo en la carpeta Inicio de
+  Windows. Se quita con la casilla de "Celular" en la app. Con "Celular" activado
+  el PC no se suspende mientras la app está abierta.
+- LM Studio: la app también funciona con él si lo instalas aparte (lmstudio.ai).
+
+======================================================================
+LO QUE QUEDA EN TU PC
+======================================================================
+- Estudio.exe y el icono "Estudio de tutoriales" en el escritorio (crear_exe.bat).
+- La app se abre en http://localhost:8765
+- "Lo que aprendí" (http://localhost:8765/aprendi): las reglas que la app saca de
+  tus correcciones, tu perfil de estilo y lo que ya contestaste. Vive en
+  mis_conocimientos\aprendizaje y viaja con la carpeta mis_conocimientos.
+- Tus carpetas: mis_proyectos, mis_estilos, mis_musica, mis_conocimientos,
+  mis_sonidos y descargas_app. "Actualizar la app" no las reemplaza.

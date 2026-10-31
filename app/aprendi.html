@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🧠 Lo que aprendí</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  h2 { font-size: 16px; margin: 0 0 6px; }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  button.si { border-color: var(--verde); } button.no { border-color: var(--rojo); }
+  input, select { background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  main { padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; }
+  section.ancho { grid-column: 1 / -1; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .msg { font-size: 13px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .regla { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+  .regla.activa { border-color: var(--verde); }
+  .regla.rechazada { opacity: .45; }
+  .regla .t { font-weight: 600; } .regla .ej { color: var(--suave); font-size: 12px; margin-top: 3px; }
+  .chip { font-size: 12px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--borde); color: var(--suave); }
+  .chip.on { color: var(--verde); border-color: var(--verde); }
+  pre { white-space: pre-wrap; font-size: 13px; color: var(--suave); background: #0f1426; padding: 10px; border-radius: 10px; max-height: 420px; overflow: auto; }
+  @media (max-width: 600px) { main { grid-template-columns: 1fr; padding: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" onclick="return volverInicio()" title="Volver a la pantalla principal del Estudio (con este proyecto abierto)"
+     style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
+            background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
+  <script>
+  function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
+    const p = new URLSearchParams(location.search).get('p');
+    const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
+    let principal = null;  // si la abrió la ventana principal, cierro esta pestaña y queda la principal (sin abrir otra igual)
+    try { if (window.opener && !window.opener.closed && window.opener.location.pathname === '/') principal = window.opener; } catch (e) {}
+    if (!principal) { location.href = url; return false; }
+    try { principal.focus(); } catch (e) {}
+    window.close();
+    setTimeout(() => { if (!window.closed && document.visibilityState === 'visible') location.href = url; }, 600);
+    return false;
+  }
+  </script>
+  <h1>🧠 Lo que aprendí de tus correcciones</h1>
+  <select id="filtro" onchange="pintar()">
+    <option value="todas">Todas</option><option value="activas">Las que ya usa la IA</option>
+    <option value="sugeridas">Sugeridas (esperan tu sí)</option><option value="rechazadas">Rechazadas</option>
+  </select>
+  <button onclick="historial()" title="Revisa las versiones viejas del guion de todos tus proyectos y saca sugerencias (no gasta nada)">📜 Aprender del historial</button>
+  <span class="msg" id="msg"></span>
+</header>
+<main>
+  <section class="ancho">
+    <h2>Cómo funciona</h2>
+    <p class="aviso">Cada vez que guardas el guion, las etiquetas o los círculos en la app, comparo lo que había con lo que dejaste y saco
+      una regla («escribe X en vez de Y», «no pongas esa etiqueta»). Cuando repites la misma corrección <b id="minVeces">2</b> veces, la
+      regla le llega sola a la IA en el próximo guion (en verde). Las que vienen de versiones viejas del guion quedan como
+      <b>sugeridas</b>: puede que esos cambios los hiciera una IA, así que llegan a la IA solo si les das ✓. No gasta créditos.</p>
+    <div class="fila"><input type="text" id="nueva" placeholder="Escribe una regla tuya: p. ej. «Di siempre MTK, nunca Qualcomm»" style="flex:1; min-width:16em"
+      onkeydown="if (event.key === 'Enter') agregar()"><button class="principal" onclick="agregar()">➕ Agregar regla</button>
+      <button onclick="patrones()" title="Tu IA de «⚙ Ajustes IA» lee tus correcciones nuevas y saca las reglas generales que hay detrás (un pedido corto de texto: centavos). Quedan como sugeridas hasta que les das ✓">💡 Sacar patrones con IA</button></div>
+  </section>
+  <section class="ancho"><h2>📏 Reglas</h2><div id="reglas"></div></section>
+  <section><h2>🎙 Tu perfil de estilo</h2><div id="perfil"></div></section>
+  <section><h2>✍ Tus últimas correcciones</h2><div id="ultimas"></div></section>
+  <section class="ancho"><h2>📨 Lo que le llega a la IA en el próximo guion</h2><pre id="paraIa"></pre></section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+async function api(url, op) {
+  const r = await fetch(url, Object.assign({headers: {'Content-Type': 'application/json'}}, op || {}));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+let R = null;
+const ESTADO = {auto: 'automática', aprobada: '✓ aprobada', rechazada: '✗ rechazada', mia: '✍ tuya', sugerida: '💡 patrón sugerido por la IA'};
+function pintar() {
+  const f = $('#filtro').value;
+  const rs = R.reglas.filter(r => f === 'todas' || (f === 'activas' && r.activa) || (f === 'rechazadas' && r.estado === 'rechazada')
+    || (f === 'sugeridas' && !r.activa && (r.estado === 'auto' || r.estado === 'sugerida')));
+  $('#minVeces').textContent = R.min_veces;
+  $('#reglas').innerHTML = rs.length ? rs.map(r => `<div class="regla ${r.activa ? 'activa' : ''} ${r.estado}">
+    <div class="t">${esc(r.texto_mio || r.texto)}${r.por_que ? `<br><small class="aviso">${esc(r.por_que)}</small>` : ''}</div>
+    <div class="fila"><span class="chip ${r.activa ? 'on' : ''}">${r.activa ? 'la IA la usa' : 'no llega a la IA'}</span>
+      <span class="chip">${ESTADO[r.estado] || r.estado}</span>
+      ${r.veces ? `<span class="chip">${r.veces} vez${r.veces > 1 ? 'es' : ''}${r.del_editor ? ` (${r.del_editor} en el editor)` : ' (del historial)'}</span>` : ''}
+      ${r.proyectos && r.proyectos.length ? `<span class="chip">${esc(r.proyectos.join(', '))}</span>` : ''}
+      <span style="flex:1"></span>
+      ${r.estado !== 'aprobada' && r.estado !== 'mia' ? `<button class="si" onclick="cambiar('aprobada','${r.id}')">✓ Sí, que la use</button>` : ''}
+      ${r.estado !== 'rechazada' && r.estado !== 'mia' ? `<button class="no" onclick="cambiar('rechazada','${r.id}')">✗ No, está mal</button>` : ''}
+      ${r.estado === 'aprobada' || r.estado === 'rechazada' ? `<button onclick="cambiar('auto','${r.id}')" title="Que decida la app según cuántas veces lo corriges">↺ Automática</button>` : ''}
+      <button onclick="editar('${r.id}')">✏ Corregir texto</button>
+      ${r.estado === 'mia' ? `<button class="no" onclick="cambiar('borrar','${r.id}')">🗑 Borrar</button>` : ''}</div>
+    ${(r.ejemplos || []).map(e => `<div class="ej">${esc(e.proyecto || '')} ${esc(e.bloque || '')}: «${esc(e.antes || '')}» → «${esc(e.despues || '')}»</div>`).join('')}
+  </div>`).join('') : '<p class="aviso">Todavía nada aquí. Corrige un guion en «📝 Ver y editar guion» y guárdalo: lo que cambies aparece acá.</p>';
+  const p = R.perfil || {};
+  $('#perfil').innerHTML = p.guiones ? `<p>De <b>${p.guiones}</b> guion(es) aprobado(s), ${p.bloques} bloques:</p>
+    <p>· Unas <b>${p.palabras_por_bloque}</b> palabras por bloque · humor cada <b>${p.humor_cada}</b> bloques.</p>
+    ${p.inicios_mas_usados && p.inicios_mas_usados.length ? `<p>· Comienzos que más repites (la IA los varía): ${p.inicios_mas_usados.map(x => `«${esc(x.inicio)}…» ×${x.veces}`).join(', ')}</p>` : ''}
+    ${p.frases_tuyas && p.frases_tuyas.length ? `<p>· Tus frases: ${p.frases_tuyas.map(x => `«${esc(x)}»`).join(', ')}</p>` : ''}
+    ${(p.primeras || []).map(x => `<p class="aviso">Cómo abres: «${esc(x)}…»</p>`).join('')}
+    ${(p.ultimas || []).map(x => `<p class="aviso">Cómo cierras: «${esc(x)}»</p>`).join('')}
+    <p class="aviso">Mejora solo con cada video que armas (el guion queda aprobado al hacer la voz).</p>`
+    : '<p class="aviso">Todavía no hay guiones aprobados. Se guardan solos cuando armas la voz de un video.</p>';
+  $('#ultimas').innerHTML = R.ultimas.length ? R.ultimas.map(e => `<p class="aviso"><b>${esc(e.fecha || '')}</b> ${esc(e.proyecto || '')} ${esc(e.bloque || '')} ·
+    ${esc(e.tipo)}: ${e.antes ? `«${esc(e.antes.slice(0, 90))}»` : ''}${e.despues ? ` → «${esc(e.despues.slice(0, 90))}»` : ''}${e.origen === 'historial' ? ' (historial)' : ''}</p>`).join('')
+    : '<p class="aviso">Sin correcciones todavía.</p>';
+  $('#paraIa').textContent = R.para_ia || '(nada todavía: cuando una regla quede en verde, aparece aquí)';
+}
+async function cargar() { R = await api('/api/aprendizaje'); pintar(); }
+async function enviar(datos, aviso) {
+  try { R = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify(datos)}); pintar();
+    $('#msg').textContent = aviso || 'Guardado'; $('#msg').className = 'msg ok'; }
+  catch (e) { $('#msg').textContent = e.message; $('#msg').className = 'msg err'; }
+}
+const cambiar = (accion, id) => enviar({accion, id});
+function editar(id) {
+  const r = R.reglas.find(x => x.id === id);
+  const t = prompt('Escribe la regla como quieres que la lea la IA:', r.texto_mio || r.texto);
+  if (t !== null) enviar({accion: 'editar', id, texto: t});
+}
+function agregar() { const t = $('#nueva').value.trim(); if (!t) return; enviar({accion: 'agregar', texto: t}, 'Regla agregada'); $('#nueva').value = ''; }
+async function patrones() {
+  $('#msg').textContent = 'La IA está leyendo tus correcciones…'; $('#msg').className = 'msg';
+  try { R = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'patrones'})}); pintar();
+    const n = (R.nuevas_reglas || []).length;
+    $('#msg').textContent = n ? `Listo: ${n} patrón(es) nuevo(s). Dale ✓ a los que estén bien.` : 'No hay correcciones nuevas o no salió ninguna regla nueva.';
+    $('#msg').className = 'msg ok'; }
+  catch (e) { $('#msg').textContent = e.message; $('#msg').className = 'msg err'; }
+}
+async function historial() {
+  $('#msg').textContent = 'Revisando el historial de tus guiones…'; $('#msg').className = 'msg';
+  try { R = await api('/api/aprendizaje', {method: 'POST', body: JSON.stringify({accion: 'historial'})}); pintar();
+    $('#msg').textContent = `Listo: ${R.nuevas} cambio(s) nuevo(s) del historial`; $('#msg').className = 'msg ok'; }
+  catch (e) { $('#msg').textContent = e.message; $('#msg').className = 'msg err'; }
+}
+cargar();
+</script>
+</body>
+</html>

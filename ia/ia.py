@@ -22,22 +22,213 @@ sys.path.insert(0, os.path.join(RAIZ, 'trailer'))
 import pistas  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'instalador'))
 import guardado  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'diagnostico'))
+import diagnostico  # noqa: E402
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocimientos/CONOCIMIENTO.md)
+import aprendizaje  # noqa: E402  «🧠 Lo que aprendí»: reglas sacadas de tus correcciones
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
+import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
 import numpy as np  # noqa: E402
+import hashlib, http.client, inspect, threading, time  # noqa: E402
 
 ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'trailer.json', 'senales': 'senales.json'}
+ARCHIVO_PREGUNTAS = {'guion': 'preguntas_guion.json', 'trailer': 'preguntas_trailer.json'}
+TRAILER_PREGUNTAS_MAX = 10
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
 VEL_CRITICO = 1.5  # en los pasos clave (poner la key, escribir códigos) la imagen va casi a velocidad normal
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 PALABRAS_POR_S = 2.6
+VEL_SIN_VOZ = 16.0  # un tramo sin voz (quitaste su texto) puede ir más rápido: se ve pasar, sin explicación
+VEL_PASO = 2.0  # pasos de configuración o comprobación (seleccionar, activar, verificar): se aceleran poco, que se vea qué se toca
+PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|confirma|configura|'
+                  r'entra (en|a) (los )?ajustes)', re.I)
+ESPERA = re.compile(r'esper|carg|reinici|instal|descarg|tarda|progreso', re.I)
+# el «ok» suelto al comienzo («Ok, ahora…») o al final («…listo, ok.»); «pulsa OK» no se toca porque no va tras una pausa
+MULETILLA = re.compile(r'^\s*(ok|okey|okay)\s*[,.!…]+\s*|(?<=[.,!?…])\s*(ok|okey|okay)\s*[.!…]*\s*$', re.I)
+PREGUNTAS_MAX = 15  # preguntas al autor por guion sobre datos que no se ven claros
+MEJORAS_MAX = 10  # y, aparte, ideas para mejorar el guion
+SIN_VOZ_MAX = 0.15  # parte del video que puede quedar sin voz; más que eso y al guion le faltan palabras
 
-ESTILO = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
+# HUMOR: el nivel se elige en «⚙ Ajustes IA» (ajustes «humor»: 0 sin, 1 poco, 2 normal, 3 mucho). Cada bloque con chiste
+# lleva "humor": true, así la app los cuenta y, si se pasa del máximo del nivel, le pide a la IA que quite los que sobran.
+HUMOR_NIVELES = {
+    0: ('sin humor', 0, None),
+    1: ('poco', 8, 'UN remate cada 7 u 8 bloques como máximo'),
+    2: ('normal', 5, 'un remate cada 4 o 5 bloques como máximo'),
+    3: ('mucho', 3, 'un remate cada 3 bloques como máximo'),
+}
+HUMOR_NIVEL = 1
+
+
+def nivel_humor(ajustes):
+    try:
+        n = int(ajustes.get('humor', 1))
+    except (TypeError, ValueError, AttributeError):
+        n = 1
+    return n if n in HUMOR_NIVELES else 1
+
+
+def maximo_humor(n_bloques, nivel=None):
+    """Cuántos bloques con chiste se aceptan en un guion de n_bloques (el chiste de la invitación a comentar cuenta)."""
+    nombre, cada, _ = HUMOR_NIVELES[HUMOR_NIVEL if nivel is None else nivel]
+    return 0 if not cada else max(1, -(-n_bloques // cada))
+
+
+def regla_humor(nivel):
+    nombre, cada, frecuencia = HUMOR_NIVELES[nivel]
+    if not cada:
+        return ('- HUMOR: sin humor. Tono cercano y ameno, pero sin chistes ni remates. '
+                'Marca todos los bloques con "humor": false.\n- Al inicio, una invitación sencilla a comentar las dudas.')
+    return (f'- HUMOR (nivel «{nombre}», manda sobre el estilo aprendido de los videos de referencia): {frecuencia}, nunca en '
+            'dos bloques seguidos. Cada remate es UNA frase corta (máximo 12 palabras), dicha de pasada, sin exagerar: el '
+            'resto del bloque explica normal. Picante ligero, doble sentido suave, nada grosero. Solo en bloques que NO son '
+            'pasos críticos (esperas, cargas, el antes y el después, el cierre). En los pasos críticos (pines, códigos, keys, '
+            'archivos, valores, copiar o pegar, borrar o conectar) nada de chistes: claro y exacto. Cada remate con un TEMA '
+            'distinto (no repitas ex, suegra, vecina…). Marca con "humor": true y "humor_tema" cada bloque que lleva un '
+            'remate, y con "humor": false los demás. Repártelos parejo a lo largo de TODO el video (inicio, mitad y final), '
+            'no todos juntos.\n- Al inicio, una invitación a comentar las dudas con un toque de humor (cuenta como uno de los '
+            'remates).')
+
+
+def configurar_humor(nivel):
+    """Ajusta el ESTILO y el recordatorio de humor al nivel elegido (se usan en todos los pedidos del guion)."""
+    global HUMOR_NIVEL, ESTILO, RECUERDA_HUMOR
+    HUMOR_NIVEL = nivel
+    ESTILO = ESTILO_BASE.replace('{HUMOR}', regla_humor(nivel))
+    nombre, cada, frecuencia = HUMOR_NIVELES[nivel]
+    RECUERDA_HUMOR = ('Sin humor: no agregues chistes. ' if not cada else
+                      f'Respeta el HUMOR de las reglas de estilo (nivel «{nombre}»): {frecuencia}, remates de una frase corta, '
+                      'nunca en pasos críticos ni en bloques seguidos, también en los bloques nuevos o cambiados; marca '
+                      '"humor": true o false en cada bloque. ')
+
+
+ESTILO_BASE = """Estilo de la narración (fabian, tutoriales de reparación de celulares):
 - Entretenido y sencillo de entender, en español latino, tuteando.
-- Humor picante ligero (doble sentido suave) SOLO fuera de los pasos críticos. En los pasos críticos (pines, archivos, valores) nada de chistes: claro y exacto.
-- Al inicio, una invitación con humor a comentar las dudas.
+- Que no suene repetitivo: cada bloque arranca distinto (no tres veces «Ahora…», «Y listo…» o «Y como puedes ver…») y
+  sin muletillas («efectivamente», «simplemente»). Si el autor repite algo a propósito (un aviso clave), dilo con otras palabras.
+{HUMOR}
 - Nombres de botones, menús y archivos escritos tal cual aparecen en pantalla.
 - NO inventes datos: precios, pines, temperaturas, webs o nombres de archivo solo si están en la transcripción, en las capturas o en la idea del autor. Si falta un dato, escribe la frase sin él."""
+ESTILO = RECUERDA_HUMOR = ''
+configurar_humor(1)
+
+
+def critico_humor(b):
+    """Pasos donde no va un chiste: los críticos de la app y los que copian, pegan o borran algo (serial, key, Erase FRP)."""
+    return es_critico(b) or bool(re.search(r'\b(erase|borra|borrar|formate|fastboot|flashe|conect)', str(b.get('texto', '')) + ' '
+                                            + str(b.get('ancla', '')), re.I)) or bool(CRITICO.search(str(b.get('ancla', ''))))
+
+
+def medir_humor(bloques):
+    """Lo que se mide del humor, según la marca "humor" (y "humor_tema") de cada bloque: cuántos llevan chiste, el máximo
+    del nivel, cuáles van seguidos, cuáles caen en pasos críticos y qué temas se repiten. None si la IA no marcó nada."""
+    if not any(isinstance(b, dict) and 'humor' in b for b in bloques):
+        return None
+    con = [k for k, b in enumerate(bloques) if b.get('humor') is True]
+    temas = {}
+    for k in con:
+        t = str(bloques[k].get('humor_tema') or '').strip().lower()
+        if t:
+            temas.setdefault(t, []).append(bloques[k].get('id'))
+    return {'con': len(con), 'total': len(bloques), 'maximo': maximo_humor(len(bloques)),
+            'seguidos': [bloques[k].get('id') for k in con if k - 1 in con],
+            'criticos': [bloques[k].get('id') for k in con if critico_humor(bloques[k])],
+            'repetidos': {t: ids for t, ids in temas.items() if len(ids) > 1}}
+
+
+def texto_medida(m):
+    nombre = HUMOR_NIVELES[HUMOR_NIVEL][0]
+    out = f"humor: {m['con']} de {m['total']} bloques con chiste (nivel «{nombre}», máximo {m['maximo']})"
+    if m['seguidos']:
+        out += f"; seguidos: {', '.join(map(str, m['seguidos']))}"
+    if m['criticos']:
+        out += f"; en pasos delicados: {', '.join(map(str, m['criticos']))}"
+    if m['repetidos']:
+        out += '; temas repetidos: ' + ', '.join(f'{t} ×{len(i)}' for t, i in m['repetidos'].items())
+    return out
+
+
+def elegir_humor(bloques, maximo):
+    """Qué bloques conservan su chiste: los que no son pasos delicados, nunca dos seguidos, sin repetir tema, repartidos
+    a lo largo del video, hasta el máximo del nivel. La invitación a comentar (al inicio) va primero."""
+    candidatos = [k for k, b in enumerate(bloques) if b.get('humor') is True and not critico_humor(b)]
+    if not candidatos or not maximo:
+        return set()
+    hueco = max(2, len(bloques) // max(1, maximo))
+    quedan, temas, ultimo = [], set(), -99
+    for k in candidatos:
+        t = str(bloques[k].get('humor_tema') or '').strip().lower()
+        if len(quedan) >= maximo:
+            break
+        if k - ultimo < (2 if not quedan else hueco) or (t and t in temas):
+            continue
+        quedan.append(k); temas.add(t); ultimo = k
+    return {bloques[k].get('id') for k in quedan}
+
+
+def marcar_humor(ajustes, datos):
+    """Un guion viejo sin marcas: la IA solo marca qué bloques llevan chiste y de qué tema (no cambia ningún texto)."""
+    bloques = datos.get('bloques') if isinstance(datos, dict) else datos
+    pedido = ('Este es el guion de un video tutorial. Para cada bloque dime si su texto lleva un chiste o remate de humor y de '
+              'qué tema es (por ejemplo «ex», «suegra», «vecina», «comida»). NO cambies ningún texto. Responde SOLO con JSON '
+              '{"marcas": [{"id": "L01", "humor": true, "humor_tema": "suegra"}, {"id": "L02", "humor": false}, ...]}\n\n'
+              + json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in bloques], ensure_ascii=False)[:60000])
+    print('· la IA marca qué bloques del guion llevan chiste…', flush=True)
+    r = extraer_json(llamar(ajustes, pedido, []))
+    marcas = {str(x.get('id')): x for x in (r.get('marcas') if isinstance(r, dict) else r) or [] if isinstance(x, dict)}
+    for b in bloques:
+        m = marcas.get(str(b.get('id')))
+        b['humor'] = bool(m and m.get('humor') is True)
+        if m and m.get('humor_tema') and b['humor']:
+            b['humor_tema'] = str(m['humor_tema'])[:40]
+    return datos
+
+
+def dosificar_humor(d, ajustes, datos, avisos):
+    """Mide el humor del guion y, si se pasa del nivel (más chistes que el máximo, dos seguidos, chistes en pasos
+    delicados o temas repetidos), le pide a la IA que quite el chiste SOLO de los bloques que sobran. Los demás bloques
+    quedan exactamente igual (conservan su voz). Lo medido queda en los avisos de la revisión del guion."""
+    bloques = datos.get('bloques') if isinstance(datos, dict) else datos
+    if not bloques:
+        return datos
+    m = medir_humor(bloques)
+    if m is None:
+        avisos.append(f'humor: la IA no marcó qué bloques llevan chiste, así que no lo pude medir (nivel «{HUMOR_NIVELES[HUMOR_NIVEL][0]}»)')
+        return datos
+    if m['con'] <= m['maximo'] and not (m['seguidos'] or m['criticos'] or m['repetidos']):
+        avisos.append(texto_medida(m))
+        return datos
+    quedan = elegir_humor(bloques, m['maximo'])
+    quitar = [b for b in bloques if b.get('humor') is True and b.get('id') not in quedan]
+    print('· ' + texto_medida(m) + f'. Le pido a la IA que quite el chiste de {len(quitar)} bloque(s)…', flush=True)
+    pedido = (f"""En estos bloques de un video tutorial QUITA el chiste o remate de humor: deja la frase informativa y natural, con
+los mismos datos y más o menos el mismo largo. No agregues otro chiste ni cambies nada más.
+{json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in quitar], ensure_ascii=False)[:60000]}
+
+Responde SOLO con JSON {{"bloques": [{{"id": "...", "texto": "..."}}, ...]}} con los mismos ids.""")
+    try:
+        r = extraer_json(llamar(ajustes, pedido, []))
+        nuevos = {str(x.get('id')): x.get('texto') for x in (r.get('bloques') if isinstance(r, dict) else r) or []
+                  if isinstance(x, dict) and str(x.get('texto') or '').strip()}
+    except (SystemExit, ValueError) as e:
+        if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+            raise
+        avisos.append(texto_medida(m) + f'. No pude bajarlo ({str(e)[:120]}); bájalo a mano o elige un nivel menor en «⚙ Ajustes IA»')
+        return datos
+    cambiados = []
+    for b in bloques:  # solo cambia el texto de los bloques que pierden el chiste; ids, montaje y tiempos quedan igual
+        if b.get('humor') is True and b.get('id') not in quedan and str(b.get('id')) in nuevos:
+            b['texto'] = str(nuevos[str(b.get('id'))]).strip()
+            b['humor'] = False
+            b.pop('humor_tema', None)
+            cambiados.append(b.get('id'))
+    m2 = medir_humor(bloques)
+    avisos.append(f"humor: tenía chistes en {m['con']} de {m['total']} bloques; quité el chiste de {len(cambiados)} "
+                  f"({', '.join(map(str, cambiados))}). Ahora: " + texto_medida(m2).split(': ', 1)[1])
+    return datos
 
 
 def duracion(f):
@@ -97,6 +288,14 @@ def capturas_pistas(d, an):
                                 '-vf', 'scale=768:-2', '-q:v', '4', f], check=True)
                 lista.append((f'segundo {s:.1f} del video original (cerca de la pista {nombre})', f))
     return lista
+
+
+def cuantos_extras(bloques):
+    """Cuántas etiquetas y flechas pedir según lo que dura el video. Referencia del autor: el de la Raspberry (7 min)
+    llevó 21 etiquetas y 9 flechas y así le gusta; con «entre 4 y 12» uno de 11 min salió con 8 y 5, muy pocas."""
+    fin = max([float(b.get('fin_max') or b.get('inicio_min') or 0) for b in bloques] or [0])
+    minutos = max(fin / 60, 3)
+    return round(minutos * 3), round(minutos * 1.2), round(minutos * 1.6)
 
 
 def mmss(s):
@@ -221,8 +420,12 @@ def mis_paginas():
     return [x for x in r if isinstance(x, dict) and (x.get('url') or '').strip()]
 
 
+DONDE_PAGINA = {'inicio': 'nómbrala al inicio del video', 'mitad': 'nómbrala en la mitad del video', 'final': 'nómbrala en la parte final, antes de la despedida'}
+
+
 def texto_paginas(pag):
-    return '\n'.join(f"- {x.get('nombre') or x['url']}: {x['url']}" + (f" (para: {x['para']})" if x.get('para') else '') for x in pag)
+    return '\n'.join(f"- {x.get('nombre') or x['url']}: {x['url']}" + (f" (para: {x['para']})" if x.get('para') else '')
+                     + (f" [{DONDE_PAGINA[x['donde']]}]" if x.get('donde') in DONDE_PAGINA else '') for x in pag)
 
 
 def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
@@ -241,9 +444,40 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                       "texto que se lee en pantalla, leído con zoom a resolución completa: úsalo para nombres, modelos y valores exactos). Es lo que SE VE; la transcripción es lo que SE DICE, y a veces el autor lo "
                       "dice antes o después de hacerlo. Elige cada tramo por lo que se ve en este mapa:\n" + texto_mapa(mapa))
 
+    acc = momentos_accion(d) if tarea == 'guion' else []
+    if acc:
+        partes.append("MOMENTOS DE ACCIÓN (sacados de la transcripción: el autor dice lo que hace mientras lo hace). Cada uno es un "
+                      "evento: un bloque empieza en ese segundo (o 1-2 s antes) y su voz NOMBRA esa acción con sus palabras (las teclas, "
+                      "el botón, el menú, pegar, conectar…). No la adelantes a un bloque anterior ni la dejes para el siguiente, y no "
+                      "la saltes. Tienes una captura de cada uno entre las adjuntas:\n" + '\n'.join(
+                          f"- [{mmss(a)}] ({', '.join(sorted(n))}) «{f[:160]}»" for a, _, f, n in acc))
+    if tarea == 'guion' and importantes.leer(d):
+        partes.append(importantes.texto_para_ia(importantes.leer(d)))
+    if tarea == 'guion' and patron_versiones(d):
+        partes.append(patron_versiones(d))
+    sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
+    if sabido:
+        partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
+                      "úsalo y no lo vuelvas a preguntar, pero si no coincide con este video manda el video):\n" + sabido)
+    aprobados = conocimiento.guiones_para_ia(d=d) if tarea == 'guion' and conocimiento.usar() else ''
+    aprendido = aprendizaje.texto_para_ia() if tarea == 'guion' else ''
+    try:  # «📊 Todo tu canal»: retención y títulos de todos tus videos (YouTube Analytics), con sus reglas
+        sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
+        import canal as canal_yt
+        del_canal = canal_yt.texto_para_ia() if tarea in ('guion', 'trailer') else ''
+    except Exception:
+        del_canal = ''
+    if del_canal:
+        partes.append(del_canal)
+    if aprendido:  # «🧠 Lo que aprendí»: lo que el autor corrige siempre en la app y su perfil de estilo
+        partes.append(aprendido)
+    if aprobados:
+        partes.append("GUIONES QUE EL AUTOR YA APROBÓ (con sus cambios). Imita su tono, cómo varía los comienzos de frase, cómo "
+                      "explica cada paso y dónde pone el humor. NO copies sus datos (modelos, precios, programas) a este video:\n" + aprobados)
     if estilo and tarea in ('guion', 'trailer'):
         partes.append(f"Estilo aprendido de los videos de referencia del autor («{estilo[0]}»). Imítalo en tono, ritmo, "
-                      f"aperturas, llamados y cierre, sin copiar datos de otros videos:\n{estilo[1][:9000]}")
+                      f"aperturas, llamados y cierre, sin copiar datos de otros videos. El HUMOR de las reglas de estilo de más abajo "
+                      f"se agrega igual aunque en estos videos no lo haya:\n{estilo[1][:9000]}")
         catalogo = estilo[3] if len(estilo) > 3 else []
         if catalogo:
             titulos = '\n'.join(f"- {v['titulo']}" for v in catalogo[:200 if tarea == 'guion' else 60] if v.get('titulo'))[:7000]
@@ -285,10 +519,27 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                                                                    for k, (u, n, t) in enumerate(refs, 1)))
         objetivo = (idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)) or acortar_plan(d).get('objetivo_s')
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
-        partes += [ESTILO, f"""Escribe el guion por bloques. Cada bloque tiene:
+        partes += [ESTILO, f"""ANTES DE ESCRIBIR EL GUION (pedido fijo del autor):
+1. Haz una lista con el segundo exacto de cada evento de pantalla: cada botón que presiono, cada cambio de modo (Recovery,
+   DFU), cada reinicio, la pantalla de inicio y cada ventana nueva del programa. Va en "eventos":
+   [{{"s": 140.0, "evento": "pulsa volumen más"}}, ...]. Búscalos en las imágenes, no solo en la transcripción.
+2. Corta cada bloque donde empieza y termina ese evento. No partas el video en trozos fijos (por ejemplo, de 18 segundos).
+3. Si lo que digo en el audio no coincide con lo que se ve en ese momento, manda la imagen: narra lo que se ve y deja lo
+   que digo para el bloque donde ocurre.
+4. No inventes datos (versiones, modelos, botones). Si no se ve ni lo digo, escribe la frase sin ese dato y pregúntamelo
+   al final (en "preguntas").
+5. Al final, para cada bloque, indica qué se ve en su primer y en su último segundo ("ve_inicio" y "ve_fin"), para que
+   pueda comprobarlo.
+6. Un evento es el momento de la ACCIÓN (cuando presiono un botón o hago clic), no cuando aparece el resultado en
+   pantalla. El mapa marca cuándo cambia la pantalla: úsalo para orientarte, pero busca la acción en las imágenes, unos
+   segundos antes.
+
+Escribe el guion por bloques. Cada bloque tiene:
 - "id": L01, L02, ...
 - "ancla": qué se ve en pantalla en ese bloque (corto).
+- "ve_inicio" y "ve_fin": qué se ve en el primer y en el último segundo de su tramo (regla 5 de arriba).
 - "texto": lo que dice la voz en off. Unas {PALABRAS_POR_S} palabras por segundo de bloque.
+- "humor": true si el bloque lleva un remate de humor (y "humor_tema": de qué trata, p. ej. "suegra"), false si no.
 - "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
     {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.6 a {VEL_MAX:.0f}}}  (1 = normal; MÁS de 1 = acelerado, para esperas, cargas,
       instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien)
@@ -298,6 +549,25 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
   Los tramos van en orden, dentro de 0 a {dur:.0f} s. Salta lo que no aporta (esperas largas, errores, repeticiones).
 - Cada tramo tiene que MOSTRAR lo que dice su texto: si la voz dice «pega la key», el tramo es donde el mapa muestra el
   campo de la key con la key puesta, no donde el autor lo comenta. Antes de responder, revisa bloque por bloque contra el mapa.
+- La voz va AL MISMO TIEMPO que la imagen: no pidas hacer algo que en ese tramo ya está hecho, ni anuncies un resultado
+  (reinicio, «listo», cuenta quitada) antes de que se vea. Los pasos se narran en el orden en que pasan en la grabación.
+- Cada tramo del original se usa en UN solo bloque: dos bloques nunca muestran la misma escena, y ningún tramo vuelve
+  atrás respecto del anterior. Si un paso necesita más explicación, alarga el texto de su bloque: cuando la voz dura más
+  que el tramo, la app repite ese tramo en movimiento.
+- Pasos de configuración o comprobación (seleccionar, activar, verificar, entrar en ajustes): velocidad 2 como máximo,
+  para que se vea qué se toca.
+- Sin muletillas sueltas como «ok» o «bueno» al comienzo o al final de un bloque.
+- "emocion" (opcional): cómo lo dice la voz, en una o dos palabras en español. Usa toda la variedad que le quede a cada
+  momento, como una persona real que cuenta lo que hace: "intrigado" o "pícaro" en el gancho, "entusiasmado", "alegre",
+  "orgulloso" o "emocionado" en el resultado, "sorprendido" cuando algo sale más fácil de lo esperado, "calmado",
+  "serio" o "susurra" en un paso delicado o de riesgo, "aliviado" cuando por fin funciona, "confiado" al explicar, y
+  sonidos como "ríe", "se ríe bajito" o "suspira" (estos pocas veces, una o dos por video, donde de verdad tiene gracia
+  o se espera). Se pueden juntar dos: "ríe, alegre". Varía: no repitas la misma emoción en dos bloques seguidos ni la
+  uses en todos; los bloques sin emoción salen con la voz de siempre. No escribas la emoción dentro de "texto".
+- AVISO LEGAL Y DE RIESGO: si el video quita una cuenta (FRP, cuenta Google, iCloud, MDM), hace un bypass, abre el equipo,
+  suelda o flashea, en el bloque donde empieza ese proceso la voz dice UNA frase corta y natural de cuidado, por ejemplo
+  «hazlo solo en un equipo tuyo o con permiso del dueño» o «si no tienes práctica soldando, esto puede dañar la placa».
+  Una sola vez en todo el guion, sin sonar a abogado (ayuda a que YouTube no limite el video).
 - PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
   tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
   para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
@@ -306,11 +576,18 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
   el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
-- PREGUNTAS AL AUTOR: un buen editor no adivina. Si un dato clave NO se ve claro ni se dice en la grabación (qué cable o
-  pieza es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor), escribe la frase con lo más
-  probable y agrega una pregunta en "preguntas": {{"bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
-  Solo datos que importan para que el tutorial sea correcto (máximo 8); si todo está claro, "preguntas": [].
-Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato (de otro video):
+- PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
+  es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
+  paso se hace o se salta), NO lo inventes: escribe la frase sin ese dato (por ejemplo «sigue la secuencia de botones que
+  se ve en pantalla») y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
+  Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX}).
+- PREGUNTAS PARA MEJORARLO (siempre, entre 2 y {MEJORAS_MAX}): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
+  al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
+  (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
+  dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
+  concretas, por ejemplo {{"tipo": "mejora", "bloque": "L03", "pregunta": "¿Explico por qué hay que quitar la batería antes?",
+  "opciones": ["Sí, en una frase", "No hace falta"]}}. Pregunta solo lo que cambiaría el guion; no repitas lo que ya dice.
+Responde SOLO con un objeto JSON {{"eventos": [...], "bloques": [...], "preguntas": [...]}}, sin texto alrededor. Ejemplo del formato de los bloques (de otro video):
 {ejemplo_guion()}"""]
     elif tarea == 'etiquetas':
         g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
@@ -320,13 +597,25 @@ Responde SOLO con un objeto JSON {{"bloques": [...], "preguntas": [...]}}, sin t
 
 {("Páginas del autor (si la voz nombra una, ponle su etiqueta «web» con esta dirección exacta, sin «https://»):" + chr(10) + texto_paginas(mis_paginas()) + chr(10)) if mis_paginas() else ""}
 Elige los datos valiosos que merecen una etiqueta en pantalla: webs, nombres de archivo, precios, pines, valores, botones y consejos.
+Al autor le gustan los videos bien etiquetados: apunta a unas {cuantos_extras(g['bloques'])[0]} etiquetas repartidas por todo el
+video (el de la Raspberry, de 7 minutos, llevó 21: materiales, precios, dónde comprar, cada pin, la temperatura, el archivo,
+las webs y los consejos). Cada dato que la voz nombra y que el que mira querría anotar o ver escrito merece la suya.
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la etiqueta aparece cuando la voz las dice),
 "tipo" (web | archivo | dato | precio | pin | consejo), "titulo" (1 a 3 palabras), "texto" (el dato, corto), "dur" (3 a 6 segundos)
 y, solo para "pin", "color" (hex del color del cable).
+El autor revisa cada etiqueta antes de ponerla, así que agrega "por_que" (una frase corta: por qué conviene esa etiqueta) y,
+SOLO si no estás seguro de algo (el dato exacto, si vale la pena, el momento), "duda" con la pregunta para el autor.
 Responde SOLO con un objeto JSON {{"etiquetas": [...]}}. Ejemplo de un elemento:
-{{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5}}"""]
+{{"bloque": "L15", "frase": "gsmprime", "tipo": "web", "titulo": "Descarga aquí", "texto": "gsmprime.co", "dur": 4.5,
+"por_que": "la voz nombra la web donde se descarga la herramienta"}}"""]
     elif tarea == 'trailer':
-        partes += [f"""Arma el tráiler de inicio de unos 10 segundos con la firma del autor: ANTES, DURANTE y DESPUÉS.
+        try:  # «🎬 Tráiler»: cuánto quiere el autor que dure (edicion.json, 10 s si no eligió)
+            seg = int(json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')).get('trailer_segundos') or 10)
+        except (OSError, ValueError, TypeError, AttributeError):
+            seg = 10
+        n_ant, n_dur, n_des = ('1', '1 a 2', '1') if seg <= 7 else ('1 a 2', '2 a 4', '1 a 2') if seg <= 12 else ('2', '3 a 5', '2') if seg <= 18 else ('2 a 3', '4 a 7', '2 a 3')
+        d_max = 2.6 if seg <= 12 else 3.4
+        partes += [f"""Arma el tráiler de inicio de unos {seg} segundos en total (el autor eligió ese largo: la suma de los «dur» tiene que dar eso, ±1 s) con la firma del autor: ANTES, DURANTE y DESPUÉS.
 Muestra lo mejor de lo mejor para que el espectador se quede:
 - ANTES = el problema: el teléfono BLOQUEADO (la pantalla que pide la cuenta Google o «Verificar tu cuenta», el FRP, el
   candado), o la pieza antes de tocarla. Búscalo en el MAPA y en la transcripción.
@@ -336,9 +625,39 @@ Muestra lo mejor de lo mejor para que el espectador se quede:
   o el equipo funcionando. Suele estar cerca del final de la grabación.
 Cada toma tiene que verse clara: nada de pantallas en negro, cargas o manos tapando.
 Formato: {{"titulo": "máximo 5 palabras", "subtitulo": "frase corta con gancho", "voz": "una frase de la voz en off, máximo 15 palabras",
-"clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a 2.6}}]}}
+"clips": [{{"fase": "ANTES" | "DURANTE" | "DESPUÉS", "ventana": [desde_s, hasta_s], "dur": 1.2 a {d_max}}}]}}
 Las ventanas son segundos del video original (0 a {dur:.0f}); usa las capturas para saber qué hay en cada momento.
-Entre 1 y 2 clips ANTES, 2 a 4 DURANTE, 1 a 2 DESPUÉS. Responde SOLO con el objeto JSON."""]
+Entre {n_ant} clips ANTES, {n_dur} DURANTE y {n_des} DESPUÉS.
+Cada clip lleva además "por_que": en pocas palabras qué se ve y por qué es de lo mejor (el autor lo lee al revisar).
+PREGUNTAS AL AUTOR (hasta {TRAILER_PREGUNTAS_MAX} en total, en "preguntas"): ya viste el video y el guion; antes de dar el tráiler por bueno,
+pregunta lo que no te quede claro (tipo "dato": cuál es la pantalla del problema, en qué momento queda desbloqueado, si
+un clip muestra algo privado) y propón ideas para que enganche más (tipo "mejora": otro gancho para el título, terminar en
+el resultado, una toma que podría ir). Cada una con 2 o 3 opciones concretas, por ejemplo {{"tipo": "mejora",
+"pregunta": "¿El título habla del modelo o del problema?", "opciones": ["iPhone sin cuenta en 5 min", "Adiós al bloqueo"]}}.
+SIEMPRE, además, UNA PREGUNTA POR FASE (ANTES, DURANTE y DESPUÉS), con "fase" puesta, para que el autor confirme lo que
+elegiste: qué muestra la toma, en qué segundo del original, y si su duración está bien. Di los segundos y ofrece opciones
+concretas, por ejemplo {{"tipo": "dato", "fase": "ANTES", "pregunta": "Para el ANTES elegí la pantalla Hello en 0:12, 1,6 s.
+¿Está bien?", "opciones": ["Está bien", "Más corta (1,2 s)", "Más larga (2,4 s)", "Otra toma"]}}. Y una sobre el largo total
+del tráiler (di cuántos segundos suma) con opciones como «Está bien», «Más corto» y «Más largo».
+Responde SOLO con el objeto JSON, con "preguntas" dentro."""]
+        resp = respuestas_trailer(d)
+        if resp:
+            partes.append("RESPUESTAS DEL AUTOR a tus preguntas sobre el tráiler (mandan sobre lo que pensabas; no vuelvas a preguntarlas):\n" + resp)
+        try:  # versión en otro idioma: lo que se lee y se oye del tráiler, en ese idioma
+            lang = json.load(open(os.path.join(d, 'idioma_video.json'), encoding='utf-8')).get('idioma', 'es')
+        except (OSError, ValueError, AttributeError):
+            lang = 'es'
+        if lang != 'es':
+            partes.append(f'IDIOMA: este video es la versión en otro idioma (código {lang}). Escribe "titulo", "subtitulo" y "voz" '
+                          'en ese idioma; las preguntas al autor, en español.')
+        try:  # el guion ya aprobado: el tráiler cuenta lo mismo en corto
+            g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+            lineas = [f"{b.get('id')} [{mmss(b['montaje']['src_inicio'])}]: {str(b.get('texto', ''))[:140]}"
+                      for b in g.get('bloques', []) if isinstance(b.get('montaje'), dict) and b['montaje'].get('src_inicio') is not None]
+            if lineas:
+                partes.append("GUION YA APROBADO del video (bloque [dónde empieza en el original]: lo que dice la voz):\n" + '\n'.join(lineas)[:9000])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
         try:  # dónde se pone la key según el guion: el DURANTE más fuerte
             g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
             clave = [b for b in g.get('bloques', []) if b.get('montaje', {}).get('src_inicio') is not None
@@ -367,6 +686,165 @@ def es_critico(b):
     return str(b.get('tipo', '')).lower().startswith(('crit', 'clave')) or bool(CRITICO.search(b.get('texto', '')))
 
 
+def es_paso(b):
+    """Un paso de configuración o comprobación (seleccionar, activar, verificar): no es tan exacto como poner una key,
+    pero acelerado de más no se ve qué se toca. Las esperas y cargas no cuentan."""
+    t = str(b.get('texto', ''))
+    return bool(PASO.search(t)) and not ESPERA.search(t)
+
+
+def saltos_atras(bloques):
+    """Los bloques cuyo tramo empieza antes de donde terminó lo ya mostrado: la acción queda fuera de orden."""
+    out, previo = [], None
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
+        if previo and ini < previo[1] - 3:
+            out.append(f"{b['id']}: vuelve atrás en el video (empieza en {mmss(ini)} y el bloque {previo[0]} terminaba en "
+                       f"{mmss(previo[1])}). Si no es a propósito, la acción queda fuera de orden")
+        previo = (b['id'], max(fin, previo[1] if previo else 0))
+    return out
+
+
+def escenas_repetidas(bloques):
+    """Dos bloques que muestran la misma escena (sus tramos se pisan en más de la mitad): el espectador ve dos veces lo
+    mismo con dos textos distintos."""
+    tramos, out = [], []
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini = mo['src_inicio']
+        fin = max(mo.get('src_fin') or ini, ini + 0.5)
+        for bid, a, z in tramos:
+            comun = min(fin, z) - max(ini, a)
+            if comun > 2 and comun > 0.5 * min(fin - ini, z - a):
+                out.append(f"{b['id']}: muestra la misma escena que {bid} ({mmss(max(ini, a))}–{mmss(min(fin, z))}). "
+                           f"Usa otro tramo o alarga el texto de {bid} en vez de repetir la escena")
+                break
+        tramos.append((b['id'], ini, fin))
+    return out
+
+
+def huecos_humor(bloques):
+    """Tramos largos del guion sin ningún remate, cuando el nivel de humor pide repartirlos."""
+    cada = HUMOR_NIVELES[HUMOR_NIVEL][1]
+    if not cada or not any(b.get('humor') is True for b in bloques):
+        return []
+    out, desde = [], 0
+    marcas = [k for k, b in enumerate(bloques) if b.get('humor') is True] + [len(bloques)]
+    for k in marcas:
+        if k - desde > 2 * cada:
+            a, z = bloques[desde]['id'], bloques[k - 1]['id']
+            out.append(f"humor: de {a} a {z} hay {k - desde} bloques seguidos sin un remate (el nivel pide uno cada {cada} "
+                       "más o menos): repártelos a lo largo del video")
+        desde = k + 1
+    return out
+
+
+NUMEROS = {'uno': 1, 'primer': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5, 'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9,
+           'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15}
+
+
+def pasos_numerados(bloques):
+    """Que los «Paso uno, Paso dos…» de la voz vayan seguidos: si se quitó un bloque o se cambió el orden, la numeración
+    salta o se repite y el espectador cree que se perdió un paso."""
+    out, previo = [], None
+    for b in bloques:
+        for m in re.finditer(r'\bpaso\s+(n[uú]mero\s+)?(\d{1,2}|' + '|'.join(NUMEROS) + r')\b', normal(str(b.get('texto', '')))):
+            n = int(m.group(2)) if m.group(2).isdigit() else NUMEROS[m.group(2)]
+            if previo and n != previo[0] + 1:
+                out.append(f"pasos: {b['id']} dice «paso {m.group(2)}» y el anterior ({previo[1]}) era el paso {previo[0]}. "
+                           "Si quitaste un bloque, renumera los pasos o explica el que falta en el bloque de al lado")
+            previo = (n, b['id'])
+    return out
+
+
+# Muletillas que hacían sonar repetitivo el guion de MOTOROLA_FRP_2026 (pedido del autor, 28/10/2026): «Y como puedes
+# ver» ×4, «Y listo» ×4, siete bloques empezando con «Ahora», «efectivamente», «Mira»…
+MULETILLAS = [r'como (puedes|pueden) (ver|observar|detallar)', r'\by listo\b', r'\befectivamente\b', r'\bsimplemente\b',
+              r'\bsin ningun (problema|temor)\b', r'\bmientras(,| tanto)\b']
+
+
+def repeticiones(bloques):
+    """Avisos de muletillas: la misma frase hecha en 3 o más bloques, o 3 o más bloques que empiezan igual."""
+    out, textos = [], [(b.get('id'), normal(str(b.get('texto', '')))) for b in bloques]
+    for rx in MULETILLAS:
+        ids = [i for i, t in textos if re.search(rx, t)]
+        if len(ids) >= 3:
+            m = next(re.search(rx, t).group(0) for i, t in textos if re.search(rx, t))
+            out.append(f"repetido: «{m}» sale en {len(ids)} bloques ({', '.join(ids)}); cámbialo en algunos para que no suene repetitivo")
+    inicios = {}
+    for i, t in textos:
+        p = re.findall(r'[a-zñ]+', t)[:2]
+        if p:
+            clave = p[0] if p[0] in ('ahora', 'mira', 'bueno', 'entonces', 'luego', 'despues') else ' '.join(p)
+            inicios.setdefault(clave, []).append(i)
+    for clave, ids in inicios.items():
+        if len(ids) >= 3:
+            out.append(f"repetido: {len(ids)} bloques empiezan con «{clave}…» ({', '.join(ids)}); varía cómo arranca cada uno")
+    return out
+
+
+VARIAR = True
+# Cómo se cambia cada muletilla repetida (la primera vez queda como está; desde la segunda, una alternativa distinta cada vez).
+# Sacadas de cómo el autor aprobó el guion de MOTOROLA_FRP_2026.
+CAMBIOS_MULETILLA = [
+    (r'\b[Yy] como (puedes|pueden) (ver|observar|detallar)( aqu[ií])?\s*[,:]\s*', ['¿Lo ves? ', 'Fíjate: ', 'Aquí se nota: ', 'Mira esto: ']),
+    (r'\b[Cc]omo (puedes|pueden) (ver|observar|detallar)( aqu[ií])?\s*[,:]\s*', ['Fíjate: ', 'Aquí se ve: ', '¿Lo ves? ']),
+    (r'\b[Yy] listo\s*[,:.!]\s*', ['Ya está. ', 'Hecho. ', 'Perfecto. ']),
+    (r'^[Aa]hora,?\s+', ['Luego ', 'Enseguida ', 'Después ', 'Toca seguir: ']),
+]
+
+
+def _mayuscula_tras(texto, i):
+    """Después de «¿Lo ves?» o «Ya está.» la frase siguiente arranca con mayúscula."""
+    return texto[:i] + texto[i:i + 1].upper() + texto[i + 1:]
+
+
+def variar_muletillas(bloques):
+    """Cambia las muletillas repetidas en 3 o más bloques («Y como puedes ver», «Y listo», bloques que empiezan con
+    «Ahora») y quita «efectivamente». Devuelve los avisos de lo que cambió. Solo el texto: tiempos y montaje igual."""
+    out = []
+    for rx, alternativas in CAMBIOS_MULETILLA:
+        con = [b for b in bloques if re.search(rx, str(b.get('texto', '')))]
+        if len(con) < 3:
+            continue
+        for k, b in enumerate(con[1:]):
+            alt = alternativas[k % len(alternativas)]
+            t = b['texto']
+            m = re.search(rx, t)
+            t = t[:m.start()] + alt + t[m.end():]
+            if alt.rstrip().endswith(('?', '.')):
+                t = _mayuscula_tras(t, m.start() + len(alt))
+            elif m.start() == 0 or alt[0].isupper():
+                t = t[:1].upper() + t[1:]
+            b['texto'] = t
+            out.append(f"{b.get('id')}: cambié «{m.group(0).strip()}» por «{alt.strip()}» (se repetía en {len(con)} bloques)")
+    for b in bloques:
+        t = re.sub(r'\b([Yy] )?efectivamente,?\s*', lambda m: m.group(1) or '', b['texto'])
+        if t != b['texto']:
+            b['texto'] = t[:1].upper() + t[1:]
+            out.append(f"{b.get('id')}: quité la muletilla «efectivamente»")
+    return out
+
+
+def problemas(bloques, total, con_saltos=True):
+    """Lo que el guion revisado todavía hace mal y la app no puede arreglar sola sin cambiar textos: saltos atrás, escenas
+    repetidas, demasiado video sin voz y humor mal repartido. Sirve para avisarte y para pedirle a la IA que lo corrija."""
+    out = saltos_atras(bloques) if con_saltos else []
+    out += escenas_repetidas(bloques)
+    palabras = sum(len(str(b.get('texto', '')).split()) for b in bloques)
+    total -= sum(largo_bloque(b['montaje']) for b in bloques if b['montaje'].get('sin_voz'))  # los tramos sin voz son a propósito
+    if total > 0 and palabras / PALABRAS_POR_S < total * (1 - SIN_VOZ_MAX):
+        sin_voz = 1 - palabras / PALABRAS_POR_S / total
+        out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
+                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
+    return out + pasos_numerados(bloques) + huecos_humor(bloques) + repeticiones(bloques)
+
+
 def momento_dicho(d, texto, ini, fin):
     """El segundo de tu grabación (dentro de ini–fin) donde dices algo parecido a texto; si no, el medio del tramo."""
     try:
@@ -378,25 +856,240 @@ def momento_dicho(d, texto, ini, fin):
     return (ini + fin) / 2
 
 
+def _corrido_un_bloque(palabras, bloques, ya):
+    """El desfase típico: la IA pone cada texto un bloque antes o después de su imagen y lo cuenta con sus propias
+    palabras, así que casi nunca coincide la mitad. Aquí se compara cada bloque solo con sus vecinos: si lo que dices
+    en el tramo del bloque de al lado se parece claramente más a su texto que lo que dices en su propio tramo, avisa.
+    Las palabras que repites todo el rato («vamos», «ahora», «bueno») casi no cuentan; las raras (ECID, DFU) sí."""
+    norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
+    veces = {}
+    for _, r in norm:
+        veces[r] = veces.get(r, 0) + 1
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+
+    def tramo(b):
+        mo = b['montaje']
+        return mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+
+    def parecido(raices, ini, fin):
+        dichas = {r for t, r in norm if ini - 2 <= t <= fin + 2}
+        total = sum(1 / veces[r] for r in raices)
+        return sum(1 / veces[r] for r in raices & dichas) / total, len(raices & dichas)
+
+    out = []
+    for k, b in enumerate(con_tramo):
+        if b['id'] in ya or b['montaje'].get('visto'):
+            continue
+        raices = {w[:5] for w in pistas.palabras_clave(b.get('texto', ''))} & set(veces)
+        if len(raices) < 3:
+            continue
+        ini, fin = tramo(b)
+        aqui, n_aqui = parecido(raices, ini, fin)
+        mejor = None
+        for j in (k - 1, k + 1):
+            if 0 <= j < len(con_tramo):
+                a, f = tramo(con_tramo[j])
+                # lo que dices justo al borde suele anunciar el paso siguiente: en tramos largos no cuenta
+                ca, cf = (a, f - 6) if j < k and f - a > 12 else (a + 6, f) if j > k and f - a > 12 else (a, f)
+                v, n = parecido(raices, ca, cf)
+                if v >= 0.35 and v >= aqui + 0.25 and n >= n_aqui + 2 and (not mejor or v > mejor[0]):
+                    mejor = (v, j, a, f)
+        if mejor:
+            _, j, a, f = mejor
+            out.append(f"{b['id']}: su texto se parece más a lo que dices en el tramo de {con_tramo[j]['id']} "
+                       f"({mmss(a)}–{mmss(f)}) que en el suyo ({mmss(ini)}–{mmss(fin)}): la voz parece ir "
+                       f"{'atrasada' if j < k else 'adelantada'} un bloque; revisa si texto e imagen coinciden")
+    return out
+
+
+def desfases(d, bloques):
+    """Lo que la revisión del orden no ve: bloques cuya voz narra lo que dices en OTRO momento de tu grabación (la voz va
+    atrasada o adelantada, aunque comparta alguna palabra con su tramo) y tramos donde explicas algo y ningún bloque los
+    muestra. Compara con tu transcripción; no cambia nada, devuelve los avisos."""
+    palabras = pistas.palabras_video(d)
+    if not palabras:
+        return []
+    norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
+    out, tramos = [], []
+    for b in bloques:
+        mo = b['montaje']
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+            continue
+        ini, fin = mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+        tramos.append((ini, fin, b['id']))
+        raices = {w[:5] for w in pistas.palabras_clave(b.get('texto', ''))}
+        if len(raices) < 4:
+            continue
+        aqui = len({r for t, r in norm if ini - 3 <= t <= fin + 3 and r in raices}) / len(raices)
+        for x, v in pistas.dicho(palabras, b['texto'], top=2, ventana=20):  # una explicación hablada dura más de 12 s
+            if not ini - 8 <= x <= fin + 8 and v >= 0.5 and v >= aqui + 0.25:
+                out.append(f"{b['id']}: su texto narra lo que dices en tu grabación en {mmss(x)}, no lo de su tramo "
+                           f"{mmss(ini)}–{mmss(fin)} (la voz va {'atrasada' if x < ini else 'adelantada'}): "
+                           f"pon el texto con el tramo donde se hace")
+                break
+    out += _corrido_un_bloque(palabras, bloques, {x.split(':')[0] for x in out})
+    tramos.sort()
+    hasta = 0.0
+    for ini, fin, bid in tramos:
+        if ini - hasta >= 8:
+            dicho_ = [w['texto'] for w in palabras if hasta + 1 <= w['inicio'] < ini - 1]
+            if len(dicho_) >= 20:
+                out.append(f"ningún bloque muestra {mmss(hasta)}–{mmss(ini)} (antes de {bid}) y ahí explicas «"
+                           f"{' '.join(dicho_[:18])}…»: si es un paso, agrégale un bloque con ese tramo")
+        hasta = max(hasta, fin)
+    resto = [w['texto'] for w in palabras if w['inicio'] >= hasta + 1]
+    if tramos and len(resto) >= 20 and palabras[-1]['inicio'] - hasta >= 8:
+        out.append(f"ningún bloque muestra el final de tu grabación, desde {mmss(hasta)}, y ahí explicas «"
+                   f"{' '.join(resto[:18])}…»: si es un paso, agrégale un bloque con ese tramo")
+    return out
+
+
+# Acciones que el autor dice en voz alta mientras las hace. En MOTOROLA_FRP_2026 el guion (hecho en trozos fijos de
+# 12-15 s) dijo «los mantenemos apretados… aparece el menú» en 2:14, sobre «Comprobando información», cuando en la
+# grabación aprieta volumen más y power en 2:44 y el menú sale en 2:53: la voz iba un bloque adelantada y la frase
+# «volumen más y power» se perdió. La revisión por palabras no lo vio porque el texto no copiaba lo que dice.
+# HONOR 8 LITE (29/10/2026) dejó 5 avisos falsos de 9: «encendido» como estado («dice que está encendido»), «los usaremos
+# más adelante», «teclamos el menos» (sin decir volumen), «retirar el cable» (sin decir desconectar) y «si no le hubiera
+# puesto wifi». Y no veía el apagado de 0:33 («vamos a apagar el dispositivo»): apagar también es la acción de power.
+ACCIONES = {'volumen': r'\bvol(umen)?\b|\bel menos\b|\btecla (de )?menos\b',
+            'power': r'\bpower\b|\b(boton|tecla) de encendido\b|\bapag(a|ar|amos|as|ue|uen)\b', 'botón': r'\bboton(es)?\b',
+            'tecla': r'\btecl(a|as|amos|ea|eamos)\b', 'soltar': r'\bsolt', 'menú': r'\bmenu\b', 'fastboot': r'fastboot',
+            'recovery': r'recovery', 'DFU': r'\bdfu\b', 'desconectar': r'\bdesconect|\b(retir|quit|sac)\w*( \w+){0,2} (el |los )?cables?\b',
+            'pegar': r'\bpeg(a|ar|amos|as|ue|uen)\b', 'omitir': r'\bomit', 'reiniciar': r'\breinici',
+            'WiFi': r'\bwi-?fi\b', 'crear cuenta': r'\bcrea(r)? (una |nuestra |tu )?(propia |nueva )?cuenta'}
+MODOS = {'fastboot', 'recovery', 'DFU'}  # «la pantalla de fastboot» se nombra todo el rato: no marca el momento de la acción
+NO_ES_ACCION = r'\b(no|ni|nunca|sin|si)\b'  # «no uses power», «si sueltas antes…»: aviso o hipótesis, no lo que se hace
+PROMESA = r'\b(va|van) a (aparecer|salir|mostrar)\b'  # «les voy a demostrar que nos va a aparecer la opción de omitir»: todavía no
+MAS_ADELANTE = r'\b(mas adelante|usaremos|veremos)\b'  # «los demás botones, como reiniciar, los usaremos más adelante»
+
+
+def nombra_accion(rx, txt):
+    """Si el texto nombra la acción como algo que se hace, no como aviso: en «no uses power, que te reinicia el equipo»
+    o «si sueltas antes…» no se aprieta power ni se reinicia nada, y en «como reiniciar, los usaremos más adelante» tampoco."""
+    def frase(m):
+        return re.split(r'[.:;!?]', txt[:m.start()])[-1] + re.split(r'[.:;!?]', txt[m.start():])[0]
+    return any(not re.search(NO_ES_ACCION, re.split(r'[.:;!?]', txt[:m.start()])[-1]) and not re.search(MAS_ADELANTE, frase(m))
+               for m in re.finditer(rx, txt))
+
+
+def momentos_accion(d):
+    """[(segundo, fin, frase, {acciones})]: dónde dice el autor que aprieta, pega, conecta, elige… (de su transcripción).
+    Las menciones a menos de 5 s se juntan en un solo momento. Lo que dice como hipótesis o aviso («si no le hubiera
+    puesto wifi», «no lo sueltes») no es un momento: no lo está haciendo."""
+    palabras = pistas.palabras_video(d)
+    hits = []
+    for k, w in enumerate(palabras):
+        uno = normal(w['texto'])
+        tres = normal(' '.join(x['texto'] for x in palabras[k:k + 4]))  # «el menos», «botón de encendido», «retiramos el cable»
+        antes = []
+        for x in reversed(palabras[max(0, k - 8):k]):  # lo dicho antes en la misma frase (hasta una coma o un punto)
+            if re.search(r'[.,;:!?]$', x['texto'].strip()):
+                break
+            antes.insert(0, normal(x['texto']))
+        if re.search(NO_ES_ACCION, ' '.join(antes)) or re.search(PROMESA, ' '.join(antes)):
+            continue
+        for nombre, rx in ACCIONES.items():
+            m = re.search(rx, tres)
+            if re.search(rx, uno) or (m and m.start() < len(uno)):
+                hits.append((w['inicio'], nombre))
+    grupos = []
+    for t, nombre in hits:
+        if grupos and t - grupos[-1][1] < 5:
+            grupos[-1][1] = t
+            grupos[-1][2].add(nombre)
+        else:
+            grupos.append([t, t, {nombre}])
+    return [(a, z, ' '.join(w['texto'] for w in palabras if a - 3 <= w['inicio'] <= z + 2), acc) for a, z, acc in grupos]
+
+
+def acciones_desfasadas(d, bloques):
+    """Avisos: un bloque cuya voz nombra una acción (volumen, power, menú, pegar, omitir…) que el autor dice y hace en
+    otro momento, lejos de su tramo (la voz va adelantada o atrasada), y momentos donde el autor dice una acción que
+    ningún bloque cercano nombra (el paso se perdió)."""
+    try:  # la voz en otro idioma (versión en inglés) no se compara con lo que dices en español
+        if json.load(open(os.path.join(d, 'idioma_video.json'), encoding='utf-8')).get('idioma', 'es') != 'es':
+            return []
+    except (OSError, ValueError, AttributeError):
+        pass
+    momentos = momentos_accion(d)
+    if not momentos:
+        return []
+    out = []
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+
+    def tramo(b):
+        mo = b['montaje']
+        return mo['src_inicio'], max(mo.get('src_fin') or 0, mo['src_inicio'] + (mo.get('congelar_s') or 3))
+    for b in con_tramo:
+        if b['montaje'].get('visto'):
+            continue
+        ini, fin = tramo(b)
+        txt = normal(str(b.get('texto', '')))
+        for nombre, rx in ACCIONES.items():
+            if nombre in MODOS or not nombra_accion(rx, txt):
+                continue
+            dichos = [(a, z) for a, z, _, acc in momentos if nombre in acc]
+            if not dichos or any(a <= fin + 8 and z >= ini - 8 for a, z in dichos):  # el momento entero, no solo su inicio
+                continue
+            x = min((a for a, _ in dichos), key=lambda a: abs(a - (ini + fin) / 2))
+            out.append(f"{b['id']}: su voz dice «{nombre}», pero en tu grabación eso lo dices y lo haces en {mmss(x)}, lejos de "
+                       f"su tramo {mmss(ini)}–{mmss(fin)} (la voz va {'adelantada' if x > fin else 'atrasada'}): corta el bloque "
+                       f"donde se hace esa acción")
+            break
+    for a, z, frase, acc in momentos:
+        cerca = [b for b in con_tramo if tramo(b)[0] - 8 <= a and z <= tramo(b)[1] + 8]
+        if cerca and not any(re.search(ACCIONES[n], normal(str(b.get('texto', '')))) for b in cerca for n in acc):
+            out.append(f"en {mmss(a)} dices «{frase[:110]}» ({', '.join(sorted(acc))}) y ningún bloque de ese momento lo "
+                       f"nombra: falta ese paso en la voz")
+    return out
+
+
+# Patrón fijo de todos los guiones de Android (pedido de fabian, 30/10/2026): la voz dice para qué versiones sirve el método y,
+# cuando las nombra, la app pone el logo de cada una (mis_conocimientos/logos, paso «Logos»). En Honor también MagicOS.
+VERSIONES_ANDROID = r'\bandroid (15|quince|16|diecis[eé]is|17|diecisiete)\b'
+VERSIONES_MAGICOS = r'\bmagic ?os (9|nueve|10|diez|11|once)\b'
+
+
+def patron_versiones(d):
+    """La regla para la IA del guion: '' en un video de Apple (ahí no hay Android)."""
+    marca = (conocimiento.marca_de_proyecto(d) or '').lower()
+    if marca == 'apple':
+        return ''
+    txt = ("PATRÓN FIJO DE TODOS LOS GUIONES (pedido del autor): en un bloque del comienzo, donde dices a qué modelos sirve, la voz "
+           "dice con estas palabras «este método sirve para Android quince, dieciséis, diecisiete o superiores» (cuando la voz las "
+           "dice, la app pone el logo de cada versión), y también «sirve para cualquier fecha de parche de seguridad». Si en este video el autor dice otras versiones, nombra las suyas: manda el video.")
+    if marca == 'honor':
+        txt += " Como es Honor, en esa frase o la siguiente: «y también funciona con MagicOS nueve, diez u once»."
+    return txt
+
+
+def falta_patron_versiones(d, bloques):
+    """Aviso si el guion de un video de Android no dice las versiones (y en Honor, MagicOS)."""
+    if not patron_versiones(d):
+        return []
+    todo = normal(' '.join(str(b.get('texto', '')) for b in bloques))
+    out = []
+    if not re.search(VERSIONES_ANDROID, todo):
+        out.append('patrón fijo: ningún bloque dice para qué versiones sirve («Android quince, dieciséis, diecisiete o superiores»): '
+                   'agrégalo al comienzo, donde dices a qué modelos sirve (así salen los logos)')
+    if (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor' and not re.search(VERSIONES_MAGICOS, todo):
+        out.append('patrón fijo: en Honor la voz también dice «funciona con MagicOS nueve, diez u once» (así sale su logo)')
+    if not re.search(r'\bparche', todo):
+        out.append('patrón fijo: la voz también dice que el método sirve para cualquier fecha de parche de seguridad')
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
-    avisos, previo = [], None
-    for b in bloques:
-        mo = b['montaje']
-        if mo.get('src_inicio') is None:
-            continue
-        ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-        if previo and ini < previo[1] - 3:
-            avisos.append(f"{b['id']}: vuelve atrás en el video (empieza en {mmss(ini)} y el bloque {previo[0]} terminaba en "
-                          f"{mmss(previo[1])}). Si no es a propósito, la acción queda fuera de orden")
-        previo = (b['id'], max(fin, previo[1] if previo else 0))
+    avisos = saltos_atras(bloques)
     palabras = pistas.palabras_video(d)
     if palabras:
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
-        for b in bloques:
+        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen']
+        for k, b in enumerate(con_tramo):
             mo = b['montaje']
-            if mo.get('src_inicio') is None or mo['modo'] == 'imagen' or mo.get('visto'):
+            if mo.get('visto'):
                 continue
             raices = {w[:5] for w in pistas.palabras_clave(b['texto'])}
             if len(raices) < 3:
@@ -408,31 +1101,60 @@ def verificar_orden(d, bloques):
                 # se corrige: el tramo (con su mismo largo) se mueve a donde de verdad dices eso en tu grabación
                 largo_t = fin - ini
                 nuevo = max(0.0, otro[0][0] - min(2.0, largo_t / 3))
+                # dónde lo DICES no siempre es dónde lo HACES: si moverlo lo saca de entre sus vecinos, solo se avisa
+                antes = con_tramo[k - 1]['montaje'] if k else None
+                despues = con_tramo[k + 1]['montaje'] if k + 1 < len(con_tramo) else None
+                if (antes and nuevo < (antes.get('src_fin') or antes['src_inicio']) - 3) or (despues and nuevo + largo_t > despues['src_inicio'] + 3):
+                    avisos.append(f"{b['id']}: lo que narra parece ir en {mmss(otro[0][0])} (ahí lo dices), no en su tramo "
+                                  f"{mmss(ini)}–{mmss(fin)}; no lo moví porque quedaría fuera de orden: revísalo")
+                    continue
                 mo['src_inicio'] = round(nuevo, 2)
                 if mo.get('src_fin') is not None:
                     mo['src_fin'] = round(nuevo + largo_t, 2)
                 avisos.append(f"{b['id']}: lo que narra no iba con su imagen ({mmss(ini)}–{mmss(fin)}); lo moví a "
                               f"{mmss(nuevo)}, donde dices eso en tu grabación")
-    open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(
-        '\n'.join(avisos) + '\n' if avisos else 'Sin problemas de orden: los tramos siguen el video y cada bloque va con lo que dices.\n')
+    avisos += desfases(d, bloques)
+    avisos += acciones_desfasadas(d, bloques)
+    avisos += falta_patron_versiones(d, bloques)
+    if avisos:
+        txt = '\n'.join(avisos) + '\n'
+    elif palabras:
+        txt = ('Sin avisos al comparar con lo que dices en tu grabación. Ojo: esto solo compara palabras; un tramo corrido donde casi '
+               'no hablas no se ve aquí. Para eso usa «🔎 Revisar con imágenes».\n')
+    else:  # nunca «sin problemas» si no se pudo revisar nada
+        txt = 'No pude revisar el orden: falta la transcripción de tu grabación (transcripcion.json).\n'
+    open(os.path.join(d, 'revision_guion.txt'), 'w', encoding='utf-8').write(txt)
     return avisos
 
 
 def extraer_json(txt):
     txt = (txt or '').strip()
     if not txt:
-        raise SystemExit('ERROR: la IA no devolvió nada (respuesta vacía). Casi siempre es falta de saldo o un corte de la IA. '
-                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
+        _olvidar_respuesta()
+        _anotar_respuesta('respuesta_vacia', txt)
+        raise ErrorIA('ERROR: la IA contestó sin texto (respuesta vacía). Puede ser un corte del servicio o un filtro del '
+                      'proveedor: mira el diagnóstico de esta ejecución (carpeta diagnosticos del proyecto) antes de suponer la causa.', 'F')
     m = re.search(r'```(?:json)?\s*(.*?)```', txt, re.S)
     if m:
         txt = m.group(1)
-    i = min([p for p in (txt.find('{'), txt.find('[')) if p >= 0], default=0)
-    try:
-        return json.loads(txt[i:])
-    except json.JSONDecodeError:
-        raise SystemExit('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). '
-                         'Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
-                         'Lo que devolvió la IA:\n' + txt[:600])
+    dec = json.JSONDecoder()
+    mejor = None  # admite texto antes o después del JSON («Aquí va: {…} Espero que sirva»); gana el JSON más largo
+    for i in [k for k, c in enumerate(txt) if c in '{['][:200]:
+        try:
+            obj, fin = dec.raw_decode(txt[i:])
+        except json.JSONDecodeError:
+            continue
+        if mejor is None or fin > mejor[1]:
+            mejor = (obj, fin)
+    if mejor:
+        return mejor[0]
+    _olvidar_respuesta()
+    _anotar_respuesta('respuesta_ilegible', txt)
+    e = ErrorIA('ERROR: la IA respondió, pero no en el formato esperado (no es JSON válido). Esto NO confirma un rechazo: '
+                'mira el diagnóstico. Vuelve a intentar; si sigue, prueba con otro modelo o baja las capturas en «⚙ Ajustes IA».\n\n'
+                'Lo que devolvió la IA:\n' + txt[:600], 'F')
+    e.parece_negativa = diagnostico.parece_negativa(txt)  # solo una sospecha: no se reenvía lo mismo en pedazos (por_tandas)
+    raise e
 
 
 def leer_idea(d):
@@ -462,15 +1184,30 @@ def largo_bloque(mo):
     return ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
 
 
-def ajustar_largo(bloques, voces, minimo, maximo, avisos):
+def bloques_con_su_voz(d, bloques):
+    """{id: copia de su montaje} de los bloques cuya voz ya está hecha con este mismo texto (voz/<id>.voz.json)."""
+    import copy
+    out = {}
+    for b in bloques:
+        try:
+            meta = json.load(open(os.path.join(d, 'voz', f"{b['id']}.voz.json"), encoding='utf-8'))
+        except (OSError, ValueError, KeyError):
+            continue
+        if str(meta.get('texto') or '').strip() == str(b.get('texto') or '').strip() and os.path.exists(os.path.join(d, 'voz', f"{b['id']}.mp3")):
+            out[b['id']] = copy.deepcopy(b['montaje'])
+    return out
+
+
+def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
     """Arreglo sin IA: si el total queda corto, los tramos acelerados van más despacio (hasta velocidad normal y
-    unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz."""
+    unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz.
+    Los bloques «fijos» (con su voz ya hecha y sin cambios desde el editor) no se tocan."""
     t = sum(largo_bloque(b['montaje']) for b in bloques)
     if t < minimo:
         margen = []
         for b, voz in zip(bloques, voces):
             mo = b['montaje']
-            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1:
+            if not mo['modo'].startswith('lento') or mo['velocidad'] <= 1 or mo.get('sin_voz') or b.get('id') in fijos:
                 margen.append(0); continue
             tramo = mo['src_fin'] - mo['src_inicio']
             margen.append(max(0, min(tramo, voz + RELLENO + 6) - tramo / mo['velocidad']))
@@ -491,10 +1228,13 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
             if sobra <= 0:
                 break
             mo = b['montaje']
+            if mo.get('sin_voz') or b.get('id') in fijos:
+                continue
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = VEL_CRITICO if mo.get('critico') else VEL_MAX
+                tope = (1.0 if mo.get('importante') or mo.get('cara') else VEL_CRITICO if mo.get('critico')
+                        else VEL_PASO if mo.get('paso') else VEL_MAX)
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -512,15 +1252,94 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos):
     return t
 
 
+def caras_en_video(d, segundos):
+    """{segundo: hay cara} con el detector del montaje (YuNet). Se guarda en .caras.json (por video), así no se vuelve a mirar."""
+    orig = os.path.join(d, 'original.mp4')
+    f = os.path.join(d, '.caras.json')
+    firma = f'{os.path.getsize(orig)}:{int(os.path.getmtime(orig))}'
+    try:
+        guardado_ = json.load(open(f, encoding='utf-8'))
+        hechos = guardado_['caras'] if guardado_.get('firma') == firma else {}
+    except (OSError, ValueError, KeyError):
+        hechos = {}
+    faltan = [s for s in segundos if f'{s:.1f}' not in hechos]
+    if faltan:
+        sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+        import cv2
+        import montaje
+        if not montaje.detector_caras():
+            return {}
+        cap = cv2.VideoCapture(orig)
+        for s in sorted(faltan):
+            hechos[f'{s:.1f}'] = bool(montaje.cara_en(cap, s))
+        cap.release()
+        json.dump({'firma': firma, 'caras': hechos}, open(f, 'w', encoding='utf-8'))
+    return {s: hechos.get(f'{s:.1f}', False) for s in segundos}
+
+
+def marcar_caras(d, bloques):
+    """Pedido del autor (28/10/2026): con su cara en pantalla el tramo NUNCA se acelera (se ve raro). Marca "cara" en el
+    montaje de esos bloques; la revisión y la voz los dejan a ×1 y, si sobra imagen, recortan en vez de acelerar."""
+    lentos = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo', 'lento').startswith('lento')]
+    muestras = {}
+    for b in lentos:
+        mo = b['montaje']
+        a, z = float(mo['src_inicio']), float(mo.get('src_fin') or mo['src_inicio'] + 3)
+        n = max(3, min(12, int((z - a) / 1.5)))
+        muestras[b['id'] if 'id' in b else id(b)] = [round(a + (z - a) * (k + 0.5) / n, 1) for k in range(n)]
+    try:
+        hay = caras_en_video(d, sorted({s for l in muestras.values() for s in l}))
+    except Exception as e:  # sin detector (no se pudo bajar el modelo): se avisa y sigue como antes
+        return [f'no pude revisar dónde sale tu cara ({type(e).__name__}: {e}); revisa que no haya tramos con tu cara acelerados']
+    out = []
+    for b in lentos:
+        l = muestras[b['id'] if 'id' in b else id(b)]
+        con = sum(1 for s in l if hay.get(s))
+        if con >= max(2, len(l) * 0.3):
+            if not b['montaje'].get('cara'):
+                out.append(f"{b.get('id')}: se ve tu cara: va a velocidad normal (si sobra imagen, se recorta en vez de acelerar)")
+            b['montaje']['cara'] = True
+        else:
+            b['montaje'].pop('cara', None)
+    return out
+
+
 def revisar(d, tarea, datos):
     """Corrige lo que la IA suele hacer mal. Devuelve (datos_corregidos, avisos)."""
     avisos = []
     dur = duracion(os.path.join(d, 'original.mp4'))
     if tarea == 'guion':
         bloques = datos['bloques'] if isinstance(datos, dict) else datos
-        for b in bloques:
+        vistos, unicos = {}, []
+        for k, b in enumerate(bloques, 1):
             b['montaje'].setdefault('modo', 'lento')
+            if MULETILLA.search(b['texto']):
+                limpio = MULETILLA.sub('', b['texto']).strip().rstrip(',').strip()
+                if limpio:
+                    b['texto'] = limpio[:1].upper() + limpio[1:] + ('' if limpio[-1] in '.!?…' else '.')
+                    avisos.append(f"{b.get('id', k)}: quité el «ok» suelto del texto")
+            clave = ' '.join(normal(b['texto']).split())
+            if clave and clave in vistos:  # el mismo texto dos veces: el segundo sobra (se oiría repetido)
+                avisos.append(f"{b.get('id', k)}: quité el bloque porque dice lo mismo que {vistos[clave]}")
+                continue
+            vistos[clave] = b.get('id', k)
+            unicos.append(b)
+        bloques[:] = unicos
+        # guardado desde el editor (pedido de fabian, 30/10/2026: cambió 2 bloques y se rearmaron 13, y se deshizo un tramo que
+        # se había corregido a mano): los bloques que no tocaste y ya tienen su voz quedan exactamente como estaban
+        fijos = {} if VARIAR else bloques_con_su_voz(d, bloques)
+        if VARIAR:  # lo que escribió una IA; lo que escribiste tú en el editor solo se avisa (en problemas)
+            avisos += variar_muletillas(bloques)
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
+        imp = importantes.leer(d)  # «⭐ Cortes importantes»: esos bloques van a ×1 y no se recortan
+        frenados = importantes.marcar(bloques, imp)
+        if frenados:
+            avisos.append(f"{', '.join(frenados)}: tocan un corte importante que marcaste; los dejé a velocidad normal")
+        for x in importantes.sin_mostrar(bloques, imp):
+            avisos.append(f"OJO: el corte importante {importantes.mmss(x['inicio'])}–{importantes.mmss(x['fin'])}"
+                          f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
+        avisos += marcar_caras(d, bloques)  # con tu cara en pantalla nunca se acelera
+        desde = len(avisos)
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -528,6 +1347,15 @@ def revisar(d, tarea, datos):
             for c in ('src_inicio', 'src_fin'):
                 if mo.get(c) is not None:
                     mo[c] = round(min(max(float(mo[c]), 0), dur - 0.1), 2)
+            if not b['texto'].strip() and mo['modo'].startswith('lento'):
+                # tramo sin voz: quitaste lo que decía y lo dejaste acelerado; va tal cual, a la velocidad que elegiste
+                mo['sin_voz'] = True
+                mo['velocidad'] = 1.0 if mo.get('cara') else min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
+                largo = largo_bloque(mo)
+                b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = 0
+                t += largo
+                continue
+            mo.pop('sin_voz', None)
             if mo['modo'].startswith('lento'):
                 mo['velocidad'] = min(max(float(mo.get('velocidad') or 1), 0.5), VEL_MAX)
                 if mo['src_fin'] <= mo['src_inicio']:
@@ -535,23 +1363,34 @@ def revisar(d, tarea, datos):
             mo.setdefault('congelar_s', None)
             voz = round(len(b['texto'].split()) / PALABRAS_POR_S + 1.0, 1)
             critico = es_critico(b)
+            paso = not critico and es_paso(b)
             if critico:
                 mo['critico'] = True
+            if paso:
+                mo['paso'] = True
+            cara = bool(mo.get('cara'))
+            tope = 1.0 if mo.get('importante') or cara else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                if critico and tramo / VEL_CRITICO > voz + RELLENO:
-                    # paso clave (poner la key, escribir un código): no se acelera de más; se queda la parte donde se hace
-                    nuevo = round((voz + RELLENO) * VEL_CRITICO, 1)
+                if (critico or paso or cara) and tramo / tope > voz + RELLENO and not mo.get('unido') and not mo.get('importante'):
+                    # (con tu cara: se recorta el tramo, nunca se acelera)
+                    # (un corte importante que marcaste se muestra entero: no se recorta)
+                    # (un tramo «unido» trae la imagen de un bloque que quitaste: se muestra entero, no se recorta)
+                    # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
+                    # parte donde se hace
+                    nuevo = round((voz + RELLENO) * tope, 1)
                     centro = momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin'])
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)
-                    avisos.append(f"{b['id']}: paso clave: en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}, donde se hace")
+                    avisos.append(f"{b['id']}: {'paso clave' if critico else 'paso de configuración' if paso else 'sale tu cara'}: "
+                                  f"en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}"
+                                  f"{', donde se hace' if critico or paso else ''}")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico:
-                    mo['velocidad'] = min(mo['velocidad'], VEL_CRITICO)
+                if critico or paso or cara or mo.get('importante'):
+                    mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
-                    v = round(min(VEL_CRITICO if critico else VEL_MAX, tramo / (voz + 0.5)), 2)
+                    v = round(min(tope, tramo / (voz + 0.5)), 2)
                     if v > mo['velocidad']:
                         avisos.append(f"{b['id']}: aceleré el tramo a ×{v:g} para que no quede imagen sin voz "
                                       f"({tramo / mo['velocidad']:.0f} s → {tramo / v:.0f} s)")
@@ -576,15 +1415,23 @@ def revisar(d, tarea, datos):
                 avisos.append(f"{b['id']}: la voz no cabía, agregué {extra} s de pausa")
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
+        if fijos:  # vuelven a su montaje de antes (con su voz real ya medida) y sin avisos de retoques que no se hicieron
+            for b in bloques:
+                if b.get('id') in fijos:
+                    b['montaje'] = fijos[b['id']]
+            avisos[desde:] = [a for a in avisos[desde:] if a.split(':')[0] not in fijos]
+            avisos.append(f"dejé como estaban {len(fijos)} bloque(s) que no cambiaste (ya tienen su voz): solo se rehacen los que tocaste")
         meta, minimo, maximo = meta_guion(d, dur)
-        t = ajustar_largo(bloques, [b['voz_estimada_s'] for b in bloques], minimo, maximo, avisos)
+        t = ajustar_largo(bloques, [b['voz_estimada_s'] for b in bloques], minimo, maximo, avisos, fijos)
         if t > maximo:
             avisos.append(f"el video queda en {mmss(t)}, más largo de lo buscado ({mmss(meta)}): hay más texto de voz que video")
         elif t < minimo:
             avisos.append(f"quedó corto: unos {mmss(t)} de {mmss(meta)} buscados. Falta texto de voz en el guion")
         else:
             avisos.append(f"duración estimada {mmss(t)} (tu grabación dura {mmss(dur)})")
-        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'largo_revisado': 2, 'bloques': bloques}, avisos
+        avisos += problemas(bloques, t, con_saltos=False)  # los saltos atrás ya los avisó verificar_orden
+        return {'video': 'original.mp4', 'duracion_s': round(t, 1), 'duracion_original_s': round(dur, 2), 'largo_revisado': 2,
+                'bloques': bloques}, avisos
     if tarea == 'etiquetas':
         lista = datos['etiquetas'] if isinstance(datos, dict) else datos
         textos = {b['id']: normal(b['texto']) for b in json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']}
@@ -596,6 +1443,9 @@ def revisar(d, tarea, datos):
                 avisos.append(f"quité «{e.get('texto')}»: la frase «{e.get('frase')}» no está en {e.get('bloque')}")
         return buenas, avisos
     if tarea == 'trailer':
+        if not isinstance(datos, dict) or not isinstance(datos.get('clips'), list) or not datos['clips']:
+            raise SystemExit('ERROR: el tráiler no trae clips. Revisa el JSON (debe tener "clips": [...]).')
+        datos.pop('preguntas', None)  # van aparte, en preguntas_trailer.json
         for c in datos['clips']:
             a, b = (min(max(float(x), 0), dur - 0.5) for x in c['ventana'])
             if b - a < c['dur']:
@@ -610,13 +1460,227 @@ def revisar(d, tarea, datos):
     return datos, avisos
 
 
-def llamar_claude(ajustes, texto, caps):
+class ErrorIA(SystemExit):
+    """Un fallo de la IA ya clasificado (A–I, ver diagnostico.py). Sigue siendo SystemExit, así que todo lo que ya
+    atrapaba SystemExit funciona igual; `permanente` dice que repetir el mismo pedido no sirve."""
+    def __init__(self, mensaje, clase='I', permanente=None):
+        super().__init__(diagnostico.redactar(mensaje, 4000))  # el mensaje va al registro.txt: sin claves aunque el proveedor las repita
+        self.clase = clase
+        self.permanente = clase in diagnostico.PERMANENTES if permanente is None else permanente
+
+
+GUARDAR_RESPUESTA = False  # «diagnostico_guardar_respuesta» en ajustes.json: guarda un extracto redactado de lo que contestó la IA
+_INTENTOS = {}
+
+
+def _quien():
+    """(archivo, función) de quien pidió la llamada: la primera función fuera de llamar*/extraer_json."""
+    for fr in inspect.stack()[2:]:
+        if not fr.function.startswith(('llamar', '_llamar', 'extraer_json', '_anotar', 'por_tandas', '<')):
+            return os.path.basename(fr.filename), fr.function
+    return 'ia.py', 'main'
+
+
+def _anotar_respuesta(tipo, txt):
+    archivo, funcion = _quien()
+    ev = {'ok': False, 'tipo': tipo, 'archivo': archivo, 'funcion': funcion, 'operacion': funcion,
+          'etapa': diagnostico.ETAPA_FUNCION.get(funcion), 'largo_respuesta': len(txt or ''), 'hash_respuesta': diagnostico.huella(txt),
+          'parece_negativa': diagnostico.parece_negativa(txt), 'proveedor': _ULTIMA.get('proveedor'), 'modelo': _ULTIMA.get('modelo'),
+          'id_solicitud': _ULTIMA.get('id_solicitud'), 'motivo_fin': _ULTIMA.get('motivo_fin'),
+          'modelo_solicitado': _ULTIMA.get('modelo_solicitado'), 'modelo_respondio': _ULTIMA.get('modelo_respondio'), 'http': 200,
+          'tipo_respuesta': 'vacia' if tipo == 'respuesta_vacia' else 'json_invalido',
+          'mensaje': 'La IA contestó, pero ' + ('sin texto.' if tipo == 'respuesta_vacia' else 'no en JSON válido.')}
+    if GUARDAR_RESPUESTA:
+        ev['extracto_respuesta'] = diagnostico.redactar(txt, 1500)
+    diagnostico.anotar(ev)
+
+
+class _DictPorHilo:
+    """Un dict propio de cada hilo: con «3 IAs a la vez» cada IA tiene su última respuesta (si no, una borraba la caché
+    buena de otra y el diagnóstico culpaba al proveedor equivocado)."""
+    def __init__(self):
+        self._l = threading.local()
+
+    def _d(self):
+        if not hasattr(self._l, 'd'):
+            self._l.d = {}
+        return self._l.d
+
+    def get(self, *a):
+        return self._d().get(*a)
+
+    def clear(self):
+        self._d().clear()
+
+    def update(self, *a, **k):
+        self._d().update(*a, **k)
+
+    def __getitem__(self, k):
+        return self._d()[k]
+
+    def __setitem__(self, k, v):
+        self._d()[k] = v
+
+
+_ULTIMA = _DictPorHilo()  # datos de la última respuesta, para el diagnóstico de una respuesta ilegible
+
+
+def _clave_cache(ev, ajustes, texto, caps):
+    """Dónde se guarda la respuesta de este pedido exacto (mismo proveedor, modelo, texto e imágenes) mientras su paso no
+    termine bien. Así «Reintentar» reutiliza lo ya contestado y no vuelve a pagar por ello. None si no hay caché."""
+    carpeta = os.environ.get('CACHE_IA')
+    if not carpeta:
+        return None
+    h = hashlib.sha256(json.dumps([ev['proveedor'], ev['modelo'], texto, bool(ajustes.get('imagenes', True))]).encode())
+    if ajustes.get('imagenes', True):
+        for _, f in caps:
+            try:
+                h.update(open(f, 'rb').read())
+            except OSError:
+                return None
+    return os.path.join(carpeta, h.hexdigest()[:32] + '.json')
+
+
+def _olvidar_respuesta():
+    """La última respuesta no sirvió (vacía o sin JSON): no se reutiliza al reintentar."""
+    f = _ULTIMA.get('cache')
+    if f:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def _mismo_modelo(pedido, respondio):
+    """«claude-opus-5-5» y «claude-opus-5-5-20261001», o «gpt-4.1» y «gpt-4.1-2025-04-14», son el mismo modelo."""
+    a, b = (pedido or '').lower(), (respondio or '').lower()
+    return a == b or b.startswith(a + '-') or a.startswith(b + '-')
+
+
+def _proveedor(ajustes):
+    if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
+        return 'Claude'
+    if ':11434' in ajustes.get('url', ''):
+        return 'Ollama'
+    url = ajustes.get('url', '')
+    for clave, nombre in (('openai.com', 'OpenAI (GPT)'), ('dashscope', 'Qwen (DashScope)'), ('openrouter', 'OpenRouter'),
+                          ('deepseek', 'DeepSeek'), ('generativelanguage', 'Gemini'), (':1234', 'LM Studio')):
+        if clave in url:
+            return nombre
+    return ajustes.get('proveedor') or 'otro'
+
+
+_TRAMO = [0, 100]  # parte del paso (en %) que cubre la fase actual; la app lee «[N%]» del registro para su barra
+
+
+def tramo(desde, hasta):
+    _TRAMO[:] = [desde, hasta]
+
+
+def progreso(dentro, texto):
+    """Escribe en el registro en qué va el paso y su porcentaje: «· [45%] Pidiendo el guion…». `dentro` (0–100) es
+    cuánto va de la fase actual (tramo)."""
+    pct = int(_TRAMO[0] + (_TRAMO[1] - _TRAMO[0]) * max(0, min(100, dentro)) / 100)
+    print(f'· [{pct}%] {texto}', flush=True)
+
+
+def _mientras_piensa(fin, t0, esperado=150):
+    """Mientras la IA responde, cada 15 s deja una línea con el tiempo que lleva, para que se vea que sigue viva.
+    El % de esa espera es estimado (la API no dice cuánto le falta)."""
+    while not fin.wait(15):
+        s = int(time.time() - t0)
+        progreso(min(90, 100 * s / esperado), f'la IA sigue escribiendo… {s // 60}:{s % 60:02d} (el % de la espera es estimado)')
+
+
+def llamar(ajustes, texto, caps):
+    """Pide a la IA configurada y deja anotada la llamada (bien o mal) para el diagnóstico, sin claves ni contenido."""
+    global GUARDAR_RESPUESTA
+    GUARDAR_RESPUESTA = bool(ajustes.get('diagnostico_guardar_respuesta'))
+    if not str(ajustes.get('clave') or '').strip():  # la principal quedó vacía: la de ese mismo proveedor en «varias IAs» sirve
+        for ide, (_, _, url, _) in IAS_GUION.items():
+            k = str(((ajustes.get('ias_guion') or {}).get(ide) or {}).get('clave') or '').strip()
+            if k and url.rstrip('/') == str(ajustes.get('url') or '').strip().rstrip('/'):
+                ajustes = {**ajustes, 'clave': k}
+                break
+    archivo, funcion = _quien()
+    _INTENTOS[funcion] = _INTENTOS.get(funcion, 0) + 1
+    det = {}
+    ev = {'proveedor': _proveedor(ajustes), 'modelo': ajustes.get('modelo') or '', 'operacion': funcion, 'funcion': funcion,
+          'archivo': archivo, 'etapa': diagnostico.ETAPA_FUNCION.get(funcion), 'intento': _INTENTOS[funcion],
+          'imagenes': len(caps) if ajustes.get('imagenes', True) else 0, 'caracteres_pedido': len(texto),
+          'hash_pedido': diagnostico.huella(texto)}
+    _ULTIMA.clear()
+    _ULTIMA.update(proveedor=ev['proveedor'], modelo=ev['modelo'])
+    cache = _clave_cache(ev, ajustes, texto, caps)
+    if cache and os.environ.get('REANUDAR_IA') and os.path.isfile(cache):
+        try:
+            guardada = json.load(open(cache, encoding='utf-8'))
+            r = guardada['respuesta']
+        except (OSError, ValueError, KeyError):
+            guardada = None
+        if guardada is not None:
+            diagnostico.anotar({**ev, **guardada.get('det', {}), 'ok': True, 'reutilizada': True, 'duracion_s': 0,
+                                'largo_respuesta': len(r or ''), 'tipo_respuesta': 'reutilizada'})
+            _ULTIMA.update(cache=cache, **{k: guardada.get('det', {}).get(k) for k in ('id_solicitud', 'motivo_fin', 'modelo_respondio')})
+            print('· reutilizo la respuesta que la IA ya había dado a este mismo pedido (no se vuelve a cobrar)', flush=True)
+            return r
+    t0 = time.time()
+    fin = threading.Event()
+    threading.Thread(target=_mientras_piensa, args=(fin, t0), daemon=True).start()
+    try:
+        if ev['proveedor'] == 'Claude':
+            r = llamar_claude(ajustes, texto, caps, det)
+        elif ev['proveedor'] == 'Ollama':
+            r = llamar_ollama(ajustes, texto, caps, det)
+        else:
+            r = llamar_compatible(ajustes, texto, caps, det)
+    except SystemExit as e:
+        fin.set()
+        diagnostico.anotar({**ev, **det, 'ok': False, 'duracion_s': round(time.time() - t0, 1),
+                            'mensaje': str(e)[:600], 'clase_app': getattr(e, 'clase', None)})
+        raise
+    except Exception as e:  # un error del programa (no de la IA): queda anotado con su tipo y sigue su camino
+        fin.set()
+        diagnostico.anotar({**ev, **det, 'ok': False, 'tipo': 'programa', 'tipo_error': type(e).__name__,
+                            'mensaje': str(e)[:600], 'duracion_s': round(time.time() - t0, 1)})
+        raise
+    fin.set()
+    det.setdefault('tipo_respuesta', 'ok')
+    diagnostico.anotar({**ev, **det, 'ok': True, 'duracion_s': round(time.time() - t0, 1), 'largo_respuesta': len(r or '')})
+    _ULTIMA.update(id_solicitud=det.get('id_solicitud'), motivo_fin=det.get('motivo_fin'), modelo_solicitado=det.get('modelo_solicitado'),
+                   modelo_respondio=det.get('modelo_respondio'))
+    if det.get('motivo_cambio'):
+        print(f"· {det['motivo_cambio']}", flush=True)
+    if cache:
+        try:
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            guardado_det = {k: det.get(k) for k in ('id_solicitud', 'motivo_fin', 'modelo_solicitado', 'modelo_respondio')}
+            with open(cache + '.nuevo', 'w', encoding='utf-8') as f:
+                json.dump({'respuesta': r, 'det': guardado_det}, f, ensure_ascii=False)
+            os.replace(cache + '.nuevo', cache)
+            _ULTIMA['cache'] = cache
+        except OSError:
+            pass
+    return r
+
+
+def _cuerpo_error(e):
+    """(tipo, mensaje) del error que devolvió la API de Claude, tal cual."""
+    cuerpo = getattr(e, 'body', None)
+    err = cuerpo.get('error', {}) if isinstance(cuerpo, dict) else {}
+    return (err.get('type') if isinstance(err, dict) else None) or type(e).__name__, \
+        (err.get('message') if isinstance(err, dict) else None) or getattr(e, 'message', '') or str(e)
+
+
+def llamar_claude(ajustes, texto, caps, det=None):
     """Claude con la librería oficial de Anthropic (no habla el formato de OpenAI)."""
+    det = {} if det is None else det
     try:
         import anthropic
     except ImportError:
-        raise SystemExit('ERROR: falta la librería de Claude. Corre instalar.bat, o abre una terminal en la carpeta '
-                         'de la app y escribe:\n  python -m pip install anthropic')
+        det.update(tipo='programa', tipo_error='ImportError')
+        raise ErrorIA('ERROR: falta la librería de Claude. Corre instalar.bat, o abre una terminal en la carpeta '
+                      'de la app y escribe:\n  python -m pip install anthropic', 'G', True)
     contenido = []
     if ajustes.get('imagenes', True):
         for _, f in caps:
@@ -626,13 +1690,14 @@ def llamar_claude(ajustes, texto, caps):
     else:
         contenido.append({'type': 'text', 'text': texto + '\n\n(No puedes ver las capturas: guíate por la transcripción y los segundos.)'})
     if re.search(r'\.\.\.|…', ajustes.get('clave') or ''):
-        raise SystemExit('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
-                         'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).')
+        raise ErrorIA('ERROR: la clave de Claude está recortada (tiene «...»): es la versión corta de la lista de claves. '
+                      'En console.anthropic.com → API Keys crea una clave nueva y copia la COMPLETA (unos 100 caracteres).', 'C')
     cliente = anthropic.Anthropic(api_key=ajustes.get('clave') or None, timeout=900)
+    det['modelo_solicitado'] = ajustes.get('modelo') or 'claude-opus-5-5'
     try:
         # en streaming para que una respuesta larga no corte la conexión
         with cliente.beta.messages.stream(
-            model=ajustes.get('modelo') or 'claude-opus-5-5',
+            model=det['modelo_solicitado'],
             max_tokens=64000,
             system='Respondes únicamente con JSON válido.',
             output_config={'effort': 'medium'},
@@ -641,25 +1706,91 @@ def llamar_claude(ajustes, texto, caps):
             messages=[{'role': 'user', 'content': contenido}],
         ) as flujo:
             r = flujo.get_final_message()
-    except anthropic.AuthenticationError:
-        raise SystemExit('ERROR: Claude rechazó la clave. Revisa la clave en «⚙ Ajustes IA» (empieza con sk-ant-).')
-    except anthropic.PermissionDeniedError as e:
-        raise SystemExit(f'ERROR: tu clave de Claude no tiene permiso para este modelo: {e.message}')
-    except anthropic.NotFoundError:
-        raise SystemExit(f'ERROR: Claude no conoce el modelo «{ajustes.get("modelo")}». Prueba con claude-opus-5-5.')
-    except anthropic.RateLimitError:
-        raise SystemExit('ERROR: Claude dice que hiciste muchas peticiones o no tienes saldo. Espera un poco o revisa tu cuenta en console.anthropic.com.')
     except anthropic.APIStatusError as e:
-        if 'workspace' in str(e.message).lower():
-            raise SystemExit('ERROR: tu clave de Claude no está atada a un «Workspace». Crea una nueva clave dentro de un '
-                             'workspace: en console.anthropic.com/settings/keys, arriba a la izquierda elige un Workspace '
-                             '(por ejemplo «Default») y pulsa «Create Key». Pega esa clave en «⚙ Ajustes IA». O usa GPT.')
-        raise SystemExit(f'ERROR: Claude respondió con error {e.status_code}: {e.message}')
-    except anthropic.APIConnectionError:
-        raise SystemExit('ERROR: no hay conexión con Claude. Revisa tu internet.')
+        tipo, mensaje = _cuerpo_error(e)
+        rid = getattr(e, 'request_id', None) or (e.response.headers.get('request-id') if getattr(e, 'response', None) is not None else None)
+        det.update(http=e.status_code, tipo_error=tipo, mensaje_api=mensaje, id_solicitud=rid, tipo_respuesta='error_http')
+        clase, _, _ = diagnostico.clasificar(det)
+        bajo = str(mensaje).lower()
+        if clase == 'D':
+            raise ErrorIA(f'ERROR: Claude dice que no hay saldo o hay un problema de facturación: {mensaje}. '
+                          'Revisa tu saldo en console.anthropic.com.', 'D')
+        if clase == 'B':
+            raise ErrorIA(f'ERROR: Claude dice que la organización o la cuenta está deshabilitada: {mensaje}', 'B')
+        if 'workspace' in bajo:
+            raise ErrorIA('ERROR: tu clave de Claude no está atada a un «Workspace». Crea una nueva clave dentro de un '
+                          'workspace: en console.anthropic.com/settings/keys, arriba a la izquierda elige un Workspace '
+                          '(por ejemplo «Default») y pulsa «Create Key». Pega esa clave en «⚙ Ajustes IA». O usa GPT.', 'C')
+        if e.status_code == 401:
+            raise ErrorIA('ERROR: Claude rechazó la clave. Revisa la clave en «⚙ Ajustes IA» (empieza con sk-ant-).', 'C')
+        if e.status_code == 403:
+            raise ErrorIA(f'ERROR: tu clave de Claude no tiene permiso para este modelo: {mensaje}', 'C')
+        if e.status_code == 404:
+            raise ErrorIA(f'ERROR: Claude no conoce el modelo «{ajustes.get("modelo")}». Prueba con claude-opus-5-5.', 'C')
+        if clase == 'E':
+            raise ErrorIA(f'ERROR: Claude dice que se pasó un límite ({e.status_code}): {mensaje}. '
+                          'Espera un poco o baja las capturas en «⚙ Ajustes IA».', 'E')
+        raise ErrorIA(f'ERROR: Claude respondió con error {e.status_code}: {mensaje}', clase)
+    except anthropic.APITimeoutError as e:  # el pedido salió y Claude no terminó a tiempo: pudo cobrarse, no se reintenta solo
+        raise sin_respuesta(e, det)
+    except anthropic.APIConnectionError as e:
+        det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300], tipo_respuesta='sin_conexion')
+        raise ErrorIA('ERROR: no hay conexión con Claude. Revisa tu internet.', 'H')
+    det.update(http=200, id_solicitud=getattr(r, '_request_id', None), motivo_fin=r.stop_reason,
+               uso={k: getattr(r.usage, k, None) for k in ('input_tokens', 'output_tokens')} if getattr(r, 'usage', None) else None)
+    det.update(modelos_claude(r, det['modelo_solicitado']))
     if r.stop_reason == 'refusal':
-        raise SystemExit('ERROR: Claude no quiso responder esta petición. Prueba cambiando la idea o usa otra IA.')
+        sd = getattr(r, 'stop_details', None)
+        cat = getattr(sd, 'category', None) if sd is not None else None
+        det.update(rechazo_explicito=True, categoria_rechazo=cat, tipo_respuesta='rechazo_200',
+                   modelo_recomendado=getattr(sd, 'recommended_model', None) if sd is not None else None,
+                   mensaje_api=(getattr(sd, 'explanation', None) if sd is not None else None) or 'stop_reason=refusal')
+        raise ErrorIA('ERROR: Claude rechazó esta petición por sus políticas de uso' + (f' (categoría «{cat}»)' if cat else '') +
+                      '. No se reintenta igual. Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
+    if r.stop_reason == 'max_tokens':
+        det['tipo_respuesta'] = 'incompleta'
+        raise ErrorIA('ERROR: la respuesta de Claude se cortó por el límite de largo y quedó incompleta. '
+                      'Vuelve a intentar o pide un guion más corto.', 'E', False)
     return ''.join(b.text for b in r.content if b.type == 'text')
+
+
+def modelos_claude(r, pedido):
+    """Qué modelo se pidió y cuál respondió, según los metadatos oficiales de la respuesta: el campo `model` (el que
+    produjo el mensaje), los bloques `fallback` (cada cambio de modelo: de cuál a cuál) y `usage.iterations` (una
+    entrada `fallback_message` = respondió un modelo de respaldo). El servidor de Anthropic solo cambia de modelo cuando
+    el pedido es rechazado por políticas; si la respuesta no trae el dato, se dice que no está confirmado."""
+    respondio = getattr(r, 'model', None)
+    saltos = []
+    for b in getattr(r, 'content', None) or []:
+        if getattr(b, 'type', '') == 'fallback':
+            de, a = getattr(b, 'from_', None) or getattr(b, 'from', None), getattr(b, 'to', None)
+            saltos.append({'de': getattr(de, 'model', None), 'a': getattr(a, 'model', None)})
+    iteraciones = []
+    for it in getattr(getattr(r, 'usage', None), 'iterations', None) or []:
+        iteraciones.append({'tipo': getattr(it, 'type', None), 'modelo': getattr(it, 'model', None)})
+    respaldo = any(x['tipo'] == 'fallback_message' for x in iteraciones)
+    out = {'modelo_solicitado': pedido, 'modelo_respondio': respondio, 'modelo_confirmado': bool(respondio),
+           'cambios_modelo': saltos, 'iteraciones': iteraciones}
+    if not respondio:
+        out['nota_modelo'] = 'No se pudo confirmar qué modelo respondió: la respuesta no trae el campo «model».'
+    rechazo_final = getattr(r, 'stop_reason', None) == 'refusal'
+    if saltos:
+        cadena = ' → '.join([saltos[0]['de'] or pedido] + [s['a'] or '¿?' for s in saltos])
+        out['motivo_cambio'] = (f'cambio automático de modelo de Anthropic ({cadena}): el modelo anterior rechazó el pedido por '
+                                'políticas, y el servidor solo cambia de modelo por ese motivo. La API no informa la categoría de '
+                                'cada rechazo intermedio.')
+    elif respaldo:
+        out['motivo_cambio'] = (f'respondió un modelo de respaldo ({respondio or "no confirmado"}) sin probar {pedido}: '
+                                '«usage.iterations» trae «fallback_message» sin bloque «fallback», que es el enrutamiento '
+                                'persistente que Anthropic aplica por un rato después de un rechazo anterior del mismo pedido.')
+    elif respondio and not _mismo_modelo(pedido, respondio):
+        out['motivo_cambio'] = f'pediste {pedido} y respondió {respondio}; la API no informó el motivo.'
+    if out.get('motivo_cambio'):
+        out['cambio_modelo'] = True
+        if (saltos or respaldo) and not rechazo_final:
+            out['incidencia'] = 'rechazo_recuperado'
+            out['tipo_respuesta'] = 'ok_otro_modelo'
+    return out
 
 
 def contexto_ollama(texto, imagenes):
@@ -669,8 +1800,9 @@ def contexto_ollama(texto, imagenes):
     return min(131072, max(32768, -(-tokens // 8192) * 8192))
 
 
-def llamar_ollama(ajustes, texto, caps):
+def llamar_ollama(ajustes, texto, caps, det=None):
     """Ollama por su API propia: la compatible con OpenAI no deja subir el contexto y cortaría el pedido."""
+    det = {} if det is None else det
     msg = {'role': 'user', 'content': texto}
     if ajustes.get('imagenes', True):
         msg['images'] = [base64.b64encode(open(f, 'rb').read()).decode() for _, f in caps]
@@ -686,19 +1818,35 @@ def llamar_ollama(ajustes, texto, caps):
         r = json.load(urllib.request.urlopen(req, timeout=3600))
     except urllib.error.HTTPError as e:
         cuerpo = e.read()[:400].decode(errors='replace')
+        det.update(http=e.code, mensaje_api=cuerpo, tipo_respuesta='error_http')
         if e.code == 404:
-            raise SystemExit(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}')
-        raise SystemExit(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}')
-    except urllib.error.URLError:
-        raise SystemExit('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.')
+            raise ErrorIA(f'ERROR: Ollama no tiene el modelo «{ajustes["modelo"]}». Corre instalar_ia_local.bat. Detalle: {cuerpo}', 'C')
+        raise ErrorIA(f'ERROR: Ollama respondió con error {e.code}: {cuerpo}', diagnostico.clasificar(det)[0])
+    except urllib.error.URLError as e:
+        det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
+        raise ErrorIA('ERROR: Ollama no está abierto. Ábrelo desde el menú Inicio (o corre instalar_ia_local.bat) y vuelve a intentar.', 'H')
+    except (OSError, http.client.HTTPException) as e:
+        raise sin_respuesta(e, det)
+    det.update(http=200, motivo_fin=r.get('done_reason'), **modelos_compatible(r, ajustes['modelo']))
+    if r.get('done_reason') == 'length':
+        det['tipo_respuesta'] = 'incompleta'
+        raise ErrorIA('ERROR: la respuesta de Ollama se cortó por largo y quedó incompleta.', 'E', False)
     return r['message']['content']
 
 
-def llamar(ajustes, texto, caps):
-    if ajustes.get('tipo') == 'claude' or ajustes.get('proveedor', '').startswith('Claude'):
-        return llamar_claude(ajustes, texto, caps)
-    if ':11434' in ajustes.get('url', ''):
-        return llamar_ollama(ajustes, texto, caps)
+def sin_respuesta(e, det):
+    """El pedido salió pero la respuesta no llegó (tardó más que el límite o se cortó la conexión mientras se esperaba).
+    El proveedor pudo haberlo cobrado, así que no se reintenta solo."""
+    det.update(tipo='red', tipo_error=type(e).__name__, mensaje_api=str(e)[:300], tipo_respuesta='sin_respuesta')
+    err = ErrorIA(f'ERROR: la IA no terminó de responder ({type(e).__name__}): tardó demasiado o se cortó la conexión mientras '
+                  'contestaba. Vuelve a intentar (si se repite, baja las capturas en «⚙ Ajustes IA»).', 'H')
+    err.puede_haber_cobrado = True
+    return err
+
+
+def llamar_compatible(ajustes, texto, caps, det=None):
+    """OpenAI (GPT) y los que hablan su formato: Qwen, DeepSeek, Gemini, OpenRouter, LM Studio."""
+    det = {} if det is None else det
     contenido = [{'type': 'text', 'text': texto}]
     if ajustes.get('imagenes', True):
         for _, f in caps:
@@ -715,6 +1863,7 @@ def llamar(ajustes, texto, caps):
     if ajustes.get('clave'):
         cab['Authorization'] = 'Bearer ' + ajustes['clave']
     print('Mandando ' + (f'{len(caps)} capturas y ' if ajustes.get('imagenes', True) else 'solo texto (sin capturas) y ') + 'el encargo…', flush=True)
+    ajustes_quitados = []
     for intento in range(3):
         req = urllib.request.Request(url, data=json.dumps(cuerpo).encode(), headers=cab)
         try:
@@ -724,29 +1873,61 @@ def llamar(ajustes, texto, caps):
             detalle = e.read()[:500].decode(errors='replace')
             # algunos modelos (GPT-5, varios Qwen-VL) no aceptan temperatura o el modo JSON: se reintenta sin eso
             if e.code == 400 and 'temperature' in detalle and 'temperature' in cuerpo:
-                del cuerpo['temperature']; continue
+                del cuerpo['temperature']; ajustes_quitados.append('temperature'); continue
             if e.code == 400 and 'response_format' in detalle and 'response_format' in cuerpo:
-                del cuerpo['response_format']; continue
+                del cuerpo['response_format']; ajustes_quitados.append('response_format'); continue
+            try:
+                err = json.loads(detalle).get('error', {})
+            except ValueError:
+                err = {}
+            err = err if isinstance(err, dict) else {'message': str(err)}
+            det.update(http=e.code, tipo_error=err.get('type') or err.get('code') or 'HTTPError', mensaje_api=err.get('message') or detalle,
+                       id_solicitud=e.headers.get('x-request-id') if e.headers else None, ajustes_quitados=ajustes_quitados,
+                       tipo_respuesta='error_http')
+            if err.get('code') in ('insufficient_quota', 'billing_hard_limit_reached'):
+                det['mensaje_api'] = f"{err.get('code')}: {det['mensaje_api']}"
+            clase = diagnostico.clasificar(det)[0]
+            if clase == 'D':
+                raise ErrorIA(f'ERROR: el proveedor dice que no hay saldo o hay un problema de facturación ({e.code}). Detalle: {detalle}', 'D')
+            if clase == 'B':
+                raise ErrorIA(f'ERROR: el proveedor dice que la cuenta u organización está deshabilitada ({e.code}). Detalle: {detalle}', 'B')
             if e.code in (401, 403):
-                raise SystemExit(f'ERROR: la IA rechazó la clave ({e.code}). Revísala en «⚙ Ajustes IA». Detalle: {detalle}')
+                raise ErrorIA(f'ERROR: la IA rechazó la clave ({e.code}). Revísala en «⚙ Ajustes IA». Detalle: {detalle}', 'C')
             if e.code == 404:
-                raise SystemExit(f'ERROR: la IA no conoce el modelo «{ajustes["modelo"]}» o la dirección está mal. Detalle: {detalle}')
-            raise SystemExit(f'ERROR: la IA respondió con error {e.code}: {detalle}')
+                raise ErrorIA(f'ERROR: la IA no conoce el modelo «{ajustes["modelo"]}» o la dirección está mal. Detalle: {detalle}', 'C')
+            if clase == 'E':
+                raise ErrorIA(f'ERROR: la IA dice que se pasó un límite ({e.code}): demasiados pedidos o un pedido muy grande. '
+                              f'Espera un poco o baja las capturas. Detalle: {detalle}', 'E')
+            raise ErrorIA(f'ERROR: la IA respondió con error {e.code}: {detalle}', clase)
         except urllib.error.URLError as e:
-            raise SystemExit(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.')
+            det.update(tipo='red', tipo_error='URLError', mensaje_api=str(e.reason), tipo_respuesta='sin_conexion')
+            raise ErrorIA(f'ERROR: no hay conexión con la IA en {ajustes["url"]} ({e.reason}). Revisa la dirección y tu internet.', 'H')
+        except (OSError, http.client.HTTPException) as e:
+            raise sin_respuesta(e, det)
+    det['ajustes_quitados'] = ajustes_quitados
     try:
-        contenido = r['choices'][0]['message']['content']
-    except (KeyError, IndexError, TypeError):
-        contenido = ''
+        eleccion = r['choices'][0]
+        mensaje = eleccion.get('message') or {}
+        contenido = mensaje.get('content')
+    except (KeyError, IndexError, TypeError, AttributeError):
+        eleccion, mensaje, contenido = {}, {}, ''
+    det.update(http=200, id_solicitud=r.get('id') if isinstance(r, dict) else None, motivo_fin=eleccion.get('finish_reason'),
+               uso=r.get('usage') if isinstance(r, dict) else None, **modelos_compatible(r, ajustes['modelo']))
+    if mensaje.get('refusal') or eleccion.get('finish_reason') == 'content_filter':
+        det.update(rechazo_explicito=True, tipo_respuesta='rechazo_200', mensaje_api=str(mensaje.get('refusal') or 'finish_reason=content_filter')[:600])
+        raise ErrorIA('ERROR: la IA rechazó esta petición por sus políticas de uso (lo marcó la API). No se reintenta igual. '
+                      'Mira el diagnóstico; puedes usar otra IA en «⚙ Ajustes IA».', 'A')
     if not (contenido or '').strip():
-        motivo = ''
-        try:
-            motivo = r['choices'][0].get('finish_reason') or ''
-        except (KeyError, IndexError, TypeError):
-            pass
-        extra = ' (el modelo cortó por longitud; si usas GPT-5 con «capturas» altas, baja las capturas en «⚙ Ajustes IA»)' if motivo == 'length' else ''
-        raise SystemExit('ERROR: la IA no devolvió texto (respuesta vacía).' + extra + ' Casi siempre es falta de saldo o un corte de la IA. '
-                         'Revisa tu saldo en la web del proveedor, comprueba la clave en «⚙ Ajustes IA» y vuelve a intentar.')
+        if eleccion.get('finish_reason') == 'length':
+            det['tipo_respuesta'] = 'incompleta'
+            raise ErrorIA('ERROR: la respuesta de la IA se cortó por largo antes de escribir nada (si usas GPT-5 con «capturas» '
+                          'altas, bájalas en «⚙ Ajustes IA»).', 'E', False)
+        det.update(tipo='respuesta_vacia', tipo_respuesta='vacia')
+        raise ErrorIA('ERROR: la IA no devolvió texto (respuesta vacía) y no dio motivo. Mira el diagnóstico antes de suponer '
+                      'la causa; revisa también tu saldo y la clave en «⚙ Ajustes IA».', 'F')
+    if eleccion.get('finish_reason') == 'length':
+        det['tipo_respuesta'] = 'incompleta'
+        raise ErrorIA('ERROR: la respuesta de la IA se cortó por el límite de largo y quedó incompleta. Vuelve a intentar.', 'E', False)
     return contenido
 
 
@@ -978,7 +2159,9 @@ def senales_auto(d, ajustes, video):
 {textos}
 
 Elige los momentos donde una flecha o un círculo ayuda a seguir el paso: el botón u opción que hay que tocar,
-el dato importante en la pantalla del celular o la PC, la pieza o conector. Máximo uno por bloque y entre 4 y 12 en total.
+el dato importante en la pantalla del celular o la PC, la pieza o conector. Máximo dos por bloque y entre {cuantos_extras(g['bloques'])[1]} y
+{cuantos_extras(g['bloques'])[2]} en total, repartidos por todo el video (al autor le gustan bien señalados: el de la Raspberry,
+de 7 minutos, llevó 9).
 Para cada uno: "bloque" (id), "frase" (2 a 4 palabras COPIADAS TAL CUAL del texto de ese bloque; la marca aparece cuando la
 voz las dice), "que" (qué hay que señalar, tal como se vería en pantalla, ej. «botón Aceptar», «opción Restablecer»),
 "tipo" (circulo para botones y opciones, flecha para algo pequeño, caja para un texto o dato largo) y "texto"
@@ -1042,6 +2225,7 @@ Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 4
             print(f"· salto «{m.get('que')}»: la IA no lo vio en el cuadro", flush=True)
             continue
         s['_t'] = tiempos[k - 1]
+        s['por_que'] = f"señala {m.get('que')}" if m.get('que') else ''
         senales.append(s)
         if not exacta:
             dudosas.append((len(senales) - 1, k, m))
@@ -1049,6 +2233,8 @@ Responde SOLO con un objeto JSON {{"posiciones": [{{"imagen": 1, "x": 50, "y": 4
               + ('  ✓ leído en pantalla' if exacta else ''), flush=True)
     if propias:
         senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, senales, dudosas)
+    for i, k, m in dudosas:  # no se leyó en pantalla: el autor la confirma en la revisión (la segunda mirada puede aclararla)
+        senales[i]['duda'] = f"No pude leer «{m.get('que') or 'lo marcado'}» en la pantalla; la ubiqué a ojo. ¿Está bien puesta?"
     if dudosas and ajustes.get('revisar_senales', True):
         senales = revisar_senales(d, ajustes, senales, dudosas, caps, W, H)
     # las del autor mandan: se quitan las automáticas que caen encima de una suya
@@ -1076,6 +2262,18 @@ def senales_autor(d, ajustes, propias, video, W, H, out, caps, ocr, inicio, sena
         subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', os.path.join(d, MARCAS_DIR, nombre), '-frames:v', '1',
                         '-vf', 'scale=1024:-2', '-q:v', '3', suya], check=True)
         nota = (c.get('nota') or '').strip()
+        z = c.get('zona')
+        if isinstance(z, dict) and all(isinstance(z.get(k), (int, float)) for k in ('x', 'y', 'w', 'h')):
+            # lo dibujó el autor con «🎯 Señalar aquí»: va exactamente ahí, sin preguntarle a la IA
+            bloque = max((b for b in inicio if inicio[b] <= t), key=lambda b: inicio[b], default=None)
+            m = {'que': nota or 'lo que marcaste', 'texto': '', 'bloque': bloque, 'frase': (nota or 'tu dibujo')[:40],
+                 'tipo': c['forma'] if c.get('forma') in FORMAS else 'circulo', 'forma_fija': True}
+            s, _ = ubicar(m, z, f, None, W, H)
+            if s:
+                s.update(t=t, _t=t, autor=True, por_que=f'lo dibujaste tú: {nota}' if nota else 'lo dibujaste tú')
+                senales.append(s)
+                print(f"tuya {mmss(t)}  {s['tipo']:8s} → dibujada por ti ({z['x']:.0f}%, {z['y']:.0f}%)", flush=True)
+            continue
         pares.append((c, t, f, nota))
         imgs += [(f'captura {n} del autor' + (f': {nota}' if nota else ''), suya), (f'cuadro {n} del video', f)]
         print(f'· tu captura {nombre} va en el {mmss(t)} del video', flush=True)
@@ -1099,6 +2297,8 @@ Responde SOLO con un objeto JSON {{"marcas": [{{"par": 1, "que": "...", "tipo": 
     try:
         r = llamar(ajustes, pedido, imgs)
     except SystemExit as e:
+        if getattr(e, 'permanente', False) and getattr(e, 'clase', '') != 'A':
+            raise  # clave, cuenta o saldo: el pedido que sigue fallaría igual (y no se intenta)
         print(f'· no pude ubicar tus capturas ({e})', flush=True)
         return
     open(os.path.join(d, 'ia_respuesta_senales_autor.txt'), 'w', encoding='utf-8').write(r)
@@ -1117,7 +2317,7 @@ Responde SOLO con un objeto JSON {{"marcas": [{{"par": 1, "que": "...", "tipo": 
         if not s:
             print(f'· en tu captura {n} la IA no encontró qué señalar; prueba con una nota más clara', flush=True)
             continue
-        s.update(t=t, _t=t, autor=True)
+        s.update(t=t, _t=t, autor=True, por_que=f"lo marcaste en tu captura: {m['que']}" if m.get('que') else 'lo marcaste en tu captura')
         caps.append((f'cuadro {n} del video', f))
         senales.append(s)
         if not exacta:
@@ -1167,6 +2367,8 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
     try:
         r = llamar(ajustes, pedido, imgs)
     except SystemExit as e:
+        if getattr(e, 'permanente', False) and getattr(e, 'clase', '') != 'A':
+            raise  # clave, cuenta o saldo: el pedido que sigue fallaría igual (y no se intenta)
         print(f'· no pude revisar las señales ({e}); las dejo como están', flush=True)
         return senales
     open(os.path.join(d, 'ia_respuesta_senales_3.txt'), 'w', encoding='utf-8').write(r)
@@ -1181,6 +2383,9 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
         s = senales[i]
         if x.get('quitar'):
             quitar.add(i); print(f"· quito «{m.get('que')}»: en la revisión no se ve", flush=True)
+            continue
+        if x.get('ok'):
+            s.pop('duda', None)
             continue
         try:
             nx, ny = float(x['x']), float(x['y'])
@@ -1197,6 +2402,7 @@ Responde SOLO con un objeto JSON {{"revision": [...]}}."""
                 s['r'] = round(min(max(max(tw, th) * 0.7, H * 0.045), H * 0.16))
         if s['tipo'] == 'flecha':
             apuntar(s, tw or 60, th or 40, W, H)
+        s['duda'] = f"La corregí a ojo para que quede sobre «{m.get('que') or 'lo marcado'}». ¿Quedó bien?"
         print(f"· corregí «{m.get('que')}» → ({nx:.0f}%, {ny:.0f}%)", flush=True)
     return [s for i, s in enumerate(senales) if i not in quitar]
 
@@ -1211,19 +2417,53 @@ def es_local(ajustes):
     return bool(re.search(r':(11434|1234)\b', (ajustes or {}).get('url', '')))
 
 
+def modelos_compatible(r, pedido):
+    """OpenAI, Ollama y compatibles: el campo `model` de la respuesta dice qué modelo respondió. Estas APIs no tienen
+    cambios automáticos de modelo con motivo; si el modelo es otro, se anota sin inventar la causa."""
+    respondio = r.get('model') if isinstance(r, dict) else None
+    out = {'modelo_solicitado': pedido, 'modelo_respondio': respondio, 'modelo_confirmado': bool(respondio)}
+    if not respondio:
+        out['nota_modelo'] = 'No se pudo confirmar qué modelo respondió: la respuesta no trae el campo «model».'
+    elif not _mismo_modelo(pedido, respondio):
+        out.update(cambio_modelo=True, motivo_cambio=f'pediste {pedido} y respondió {respondio}; la API no informó el motivo.')
+    return out
+
+
 def por_tandas(ajustes, items, tanda, pedir, que):
     """Manda `items` a la IA de a `tanda`; `pedir(lote, desde)` arma (texto, imágenes) y la respuesta va a `usar`.
     Si un modelo no aguanta tantas imágenes juntas (o contesta mal), la tanda se parte a la mitad y se reintenta:
     así funciona igual con cualquier IA, solo que con más pedidos. Devuelve [(desde, lote, respuesta JSON)]."""
-    out, a = [], 0
+    out, a, esperas = [], 0, 0
     while a < len(items):
         lote = items[a:a + tanda]
         texto, imgs = pedir(lote, a)
-        print(f'· {que} {a + 1}–{a + len(lote)} de {len(items)}…', flush=True)
+        progreso(100 * a / max(1, len(items)), f'{que} {a + 1}–{a + len(lote)} de {len(items)}…')
         try:
             out.append((a, lote, extraer_json(llamar(ajustes, texto, imgs))))
             a += len(lote)
+            esperas = 0
         except (SystemExit, ValueError) as e:
+            if getattr(e, 'permanente', False):
+                if getattr(e, 'clase', '') != 'A':
+                    raise  # clave, permisos, cuenta o saldo: los demás pedidos fallarían igual
+                # rechazo explícito: no se repite el mismo pedido partido en pedazos; queda en el diagnóstico
+                print(f'· la IA rechazó {que} {a + 1}–{a + len(lote)} ({str(e)[:160]}); no lo reintento, sigo con el resto', flush=True)
+                a += len(lote)
+                continue
+            if getattr(e, 'parece_negativa', False):  # contestó con texto que parece una negativa (no confirmado): tampoco se reenvía
+                print(f'· la IA contestó {que} {a + 1}–{a + len(lote)} con un texto que parece una negativa (sin confirmar, queda en el '
+                      'diagnóstico); no lo reenvío en pedazos, sigo con el resto', flush=True)
+                a += len(lote)
+                continue
+            if getattr(e, 'clase', '') == 'H' or re.search(r'\b(429|50[0-4]|529)\b', str(e)[:200]):
+                # límite de pedidos por minuto, servicio caído o sin red: partir la tanda solo multiplica los pedidos; se espera
+                if esperas >= 3 or getattr(e, 'puede_haber_cobrado', False):
+                    raise
+                esperas += 1
+                print(f'· la IA está ocupada o no responde ({str(e)[:120]}); espero {15 * 2 ** (esperas - 1)} s y vuelvo a probar '
+                      f'({esperas} de 3)', flush=True)
+                time.sleep(15 * 2 ** (esperas - 1))
+                continue
             if tanda > 1:
                 tanda = max(1, tanda // 2)
                 print(f'· la IA no pudo con {len(lote)} imágenes juntas ({str(e)[:120]}); pruebo de a {tanda}', flush=True)
@@ -1233,11 +2473,29 @@ def por_tandas(ajustes, items, tanda, pedir, que):
     return out
 
 
+_DURACIONES = {}
+
+
 def sacar_cuadro(orig, s, f, ancho=None, calidad=4):
+    """Un cuadro del video en el segundo `s`. Un segundo pegado al final (o pasado) no tiene cuadro y ffmpeg falla:
+    se usa el último medio segundo del video y, si igual falla, se prueba un poco antes."""
+    if orig not in _DURACIONES:
+        try:
+            _DURACIONES[orig] = duracion(orig)
+        except (subprocess.CalledProcessError, ValueError):
+            _DURACIONES[orig] = None
+    fin = _DURACIONES[orig]
+    if fin:
+        s = min(s, fin - 0.5)
     vf = ['-vf', f'scale={ancho}:-2'] if ancho else []
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, s):.2f}', '-i', orig, '-frames:v', '1']
-                   + vf + ['-q:v', str(calidad), f], check=True)
-    return f
+    for antes in (0, 1.5, 4):
+        if os.path.exists(f):
+            os.remove(f)
+        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, s - antes):.2f}', '-i', orig, '-frames:v', '1']
+                           + vf + ['-q:v', str(calidad), f], capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(f) and os.path.getsize(f):
+            return f
+    raise RuntimeError(f'no pude sacar el cuadro del segundo {s:.1f} del video ({(r.stderr or "").strip()[-200:]})')
 
 
 def leer_con_zoom(ocr, orig, s, tmp):
@@ -1248,7 +2506,7 @@ def leer_con_zoom(ocr, orig, s, tmp):
     try:
         sacar_cuadro(orig, s, tmp, calidad=2)
         return [x[0] for x in leer_textos(ocr, tmp)]
-    except (subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, RuntimeError, OSError):
         return []
     finally:
         if os.path.exists(tmp):
@@ -1377,6 +2635,8 @@ def mapa_video(d, ajustes=None):
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
         if viejo.get('firma') == firma and (viejo.get('vision') or not vision):
+            if lo_que_se_ve(d, viejo['cuadros']):  # un mapa de antes del detector: se completa y se guarda
+                json.dump(viejo, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return viejo['cuadros']
     except (OSError, ValueError, AttributeError):
         pass
@@ -1417,8 +2677,32 @@ Usa los nombres tal cual se leen en pantalla. Responde SOLO con un objeto JSON {
                     mapa[i]['pantalla'] = str(x.get('pantalla') or '')[:120]
                     mapa[i]['accion'] = str(x.get('accion') or '')[:120]
         vision = bool(hechos)
+    lo_que_se_ve(d, mapa)
     json.dump({'firma': firma, 'vision': vision, 'cuadros': mapa}, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return mapa
+
+
+def lo_que_se_ve(d, mapa):
+    """Suma a cada cuadro del mapa lo que ve el detector de deteccion/ («teléfono en la mano · laptop», «una cara»), gratis y
+    en tu PC: así la IA que escribe sin mirar imágenes sabe igual qué muestra cada momento. Devuelve si agregó algo."""
+    faltan = [m for m in mapa if 'se_ve' not in m]
+    if not faltan:
+        return False
+    sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
+    import cv2
+    import deteccion
+    if deteccion.disponible() is None:
+        return False
+    orig = os.path.join(d, 'original.mp4')
+    print(f'Miro qué se ve en {len(faltan)} cuadros del mapa (teléfono, laptop, caras), en tu PC…', flush=True)
+    memoria, cap = deteccion.Memoria(orig), cv2.VideoCapture(orig)
+    for m in faltan:
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(m['t']) * 1000)
+        ok, f = cap.read()
+        m['se_ve'] = deteccion.resumen(memoria.ver(float(m['t']), f), deteccion.caras(f)) if ok else ''
+    cap.release()
+    memoria.guardar()
+    return True
 
 
 IA_CUADROS = 240  # «Todo con IA»: cuadros como máximo que mira la IA (uno cada 2 s, o más espaciados en videos largos)
@@ -1492,12 +2776,16 @@ Responde SOLO con un objeto JSON {{"cuadros": [{{"n": 1, "pantalla": "...", "acc
 def autorrevision(d, ajustes, texto, datos):
     """«Todo con IA»: la IA relee su propio guion contra TODAS nuestras reglas (las del encargo) y el mapa, y lo corrige ella."""
     print('Todo con IA: la IA revisa su guion regla por regla…', flush=True)
-    pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False)[:40000] +
+    # entero: cortado, la IA devolvía el guion sin los últimos bloques (videos largos) y se perdían sin aviso
+    pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False) +
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
-              "dice su texto, que los pasos clave estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en "
-              "orden, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
-              "estén tal cual se leen en pantalla y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
-              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros. "
+              "dice su texto y en ese mismo momento (sin pedir algo ya hecho ni adelantar un resultado), que los pasos clave "
+              "estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en orden y ninguna escena se use "
+              "en dos bloques, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
+              "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
+              "marcados con \"humor\", repartidos a lo largo del video) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
+              "lo que esté bien. Agrega a \"preguntas\" los datos clave que sigan sin verse claros (tipo \"dato\") y de 2 a "
+              f"{MEJORAS_MAX} preguntas para mejorarlo (tipo \"mejora\"), como dicen las reglas. "
               "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
     try:
         nuevo = extraer_json(llamar(ajustes, pedido, []))
@@ -1505,19 +2793,55 @@ def autorrevision(d, ajustes, texto, datos):
             return nuevo
         print('· la IA devolvió la revisión sin bloques; sigo con el guion anterior', flush=True)
     except (SystemExit, ValueError) as e:
+        if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+            raise
         print(f'· no pude hacer la autorrevisión ({str(e)[:160]}); sigo con el guion anterior', flush=True)
     return datos
 
 
 def texto_mapa(mapa):
     return '\n'.join(f"[{mmss(m['t'])}] " + ' · '.join(x for x in (m.get('pantalla'), m.get('accion'),
+                                                                     m.get('se_ve') and f"se ve: {m['se_ve']}",
                                                                      m.get('texto') and f"se lee: {m['texto']}") if x)
                      for m in mapa)
 
 
+FRASE_RX = re.compile(r'[^.?!¿¡]*[¿¡]?[^.?!]*[.?!…]+|\S[^.?!]*$')
+
+
+def frases_bloque(d, b):
+    """[(frase, t0, t1)]: cuándo dice la voz cada frase del bloque, en segundos desde que empieza su voz. Con la voz ya hecha
+    de ese texto, sus tiempos reales; si no (lo normal: la revisión va antes de pagar la voz), 2,6 palabras por segundo."""
+    txt = str(b.get('texto') or '')
+    try:
+        al = json.load(open(os.path.join(d, 'voz', f"{b['id']}.align.json"), encoding='utf-8'))
+        dicho = ''.join(al['characters'])
+        if dicho.strip() == txt.strip():
+            t0s, t1s = al['character_start_times_seconds'], al['character_end_times_seconds']
+            return [(m.group().strip(), t0s[m.start()], t1s[min(m.end(), len(t1s)) - 1])
+                    for m in FRASE_RX.finditer(dicho) if len(m.group().strip()) > 1]
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        pass
+    total, n = len(txt.split()) / PALABRAS_POR_S, max(1, len(txt))
+    return [(m.group().strip(), total * m.start() / n, total * m.end() / n) for m in FRASE_RX.finditer(txt) if len(m.group().strip()) > 1]
+
+
+def en_grabacion(mo, t):
+    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final)."""
+    if mo['modo'].startswith('lento'):
+        fin = mo.get('src_fin') or mo['src_inicio']
+        largo = (fin - mo['src_inicio']) / (mo.get('velocidad') or 1)
+        if t <= largo:
+            return mo['src_inicio'] + t * (mo.get('velocidad') or 1), False
+        return max(mo['src_inicio'], fin - 1.2), True
+    return mo['src_inicio'], True
+
+
 def control_bloque(d, b, ocr):
-    """Las imágenes de control de un bloque, como las miré yo: el COMIENZO y el FINAL de su tramo lado a lado y, en los
-    pasos clave, un detalle cada ~3 s con el texto leído con zoom. Devuelve ([(desc, ruta)], texto con zoom)."""
+    """Las imágenes de control de un bloque: un cuadro por FRASE de la voz, el que se ve en el video mientras la voz la dice
+    (como «🎞 Frase por frase» del editor: así se vio que en HONOR 8 LITE «lo apagas, como se ve aquí» caía sobre el teléfono
+    ya apagado; con solo comienzo, medio y final no se veía) y, en los pasos clave, un detalle cada ~3 s con el texto leído
+    con zoom. Devuelve ([(desc, ruta)], texto con zoom, [(frase, segundo, pausa)])."""
     import cv2
     orig = os.path.join(d, 'original.mp4')
     mo = b['montaje']
@@ -1526,19 +2850,24 @@ def control_bloque(d, b, ocr):
         fin = ini + 1
     out = os.path.join(d, 'ia_capturas', 'revision')
     os.makedirs(out, exist_ok=True)
-    a = sacar_cuadro(orig, ini + 0.3, os.path.join(out, f"{b['id']}_a.jpg"), 640, 5)
-    z = sacar_cuadro(orig, fin - 0.3, os.path.join(out, f"{b['id']}_z.jpg"), 640, 5)
+    frases = [(x, *en_grabacion(mo, 0.3 + (t0 + t1) / 2)) for x, t0, t1 in frases_bloque(d, b)][:9]
+    if not frases:  # sin texto: comienzo, medio y final del tramo
+        frases = [('(comienzo)', ini + 0.3, False), ('(medio)', (ini + fin) / 2, False), ('(final)', fin - 0.3, False)]
+    partes = [sacar_cuadro(orig, s, os.path.join(out, f"{b['id']}_f{k}.jpg"), 640, 5) for k, (_, s, _) in enumerate(frases)]
     lado = os.path.join(out, f"{b['id']}.jpg")
-    cv2.imwrite(lado, rejilla([a, z], [f'COMIENZO {mmss(ini)}', f'FINAL {mmss(fin)}'], 2, 640), [cv2.IMWRITE_JPEG_QUALITY, 80])
-    for f in (a, z):
+    cv2.imwrite(lado, rejilla(partes, [f"FRASE {k + 1} · {mmss(s)}{' (pausa)' if p else ''}" for k, (_, s, p) in enumerate(frases)], 3, 640),
+                [cv2.IMWRITE_JPEG_QUALITY, 80])
+    for f in partes:
         os.remove(f)
-    imgs, zoom = [(f"bloque {b['id']}: comienzo y final del tramo", lado)], ''
+    imgs, zoom = [(f"bloque {b['id']}: lo que se ve mientras la voz dice cada frase", lado)], ''
     if es_critico(b):
         n = int(min(6, max(2, (fin - ini) // 3 + 1)))
         tiempos = [ini + (fin - ini) * k / (n - 1) for k in range(n)]
         partes, leidos = [], []
         for k, t in enumerate(tiempos):
             partes.append(sacar_cuadro(orig, t, os.path.join(out, f"{b['id']}_d{k}.jpg"), 640, 4))
+            if ocr:
+                print(f"  · {b['id']}: leo con zoom el texto de la pantalla en {mmss(t)} ({k + 1} de {n})", flush=True)
             txt = leer_con_zoom(ocr, orig, t, os.path.join(out, 'zoom_tmp.jpg'))
             if txt:
                 leidos.append(f"{mmss(t)}: {' | '.join(txt)[:200]}")
@@ -1548,7 +2877,7 @@ def control_bloque(d, b, ocr):
             os.remove(f)
         imgs.append((f"bloque {b['id']}: detalle del paso clave", det))
         zoom = '; '.join(leidos)
-    return imgs, zoom
+    return imgs, zoom, frases
 
 
 def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
@@ -1561,30 +2890,59 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
-    print(f'Preparo las imágenes de control de {len(bloques)} bloques (comienzo y final de cada tramo, detalle en los pasos clave)…', flush=True)
-    control = {b['id']: control_bloque(d, b, ocr) for b in bloques}
+    print(f'Preparo las imágenes de control de {len(bloques)} bloques (un cuadro por frase de la voz, detalle en los pasos clave)…', flush=True)
+    tramo(0, 70)  # preparar las imágenes (y leer con zoom) es lo más largo; después, los pedidos a la IA
+
+    def peso(b):  # un paso clave tarda bastante más: cada cuadro de detalle se lee con zoom (unos 15 s cada uno)
+        mo = b['montaje']
+        largo = (mo.get('src_fin') or mo['src_inicio']) - mo['src_inicio']
+        return 1 + (3 * int(min(6, max(2, max(1, largo) // 3 + 1))) if es_critico(b) and ocr else 0)
+    pesos = [peso(b) for b in bloques]
+    control = {}
+    for k, b in enumerate(bloques):  # un bloque cuyas imágenes no salen no frena la revisión del resto
+        mo = b['montaje']
+        progreso(100 * sum(pesos[:k]) / sum(pesos), f"bloque {b['id']} ({k + 1} de {len(bloques)}): tramo {mmss(mo['src_inicio'])}–"
+                 f"{mmss(mo.get('src_fin') or mo['src_inicio'])}" + (' · paso clave: también leo con zoom el texto de la pantalla'
+                                                                     if es_critico(b) else ''))
+        try:
+            control[b['id']] = control_bloque(d, b, ocr)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
+            print(f"· {b['id']}: no pude preparar sus imágenes de control ({str(e)[:160]}); no lo reviso", flush=True)
+    bloques = [b for b in bloques if b['id'] in control]
+    if not bloques:
+        return []
+    tramo(70, 98)
+    palabras = pistas.palabras_video(d)  # lo que dice el autor en cada tramo: delata una voz atrasada o inventada
 
     def pedir(grupo, a):
         caps, lineas = [], []
         for b in grupo:
             mo = b['montaje']
             ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-            imgs, zoom = control[b['id']]
+            imgs, zoom, frases = control[b['id']]
             nums = []
             for desc, f in imgs:
                 caps.append((desc, f)); nums.append(str(len(caps)))
-            lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice: «{b['texto'][:400]}»"
-                          + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else ''))
-        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con el COMIENZO (izquierda) y el FINAL (derecha)
-del tramo que se muestra mientras la voz habla; en los pasos clave, otra imagen con el detalle cada pocos segundos:
+            autor = ' '.join(w['texto'] for w in palabras if ini - 1 <= w['inicio'] <= fin + 1)[:400]
+            por_frase = ' '.join(f"FRASE {k + 1} ({mmss(s)}{', pausa' if p else ''}): «{x[:160]}»" for k, (x, s, p) in enumerate(frases))
+            lineas.append(f"- Bloque {b['id']} (tramo {mmss(ini)}–{mmss(fin)}; imagen {' y '.join(nums)}). La voz dice, frase por frase: {por_frase}"
+                          + (f"\n  Texto leído con zoom en ese tramo: {zoom}" if zoom else '')
+                          + (f"\n  Lo que dice el autor en su grabación en ese tramo: «{autor}»" if autor else ''))
+        return (f"""Reviso un guion de video tutorial. Por cada bloque hay una imagen con un cuadro por FRASE de la voz (FRASE 1, FRASE 2…):
+cada cuadro es lo que se ve en el video MIENTRAS la voz dice esa frase («pausa» = cae en la repetición del final del tramo);
+en los pasos clave, otra imagen con el detalle cada pocos segundos:
 {chr(10).join(lineas)}
 
 Mapa de la grabación completa (lo que se ve en cada cambio de pantalla):
 {mapa_txt[:24000]}
 
-Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y el final). Si NO (por ejemplo la voz dice
+Para cada bloque mira FRASE POR FRASE si lo que dice esa frase se ve en SU cuadro. Una frase de acción o de pantalla («lo apagas,
+como se ve aquí», «ya aparece omitir», «escribo la contraseña», «le damos clic en…») tiene que caer sobre esa acción o esa pantalla:
+si cae sobre otra (el teléfono ya apagado, la contraseña del WiFi en vez de «omitir»), el bloque NO está bien, aunque la acción esté
+en otra parte del tramo. Las frases generales (saludo, consejo, chiste) van con cualquier cuadro. También mira que vaya con lo que dice
+el autor ahí (si la voz narra un paso que el autor hace antes o después, o algo que no se ve ni se dice, NO está bien). Si NO (por ejemplo la voz dice
 «pega la key» y se ve otra pantalla), busca en el mapa el segundo donde SÍ se ve eso. Responde SOLO con un objeto JSON
-{{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "segundo": 312, "por_que": "ahí se ve el campo Key"}}]}}.""", caps)
+{{"revision": [{{"bloque": "L01", "ok": true}}, {{"bloque": "L02", "ok": false, "frase": 2, "segundo": 312, "por_que": "la frase 2 dice «pega la key» y su cuadro es otra pantalla; en 312 se ve el campo Key"}}]}}.""", caps)
 
     tanda = tanda or (4 if es_local(ajustes) else 12)
     por_id = {b['id']: b for b in bloques}
@@ -1606,10 +2964,19 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
                 continue
             mo = b['montaje']
             ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
-            if abs(s - (ini + fin) / 2) < 4:
+            if abs(s - (ini + fin) / 2) < 4 or ini <= s <= fin:  # el segundo que indica ya está dentro de su tramo
                 continue
             largo_t = max(0.0, fin - ini)
             nuevo = round(min(max(0.0, s - min(2.0, largo_t / 3)), max(0.0, dur - 0.2 - largo_t)), 2)
+            k = bloques.index(b)
+            antes = bloques[k - 1]['montaje'] if k else None
+            despues = bloques[k + 1]['montaje'] if k + 1 < len(bloques) else None
+            if (antes and nuevo < (antes.get('src_fin') or antes['src_inicio']) - 3) or (despues and nuevo + largo_t > despues['src_inicio'] + 3):
+                # moverlo lo pondría encima de su vecino: lo más probable es que el vecino también esté corrido
+                avisos.append(f"{b['id']}: la imagen no va con lo que dice ({mmss(ini)}–{mmss(fin)}); se ve en {mmss(s)}, pero "
+                              f"no lo moví porque pisaría a un bloque vecino: revisa los tramos de esa zona"
+                              + (f" ({str(x.get('por_que'))[:80]})" if x.get('por_que') else ''))
+                continue
             mo['src_inicio'], mo['visto'] = nuevo, True
             if mo.get('src_fin') is not None:
                 mo['src_fin'] = round(nuevo + largo_t, 2)
@@ -1621,16 +2988,365 @@ Para cada bloque di si lo que dice la voz SE VE en su tramo (entre el comienzo y
     return avisos
 
 
-def guardar_preguntas(d, lista):
-    """Los datos clave que la IA no vio claros, para que el autor los conteste en la revisión del guion."""
+def guardar_preguntas(d, lista, tarea='guion'):
+    """Lo que la IA pregunta al terminar el guion (o el tráiler), para que el autor lo conteste: los datos clave que no vio
+    claros (tipo «dato») y sus ideas para mejorarlo (tipo «mejora»). En el tráiler, lo que ya contestaste se conserva."""
+    out = normalizar_preguntas(lista)
+    try:  # ④ lo que ya contestaste en otro video aparece como respuesta sugerida (tú decides si la usas)
+        aprendizaje.sugerir_respuestas(d, out)
+    except Exception:
+        pass
+    f = os.path.join(d, ARCHIVO_PREGUNTAS[tarea])
+    if tarea == 'guion':  # lo que contestaste y todavía no se aplicó no se borra porque la IA escriba preguntas nuevas
+        try:
+            mias = [x for x in json.load(open(f, encoding='utf-8')) if isinstance(x, dict) and str(x.get('respuesta', '')).strip()
+                    and not x.get('hecha')]
+        except (OSError, ValueError, TypeError):
+            mias = []
+        nuevas_ = {normal(x['pregunta']) for x in out}
+        out = out + [x for x in mias if normal(str(x.get('pregunta', ''))) not in nuevas_]
+    if tarea == 'trailer':
+        try:
+            viejas = [x for x in json.load(open(f, encoding='utf-8')) if isinstance(x, dict) and str(x.get('respuesta', '')).strip()]
+        except (OSError, ValueError, TypeError):
+            viejas = []
+        hechas = {normal(x['pregunta']) for x in viejas}
+        out = viejas + [x for x in out if normal(x['pregunta']) not in hechas][:TRAILER_PREGUNTAS_MAX]
+    json.dump(out, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    nuevas = [x for x in out if not str(x.get('respuesta', '')).strip()]
+    datos_n, mejora_n = sum(x['tipo'] == 'dato' for x in nuevas), sum(x['tipo'] == 'mejora' for x in nuevas)
+    if nuevas:
+        donde = 'en la página del tráiler' if tarea == 'trailer' else 'en la revisión del guion'
+        print(f'La IA te deja {len(nuevas)} pregunta(s) ({datos_n} sobre datos que no vio claros, {mejora_n} '
+              f'{"ideas para el tráiler" if tarea == "trailer" else "para mejorar el guion"}): contéstalas {donde}.', flush=True)
+
+
+def respuestas_trailer(d):
+    """Lo que el autor ya contestó sobre el tráiler, para la próxima propuesta."""
+    try:
+        lista = json.load(open(os.path.join(d, ARCHIVO_PREGUNTAS['trailer']), encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return ''
+    hechas = [x for x in lista if isinstance(x, dict) and str(x.get('respuesta', '')).strip()]
+    return '\n'.join(f"- {x['pregunta']} → {str(x['respuesta']).strip()}" for x in hechas)
+
+
+def normalizar_preguntas(lista):
     out = []
     for x in lista or []:
         if isinstance(x, dict) and str(x.get('pregunta', '')).strip():
-            out.append({'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
+            out.append({'tipo': 'mejora' if str(x.get('tipo', '')).lower().startswith('mejora') else 'dato',
+                        'bloque': str(x.get('bloque') or ''), 'pregunta': str(x['pregunta']).strip()[:300],
                         'opciones': [str(o)[:120] for o in (x.get('opciones') or []) if str(o).strip()][:4], 'respuesta': ''})
-    json.dump(out[:8], open(os.path.join(d, 'preguntas_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    if out:
-        print(f'La IA tiene {len(out[:8])} pregunta(s) sobre datos que no vio claros: contéstalas en la revisión del guion.', flush=True)
+            fase = normal(str(x.get('fase') or '')).upper()  # tráiler: la pregunta de cada fase (ANTES, DURANTE, DESPUÉS)
+            if fase in ('ANTES', 'DURANTE', 'DESPUES'):
+                out[-1]['fase'] = {'DESPUES': 'DESPUÉS'}.get(fase, fase)
+    return [x for x in out if x['tipo'] == 'dato'][:PREGUNTAS_MAX] + [x for x in out if x['tipo'] == 'mejora'][:MEJORAS_MAX]
+
+
+# «✍️ Guion con 3 IAs a la vez»: el mismo encargo (mismo mapa, mismas capturas) a GPT, Claude y Gemini en paralelo.
+# Tarda lo que la más lenta, no la suma; se paga un guion a cada una.
+IAS_GUION = {'gpt': ('GPT', 'OpenAI (GPT)', 'https://api.openai.com/v1', ''),
+             'claude': ('Claude', 'Claude (Anthropic)', 'https://api.anthropic.com', 'claude'),
+             'gemini': ('Gemini', 'Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', ''),
+             'deepseek': ('DeepSeek', 'DeepSeek', 'https://api.deepseek.com', '')}
+
+
+def ias_del_guion(ajustes):
+    """[(id, ajustes de esa IA)] de las que tienen modelo y clave, si «3 IAs a la vez» está activo. La clave de la IA
+    principal sirve también para la suya si no le pusiste otra."""
+    if not ajustes.get('tres_ia'):
+        return []
+    principal = _proveedor(ajustes)
+    out = []
+    for ide, (nombre, proveedor, url, tipo) in IAS_GUION.items():
+        cfg = (ajustes.get('ias_guion') or {}).get(ide) or {}
+        aj = {**ajustes, 'proveedor': proveedor, 'url': url, 'tipo': tipo, 'json': True, 'imagenes': True,
+              'modelo': str(cfg.get('modelo') or '').strip(), 'clave': str(cfg.get('clave') or '').strip()}
+        if not aj['clave'] and _proveedor(aj) == principal:
+            aj['clave'] = ajustes.get('clave') or ''
+        if aj['modelo'] and aj['clave']:
+            out.append((ide, aj))
+    return out
+
+
+def trailer_varias(d, ajustes, ias, texto, caps):
+    """«🎬 Tráiler con varias IAs» (pedido del autor, 29/10/2026): cada IA propone su tráiler con el mismo encargo, a la vez.
+    Quedan en trailer_<ia>.json y versiones_trailer.json; el de tu IA principal (o el primero que salió) pasa a trailer.json."""
+    res = {}
+
+    def una(ide, aj):
+        t0 = time.time()
+        try:
+            datos = extraer_json(llamar(aj, texto, caps))
+            if not (isinstance(datos, dict) and datos.get('clips')):
+                raise ValueError('contestó sin tomas de tráiler')
+            preguntas = normalizar_preguntas(datos.pop('preguntas', None))
+            datos, _ = revisar(d, 'trailer', datos)
+            res[ide] = {'datos': datos, 'preguntas': preguntas, 'segundos': round(time.time() - t0)}
+            print(f'· {IAS_GUION[ide][0]} propuso su tráiler ({len(datos["clips"])} tomas)', flush=True)
+        except BaseException as e:  # una que falla no frena a las otras
+            res[ide] = {'error': ' '.join(str(e).split())[:300] or type(e).__name__, 'segundos': round(time.time() - t0)}
+            print(f'· {IAS_GUION[ide][0]} no propuso tráiler: {res[ide]["error"]}', flush=True)
+
+    print('Le pido el tráiler a ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in ias) + ' a la vez…', flush=True)
+    hilos = [threading.Thread(target=una, args=x, daemon=True) for x in ias]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    versiones = []
+    for ide, aj in ias:
+        x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
+        v['segundos'] = x.get('segundos')
+        if 'datos' in x:
+            v.update(archivo=f'trailer_{ide}.json', tomas=len(x['datos']['clips']), titulo=x['datos'].get('titulo') or '',
+                     voz=x['datos'].get('voz') or '', preguntas=x['preguntas'])
+            json.dump(x['datos'], open(os.path.join(d, v['archivo']), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        else:
+            v['error'] = x['error']
+        versiones.append(v)
+    buenas = [v for v in versiones if 'archivo' in v]
+    if not buenas:
+        raise SystemExit('ERROR: ninguna IA propuso el tráiler. ' + ' · '.join(f"{v['nombre']}: {v['error']}" for v in versiones))
+    principal = _proveedor(ajustes)
+    elegida = next((v for v in buenas if _proveedor({**ajustes, 'proveedor': IAS_GUION[v['id']][1], 'url': IAS_GUION[v['id']][2],
+                                                     'tipo': IAS_GUION[v['id']][3]}) == principal), buenas[0])
+    for v in versiones:
+        v['elegida'] = v is elegida
+    json.dump(versiones, open(os.path.join(d, 'versiones_trailer.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    guardar_preguntas(d, elegida['preguntas'], 'trailer')
+    print(f"· {len(buenas)} IAs propusieron su tráiler ({', '.join(v['nombre'] for v in buenas)}). Ves el de {elegida['nombre']}: "
+          'arriba eliges otro', flush=True)
+    return res[elegida['id']]['datos']
+
+
+def ia_de_la_version(d, ajustes):
+    """Pedido del autor (29/10/2026): corregir, ajustar o pedir ideas sobre una versión del guion lo hace la misma IA que la
+    escribió (la elegida en «Versiones de cada IA»), si tiene modelo y clave. Si no, tu IA principal."""
+    try:
+        v = next((x for x in json.load(open(os.path.join(d, 'versiones_guion.json'), encoding='utf-8')) if x.get('elegida')), None)
+    except (OSError, ValueError, TypeError):
+        return ajustes
+    if not v:
+        return ajustes
+    aj = dict(ias_del_guion({**ajustes, 'tres_ia': True})).get(v.get('id'))
+    if not aj:
+        print(f"· la versión elegida es de {v.get('nombre')}, pero esa IA no tiene modelo y clave: lo hace tu IA principal", flush=True)
+        return ajustes
+    print(f"· la versión elegida es de {IAS_GUION[v['id']][0]}: lo hace {IAS_GUION[v['id']][0]} ({aj['modelo']})", flush=True)
+    return aj
+
+
+def versiones_fallidas(d, ajustes):
+    """«🔁 Reintentar las que fallaron»: (versiones de antes, [(id, ajustes)] de las IAs que no entregaron guion y tienen
+    modelo y clave). Las que fallaron se piden otra vez aunque ya no esté tildado «varias IAs a la vez»."""
+    f = os.path.join(d, 'versiones_guion.json')
+    previas = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else []
+    fallidas = {v['id'] for v in previas if not v.get('archivo') or not os.path.exists(os.path.join(d, v['archivo']))}
+    if not fallidas:
+        raise SystemExit('ERROR: no hay versiones que hayan fallado para reintentar.')
+    ias = [(i, aj) for i, aj in ias_del_guion({**ajustes, 'tres_ia': True}) if i in fallidas]
+    if not ias:
+        raise SystemExit('ERROR: las IAs que fallaron no tienen modelo y clave en «⚙ Ajustes IA».')
+    return previas, ias
+
+
+def guion_varias(d, ajustes, ias, texto, caps, todo_ia, previas=None):
+    """Cada IA escribe su guion a la vez y cada uno pasa por los mismos controles (largo, humor, tiempos). Quedan todos
+    en guion_<ia>.json; el de tu IA principal (o el primero que salió bien) pasa a ser guion.json. Devuelve (datos, avisos).
+    Con `previas` (reintentar las que fallaron) las versiones nuevas se suman a las de antes, la elegida no cambia y
+    devuelve (None, avisos): tu guion.json queda como está."""
+    res = {}
+
+    def una(ide, aj):
+        nombre, avisos = IAS_GUION[ide][0], []
+        t0 = time.time()
+        try:
+            r = llamar(aj, texto, caps)
+            datos = extraer_json(r)
+            if not (datos.get('bloques') if isinstance(datos, dict) else datos):
+                raise ValueError('contestó sin bloques de guion')
+            preguntas = datos.get('preguntas') if isinstance(datos, dict) else None
+            print(f'· {nombre} entregó su guion ({len(datos["bloques"] if isinstance(datos, dict) else datos)} bloques); lo reviso', flush=True)
+            if todo_ia:
+                datos = autorrevision(d, aj, texto, datos)
+                preguntas = (datos.get('preguntas') if isinstance(datos, dict) else None) or preguntas
+            datos = corregir_largo(d, aj, texto, caps, r, datos)
+            datos = dosificar_humor(d, aj, datos, avisos)
+            res[ide] = {'datos': datos, 'avisos': avisos, 'preguntas': normalizar_preguntas(preguntas), 'segundos': round(time.time() - t0)}
+        except BaseException as e:  # una que falla (o la rechaza) no frena a las otras; queda en el diagnóstico
+            res[ide] = {'error': ' '.join(str(e).split())[:300] or type(e).__name__, 'segundos': round(time.time() - t0)}
+            print(f'· {nombre} no entregó guion: {res[ide]["error"]}', flush=True)
+
+    print('Le pido el guion a ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in ias) + ' a la vez…', flush=True)
+    hilos = [threading.Thread(target=una, args=x, daemon=True) for x in ias]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    versiones = []
+    for ide, aj in ias:
+        x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
+        v['segundos'] = x.get('segundos')
+        if 'datos' in x:
+            datos, av = revisar(d, 'guion', x['datos'])
+            x['datos'], x['avisos'] = datos, x['avisos'] + av
+            bloques = datos['bloques'] if isinstance(datos, dict) else datos
+            m = medir_humor(bloques)
+            v.update(archivo=f'guion_{ide}.json', bloques=len(bloques), palabras=sum(len(str(b.get('texto', '')).split()) for b in bloques),
+                     humor=texto_medida(m) if m else '', preguntas=x['preguntas'], avisos=x['avisos'])
+            json.dump(datos, open(os.path.join(d, v['archivo']), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            conocimiento.archivar_guion_ia(d, ide, aj['modelo'], datos)  # «📚 Guiones de las IAs»: aunque no la elijas
+        else:
+            v['error'] = x['error']
+        versiones.append(v)
+    if previas is not None:
+        nuevas = {v['id']: v for v in versiones}
+        orden = list(IAS_GUION)
+        versiones = sorted([v for v in previas if v['id'] not in nuevas] + list(nuevas.values()),
+                           key=lambda v: orden.index(v['id']) if v['id'] in orden else len(orden))
+        for v in versiones:
+            v['elegida'] = bool(v.get('elegida')) and v['id'] not in nuevas
+        json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        listas = [v['nombre'] for v in nuevas.values() if 'archivo' in v]
+        avisos = ([f"{', '.join(listas)} sumó su versión: elígela o combínalas en «🗂 Vista rápida» (tu guion actual no cambió)"]
+                  if listas else []) + [f"{v['nombre']} tampoco esta vez entregó guion ({v['error'][:120]})" for v in nuevas.values() if 'error' in v]
+        if not listas:
+            raise SystemExit('ERROR: ' + ' · '.join(avisos))
+        return None, avisos
+    buenas = [v for v in versiones if 'archivo' in v]
+    if not buenas:
+        raise SystemExit('ERROR: ninguna IA entregó el guion. ' + ' · '.join(f"{v['nombre']}: {v['error']}" for v in versiones))
+    principal = _proveedor(ajustes)
+    elegida = next((v for v in buenas if _proveedor({**ajustes, 'proveedor': IAS_GUION[v['id']][1], 'url': IAS_GUION[v['id']][2],
+                                                     'tipo': IAS_GUION[v['id']][3]}) == principal), buenas[0])
+    for v in versiones:
+        v['elegida'] = v is elegida
+    json.dump(versiones, open(os.path.join(d, 'versiones_guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    guardar_preguntas(d, elegida['preguntas'])
+    malas = [f"{v['nombre']} no entregó guion ({v['error'][:120]})" for v in versiones if 'error' in v]
+    avisos = [f"{len(buenas)} IAs escribieron su versión ({', '.join(v['nombre'] for v in buenas)}). Ves la de {elegida['nombre']}: "
+              'arriba puedes cambiar a otra o combinarlas'] + malas + res[elegida['id']]['avisos']
+    return res[elegida['id']]['datos'], avisos
+
+
+def reescribir_bloque(d, ajustes, bid, pedido):
+    """El editor por pistas: la IA reescribe UN bloque con lo que pide el autor, sin tocar los demás ni ver otra vez el video.
+    Devuelve el texto nuevo; no guarda nada (el autor lo revisa y decide)."""
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    bl = g['bloques']
+    k = next((i for i, b in enumerate(bl) if b.get('id') == bid), None)
+    if k is None:
+        raise SystemExit(f'ERROR: el bloque {bid} ya no está en el guion.')
+    b, mo = bl[k], bl[k].get('montaje') or {}
+    vecino = lambda i: f"{bl[i]['id']}: {bl[i].get('texto', '')}" if 0 <= i < len(bl) else '(no hay)'
+    largo = (b.get('fin_max') or 0) - (b.get('inicio_min') or 0)
+    texto = (ESTILO + '\n\nReescribe SOLO el bloque ' + bid + ' de un guion de tutorial. Lo que pide el autor: '
+             + (pedido.strip() or 'mejóralo: más claro y natural, mismo contenido') + '\n\n'
+             f"Lo que se ve en ese tramo: {b.get('ancla') or '(sin descripción)'}"
+             + (f" (video original {mo.get('src_inicio')}–{mo.get('src_fin')} s)" if mo.get('src_inicio') is not None else '') + '\n'
+             f"Ahora dura unos {largo:.0f} s. Si no te piden alargar o acortar, mantén un largo parecido (unas "
+             f"{len(str(b.get('texto', '')).split())} palabras): si se alarga, el video se estira para que quepa.\n"
+             f"Bloque anterior — {vecino(k - 1)}\nBLOQUE A REESCRIBIR — {bid}: {b.get('texto', '')}\nBloque siguiente — {vecino(k + 1)}\n\n"
+             'No inventes datos (webs, precios, versiones, pines) que no estén en el texto o en lo que se ve. Sin chistes en pasos '
+             'delicados (borrar, formatear, conectar). Responde solo JSON: {"texto": "el bloque nuevo"}')
+    datos = extraer_json(llamar(ajustes, texto, []))
+    nuevo = str((datos or {}).get('texto') or '').strip() if isinstance(datos, dict) else ''
+    if not nuevo:
+        raise SystemExit('ERROR: la IA no devolvió el texto del bloque. Prueba otra vez o escríbelo a mano.')
+    return nuevo
+
+
+def combinar_versiones(d, ajustes):
+    """«🧩 Combinar»: tu IA principal arma un guion final con lo mejor de cada versión, sin ver otra vez el video."""
+    f = os.path.join(d, 'versiones_guion.json')
+    versiones = [v for v in (json.load(open(f, encoding='utf-8')) if os.path.exists(f) else [])
+                 if v.get('archivo') and os.path.exists(os.path.join(d, v['archivo']))]
+    if len(versiones) < 2:
+        raise SystemExit('ERROR: para combinar hacen falta al menos dos versiones del guion. Activa «✍️ Guion con 3 IAs a la vez» '
+                         'en «⚙ Ajustes IA» y escribe el guion otra vez.')
+    encargo_f = os.path.join(d, 'ia_prompt_guion.txt')
+    reglas = open(encargo_f, encoding='utf-8').read() if os.path.exists(encargo_f) else ''
+    partes = []
+    for v in versiones:
+        g = json.load(open(os.path.join(d, v['archivo']), encoding='utf-8'))
+        partes.append(f"=== VERSIÓN DE {v['nombre']} ===\n" + json.dumps(g, ensure_ascii=False))
+    texto = ('Varias IAs escribieron el guion del MISMO video con el MISMO encargo (abajo). Arma UN guion final con lo mejor de '
+             'cada versión: elige para cada parte del video el bloque más claro y fiel a lo que se ve, o une frases de varias. '
+             'Reglas: no inventes datos que ninguna versión tenga; cada bloque conserva los tiempos de montaje (montaje, '
+             'src_inicio, src_fin) de la versión de la que lo tomas y los bloques siguen el orden del video sin solaparse; '
+             'el humor sigue la regla del encargo; misma voz en todo el guion. Devuelve el MISMO formato JSON que las versiones '
+             '({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
+             + '\n\n'.join(partes) + ('\n\n=== ENCARGO ORIGINAL (reglas) ===\n' + reglas if reglas else ''))
+    print(f"Combino {len(versiones)} versiones ({', '.join(v['nombre'] for v in versiones)}) con {ajustes['modelo']}…", flush=True)
+    tramo(5, 80)
+    progreso(0, 'La IA combina las versiones…')
+    datos = extraer_json(llamar(ajustes, texto, []))
+    if not (datos.get('bloques') if isinstance(datos, dict) else datos):
+        raise SystemExit('ERROR: la IA no devolvió bloques al combinar. Prueba otra vez o elige una de las versiones.')
+    guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
+    return datos
+
+
+def ideas_guion(d, ajustes):
+    """«💡 Ideas y dudas»: con el video ya hecho, la IA relee el guion final con la transcripción y el mapa de pantallas
+    y te deja dudas (lo que no le cierra) e ideas para mejorarlo. Solo texto, sin imágenes: un pedido barato.
+    Lo que ya contestaste y no se aplicó todavía se queda; lo ya aplicado, la IA lo ve para no repetirlo."""
+    g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
+    bloques = [b for b in g.get('bloques', []) if isinstance(b, dict)]
+    if not bloques:
+        raise SystemExit('ERROR: todavía no hay guion. Escríbelo primero.')
+    f = os.path.join(d, 'preguntas_guion.json')
+    try:
+        viejas = json.load(open(f, encoding='utf-8'))
+    except (OSError, ValueError):
+        viejas = []
+    viejas = [x for x in viejas if isinstance(x, dict)]
+    hechas = [x for x in viejas if x.get('hecha') and str(x.get('respuesta', '')).strip()]
+    pendientes = [x for x in viejas if not x.get('hecha') and str(x.get('respuesta', '')).strip()]
+    lineas = []
+    for b in bloques:
+        mo = b.get('montaje') or {}
+        donde = f" [{mmss(mo['src_inicio'])}]" if mo.get('src_inicio') is not None else ''
+        lineas.append(f"{b.get('id')}{donde}: {b.get('texto') or '(sin voz)'}")
+    partes = ["Eres el editor de un canal de tutoriales de YouTube. El video ya está armado con este guion final "
+              "(bloque [dónde empieza en la grabación]: lo que dice la voz):\n" + '\n'.join(lineas)[:40000]]
+    idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else ''
+    if idea.strip():
+        partes.append("Lo que el autor dio como datos confirmados:\n" + idea[:6000])
+    trans = transcripcion(d, 30000)
+    if trans:
+        partes.append("Lo que dice el autor en su grabación ([minuto:segundo] texto):\n" + trans)
+    try:
+        mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8'))['cuadros']
+        partes.append("Lo que se ve en la grabación, pantalla por pantalla:\n" + texto_mapa(mapa)[:20000])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    sabido = conocimiento.texto_para_ia(d=d)
+    if sabido:
+        partes.append("Lo que ya sabemos del canal (no preguntes lo que ya está aquí):\n" + sabido)
+    if hechas or pendientes:
+        partes.append("Ya le preguntaste esto y contestó (no lo repitas):\n" + '\n'.join(
+            f"- {x['pregunta']} → {str(x['respuesta']).strip()}" for x in hechas + pendientes))
+    partes.append(f"""Relee el guion como lo vería alguien que nunca hizo este proceso, y pregúntale al autor para dejarlo mejor:
+- DUDAS (tipo "dato", hasta {PREGUNTAS_MAX}): lo que no queda claro o no coincide con lo que se ve o se dice en la grabación
+  (un nombre, un modelo, un botón, un valor, el orden de un paso, algo que se da por sabido, un salto raro entre bloques).
+- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso, explicar el porqué
+  de un paso, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de humor, una frase que sobra).
+Cada una con el bloque que toca y 2 o 3 opciones concretas, la primera la que recomiendas. Pregunta solo lo que cambiaría
+el guion. Responde SOLO con el objeto JSON {{"preguntas": [{{"tipo": "dato" | "mejora", "bloque": "L07",
+"pregunta": "¿...?", "opciones": ["...", "..."]}}]}}.""")
+    print(f"La IA relee el guion final ({len(bloques)} bloques) y piensa en dudas e ideas…", flush=True)
+    r = llamar(ajustes, '\n\n'.join(partes), [])
+    open(os.path.join(d, 'ia_respuesta_ideas.txt'), 'w', encoding='utf-8').write(r)
+    datos = extraer_json(r)
+    nuevas = normalizar_preguntas(datos.get('preguntas') if isinstance(datos, dict) else datos)
+    ya = {normal(x['pregunta']) for x in hechas + pendientes}
+    nuevas = [x for x in nuevas if normal(x['pregunta']) not in ya]
+    json.dump(hechas + pendientes + nuevas, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    dn, mn = sum(x['tipo'] == 'dato' for x in nuevas), sum(x['tipo'] == 'mejora' for x in nuevas)
+    print(f'La IA te deja {dn} duda(s) y {mn} idea(s) para mejorar el guion: contéstalas en «📝 Ver guion».', flush=True)
 
 
 def corregir_con_respuestas(d, ajustes, datos):
@@ -1641,31 +3357,35 @@ def corregir_con_respuestas(d, ajustes, datos):
     contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip()]
     if not contestadas:
         raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
-    qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'}: {x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
-    pedido = f"""Este es el guion de un video tutorial, en JSON:
-{json.dumps(datos, ensure_ascii=False)[:60000]}
+    qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'} ({'idea para mejorar' if x.get('tipo') == 'mejora' else 'dato'}): "
+                   f"{x['pregunta']} → RESPUESTA DEL AUTOR: {x['respuesta'].strip()}" for x in contestadas)
+    # solo id y texto, y entero: el montaje no se toca, y cortado la IA devolvía el guion sin los últimos bloques
+    pedido = f"""Este es el guion de un video tutorial, en JSON (cada bloque con su id y lo que dice la voz):
+{json.dumps([{'id': b.get('id'), 'texto': b.get('texto')} for b in datos['bloques']], ensure_ascii=False)}
 
-Le pregunté al autor los datos que no se veían claros y respondió:
+Le pregunté al autor los datos que no se veían claros y cómo mejorar el guion, y respondió:
 {qa}
 
-Corrige el guion con esas respuestas: cambia SOLO las frases que tocan esos datos (en el bloque indicado y en cualquier otro que
-mencione lo mismo). Los demás bloques van TAL CUAL, mismo id, mismo texto y mismo montaje. No agregues datos que no estén aquí.
+Corrige el guion con esas respuestas: en los datos, cambia SOLO las frases que tocan ese dato (en el bloque indicado y en
+cualquier otro que lo mencione). En las ideas para mejorar, aplica lo que el autor eligió en el bloque indicado (agrega o
+cambia una o dos frases); si dijo que no, no cambies nada. Los demás bloques quedan TAL CUAL. No agregues datos que no estén aquí.
 {ESTILO}
-Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
+Responde SOLO con el objeto JSON {{"bloques": [{{"id": "L03", "texto": "..."}}, ...]}} con los bloques que cambiaste
+(mismo id; los que no cambias no hace falta mandarlos)."""
     print(f'Corrigiendo el guion con tus {len(contestadas)} respuesta(s)…', flush=True)
     nuevo = extraer_json(llamar(ajustes, pedido, []))
-    bloques = nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo
-    if not bloques:
+    lista = nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo
+    if not isinstance(lista, list):
         raise SystemExit('ERROR: la IA no devolvió el guion corregido. Vuelve a intentarlo o corrige el texto a mano.')
-    viejos = {b['id']: b for b in datos['bloques']}
-    for b in bloques:  # el montaje se conserva aunque la IA lo cambie: solo se corrigen datos del texto
-        if b.get('id') in viejos and viejos[b['id']].get('montaje'):
-            b['montaje'] = viejos[b['id']]['montaje']
-    cambiados = [b['id'] for b in bloques if b.get('id') in viejos and b.get('texto') != viejos[b['id']].get('texto')]
+    # se cambia solo el texto de los bloques que devolvió, por su id: el montaje, el orden y los bloques que no mandó quedan igual
+    textos = {str(x.get('id')): str(x.get('texto')).strip() for x in lista if isinstance(x, dict) and str(x.get('texto') or '').strip()}
+    bloques = [dict(b, texto=textos[str(b.get('id'))]) if str(b.get('id')) in textos else b for b in datos['bloques']]
+    cambiados = [b['id'] for b, v in zip(bloques, datos['bloques']) if b.get('texto') != v.get('texto')]
     print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
     fi = os.path.join(d, 'idea.txt')
     previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
-    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas if x['respuesta'].strip() not in previa]
+    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas
+               if x.get('tipo') != 'mejora' and x['respuesta'].strip() not in previa]
     if agregar:
         open(fi, 'w', encoding='utf-8').write(previa.rstrip() + ('\n\n' if previa.strip() else '') +
                                             'Datos confirmados por el autor:\n' + '\n'.join(agregar) + '\n')
@@ -1673,12 +3393,19 @@ Responde SOLO con el objeto JSON {{"bloques": [...]}} completo."""
         if str(x.get('respuesta', '')).strip():
             x['hecha'] = True
     json.dump(preguntas, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    try:  # lo que contestaste queda aprendido para los próximos videos
+        n = conocimiento.aprender_de_proyecto(d)
+        if n:
+            print(f'· {n} dato(s) de este proyecto quedaron en {conocimiento.APRENDIDO}', flush=True)
+    except OSError:
+        pass
     return {**datos, 'bloques': bloques}
 
 
 def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
-    """Si el guion de la IA da un video muy corto o muy largo, se lo devuelvo con los números para que lo arregle.
-    Me quedo con la versión más cercana a la duración buscada."""
+    """Si el guion de la IA da un video muy corto o muy largo, o tiene problemas que la app no arregla sola (tramos que
+    vuelven atrás, escenas repetidas, mucho video sin voz, humor amontonado), se lo devuelvo con los números y la lista
+    para que lo arregle. Me quedo con la versión con menos problemas y más cercana a la duración buscada."""
     import copy
     dur = duracion(os.path.join(d, 'original.mp4'))
     meta, minimo, maximo = meta_guion(d, dur)
@@ -1687,27 +3414,38 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
         bl = x['bloques'] if isinstance(x, dict) else x
         palabras = sum(len(str(b.get('texto', '')).split()) for b in bl)
         try:
-            t = revisar(d, 'guion', copy.deepcopy(x))[0]['duracion_s']
+            r = revisar(d, 'guion', copy.deepcopy(x))[0]
+            t, lista = r['duracion_s'], problemas(r['bloques'], r['duracion_s']) + desfases(d, r['bloques'])
         except Exception:
-            t = None
-        return palabras, t
+            t, lista = None, []
+        return palabras, t, lista
 
-    mejor_, (pal, t) = datos, medir(datos)
-    mejor_t = t
+    def nota(t, lista):  # menos es mejor: primero los problemas (un largo fuera de rango cuenta doble), después el largo
+        return (len(lista) + (0 if t is None or minimo <= t <= maximo else 2), abs((t or meta) - meta))
+
+    mejor_, (pal, t, lista) = datos, medir(datos)
+    mejor_nota = nota(t, lista)
     for n in range(intentos):
-        if t is None or minimo <= t <= maximo:
+        fuera = t is not None and not minimo <= t <= maximo
+        if t is None or not (fuera or lista):
             break
         quiero = round(meta * PALABRAS_POR_S * 0.9)
-        corto = t < minimo
-        print(f'El guion da {mmss(t)} y busco unos {mmss(meta)}: le pido a la IA que lo '
-              + ('alargue' if corto else 'acorte') + f' (intento {n + 1})…', flush=True)
-        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta[:30000] +
-                  f"\n\nPROBLEMA: con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
-                  f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
-                  f"y necesita unas {quiero}. " +
-                  ("Alárgalo: explica con más detalle cada paso, agrega bloques para las partes de la grabación que saltaste "
-                   "y usa tramos más largos del original. " if corto else
-                   "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ") +
+        corto = fuera and t < minimo
+        print(f'El guion da {mmss(t)} (busco unos {mmss(meta)}) y tiene {len(lista)} problema(s): le pido a la IA que lo '
+              f'corrija (intento {n + 1})…', flush=True)
+        pedido = (texto + "\n\nTu respuesta anterior fue:\n" + respuesta + "\n\nPROBLEMAS QUE CORREGIR:\n" +  # entera (ver autorrevision)
+                  (f"- Con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
+                   f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
+                   f"y necesita unas {quiero}. " +
+                   ("Alárgalo: explica con más detalle cada paso y agrega bloques para las partes de la grabación que "
+                    "saltaste, cada uno con su propio tramo. " if corto else
+                    "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ")
+                   + "\n" if fuera else '') +
+                  ''.join(f"- {x}\n" for x in lista[:30]) +
+                  "Cada tramo del original va en UN solo bloque y en orden (nunca vuelvas atrás ni repitas una escena); "
+                  "la voz dice lo que se ve en ese momento, sin adelantar ni atrasar un paso. Para tener más voz alarga el "
+                  "texto, no repitas escenas: si la voz no cabe, la app repite el tramo en movimiento. " +
+                  RECUERDA_HUMOR +
                   "Conserva TAL CUAL (mismo id y mismo texto) los bloques que no necesites cambiar: ya tienen la voz grabada. "
                   "Los bloques nuevos llevan ids nuevos (por ejemplo L12b). "
                   "Devuelve el guion COMPLETO corregido, mismo formato, SOLO el objeto JSON.")
@@ -1717,12 +3455,14 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
             if not (nuevo.get('bloques') if isinstance(nuevo, dict) else nuevo):
                 break
         except (SystemExit, ValueError) as e:
+            if getattr(e, 'permanente', False):  # rechazo, permisos o facturación: no se sigue pidiendo a la IA
+                raise
             print(f'· no pude corregir el largo con la IA ({e}); sigo con lo que hay', flush=True)
             break
-        respuesta, (pal, t) = r, medir(nuevo)
+        respuesta, (pal, t, lista) = r, medir(nuevo)
         open(os.path.join(d, f'ia_respuesta_guion_largo{n + 1}.txt'), 'w', encoding='utf-8').write(r)
-        if t is not None and (mejor_t is None or abs(t - meta) < abs(mejor_t - meta)):
-            mejor_, mejor_t = nuevo, t
+        if t is not None and nota(t, lista) < mejor_nota:
+            mejor_, mejor_nota = nuevo, nota(t, lista)
     return mejor_
 
 
@@ -1733,7 +3473,7 @@ def paquete(d, tarea, prompt, caps, mapa=None):
     proyecto = os.path.basename(os.path.abspath(d))
     leeme = f"""Paquete para una IA de chat (ChatGPT, Claude, DeepSeek, etc.) · proyecto «{proyecto}» · tarea: {tarea}
 
-IA: escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
+IA: lee primero CONOCIMIENTO.md si viene (lo que ya sabemos del canal) y escribe {ARCHIVO[tarea]} siguiendo ia_prompt_{tarea}.txt (las capturas están en ia_capturas/ y la
 transcripción con tiempos en transcripcion.json; si está, mapa_video.json y ia_capturas/mapa/ traen el video entero
 cuadro a cuadro con el texto de pantalla).
 
@@ -1758,12 +3498,69 @@ Cómo devolver el resultado, según lo que puedas hacer:
                 z.write(f, nombre)
         for _, f in caps:
             z.write(f, 'ia_capturas/' + os.path.basename(f))
+        if conocimiento.texto_para_ia(d=d):  # lo aprendido de todos tus videos, para la IA del chat
+            z.writestr('CONOCIMIENTO.md', conocimiento.texto_completo())
         if mapa:  # el video entero, un cuadro cada pocos segundos, con el texto de pantalla
             z.write(os.path.join(d, 'mapa_video.json'), 'mapa_video.json')
             for f in sorted(os.listdir(os.path.join(d, 'ia_capturas', 'mapa'))):
                 z.write(os.path.join(d, 'ia_capturas', 'mapa', f), 'ia_capturas/mapa/' + f)
     print(f'Listo el ZIP ({os.path.getsize(destino) / 1e6:.1f} MB, {len(caps)} capturas). '
           'Súbelo al chat de ChatGPT, Claude o DeepSeek y pídele el guion.', flush=True)
+
+
+def otro_guion(d, pedido=''):
+    """«🔄 Otro guion»: la IA sabe que el autor ya vio un guion de este video y quiere otro distinto."""
+    try:
+        viejo = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')).get('bloques', [])
+    except (OSError, ValueError, AttributeError):
+        viejo = []
+    partes = ["OTRA VERSIÓN: el autor ya vio un guion de este video y pidió uno nuevo. Los datos y pasos reales del video "
+              "son los mismos; cambia cómo se cuenta."]
+    if pedido:
+        partes.append(f"Lo que el autor pidió cambiar: «{pedido}».")
+    if viejo:
+        partes.append("El guion anterior, para que no lo repitas igual:\n" +
+                      '\n'.join(f"{b.get('id')}: {b.get('texto', '')}" for b in viejo if isinstance(b, dict))[:8000])
+    return '\n\n' + '\n'.join(partes)
+
+
+def revision_pendiente(d, ajustes_f, destino, forzar=False):
+    """La revisión de cada bloque contra su imagen, que quedó para después de que aprobaste el guion
+    (así ves el guion apenas la IA lo escribe). Usa el mapa del video ya guardado y tus cambios al texto."""
+    datos = json.load(open(destino, encoding='utf-8'))
+    modo = datos.pop('revision_imagen_pendiente', None) if isinstance(datos, dict) else None
+    if forzar and isinstance(datos, dict):  # «🔎 Revisar con imágenes»: otra vez, aunque ya se hizo (o el guion vino de un chat)
+        modo = modo or 'ocr'
+        for b in datos.get('bloques', []):
+            if isinstance(b.get('montaje'), dict):
+                b['montaje'].pop('visto', None)
+    if not modo:
+        print('El guion ya estaba revisado contra sus imágenes.', flush=True)
+        return
+    try:
+        mapa = json.load(open(os.path.join(d, 'mapa_video.json'), encoding='utf-8'))['cuadros']
+    except (OSError, ValueError, KeyError, TypeError):
+        mapa = None
+    if not mapa and forzar:  # guion pegado o de DeepSeek: el mapa (texto leído en cada cambio de pantalla) se hace en tu PC
+        mapa = mapa_video(d)
+    avisos = []
+    if mapa:
+        vistos = revisar_con_imagen(d, json.load(open(ajustes_f, encoding='utf-8')), datos, mapa, con_ocr=modo != 'ia')
+        if vistos:  # se movieron tramos: se vuelven a medir los largos
+            datos, despues = revisar(d, 'guion', datos)
+            avisos = vistos + [x for x in despues if x not in vistos]
+        else:
+            avisos = ['revisé cada bloque contra su imagen: todos coinciden']
+    tmp = destino + '.tmp'
+    json.dump(datos, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    os.replace(tmp, destino)
+    for x in avisos:
+        print('·', x, flush=True)
+    with open(os.path.join(d, 'mejoras_guion.txt'), 'a', encoding='utf-8') as f:
+        f.write(''.join(x + '\n' for x in avisos))
+    print('Guardado guion.json revisado contra sus imágenes', flush=True)
+    tramo(0, 100)
+    progreso(100, 'Listo')
 
 
 def main():
@@ -1774,12 +3571,29 @@ def main():
     ap.add_argument('--ajustes', default=os.path.join(RAIZ, 'app', 'ajustes.json'))
     ap.add_argument('--idea', default='')
     ap.add_argument('--ajustar-largo', action='store_true', help='tarea guion: alarga o acorta el guion actual en vez de escribir otro')
+    ap.add_argument('--ajustar-humor', action='store_true', help='tarea guion: mide el humor del guion actual y quita los chistes que sobran')
+    ap.add_argument('--bloque', help='tarea guion: reescribe solo este bloque (con --pedido) y escribe el texto en la salida')
+    ap.add_argument('--forzar', action='store_true', help='con --revisar-imagen: revisa otra vez cada bloque contra su imagen')
+    ap.add_argument('--combinar', action='store_true', help='tarea guion: une en un guion lo mejor de las versiones de varias IAs')
+    ap.add_argument('--varias', action='store_true', help='tarea trailer: GPT, Claude y DeepSeek proponen cada una su tráiler')
+    ap.add_argument('--reintentar-varias', action='store_true',
+                    help='tarea guion: solo las IAs que no entregaron su versión la escriben otra vez; tu guion.json no cambia')
+    ap.add_argument('--ideas', action='store_true', help='tarea guion: la IA relee el guion final y deja dudas e ideas en preguntas_guion.json')
     ap.add_argument('--respuestas', action='store_true', help='tarea guion: corrige el guion actual con tus respuestas de preguntas_guion.json')
+    ap.add_argument('--otro', action='store_true', help='tarea guion: otro guion distinto al actual (reusa el mapa del video)')
+    ap.add_argument('--pedido', default='', help='con --otro: lo que el autor quiere distinto')
+    ap.add_argument('--revisar-imagen', action='store_true', help='tarea guion: hace la revisión contra imágenes que quedó pendiente')
     ap.add_argument('--video', help='tarea senales: el video donde van las flechas (para sacar los cuadros)')
+    ap.add_argument('--sin-variar', action='store_true', help='modo revisar: el texto es del autor; las muletillas solo se avisan')
     ap.add_argument('--entrada', help='modo revisar: archivo con la respuesta pegada (por defecto, el JSON actual)')
     a = ap.parse_args()
-    global AJUSTES_F
+    global AJUSTES_F, VARIAR
     AJUSTES_F = a.ajustes
+    VARIAR = not a.sin_variar
+    try:
+        configurar_humor(nivel_humor(json.load(open(a.ajustes, encoding='utf-8'))))
+    except (OSError, ValueError):
+        pass
     d = a.proyecto
     idea = a.idea or (open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(d, 'idea.txt')) else '')
     destino = os.path.join(d, ARCHIVO[a.tarea])
@@ -1793,15 +3607,79 @@ def main():
         json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'Guardado senales.json con {len(datos)} señales')
         return
+    if a.tarea == 'guion' and a.revisar_imagen:
+        revision_pendiente(d, a.ajustes, destino, forzar=a.forzar)
+        return
+    if a.tarea == 'guion' and a.ideas:
+        ideas_guion(d, ia_de_la_version(d, json.load(open(a.ajustes, encoding='utf-8'))))
+        return
+    reintento = None
+    if a.tarea == 'guion' and a.reintentar_varias:  # se revisa antes de mirar el video: si no hay nada que reintentar, no tarda
+        reintento = versiones_fallidas(d, json.load(open(a.ajustes, encoding='utf-8')))
+        print('Reintento ' + ', '.join(f'{IAS_GUION[i][0]} ({aj["modelo"]})' for i, aj in reintento[1])
+              + ' con el mismo encargo; las versiones que ya tienes no se tocan.', flush=True)
     mapa, todo_ia = None, False
+    avisos_humor = []
+    if a.tarea == 'guion' and a.ajustar_humor:  # «🎚 Ajustar el humor»: el guion que ya tienes, sin rehacerlo
+        ajustes = ia_de_la_version(d, json.load(open(a.ajustes, encoding='utf-8')))
+        datos = json.load(open(destino, encoding='utf-8'))
+        if medir_humor(datos['bloques']) is None:
+            datos = marcar_humor(ajustes, datos)
+        datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+        datos, avisos = revisar(d, a.tarea, datos)
+        os.replace(destino, destino + '.anterior')
+        json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        for x in avisos_humor + avisos:
+            print('·', x)
+        open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos_humor + avisos))
+        print('Guardado guion.json con el humor ajustado (el anterior quedó como guion.json.anterior)')
+        return
+    if a.tarea == 'guion' and a.bloque:  # «✨ Reescribir con IA» de un bloque, desde el editor por pistas
+        nuevo = reescribir_bloque(d, json.load(open(a.ajustes, encoding='utf-8')), a.bloque, a.pedido[:1000])
+        print('BLOQUE_NUEVO ' + json.dumps({'texto': nuevo}, ensure_ascii=False), flush=True)
+        return
+    if a.tarea == 'guion' and a.combinar:  # «🧩 Combinar»: lo mejor de cada versión, sin volver a mirar el video
+        ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        datos = combinar_versiones(d, ajustes)
+        tramo(80, 95)
+        progreso(0, 'Mido el humor…')
+        datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+        datos, avisos = revisar(d, a.tarea, datos)
+        if os.path.exists(destino):
+            os.replace(destino, destino + '.anterior')
+        json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        json.dump(datos, open(os.path.join(d, 'guion_combinado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        conocimiento.archivar_guion_ia(d, 'combinado', ajustes.get('modelo') or '', datos)
+        avisos = ['guion combinado con lo mejor de cada versión (también quedó en guion_combinado.json)'] + avisos_humor + avisos
+        for x in avisos:
+            print('·', x)
+        open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
+        print('Guardado guion.json combinado (el anterior quedó como guion.json.anterior)')
+        tramo(0, 100)
+        progreso(100, 'Listo')
+        return
     if a.modo == 'revisar':
         datos = extraer_json(open(a.entrada or destino, encoding='utf-8').read())
+        if a.tarea in ARCHIVO_PREGUNTAS and isinstance(datos, dict) and datos.get('preguntas'):
+            guardar_preguntas(d, datos['preguntas'], a.tarea)  # las preguntas de una IA de chat se contestan en la revisión
+        if a.tarea == 'guion' and isinstance(datos, dict) and isinstance(datos.get('eventos'), list):
+            # regla 1 del autor: la lista de eventos de pantalla queda a mano para comprobar los cortes
+            filas = [f"{mmss(float(e.get('s', 0)))} {e.get('evento', '')}" for e in datos['eventos'] if isinstance(e, dict)]
+            open(os.path.join(d, 'eventos_pantalla.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in filas))
     else:
         try:
             n = int(json.load(open(a.ajustes, encoding='utf-8')).get('capturas', 14))
         except (OSError, ValueError, TypeError):
             n = 14
         caps = capturas(d, max(4, min(n, 60)))
+        if a.tarea == 'guion':  # una captura en cada momento de acción (volumen, power, pegar, conectar…), además de las repartidas
+            out_ac = os.path.join(d, 'ia_capturas')
+            for s, _, frase, nombres in momentos_accion(d)[:24]:
+                try:
+                    f = sacar_cuadro(os.path.join(d, 'original.mp4'), s + 1, os.path.join(out_ac, f'accion_{s:06.1f}s.jpg'), 768)
+                    caps.append((f'segundo {s + 1:.1f}, momento de acción ({", ".join(sorted(nombres))})', f))
+                except RuntimeError as e:
+                    print(f'· {e}', flush=True)
         an = None
         if a.tarea == 'trailer':
             an = pistas.analizar(d, duracion(os.path.join(d, 'original.mp4')))
@@ -1817,7 +3695,7 @@ def main():
         if estilo and a.tarea in ('guion', 'trailer'):
             print(f'Usando tu estilo «{estilo[0]}» (panel Alimentación).', flush=True)
         mapa = None
-        todo_ia = a.tarea == 'guion' and a.modo == 'api' and aj.get('todo_ia') and not (a.ajustar_largo or a.respuestas)
+        todo_ia = a.tarea == 'guion' and a.modo == 'api' and aj.get('todo_ia') and not (a.ajustar_largo or a.respuestas or reintento)
         if todo_ia:  # la IA analiza el video ella misma; tu PC no elige cuadros ni lee texto
             mapa, vistos = mapa_ia(d, aj)
             caps = [(f'segundo {t:.1f} del video original', f) for t, f in vistos[::max(1, len(vistos) // 14)][:14]]
@@ -1832,9 +3710,12 @@ def main():
             except Exception as e:
                 print(f'· no pude usar el mapa del video para el tráiler ({e}); sigo sin él', flush=True)
         elif a.tarea == 'guion' and aj.get('minucioso', True):
+            tramo(5, 35)
+            progreso(0, 'Miro el video entero (mapa de pantallas)…')
             # como lo hice a mano: primero mirar el video entero; la IA lo describe solo en modo api
             try:
-                mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas) else None)
+                # al reintentar, el mapa que ya está guardado: no gasta pedidos y el encargo sale igual que la primera vez
+                mapa = mapa_video(d, aj if a.modo == 'api' and not (a.ajustar_largo or a.respuestas or reintento) else None)
             except Exception as e:
                 print(f'· no pude armar el mapa del video ({e}); sigo sin él', flush=True)
             if mapa and not (a.ajustar_largo or a.respuestas):
@@ -1844,7 +3725,8 @@ def main():
                     print(f'Sumo {len(hojas)} hojas de contacto con todo el video ({len(mapa)} miniaturas).', flush=True)
                 except Exception as e:
                     print(f'· no pude armar las hojas de contacto ({e}); sigo sin ellas', flush=True)
-        texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa)
+        extra = otro_guion(d, a.pedido.strip()[:1000]) if a.tarea == 'guion' and a.otro else ''
+        texto = encargo(d, a.tarea, idea, caps, an, estilo, mapa) + extra
         if a.modo == 'api' and a.tarea in ('guion', 'trailer') and not (a.ajustar_largo or a.respuestas):
             # guarda también el prompt usado (las capturas ya quedan en ia_capturas/), para reusarlo con otro
             # modelo sin volver a procesar el video
@@ -1861,6 +3743,8 @@ def main():
             print(f'Prompt en {f}. Adjunta las {len(caps)} capturas de ia_capturas/ si tu IA ve imágenes.')
             return
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))
+        if a.tarea == 'guion' and (a.respuestas or a.ajustar_largo) and os.path.exists(destino):
+            ajustes = ia_de_la_version(d, ajustes)  # la versión elegida la corrige la IA que la escribió
         if a.tarea == 'guion' and a.respuestas and os.path.exists(destino):
             datos = corregir_con_respuestas(d, ajustes, json.load(open(destino, encoding='utf-8')))
             datos, avisos = revisar(d, a.tarea, datos)
@@ -1883,56 +3767,120 @@ def main():
             open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
             print(f'Guardado guion.json ajustado de largo (el anterior quedó como guion.json.anterior)')
             return
-        print(f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…", flush=True)
-        try:
-            respuesta = llamar(ajustes, texto, caps)
-        except SystemExit as e:
-            # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
-            pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
-            if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)):
-                raise
-            print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
-            texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa)
-            caps = pocas
-            respuesta = llamar(ajustes, texto, caps)
-        open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
-        try:
-            datos = extraer_json(respuesta)
-        except ValueError:
-            corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
-            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido; '
-                             f'puede que lo haya rechazado. Contestó: «{corto}». Prueba con otro modelo en «⚙ Ajustes IA» '
-                             f'(GPT o Qwen suelen aceptar estos temas) y vuelve a pulsar.')
-        if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
-            raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
-                             f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
-        if a.tarea == 'guion':
+        if reintento:  # «🔁 Reintentar las que fallaron»: suman su versión; guion.json no cambia
+            tramo(35, 100)
+            progreso(0, 'Las IAs que fallaron escriben su guion otra vez…')
+            _, avisos = guion_varias(d, ajustes, reintento[1], texto, caps, False, previas=reintento[0])
+            for x in avisos:
+                print('·', x)
+            progreso(100, 'Listo')
+            return
+        varias = ias_del_guion(ajustes) if a.tarea == 'guion' else []
+        de_trailer = ias_del_guion({**ajustes, 'tres_ia': True}) if a.tarea == 'trailer' and a.varias else []
+        if a.tarea == 'trailer' and a.varias and len(de_trailer) < 2:
+            print('· para el tráiler con varias IAs hace falta modelo y clave de al menos dos en «⚙ Ajustes IA»: lo hace tu IA principal', flush=True)
+        if len(de_trailer) > 1:  # «🎬 Tráiler con varias IAs»
+            tramo(35, 94)
+            progreso(0, 'Las IAs proponen su tráiler a la vez…')
+            datos = trailer_varias(d, ajustes, de_trailer, texto, caps)
+        elif len(varias) > 1:  # «✍️ Guion con 3 IAs a la vez»
+            tramo(35, 94)
+            progreso(0, 'Las IAs escriben su guion a la vez…')
+            datos, avisos_humor = guion_varias(d, ajustes, varias, texto, caps, todo_ia)
             if todo_ia:
-                datos = autorrevision(d, ajustes, texto, datos)
-            guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
-            datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
-            if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
                 for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
-    datos, avisos = revisar(d, a.tarea, datos)
-    if a.tarea == 'guion' and a.modo == 'api' and mapa:
-        vistos = revisar_con_imagen(d, ajustes, datos, mapa, con_ocr=not todo_ia)
-        if vistos:  # se movieron tramos: se vuelven a medir los largos
-            datos, despues = revisar(d, a.tarea, datos)
-            avisos = [x for x in avisos if not x.startswith(('duración estimada', 'quedó corto', 'el video queda'))] + vistos
-            avisos += [x for x in despues if x not in avisos]
         else:
-            avisos.append('revisé cada bloque contra su imagen: todos coinciden')
+            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
+                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
+            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
+                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
+            tramo(35, 65)
+            progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
+            try:
+                respuesta = llamar(ajustes, texto, caps)
+            except SystemExit as e:
+                # un modelo que no acepta tantas imágenes en un pedido: se reintenta con menos (sin las hojas de contacto)
+                pocas = [c for c in caps if not str(c[0]).startswith('hoja de contacto')][:8]
+                # solo tiene sentido con menos imágenes si el fallo puede ser por tamaño; nunca tras un rechazo, permisos o saldo
+                if not ajustes.get('imagenes', True) or len(pocas) == len(caps) or getattr(e, 'permanente', False) \
+                        or getattr(e, 'clase', '') == 'H' or re.search(r'clave|conexi|no conoce|saldo|permiso|workspace', str(e)) \
+                        or re.search(r'\b(50[0-4]|529)\b', str(e)[:200]):  # el servicio falló: con menos imágenes fallaría igual
+                    raise
+                if re.search(r'\b429\b', str(e)[:200]):  # límite por minuto: reenviarlo en el acto solo suma otro rechazo
+                    print('· la IA dice que se pasó un límite de pedidos; espero 30 s antes de probar con menos imágenes', flush=True)
+                    time.sleep(30)
+                print(f'· la IA no aceptó {len(caps)} imágenes juntas ({str(e)[:160]}); reintento con {len(pocas)}', flush=True)
+                texto = encargo(d, a.tarea, idea, pocas, an, estilo, mapa) + extra
+                caps = pocas
+                respuesta = llamar(ajustes, texto, caps)
+            open(os.path.join(d, f'ia_respuesta_{a.tarea}.txt'), 'w', encoding='utf-8').write(respuesta)
+            try:
+                datos = extraer_json(respuesta)
+            except ValueError:
+                corto = ' '.join(respuesta.split())[:220] or '(respuesta vacía)'
+                raise ErrorIA(f'ERROR: la IA ({ajustes["modelo"]}) no devolvió el {a.tarea} en el formato pedido. Eso no confirma '
+                              f'un rechazo: mira el diagnóstico. Contestó: «{corto}».', 'F')
+            if a.tarea == 'guion' and not (datos.get('bloques') if isinstance(datos, dict) else datos):
+                raise SystemExit(f'ERROR: la IA ({ajustes["modelo"]}) contestó sin bloques de guion: '
+                                 f'«{" ".join(respuesta.split())[:220]}». Prueba con otro modelo en «⚙ Ajustes IA».')
+            if a.tarea == 'trailer' and isinstance(datos, dict):
+                guardar_preguntas(d, datos.get('preguntas'), 'trailer')
+            tramo(65, 70)
+            progreso(0, 'La IA respondió: leo el guion')
+            if a.tarea == 'guion':
+                if todo_ia:
+                    tramo(70, 75)
+                    progreso(0, 'La IA revisa su propio guion…')
+                    datos = autorrevision(d, ajustes, texto, datos)
+                guardar_preguntas(d, datos.get('preguntas') if isinstance(datos, dict) else None)
+                tramo(75, 88)
+                progreso(0, 'Reviso el largo del guion…')
+                datos = corregir_largo(d, ajustes, texto, caps, respuesta, datos)
+                tramo(88, 94)
+                progreso(0, 'Mido el humor…')
+                datos = dosificar_humor(d, ajustes, datos, avisos_humor)
+                if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción
+                    for b in (datos['bloques'] if isinstance(datos, dict) else datos):
+                        if isinstance(b.get('montaje'), dict):
+                            b['montaje']['visto'] = True
+    tramo(94, 100)
+    progreso(0, 'Reviso tiempos y orden de los bloques…')
+    datos, avisos = revisar(d, a.tarea, datos)
+    avisos = avisos_humor + avisos
+    if a.tarea == 'guion' and a.modo == 'api' and mapa and ajustes.get('imagenes', True) and isinstance(datos, dict):
+        # la revisión de cada bloque contra su imagen es lo más lento: se hace al pulsar «Seguir con todo»,
+        # así ves el guion apenas la IA lo escribe y, si no te gusta, pides otro sin esperarla
+        datos['revision_imagen_pendiente'] = 'ia' if todo_ia else 'ocr'
+        avisos.append('la revisión de cada bloque contra su imagen se hace cuando pulses «Seguir con todo»')
     if os.path.exists(destino):
         os.replace(destino, destino + '.anterior')
     json.dump(datos, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    if a.tarea == 'guion' and ((a.modo == 'api' and not os.path.exists(os.path.join(d, 'versiones_guion.json')))
+                               or (a.modo == 'revisar' and not a.sin_variar)):
+        # «📚 Guiones de las IAs»: el de una sola IA (los de varias ya se guardaron) o el que pegaste de una IA de chat
+        try:
+            aj_ = json.load(open(a.ajustes, encoding='utf-8'))
+        except (OSError, ValueError):
+            aj_ = {}
+        conocimiento.archivar_guion_ia(d, (aj_.get('proveedor') or 'ia').split(' ')[0] if a.modo == 'api' else 'chat',
+                                       aj_.get('modelo') or '' if a.modo == 'api' else '', datos)
     for x in avisos:
         print('·', x)
     if a.tarea == 'guion':  # lo que la app corrigió, para mostrártelo antes de seguir
         open(os.path.join(d, 'mejoras_guion.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in avisos))
     print(f'Guardado {ARCHIVO[a.tarea]} (la versión anterior quedó como {ARCHIVO[a.tarea]}.anterior)')
+    tramo(0, 100)
+    progreso(100, 'Listo')
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except BaseException as e:
+        # el paso falló DESPUÉS de la última respuesta (p. ej. un guion sin bloques): esa respuesta no se reutiliza al
+        # reintentar; las anteriores sí. Si falló la llamada misma, no queda ninguna marcada.
+        if not (isinstance(e, SystemExit) and e.code in (0, None)):
+            _olvidar_respuesta()
+        raise
