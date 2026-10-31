@@ -16,8 +16,10 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 ARCHIVO = 'subtitulos.json'
 DESFASE = 0.3
-ESTILO = {'dinamico': True, 'pos': 'abajo', 'altura': 8, 'tam': 6, 'color': '#FFFFFF', 'resalte': '#FFD23F', 'fondo': True,
-          'fuente': 'Arial Black', 'palabras': 6}
+# por defecto, el estilo que eligió fabian (31/10/2026, «C +50 %» de la muestra del HONOR 8 LITE): una línea corta de 2-3
+# palabras, Arial Black blanca con borde negro, la palabra que se dice en amarillo y algo más grande, bien abajo al centro
+ESTILO = {'dinamico': True, 'pos': 'abajo', 'altura': 10, 'tam': 10, 'color': '#FFFFFF', 'resalte': '#FFD23F', 'fondo': False,
+          'fuente': 'Arial Black', 'palabras': 3, 'letras': 14}
 ESTADO = {'activo': False}
 
 
@@ -75,12 +77,13 @@ def traducir(d, lang, ajustes_f):
     return n
 
 
-def frases(texto, maximo):
-    """Parte el texto en frases cortas (cortando en la puntuación o cada `maximo` palabras)."""
+def frases(texto, maximo, letras=0):
+    """Parte el texto en frases cortas (cortando en la puntuación, cada `maximo` palabras o, con letra grande, al pasar
+    de `letras` caracteres, para que la línea no se salga de la pantalla)."""
     palabras, out, act = texto.split(), [], []
     for w in palabras:
         act.append(w)
-        if len(act) >= maximo or (re.search(r'[.!?…:;,]$', w) and len(act) >= max(2, maximo // 2)):
+        if len(act) >= maximo or (letras and len(' '.join(act)) >= letras)                 or (re.search(r'[.!?…:;,]$', w) and len(act) >= max(2, maximo // 2)):
             out.append(act); act = []
     if act:
         out.append(act)
@@ -96,7 +99,7 @@ def eventos(d, lang, estilo, offset=0.0):
             continue
         ini = b['inicio_min'] + DESFASE + offset
         dur = float(b.get('voz_real_s') or (b['fin_max'] - b['inicio_min'] - DESFASE))
-        partes = frases(t, int(estilo.get('palabras') or 6))
+        partes = frases(t, int(estilo.get('palabras') or 6), int(estilo.get('letras') or 0))
         total = sum(len(''.join(p)) + len(p) for p in partes) or 1
         cur = ini
         for p in partes:
@@ -129,7 +132,7 @@ def ass(d, lang, estilo, W=1920, H=1080, offset=0.0):
     cab = (f"[Script Info]\nScriptType: v4.00+\nPlayResX: {W}\nPlayResY: {H}\nWrapStyle: 0\n\n[V4+ Styles]\n"
            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, "
            "StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-           f"Style: S,{e['fuente']},{tam},{_color(e['color'])},{_color(e['resalte'])},&H00000000,&H64000000,-1,0,0,0,100,100,0,0,"
+           f"Style: S,{e['fuente']},{tam},{_color(e['color'])},{_color(e['resalte'])},&H00000000,&H64000000,{0 if 'black' in e['fuente'].lower() else -1},0,0,0,100,100,1,0,"
            f"{borde[0]},{max(2, tam // 14) if not e['fondo'] else tam // 6},{borde[1] and 2},{alin},{W // 10},{W // 10},{margen},1\n\n"
            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lineas = []

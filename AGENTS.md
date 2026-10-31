@@ -57,6 +57,9 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   `difuminar_datos.json` (imágenes de referencia de la cabecera con los recuadros de los datos y los tramos del video),
   sigue esos datos aunque la cámara se mueva (puntos SIFT + homografía) y los difumina. «Video final sin tráiler» lo corre
   solo después del inicio fijo. Revisa el video completo (cámara, material extra, inicio) antes de entregar.
+- **Subtítulos quemados, estilo por defecto (elegido por fabian, «C +50 %»):** una línea corta de 2–3 palabras (máx. ~14
+  letras), Arial Black blanca con borde negro, la palabra que se dice en amarillo y un poco más grande, abajo al centro y
+  algo separada del borde (`subtitulos/subtitulos.py`, `ESTILO`). Muestras en `mis_proyectos/HONOR 8 LITE/subtitulos_en/`.
 - La vista previa de etiquetas y flechas siempre se revisa antes de ponerlas: la app se detiene ahí y nada se pone hasta
   pulsar «▶ Ponerlas en el video».
 
