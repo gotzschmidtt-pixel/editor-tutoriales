@@ -28,21 +28,70 @@ EXTRAS = [('trailer.json', None, ('titulo', 'subtitulo', 'voz')),
           ('short_guion.json', 'tomas', ('texto',))]
 
 
+# carpetas de pruebas, muestras y controles hechos para la versión en español: no hacen falta en la copia
+NO_COPIAR_CARPETAS = {'cuadros_control', 'subtitulos_en', 'vista_extras', 'youtube', 'historial_guion'}
+IMPRESCINDIBLES = {'original.mp4', 'material.mp4', 'etiquetas.json', 'senales.json', 'insertos.json', 'mapa_video.json',
+                   'cortes_importantes.json', 'transcripcion.srt', 'transcripcion.txt'}
+
+
+def _copiar_uno(f, g, intentos=6):
+    """Copia un archivo; si Windows dice que está en uso (otro programa lo está escribiendo), reintenta unos segundos."""
+    import time
+    for k in range(intentos):
+        try:
+            if os.path.exists(g) and os.path.samefile(f, g):
+                return True  # ya está (el mismo archivo enlazado de una vez anterior): copiarlo sobre sí mismo fallaba
+            shutil.copy2(f, g)
+            return True
+        except PermissionError:
+            if k == intentos - 1:
+                return False
+            time.sleep(1.5)
+
+
 def copiar(origen, destino):
+    """Copia el proyecto a la versión en otro idioma, sin lo que se rehace (videos, voces) ni pruebas y muestras.
+    Un archivo en uso se reintenta; si sigue bloqueado y no hace falta, se salta y se avisa (antes fallaba todo:
+    31/10/2026, «El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso»)."""
     os.makedirs(destino, exist_ok=True)
+    try:  # el inicio hecho aparte (inicio_fijo.json) es un video de una subcarpeta que sí hace falta
+        fijo = os.path.normpath(json.load(open(os.path.join(origen, 'inicio_fijo.json'), encoding='utf-8'))['video'])
+    except (OSError, ValueError, KeyError, TypeError):
+        fijo = ''
+    saltados = []
     for n in os.listdir(origen):
         f, g = os.path.join(origen, n), os.path.join(destino, n)
-        if n == 'original.mp4':
+        if n in ('original.mp4', 'material.mp4'):
+            if os.path.exists(g) and os.path.samefile(f, g):
+                continue
             try:
+                if os.path.exists(g):
+                    os.remove(g)
                 os.link(f, g)  # el mismo archivo, sin ocupar el doble de espacio
+                continue
             except OSError:
-                shutil.copy2(f, g)
-        elif NO_COPIAR.search(n):
+                pass
+            if not _copiar_uno(f, g):
+                raise SystemExit(f'{n} está en uso (¿se está armando algo o hay otra copia en curso?): espera a que termine y vuelve a pulsar.')
+        elif NO_COPIAR.search(n) or n in NO_COPIAR_CARPETAS:
             continue
         elif os.path.isdir(f):
-            shutil.copytree(f, g, dirs_exist_ok=True)
-        else:
-            shutil.copy2(f, g)
+            for raiz, carpetas, archivos in os.walk(f):
+                rel = os.path.relpath(raiz, origen)
+                os.makedirs(os.path.join(destino, rel), exist_ok=True)
+                for x in archivos:
+                    r = os.path.normpath(os.path.join(rel, x))
+                    if re.search(r'\.(mp4|mp3|wav|mov)$', x, re.I) and r != fijo:
+                        continue  # videos y audios de pruebas: no (el inicio fijo, sí)
+                    if not _copiar_uno(os.path.join(raiz, x), os.path.join(destino, r)):
+                        saltados.append(r)
+        elif not _copiar_uno(f, g):
+            if n in IMPRESCINDIBLES:
+                raise SystemExit(f'{n} está en uso (¿se está armando algo?): espera a que termine y vuelve a pulsar.')
+            saltados.append(n)
+    if saltados:
+        print('Aviso: no copié estos archivos porque estaban en uso (no hacen falta para la versión): ' + ', '.join(saltados), flush=True)
+    return saltados
 
 
 def _items_extras(d):
@@ -120,6 +169,15 @@ def main():
     if os.path.exists(os.path.join(destino, 'guion.json')):
         raise SystemExit(f'Ya existe la versión {os.path.basename(destino)}: ábrela desde la lista de proyectos (o bórrala para rehacerla).')
     guion = json.load(open(os.path.join(origen, 'guion.json'), encoding='utf-8'))
+    os.makedirs(destino, exist_ok=True)
+    marca = os.path.join(destino, '.creando_version')
+    try:  # dos clics seguidos: la segunda copia chocaba con la primera
+        fd = os.open(marca, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        raise SystemExit(f'Ya se está creando la versión {os.path.basename(destino)} (pulsaste dos veces): espera a que termine.')
+    import atexit
+    atexit.register(lambda: os.path.exists(marca) and os.remove(marca))  # al terminar (bien o con error) se puede volver a pulsar
     print(f'Copio el proyecto a {os.path.basename(destino)}…', flush=True)
     copiar(origen, destino)
     print(f'La IA traduce el guion ({len(guion["bloques"])} bloques)…', flush=True)
