@@ -231,7 +231,7 @@ def main():
                                    'h': round(z['h'] * 10.8), 'texto': m.get('etiqueta') or '', 'dur': 3,
                                    'por_que': 'tu marca de «🎯 Flechas y círculos» (se edita en ese panel de la app)'}))
     seg_marca = {i: str(m.get('segundo') or '') for i, m in enumerate(marcas.get('MARCAS', []) if isinstance(marcas, dict) else [])}
-    lista = []
+    lista, capas_e = [], []
     for clase, i, x in items:
         clave = f'{clase}:{i}'
         nombre = f"{ {'etiqueta': 'e', 'senal': 's', 'marca': 'm'}[clase] }{i:02d}.jpg"
@@ -240,19 +240,14 @@ def main():
         t, aviso = momento(clase, x)
         if t is None and not aviso:
             aviso = f"no encontré «{x.get('frase', '')}» en la voz de {x.get('bloque')}: no se pondrá"
-        img = cuadro(video, (t or 0) + (1.2 if clase == 'etiqueta' else 0.6))
+        img = cuadro(video, (t or 0) + (momento_capa(x) if clase == 'etiqueta' else 0.6))
         W, H = img.size
         dib = ImageDraw.Draw(img)
         if t is not None and not aviso:
-            if clase == 'etiqueta':
-                lado = 'izquierda'
-                try:  # el mismo lado que va a elegir el armado (solo si el detector ya está en la PC: aquí no se baja nada)
-                    import deteccion, etiquetas as et
-                    if os.path.exists(deteccion.MODELO):
-                        lado = et.lado_libre(video, t, float(x.get('dur', 4)), [x])
-                except Exception:
-                    pass
-                etiqueta(dib, x, W, H, lado)
+            if clase == 'etiqueta':  # se dibuja después, todas juntas, con la plantilla del armado (capa_etiquetas)
+                capas_e.append((nombre, img, x, i))
+                lista.append(fila(clase, i, x, nombre, t, aviso, capa=f'e{i:02d}_capa.png'))
+                continue
             elif ESTILO == 'contorno':  # el mismo estilo que va a tener el video
                 img = contorno(img, x)
             elif x.get('tipo') == 'flecha':
@@ -270,21 +265,78 @@ def main():
                 if x.get('texto'):
                     pildora(dib, x['x'], x['y'], alto, x['texto'], W, H)
         img.resize((960, int(960 * H / W))).save(os.path.join(out, nombre), quality=85)
-        lista.append({'clase': clase, 'idx': i, 'archivo': nombre, 't': t, 'aviso': aviso, 'bloque': x.get('bloque'),
-                      'frase': x.get('frase'), 'tipo': x.get('tipo'), 'titulo': x.get('titulo'), 'texto': x.get('texto'),
-                      'por_que': x.get('por_que'), 'duda': x.get('duda'), 'aprobado': bool(x.get('aprobado')),
-                      'x': x.get('x'), 'y': x.get('y'), 'manual': bool(x.get('manual')), 'r': x.get('r'), 'w': x.get('w'), 'h': x.get('h'),
-                      'dur': x.get('dur'), 'angulo': x.get('angulo'), 'color': x.get('color'), 'hueco': x.get('hueco'),
-                      'src_t': x.get('src_t'), 'segundo': seg_marca.get(i) if clase == 'marca' else None})
-    # un círculo con rótulo abajo a la izquierda, mientras está la etiqueta: se tapan entre sí
+        lista.append(fila(clase, i, x, nombre, t, aviso, seg_marca.get(i) if clase == 'marca' else None))
+    capa_etiquetas(out, capas_e)
+    # un círculo con rótulo arriba a la derecha, mientras está la etiqueta (que el armado pone ahí): se tapan entre sí
     etqs = [z for z in lista if z['clase'] == 'etiqueta' and z['t'] is not None]
     for z in lista:
-        if z['clase'] in ('senal', 'marca') and z['t'] is not None and z.get('texto') and (z.get('x') or 0) < 1000 and (z.get('y') or 0) > 560:
+        if z['clase'] in ('senal', 'marca') and z['t'] is not None and z.get('texto') and (z.get('x') or 0) > 900 and (z.get('y') or 0) < 520:
             if any(abs(e['t'] - z['t']) < 4.5 for e in etqs) and not z.get('aviso'):
-                z['duda'] = (z.get('duda') + ' · ' if z.get('duda') else '') + 'su rótulo cae sobre la etiqueta de abajo a la izquierda que sale al mismo tiempo: muévelo o quita el rótulo'
+                z['duda'] = (z.get('duda') + ' · ' if z.get('duda') else '') + 'su rótulo cae sobre la etiqueta de arriba a la derecha que sale al mismo tiempo: muévelo o quita el rótulo'
     lista.sort(key=lambda z: (z['t'] is None, z['t'] or 0))
     json.dump(lista, open(lista_f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'Vista previa: {len(lista)} diapositivas en {SALIDA}/')
+
+
+def fila(clase, i, x, nombre, t, aviso, segundo=None, capa=None):
+    """Lo que la página de la vista previa necesita de cada diapositiva."""
+    return {'clase': clase, 'idx': i, 'archivo': nombre, 't': t, 'aviso': aviso, 'bloque': x.get('bloque'),
+            'frase': x.get('frase'), 'tipo': x.get('tipo'), 'titulo': x.get('titulo'), 'texto': x.get('texto'),
+            'por_que': x.get('por_que'), 'duda': x.get('duda'), 'aprobado': bool(x.get('aprobado')),
+            'x': x.get('x'), 'y': x.get('y'), 'manual': bool(x.get('manual')), 'r': x.get('r'), 'w': x.get('w'), 'h': x.get('h'),
+            'dur': x.get('dur'), 'angulo': x.get('angulo'), 'color': x.get('color'), 'hueco': x.get('hueco'),
+            'src_t': x.get('src_t'), 'segundo': segundo, 'capa': capa,
+            'capa_xy': list(zona_etiqueta(x)[:2]) if capa else None}
+
+
+def zona_etiqueta(x):
+    """Dónde pega el armado la pila de etiquetas (etiquetas.py): arriba a la derecha; si el texto es muy largo, todo el ancho."""
+    import etiquetas as et
+    ancho = 1920 if len(str(x.get('texto') or '')) > 38 else et.ANCHO_ZONA
+    return 1920 - ancho, 0, ancho, et.ALTO_ZONA
+
+
+def momento_capa(x):
+    """Segundos desde que empieza la etiqueta hasta que ya entró entera (el texto escrito y el brillo pasado)."""
+    return min(2.0, max(1.2, float(x.get('dur') or 4) - 0.6))
+
+
+def capa_etiquetas(out, capas_e):
+    """Dibuja cada etiqueta con etiquetas/plantilla.html (la misma del armado, lado «arriba») y la pega sobre su cuadro.
+    Deja también eNN_capa.png (transparente) para el editor sobre el video. Sin Node/Playwright: la píldora aproximada."""
+    if not capas_e:
+        return
+    import subprocess, tempfile
+    import etiquetas as et
+    trabajos = []
+    for nombre, img, x, i in capas_e:
+        dur = float(x.get('dur') or 4)
+        trabajos.append({'items': [{'tipo': x.get('tipo') or 'consejo', 'titulo': x.get('titulo'), 'texto': str(x.get('texto') or ''),
+                                    'color': x.get('color'), 'at': 0, 'placa': et.placa_gpt(x.get('tipo') or 'consejo')}],
+                         'total': dur, 'ms': round(momento_capa(x) * 1000), 'lado': 'arriba', 'recorte': list(zona_etiqueta(x)),
+                         'salida': os.path.join(out, f'e{i:02d}_capa.png')})
+    f = os.path.join(tempfile.gettempdir(), f'vista_capas_{os.getpid()}.json')
+    json.dump(trabajos, open(f, 'w', encoding='utf-8'))
+    try:
+        r = subprocess.run(['node', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'etiqueta_capa.js'), f], cwd=RAIZ,
+                           capture_output=True, text=True, encoding='utf-8', errors='replace')
+        ok = r.returncode == 0
+        if not ok:
+            print('· no pude dibujar las etiquetas con la plantilla:', ' '.join((r.stderr or r.stdout).split())[-300:], flush=True)
+    except OSError:
+        ok = False
+    finally:
+        os.remove(f)
+    for (nombre, img, x, i), tr in zip(capas_e, trabajos):
+        W, H = img.size
+        if ok and os.path.exists(tr['salida']):
+            capa = Image.open(tr['salida']).convert('RGBA')
+            base = img.convert('RGBA')
+            base.alpha_composite(capa, tuple(tr['recorte'][:2]))
+            img = base.convert('RGB')
+        else:
+            etiqueta(ImageDraw.Draw(img), x, W, H, 'derecha')
+        img.resize((960, int(960 * H / W))).save(os.path.join(out, nombre), quality=85)
 
 
 if __name__ == '__main__':

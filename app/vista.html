@@ -54,6 +54,8 @@
   .eMarca::before, .eMarca::after { content: ''; position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
   .eMarca::before { left: 0; } .eMarca::after { right: 0; }
   button.vel { padding: 6px 10px; } button.vel.activa { background: var(--rosa); border-color: var(--rosa); color: #fff; }
+  #editor .grandes button { font-size: 16px; padding: 10px 18px; }
+  #editor button.rosa { background: linear-gradient(90deg, #ff2bd6, #c03cff); border: 0; color: #fff; font-weight: 700; }
   .diapo.elegida { box-shadow: 0 0 0 3px #fff; }
 </style>
 </head>
@@ -91,23 +93,11 @@
     otro extremo. En la línea de tiempo: arrastra una marca para cambiar cuándo sale y sus bordes para cuánto dura.
     Teclas: Espacio ▶/⏸ · ← → 1 s (Mayús 5 s) · , . cuadro a cuadro · I empieza · O termina.</span>
     <div class="eMarco"><video id="eVideo" preload="metadata"></video><canvas id="eLienzo" width="1920" height="1080"></canvas></div>
-    <div class="fila" style="justify-content:center">
-      <button onclick="eSaltar(-5)" title="5 s atrás (Mayús + ←)">⏪ 5 s</button>
-      <button id="ePlay" style="min-width:7em" onclick="eV.paused ? eV.play() : eV.pause()" title="Reproducir o pausar (Espacio)">▶ Play</button>
-      <button onclick="eSaltar(5)" title="5 s adelante (Mayús + →)">5 s ⏩</button>
-      <span id="eHora" class="chip">0:00.0</span>
-      <span class="aviso" style="margin-left:14px">Velocidad</span>
+    <div class="fila">
+      <span class="aviso">⏩ Velocidad:</span>
       <button class="vel activa" onclick="eVel(1, this)">×1</button><button class="vel" onclick="eVel(1.5, this)">×1,5</button>
       <button class="vel" onclick="eVel(2, this)">×2</button><button class="vel" onclick="eVel(3, this)">×3</button><button class="vel" onclick="eVel(4, this)">×4</button>
-    </div>
-    <div class="fila" style="justify-content:center">
-      <button onclick="eInicio()" title="La marca elegida empieza en este segundo (tecla I)">● Empieza aquí</button>
-      <button onclick="eFin()" title="La marca elegida termina en este segundo (tecla O)">■ Termina aquí</button>
-      <span class="aviso" style="margin-left:14px">Nueva:</span>
-      <select id="eTipo"><option value="circulo">⭕ Círculo</option><option value="flecha">➡ Flecha</option>
-        <option value="caja">▭ Recuadro</option><option value="etiqueta">🏷 Etiqueta de texto</option></select>
-      <button class="principal" onclick="eAgregar()" title="Pone una nueva en este segundo, en el centro: después la arrastras a su lugar">➕ Agregar aquí</button>
-      <span class="aviso" style="margin-left:14px">🔍</span>
+      <span class="aviso" style="margin-left:auto">🔍</span>
       <button onclick="eZoom(-1)">−</button>
       <input type="range" id="eZoomR" min="1" max="30" step="0.5" value="1" oninput="ePintar(true)" style="width:8em">
       <button onclick="eZoom(1)">+</button>
@@ -119,6 +109,20 @@
       <div id="eCabezal" style="position:absolute; top:0; width:2px; height:176px; background:#ff2b4a; pointer-events:none; z-index:3">
         <div style="position:absolute; top:0; left:-6px; width:14px; height:14px; border-radius:50%; background:#ff2b4a"></div></div>
     </div></div>
+    <div class="fila grandes" style="justify-content:center">
+      <button onclick="eSaltar(-5)" title="5 s atrás (Mayús + ←)">⏪ 5 s</button>
+      <button id="ePlay" style="min-width:7em" onclick="eV.paused ? eV.play() : eV.pause()" title="Reproducir o pausar (Espacio)">▶ Play</button>
+      <button onclick="eSaltar(5)" title="5 s adelante (Mayús + →)">5 s ⏩</button>
+      <span id="eHora" class="chip">0:00.0</span>
+      <button class="rosa" onclick="eInicio()" title="La marca elegida empieza en este segundo (tecla I)">● Empieza aquí</button>
+      <button class="rosa" onclick="eFin()" title="La marca elegida termina en este segundo (tecla O)">■ Termina aquí</button>
+    </div>
+    <div class="fila" style="justify-content:center">
+      <span class="aviso">Nueva en este segundo:</span>
+      <select id="eTipo"><option value="circulo">⭕ Círculo</option><option value="flecha">➡ Flecha</option>
+        <option value="caja">▭ Recuadro</option><option value="etiqueta">🏷 Etiqueta de texto</option></select>
+      <button class="principal" onclick="eAgregar()" title="Pone una nueva en este segundo, en el centro: después la arrastras a su lugar">➕ Agregar aquí</button>
+    </div>
     <div class="aviso" style="margin-top:4px">🟨 etiqueta · 🟪 círculo · 🟦 flecha · 🟩 recuadro · 🟧 tu marca 🎯 · ✓ aprobada · ✋ hecha o cambiada a mano</div>
     <div id="eSel"></div>
   </section>
@@ -522,7 +526,15 @@ function dibujarItem(x, sel) {
   const g = geo(x), c = x.color || (x.clase === 'etiqueta' ? '#ff2d95' : '#ff2bd6');
   eG.save();
   eG.strokeStyle = c; eG.fillStyle = c; eG.lineWidth = sel ? 9 : 7; eG.shadowColor = c; eG.shadowBlur = 14; eG.lineCap = 'round'; eG.lineJoin = 'round';
-  if (g.tipo === 'etiqueta') {  // el armado las pone arriba a la derecha (posición fija)
+  if (g.tipo === 'etiqueta' && x.capa) {  // la misma imagen que dibuja el armado (plantilla de etiquetas, arriba a la derecha)
+    const img = capaDe(x);
+    if (img.complete && img.naturalWidth) {
+      eG.drawImage(img, x.capa_xy[0], x.capa_xy[1]);
+      if (sel) { eG.strokeStyle = '#fff'; eG.lineWidth = 4; eG.setLineDash([12, 8]); eG.strokeRect(x.capa_xy[0] + 4, x.capa_xy[1] + 4, img.naturalWidth - 8, img.naturalHeight - 8); }
+      eG.restore(); return;
+    }
+  }
+  if (g.tipo === 'etiqueta') {  // sin la imagen todavía: aproximada, arriba a la derecha como el armado
     eG.shadowBlur = 0;
     const tit = String(x.titulo || '').toUpperCase(), txt = String(x.texto || '');
     eG.font = 'bold 44px system-ui'; const wt = eG.measureText(txt).width; eG.font = 'bold 24px system-ui';
@@ -559,10 +571,16 @@ function dibujarItem(x, sel) {
   }
   eG.restore();
 }
+const CAPAS = {};
+function capaDe(x) {  // eNN_capa.png de vista_extras (cambia con cada «Generar»: por eso lleva V)
+  const url = `/archivo?p=${q(P)}&sub=vista_extras&f=${x.capa}&v=${V}`;
+  if (!CAPAS[url]) { CAPAS[url] = new Image(); CAPAS[url].onload = eDibujar; CAPAS[url].src = url; }
+  return CAPAS[url];
+}
 const ePunto = ev => { const r = eL.getBoundingClientRect(); return [(ev.clientX - r.left) * 1920 / r.width, (ev.clientY - r.top) * 1080 / r.height]; };
 function eTocar(x, px, py, sel) {  // qué parte de la forma está bajo el mouse
   const g = geo(x), d = (a, b) => Math.hypot(px - a, py - b);
-  if (g.tipo === 'etiqueta') return px > 1000 && py < 220 ? 'elegir' : null;
+  if (g.tipo === 'etiqueta') return px > 1000 && py < 300 ? 'elegir' : null;
   if (g.tipo === 'flecha') {
     if (sel && d(g.X, g.Y) < 34) return 'punta';
     if (sel && d(g.ox, g.oy) < 40) return 'origen';
