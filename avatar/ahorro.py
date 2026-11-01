@@ -2,10 +2,15 @@
 apoyo (pedido de fabian, 01/11/2026: «los créditos en HeyGen están algo costosos… el inicio o algunos tramos cortos en avatar
 como para variar»). Gratis: no llama a HeyGen, ElevenLabs ni a ninguna IA.
 
-Modo «ahorro» (por defecto): con AVATAR van el inicio (20-30 s), 2 o 3 momentos fuertes de 10-15 s (revelaciones, alertas,
-remates: las frases con más peso del guion) y el cierre (10-15 s). Todo lo demás es VOZ EN OFF: la misma voz sobre gráficas,
-memes, capturas e imágenes del proyecto, cambiando cada ~4 s. Modo «todo»: todo el video con avatar, como antes.
-Cada bloque del guion puede llevar "avatar": true (todo el bloque con avatar) o false (nunca); sin el campo, decide la app.
+Modo «ahorro» (por defecto), con el ritmo de las referencias (Olga Rendón y Danskyx, 01/11/2026):
+- GANCHO SIN AVATAR: los primeros 30-60 s son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
+- DOS VELOCIDADES: la voz en off cambia de imagen cada ~2 s en el primer minuto y cada ~5 s después, y cada corte cae en el
+  fin de una frase cuando hay una cerca (va con lo que dice la voz). Nunca el mismo trozo dos veces seguidas.
+- POCOS TRAMOS DE AVATAR Y LARGOS: 2 a 4 de 30-55 s (la presentación, los momentos con más peso y el cierre), como mucho
+  ~15 % del video. Dentro de cada tramo se alterna plano abierto / acercado cada 10-20 s (gratis: el mismo clip recortado).
+- PANTALLA FINAL: 10-12 s con el avatar desenfocado de fondo, para los elementos finales de YouTube.
+Modo «todo»: todo el video con avatar, como antes. Cada bloque del guion puede llevar "avatar": true (todo el bloque con
+avatar) o false (nunca); sin el campo, decide la app. Los ajustes se cambian en la pestaña y quedan en plan.json.
 
 La voz es UNA sola pista (voz_completa.mp3) y manda en el montaje: los clips de HeyGen ponen solo la imagen en sus tramos, así
 que no puede haber desfase de audio.
@@ -17,15 +22,22 @@ Uso: python avatar/ahorro.py plan|exportar|montar --proyecto CARPETA [--modo aho
 import argparse, glob, json, os, random, re, subprocess, tempfile
 
 PAUSA = 0.4             # silencio entre bloques de voz (como al armar los bloques para HeyGen)
-INICIO = (20.0, 30.0)   # el inicio con avatar: al menos 20 s y, si se puede, no más de 30
-CIERRE = (10.0, 15.0)
-FUERTE = (10.0, 15.0)
 MAX_TRAMO = 58.0        # HeyGen: cada audio por debajo de 1 min
-SEPARACION = 60.0       # entre dos momentos fuertes (para repartirlos por el video)
-ROTAR = 4.0             # la voz en off cambia de imagen cada ~4 s (regla de no dejar escenas largas)
+SEPARACION = 60.0       # entre dos tramos de avatar (para repartirlos por el video)
+AJUSTES = {             # lo que se puede cambiar en la pestaña «🧑 Avatar (ahorro)»
+    'gancho_s': 45,         # gancho sin avatar al inicio (30-60 s; 0 = el avatar abre el video)
+    'rotar_inicio': 2.0,    # cada cuántos segundos cambia la imagen en el primer minuto
+    'rotar': 5.0,           # … y después
+    'tramos_avatar': 0,     # cuántos tramos con avatar (0 = la app decide: 2 a 4 según el largo)
+    'tramo_s': [30, 55],    # largo de cada tramo con avatar
+    'max_avatar_pct': 15,   # tope de avatar sobre el total
+    'plano_s': 15,          # dentro del avatar, cambio de plano abierto / acercado cada ~15 s
+    'final_s': 11,          # pantalla final con el avatar desenfocado (0 = sin pantalla final)
+}
 W, H, FPS = 1920, 1080, 25
 CAJA = (1560, 840, 40)  # el apoyo va arriba, en una caja de 1560x840 a 40 px del borde: abajo quedan libres los subtítulos
 FONDO = '0x0b1630'
+ACERCADO = (1280, 720, 320, 30)  # plano acercado del avatar (×1,5): recorte de 1280x720 (cara arriba al centro) llevado a 1920x1080
 LOOKS = ['frente', 'primer plano', 'lateral']
 MOVIMIENTO = ('Calm, friendly news host talking to the camera. Natural small smiles, soft hand gestures, gentle nods. '
               'No exaggerated facial expressions, no puckered lips, no big laughs. Stays seated and does not touch the microphone.')
@@ -42,6 +54,12 @@ def dur(f):
 
 def ff(*a):
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', *a], check=True)
+
+
+def ajustes(aj=None):
+    out = dict(AJUSTES)
+    out.update({k: v for k, v in (aj or {}).items() if k in AJUSTES and v is not None})
+    return out
 
 
 # ---------------------------------------------------------------- frases con tiempos (de la voz ya hecha, gratis)
@@ -83,8 +101,8 @@ def peso(texto):
 # ---------------------------------------------------------------- elegir los tramos
 
 def _ventana(fr, i, minimo, maximo, hacia=1):
-    """Frases seguidas desde i (hacia adelante o atrás) hasta juntar al menos `minimo` s; para antes si la siguiente frase
-    pasaría de `maximo` y ya hay `minimo`, y nunca pasa de MAX_TRAMO (el límite de HeyGen)."""
+    """Frases seguidas desde i (hacia adelante o atrás) hasta juntar al menos `minimo` s, sin pasar de `maximo` ni de
+    MAX_TRAMO (el límite de HeyGen)."""
     j = i
     while True:
         a, b = (i, j) if hacia > 0 else (j, i)
@@ -92,13 +110,14 @@ def _ventana(fr, i, minimo, maximo, hacia=1):
         if fr[b]['e'] - fr[a]['s'] >= minimo or not 0 <= k < len(fr):
             return a, b
         a2, b2 = (i, k) if hacia > 0 else (k, i)
-        if fr[b2]['e'] - fr[a2]['s'] > MAX_TRAMO:
+        if fr[b2]['e'] - fr[a2]['s'] > min(maximo, MAX_TRAMO):
             return a, b
         j = k
 
 
-def elegir(fr, modo='ahorro', n_fuertes=None):
+def elegir(fr, modo='ahorro', aj=None):
     """Marca cada frase como avatar o voz en off y devuelve los tramos seguidos: [{tipo, i0, i1, s, e, motivo}]."""
+    aj = ajustes(aj)
     n = len(fr)
     if not n:
         return []
@@ -106,27 +125,47 @@ def elegir(fr, modo='ahorro', n_fuertes=None):
     motivo = ['todo con avatar' if modo == 'todo' else ''] * n
     if modo != 'todo':
         total = fr[-1]['e']
-        a, b = _ventana(fr, 0, *INICIO)
-        for k in range(a, b + 1):
-            av[k], motivo[k] = True, 'inicio'
-        a, b = _ventana(fr, n - 1, *CIERRE, hacia=-1)
-        for k in range(a, b + 1):
-            av[k], motivo[k] = True, 'cierre'
-        if n_fuertes is None:
-            n_fuertes = 2 if total < 8 * 60 else 3
-        ocupados = [(fr[k]['s'], fr[k]['e']) for k in range(n) if av[k]]
-        for k in sorted(range(n), key=lambda k: (-peso(fr[k]['texto']), k)):
-            if n_fuertes <= 0 or peso(fr[k]['texto']) < 3:  # una pregunta corta sola no basta
-                break
-            # la ventana termina en la frase fuerte (el remate llega con la cara) y empieza 10-15 s antes
-            a, b = _ventana(fr, k, *FUERTE, hacia=-1)
-            s, e = fr[a]['s'], fr[b]['e']
-            if any(s - SEPARACION < e2 and e + SEPARACION > s2 for s2, e2 in ocupados):
-                continue
+        presupuesto = total * aj['max_avatar_pct'] / 100
+        n_tr = int(aj['tramos_avatar']) or max(2, min(4, round(presupuesto / 40)))
+        lo, hi = aj['tramo_s']
+        lo = max(6.0, min(lo, presupuesto / n_tr))   # en videos cortos los tramos se achican para no pasar el tope
+        hi = max(lo, min(hi, presupuesto / n_tr * 1.4))
+        # el gancho va sin avatar: hasta la frase que pasa de gancho_s (sin llegar a 60 s si se puede)
+        i_g = -1
+        if aj['gancho_s'] > 0:
+            i_g = next((k for k in range(n) if fr[k]['e'] >= aj['gancho_s']), n - 1)
+            if fr[i_g]['e'] > 60 and i_g > 0:
+                i_g -= 1
+        usados, ocupados = 0.0, []
+
+        def marcar(a, b, por_que):
+            nonlocal usados
             for j in range(a, b + 1):
-                av[j], motivo[j] = True, 'momento fuerte: «' + fr[k]['texto'][:60] + '»'
-            ocupados.append((s, e))
-            n_fuertes -= 1
+                av[j], motivo[j] = True, por_que
+            usados += fr[b]['e'] - fr[a]['s']
+            ocupados.append((fr[a]['s'], fr[b]['e']))
+
+        if i_g + 1 < n:  # la presentación: el avatar entra después del gancho
+            a, b = _ventana(fr, i_g + 1, lo, hi)
+            marcar(a, b, 'presentación (después del gancho)' if i_g >= 0 else 'inicio')
+        if n_tr >= 2:    # el cierre
+            a, b = _ventana(fr, n - 1, lo, hi, hacia=-1)
+            if a > i_g and not av[a]:
+                marcar(a, b, 'cierre')
+        quedan = n_tr - len(ocupados)
+        for k in sorted(range(n), key=lambda k: (-peso(fr[k]['texto']), k)):  # los momentos con más peso
+            if quedan <= 0 or peso(fr[k]['texto']) < 3:  # una pregunta corta sola no basta
+                break
+            if k <= i_g:
+                continue
+            a, b = _ventana(fr, k, lo, hi, hacia=-1)  # termina en la frase fuerte: el remate llega con la cara
+            s, e = fr[a]['s'], fr[b]['e']
+            if a <= i_g or usados + e - s > presupuesto * 1.1 or any(s - SEPARACION < e2 and e + SEPARACION > s2 for s2, e2 in ocupados):
+                continue
+            marcar(a, b, 'momento fuerte: «' + fr[k]['texto'][:60] + '»')
+            quedan -= 1
+        for k in range(i_g + 1):
+            motivo[k] = motivo[k] or 'gancho sin avatar'
     # lo que marcaste a mano en el guion manda
     for k, f in enumerate(fr):
         if f.get('avatar') is True:
@@ -143,7 +182,7 @@ def elegir(fr, modo='ahorro', n_fuertes=None):
     # una voz en off de menos de 4 s entre dos avatares se queda con avatar (cortar tan poco no luce)
     for k in range(1, len(tramos) - 1):
         t = tramos[k]
-        if t['tipo'] == 'voz' and fr[t['i1']]['e'] - fr[t['i0']]['s'] < ROTAR and tramos[k - 1]['tipo'] == tramos[k + 1]['tipo'] == 'avatar':
+        if t['tipo'] == 'voz' and fr[t['i1']]['e'] - fr[t['i0']]['s'] < 4 and tramos[k - 1]['tipo'] == tramos[k + 1]['tipo'] == 'avatar':
             t['tipo'], t['motivo'] = 'avatar', tramos[k - 1]['motivo']
     for t in tramos:
         # cada tramo empieza donde terminó el anterior: así la imagen cubre también los silencios entre frases
@@ -153,17 +192,35 @@ def elegir(fr, modo='ahorro', n_fuertes=None):
     return tramos
 
 
-def resumen(tramos):
+def resumen(tramos, aj=None):
+    aj = ajustes(aj)
     av = sum(t['e'] - t['s'] for t in tramos if t['tipo'] == 'avatar')
     vo = sum(t['e'] - t['s'] for t in tramos if t['tipo'] == 'voz')
     total = av + vo
     return {'avatar_s': round(av, 1), 'voz_s': round(vo, 1), 'total_s': round(total, 1),
+            'avatar_pct': round(100 * av / total) if total else 0,
             'ahorro_pct': round(100 * (1 - av / total)) if total else 0,
-            'tramos_avatar': sum(t['tipo'] == 'avatar' for t in tramos)}
+            'tramos_avatar': sum(t['tipo'] == 'avatar' for t in tramos), 'final_s': aj['final_s']}
 
 
 def mmss(s):
     return f'{int(s // 60)}:{int(s % 60):02d}'
+
+
+def cortes(s, e, frases_s, aj=None):
+    """Dónde cambia la imagen de la voz en off entre s y e: cada ~rotar_inicio s en el primer minuto y cada ~rotar s
+    después, corrido al inicio de frase más cercano (si hay uno a menos de un 40 % del paso), para ir con lo que dice la voz."""
+    aj = ajustes(aj)
+    out, t = [s], s
+    while True:
+        paso = aj['rotar_inicio'] if t < 60 else aj['rotar']
+        meta = t + paso
+        if meta >= e - paso * 0.5:
+            break
+        cerca = [x for x in frases_s if abs(x - meta) <= paso * 0.4 and t + paso * 0.5 < x < e - paso * 0.5]
+        t = min(cerca, key=lambda x: abs(x - meta)) if cerca else meta
+        out.append(round(t, 3))
+    return out + [e]
 
 
 # ---------------------------------------------------------------- en el proyecto
@@ -174,22 +231,25 @@ def carpeta_ahorro(d):
     return c
 
 
-def modo_de(d, defecto='ahorro'):
+def _guardado(d):
     try:
-        return json.load(open(os.path.join(d, 'avatar_ahorro', 'plan.json'), encoding='utf-8')).get('modo') or defecto
+        return json.load(open(os.path.join(d, 'avatar_ahorro', 'plan.json'), encoding='utf-8'))
     except (OSError, ValueError):
-        return defecto
+        return {}
 
 
-def plan(d, modo=None):
-    modo = modo or modo_de(d)
+def plan(d, modo=None, aj=None):
+    g = _guardado(d)
+    modo = modo or g.get('modo') or 'ahorro'
+    aj = ajustes({**(g.get('ajustes') or {}), **(aj or {})})
     fr, _ = frases_de_voz(d)
-    tramos = elegir(fr, modo)
+    tramos = elegir(fr, modo, aj)
     bl = {}
     for x in fr:  # cada bloque del guion con su marca (None = lo decide la app) y su tiempo
         b = bl.setdefault(x['bloque'], {'id': x['bloque'], 'avatar': x.get('avatar'), 's': x['s'], 'e': x['e'], 'texto': ''})
         b['e'], b['texto'] = x['e'], (b['texto'] + ' ' + x['texto']).strip()
-    p = {'modo': modo, 'tramos': tramos, 'resumen': resumen(tramos), 'frases': len(fr), 'bloques': list(bl.values())}
+    p = {'modo': modo, 'ajustes': aj, 'tramos': tramos, 'resumen': resumen(tramos, aj), 'frases': len(fr),
+         'frases_s': [x['s'] for x in fr], 'bloques': list(bl.values())}
     json.dump(p, open(os.path.join(carpeta_ahorro(d), 'plan.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return p
 
@@ -217,12 +277,14 @@ def exportar(d, modo=None):
     voz_completa(partes, vc)
     for f in glob.glob(os.path.join(c, 'avatar_*.mp3')):
         os.remove(f)
+    r = p['resumen']
     lineas = [f'AVATAR EN MODO {p["modo"].upper()} · lo que va a HeyGen (nada se gastó al prepararlo)',
-              f'Avatar: {mmss(p["resumen"]["avatar_s"])} · voz en off: {mmss(p["resumen"]["voz_s"])} · '
-              f'ahorro frente a todo con avatar: ~{p["resumen"]["ahorro_pct"]} % de los minutos de HeyGen', '',
+              f'Avatar: {mmss(r["avatar_s"])} ({r["avatar_pct"]} %) · voz en off: {mmss(r["voz_s"])} · '
+              f'ahorro frente a todo con avatar: ~{r["ahorro_pct"]} % de los minutos de HeyGen', '',
               'En HeyGen: «Crear video» → pestaña «Audio» → sube avatar_NN.mp3 → el avatar con el look indicado → pega el',
               'movimiento en «Aplicar movimiento personalizado» («Más expresivo» APAGADO). Baja cada video como',
-              'avatar_ahorro/heygen/avatar_NN.mp4 y pulsa «Montar» en la app.', '']
+              'avatar_ahorro/heygen/avatar_NN.mp4 y pulsa «Montar» en la app. Los cambios de plano (abierto / acercado) y',
+              'la pantalla final desenfocada los hace la app con el mismo clip: no hace falta pedirlos en HeyGen.', '']
     n = 0
     for t in p['tramos']:
         if t['tipo'] != 'avatar':
@@ -249,13 +311,13 @@ def apoyo_de(d):
             and 'hoja' not in os.path.basename(f).lower()]
 
 
-def _clip_apoyo(f, dd, salida, k):
-    """Un trozo de apoyo de dd s a 1920x1080, en la caja de arriba (los subtítulos van abajo): video desde su inicio, o
+def _clip_apoyo(f, dd, salida, k, desde=0.0):
+    """Un trozo de apoyo de dd s a 1920x1080, en la caja de arriba (los subtítulos van abajo): video desde `desde`, o
     imagen con un zoom suave (acerca o aleja)."""
     cw, ch, y = CAJA
     caja = f'scale={cw}:{ch}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:{y}:color={FONDO}'
     if f.lower().endswith(('.mp4', '.mov')):
-        ff('-stream_loop', '-1', '-i', f, '-t', f'{dd:.3f}', '-vf', f'{caja},fps={FPS},setsar=1',
+        ff('-stream_loop', '-1', '-ss', f'{desde:.2f}', '-i', f, '-t', f'{dd:.3f}', '-vf', f'{caja},fps={FPS},setsar=1',
            '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
         return
     n = max(1, round(dd * FPS))
@@ -265,46 +327,67 @@ def _clip_apoyo(f, dd, salida, k):
        '-frames:v', str(n), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
 
 
-def _clip_avatar(f, dd, salida):
-    """La imagen del clip de HeyGen, del largo exacto del tramo (si es más corto, se queda en su último cuadro)."""
-    ff('-i', f, '-t', f'{dd:.3f}', '-vf', f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps={FPS},setsar=1,'
-       f'tpad=stop_mode=clone:stop_duration={dd:.3f}', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-       '-pix_fmt', 'yuv420p', salida)
+def _clip_avatar(f, desde, dd, salida, acercado=False):
+    """dd s de la imagen del clip de HeyGen desde `desde` (si se acaba, se queda en su último cuadro), en plano abierto o
+    acercado a la cara."""
+    cw, ch, x, y = ACERCADO
+    plano = f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}' + (f',crop={cw}:{ch}:{x}:{y},scale={W}:{H}' if acercado else '')
+    ff('-ss', f'{desde:.3f}', '-i', f, '-t', f'{dd:.3f}', '-vf', f'{plano},fps={FPS},setsar=1,tpad=stop_mode=clone:stop_duration={dd:.3f}',
+       '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
 
 
-def montar(tramos, voz, clips_avatar, apoyo, salida, semilla=7):
+def montar(tramos, voz, clips_avatar, apoyo, salida, aj=None, frases_s=(), semilla=7):
     """tramos: [{tipo, s, e}] sobre la pista `voz`; clips_avatar: un .mp4 por tramo con avatar, en orden. El audio es la
-    voz completa, una sola vez: la imagen cambia por tramos pero el sonido no se corta (sin desfase)."""
+    voz completa, una sola vez: la imagen cambia por tramos pero el sonido no se corta (sin desfase). Al final, si
+    final_s > 0, la pantalla final con el último cuadro del avatar desenfocado (sin voz)."""
+    aj = ajustes(aj)
     rnd = random.Random(semilla)
-    pool, ultimo = list(apoyo), None
+    pool, ultimo, desde_de = list(apoyo), None, {}
     with tempfile.TemporaryDirectory() as tmp:
         partes, k_av, k = [], 0, 0
+        nuevo = lambda: os.path.join(tmp, f'{len(partes):03d}.mp4')
         for t in tramos:
-            dd = t['e'] - t['s']
             if t['tipo'] == 'avatar':
-                p = os.path.join(tmp, f'{len(partes):03d}.mp4')
-                _clip_avatar(clips_avatar[k_av], dd, p)
+                # plano abierto / acercado cada ~plano_s, cambiando en el inicio de una frase si hay una cerca
+                pl = cortes(t['s'], t['e'], frases_s, {'rotar_inicio': aj['plano_s'], 'rotar': aj['plano_s']})
+                for j, (a, b) in enumerate(zip(pl, pl[1:])):
+                    p = nuevo()
+                    _clip_avatar(clips_avatar[k_av], a - t['s'], b - a, p, acercado=j % 2 == 1)
+                    partes.append(p)
                 k_av += 1
-                partes.append(p)
                 continue
-            n = max(1, round(dd / ROTAR))  # trozos de ~4 s, nunca el mismo dos veces seguidas
-            for j in range(n):
+            cs = cortes(t['s'], t['e'], frases_s, aj)
+            for a, b in zip(cs, cs[1:]):
                 if not pool:
                     pool = list(apoyo)
                     rnd.shuffle(pool)
                 f = pool.pop(0)
-                if f == ultimo and pool:
+                if f == ultimo and pool:  # nunca el mismo trozo dos veces seguidas
                     pool.append(f)
                     f = pool.pop(0)
                 ultimo = f
-                p = os.path.join(tmp, f'{len(partes):03d}.mp4')
-                _clip_apoyo(f, dd / n, p, k)
+                # una gráfica animada no arranca vacía: la primera vez entra ya armada (desde el 40 % de su largo); si
+                # vuelve a salir, sigue desde donde quedó (otro trozo)
+                if f not in desde_de:
+                    largo = dur(f) if f.lower().endswith(('.mp4', '.mov')) else 0
+                    desde_de[f] = largo * 0.4 if largo > (b - a) + 1 else 0.0
+                desde = desde_de[f]
+                desde_de[f] = desde + (b - a)
+                p = nuevo()
+                _clip_apoyo(f, b - a, p, k, desde)
                 k += 1
                 partes.append(p)
+        total = tramos[-1]['e']
+        if aj['final_s'] > 0 and clips_avatar:  # pantalla final: el avatar desenfocado de fondo
+            png, p = os.path.join(tmp, 'final.png'), nuevo()
+            ff('-sseof', '-0.2', '-i', clips_avatar[-1], '-frames:v', '1', '-vf', f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}', png)
+            ff('-loop', '1', '-i', png, '-t', f"{aj['final_s']:.2f}", '-vf', f'boxblur=24:3,fps={FPS},setsar=1', '-c:v', 'libx264',
+               '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', p)
+            partes.append(p)
+            total += aj['final_s']
         lista = os.path.join(tmp, 'lista.txt')
         open(lista, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n" for p in partes))
-        total = tramos[-1]['e']
-        ff('-f', 'concat', '-safe', '0', '-i', lista, '-i', voz, '-map', '0:v', '-map', '1:a', '-t', f'{total:.3f}',
+        ff('-f', 'concat', '-safe', '0', '-i', lista, '-i', voz, '-map', '0:v', '-map', '1:a', '-af', 'apad', '-t', f'{total:.3f}',
            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
            '-movflags', '+faststart', salida)
 
@@ -324,8 +407,34 @@ def montar_proyecto(d):
     if not apoyo:
         raise SystemExit('No hay material de apoyo (gráficas, memes, capturas o la carpeta apoyo/) para la voz en off.')
     salida = os.path.join(c, 'AVATAR_AHORRO.mp4')
-    montar(p['tramos'], vc, clips, apoyo, salida)
+    montar(p['tramos'], vc, clips, apoyo, salida, p.get('ajustes'), p.get('frases_s', []))
     return salida
+
+
+# ---------------------------------------------------------------- tomas de apoyo para generar (Higgsfield, etc.)
+
+TOMAS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mis_proyectos', '_referencias', 'higgsfield',
+                     'lista_tomas_apoyo.txt')
+
+
+def tomas(f=TOMAS):
+    """La lista de tomas de apoyo (texto plano): «nombre: prompt» por línea, secciones «A. …» y una línea «ESTILO COMÚN (…): …»
+    que se pega al final de cada prompt. Devuelve {ajustes, estilo, grupos: [{titulo, tomas: [{nombre, prompt}]}]}."""
+    out = {'ajustes': '', 'estilo': '', 'grupos': [], 'archivo': f}
+    if not os.path.exists(f):
+        return out
+    for l in open(f, encoding='utf-8').read().splitlines():
+        l = l.strip()
+        if l.startswith('Ajustes:'):
+            out['ajustes'] = l
+        elif l.upper().startswith('ESTILO COM'):
+            out['estilo'] = l.split(':', 1)[1].strip()
+        elif re.match(r'^[A-Z]\. ', l):
+            out['grupos'].append({'titulo': l, 'tomas': []})
+        elif re.match(r'^[a-z_]+_\d+:', l) and out['grupos']:
+            n, p = l.split(':', 1)
+            out['grupos'][-1]['tomas'].append({'nombre': n, 'prompt': p.strip()})
+    return out
 
 
 # ---------------------------------------------------------------- la app (rutas /api/avatar/...)
@@ -342,7 +451,10 @@ def get(h, ruta, q, d):
         p['exportado'] = os.path.exists(os.path.join(c, 'ORDEN_AVATAR.txt'))
         p['montado'] = os.path.exists(os.path.join(c, 'AVATAR_AHORRO.mp4'))
         p['carpeta'] = c
+        p['por_defecto'] = AJUSTES
         return h.responder(p)
+    if ruta == '/api/avatar/tomas':  # la lista de tomas de apoyo para Higgsfield, con «📋 Copiar prompt»
+        return h.responder(tomas())
     return h.error('no conozco esa ruta', 404)
 
 
@@ -361,6 +473,13 @@ def post(h, ruta, q, largo, d):
         return h.responder(plan(d))
     if ruta == '/api/avatar/modo':  # «ahorro» (por defecto) o «todo» con avatar
         return h.responder(plan(d, 'todo' if datos.get('modo') == 'todo' else 'ahorro'))
+    if ruta == '/api/avatar/ajustes':  # gancho, velocidades de corte, tramos, tope, cambio de plano y pantalla final
+        if datos.get('restablecer'):
+            p = _guardado(d)
+            p['ajustes'] = dict(AJUSTES)
+            json.dump(p, open(os.path.join(carpeta_ahorro(d), 'plan.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+            return h.responder(plan(d))
+        return h.responder(plan(d, aj=datos.get('ajustes') or {}))
     if ruta == '/api/avatar/exportar':
         return h.responder(exportar(d))
     if ruta == '/api/avatar/montar':

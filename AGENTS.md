@@ -73,10 +73,21 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 
 ## Decisiones del autor (01/11/2026)
 
-- **Avatar en modo ahorro (por defecto en los videos con avatar).** HeyGen es caro: el avatar va solo en el inicio
-  (20-30 s), en 2 o 3 momentos fuertes de 10-15 s (revelaciones, alertas, remates: las frases con más peso) y en el cierre
-  (10-15 s). Todo lo demás es VOZ EN OFF: la misma voz sobre gráficas, memes, capturas e imágenes del proyecto, cambiando
-  cada ~4 s y arriba de los subtítulos. En un video de 15 min son ~1,5-3 min de HeyGen (~80-90 % menos).
+- **Avatar en modo ahorro (por defecto en los videos con avatar).** HeyGen es caro. Ritmo tomado de dos referencias
+  medidas el 01/11/2026 (`mis_proyectos/_referencias/`): Olga Rendón (~41 cortes en 14:22, su cara ~96 %, capas encima
+  ~20 %) y Danskyx «TV satelital pirata» (21:48, 1 M de vistas: 245 cortes, toma media 5,3 s, cada 2 s en el primer minuto
+  y cada 5,7 s después; cara 35 % en 10 tramos largos; la cara recién en 1:32; cierre a cámara y pantalla final desenfocada;
+  `danskyx_tv_pirata/ANALISIS.txt`). Reglas por defecto (se cambian en la pestaña, «Ritmo»):
+  - **Gancho sin avatar**: los primeros ~45 s (30-60) son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
+  - **Dos velocidades**: cada ~2 s en el primer minuto y cada ~5 s después; cada corte cae en el inicio de una frase si hay
+    una cerca, nunca el mismo trozo dos veces seguidas, y las gráficas animadas entran ya armadas.
+  - **Pocos tramos de avatar y largos**: 2-4 de 30-55 s (presentación, momentos con más peso y cierre), tope ~15 % del
+    video; dentro de cada tramo, plano abierto / acercado cada ~15 s (gratis, el mismo clip recortado).
+  - **Pantalla final** de 11 s con el avatar desenfocado de fondo (para los elementos finales de YouTube).
+  - Los subtítulos estilo C se quedan (Danskyx no usa, pero en este canal funcionan). En 15 min: ~1,5-2,5 min de HeyGen.
+- **Tomas de apoyo generadas** (Higgsfield, Seedance 2.5, 16:9, 720p, 5 s): la lista con 40 prompts está en
+  `mis_proyectos/_referencias/higgsfield/lista_tomas_apoyo.txt` y en la pestaña, con «📋 Copiar prompt» (toma + estilo
+  común). Cada clip va a `apoyo/` del proyecto con su nombre; sin texto, sin logos, sin caras reconocibles.
 - Lo hace `avatar/ahorro.py`, en la app: **✏️ Editar → «🧑 Avatar (ahorro)»**. Muestra minutos con avatar, de voz en off y el
   ahorro ANTES de gastar; «🎧 Preparar audios para HeyGen» deja en `avatar_ahorro/` solo los `avatar_NN.mp3` (< 1 min
   cada uno) con `ORDEN_AVATAR.txt` (orden, look y movimiento); los videos de HeyGen se ponen como
@@ -84,7 +95,7 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   (sin desfase). Material de apoyo: `apoyo/`, `graficos/*.mp4`, `memes/`, `capturas/`, `ia_capturas/`.
 - Por bloque del guion: `"avatar": true` (todo el bloque con avatar) o `false` (nunca); sin el campo decide la app.
   «🧑 Todo con avatar» lo apaga para un video que lo necesite. Nada de esto gasta créditos.
-- Muestra con el Movistar: `mis_proyectos/video-movistar-tigo-13min/prueba_avatar_ahorro/muestra_1min.mp4`.
+- Muestras con el Movistar: `mis_proyectos/video-movistar-tigo-13min/prueba_avatar_ahorro/muestra_1min.mp4` (v1) y `muestra_1min_v2.mp4` (ritmo nuevo).
   Prueba: `python tests/test_avatar_ahorro.py`.
 
 ---
