@@ -71,6 +71,22 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - La vista previa de etiquetas y flechas siempre se revisa antes de ponerlas: la app se detiene ahí y nada se pone hasta
   pulsar «▶ Ponerlas en el video».
 
+## Decisiones del autor (01/11/2026)
+
+- **Avatar en modo ahorro (por defecto en los videos con avatar).** HeyGen es caro: el avatar va solo en el inicio
+  (20-30 s), en 2 o 3 momentos fuertes de 10-15 s (revelaciones, alertas, remates: las frases con más peso) y en el cierre
+  (10-15 s). Todo lo demás es VOZ EN OFF: la misma voz sobre gráficas, memes, capturas e imágenes del proyecto, cambiando
+  cada ~4 s y arriba de los subtítulos. En un video de 15 min son ~1,5-3 min de HeyGen (~80-90 % menos).
+- Lo hace `avatar/ahorro.py`, en la app: **✏️ Editar → «🧑 Avatar (ahorro)»**. Muestra minutos con avatar, de voz en off y el
+  ahorro ANTES de gastar; «🎧 Preparar audios para HeyGen» deja en `avatar_ahorro/` solo los `avatar_NN.mp3` (< 1 min
+  cada uno) con `ORDEN_AVATAR.txt` (orden, look y movimiento); los videos de HeyGen se ponen como
+  `avatar_ahorro/heygen/avatar_NN.mp4` y «🎬 Montar» arma `AVATAR_AHORRO.mp4`. La voz completa es la única pista de audio
+  (sin desfase). Material de apoyo: `apoyo/`, `graficos/*.mp4`, `memes/`, `capturas/`, `ia_capturas/`.
+- Por bloque del guion: `"avatar": true` (todo el bloque con avatar) o `false` (nunca); sin el campo decide la app.
+  «🧑 Todo con avatar» lo apaga para un video que lo necesite. Nada de esto gasta créditos.
+- Muestra con el Movistar: `mis_proyectos/video-movistar-tigo-13min/prueba_avatar_ahorro/muestra_1min.mp4`.
+  Prueba: `python tests/test_avatar_ahorro.py`.
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)

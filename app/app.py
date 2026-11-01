@@ -48,6 +48,8 @@ import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retenci�
 import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de todos tus videos → reglas para la IA
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
+sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
+import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
@@ -2337,6 +2339,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'mejoras.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/mejoras/'):
                 return mejoras.get(self, ruta, q, carpeta(q['p']))
+            if ruta == '/avatar':  # «🧑 Avatar (ahorro)», en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'avatar.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta.startswith('/api/avatar/'):
+                return avatar_ahorro.get(self, ruta, q, carpeta(q['p']))
             if ruta == '/api/versiones_bloque':  # «🕘 Versiones anteriores» de un bloque (pedido de fabian, 31/10/2026)
                 d = carpeta(q['p'])
                 bid = q.get('id', '')
@@ -2733,6 +2739,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ok': True})
             if ruta.startswith('/api/mejoras/'):
                 return mejoras.post(self, ruta, q, largo, carpeta(q['p']))
+            if ruta.startswith('/api/avatar/'):
+                return avatar_ahorro.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta == '/api/actualizar_app':
                 with CANDADO:
                     if TRABAJO['proyecto']:
