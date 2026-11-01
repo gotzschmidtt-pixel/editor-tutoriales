@@ -48,6 +48,8 @@ import youtube  # noqa: E402  «▶️ YouTube»: publicar, capítulos, retenci�
 import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de todos tus videos → reglas para la IA
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
+sys.path.insert(0, os.path.join(RAIZ, 'miniatura'))
+import referencias as miniref  # noqa: E402  «🖼️ Miniaturas de referencia»: subes miniaturas que te gustan, la IA saca la fórmula y GPT genera las tuyas
 sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
 import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
@@ -2343,6 +2345,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'avatar.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/avatar/'):
                 return avatar_ahorro.get(self, ruta, q, carpeta(q['p']))
+            if ruta == '/miniref':  # «🖼️ Miniaturas de referencia», en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'miniref.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta.startswith('/api/miniref/'):
+                return miniref.get(self, ruta, q, carpeta(q['p']))
             if ruta == '/api/versiones_bloque':  # «🕘 Versiones anteriores» de un bloque (pedido de fabian, 31/10/2026)
                 d = carpeta(q['p'])
                 bid = q.get('id', '')
@@ -2741,6 +2747,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return mejoras.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta.startswith('/api/avatar/'):
                 return avatar_ahorro.post(self, ruta, q, largo, carpeta(q['p']))
+            if ruta.startswith('/api/miniref/'):
+                return miniref.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta == '/api/actualizar_app':
                 with CANDADO:
                     if TRABAJO['proyecto']:

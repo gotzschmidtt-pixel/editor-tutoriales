@@ -98,6 +98,18 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - Muestras con el Movistar: `mis_proyectos/video-movistar-tigo-13min/prueba_avatar_ahorro/muestra_1min.mp4` (v1) y `muestra_1min_v2.mp4` (ritmo nuevo).
   Prueba: `python tests/test_avatar_ahorro.py`.
 
+- **🖼️ Miniaturas de referencia** (pedido de fabian, 01/11/2026): en **📤 Publicar → «🖼️ Miniaturas de referencia»**
+  (`miniatura/referencias.py`, `app/miniref.html`). Subes miniaturas que te gustan (arrastrando o con botón) →
+  `<proyecto>/miniatura/referencias/`; «🔍 Analizar» (la IA de texto con visión de la app) saca la RECETA (cara, emoción,
+  palabras, letras, objeto, fondo, paleta, contraste, por qué da clic) en `miniatura/receta.json`, editable; «💡 Ideas»
+  propone 3-4 (≤ 4 palabras, con EN/PT) con la receta, el título y `mis_conocimientos/miniaturas/ESTILO_MINIATURAS.md`;
+  «🎨 Generar» usa gpt-image-2.5-flare en calidad ALTA (2 variantes por idea, opción con tu cara, 16:9 1280×720 o 9:16
+  1080×1920, JPG < 2 MB) y ANTES muestra cuántas imágenes y el costo (~0,28 USD c/u) y pide confirmar; el costo queda en
+  `miniatura/gastos.json`. Cada resultado se revisa con visión (ortografía, tildes, letras deformes: en rojo si falla) y
+  «⭐ Usar como miniatura» la deja elegida en Publicar → YouTube y en `subir_youtube/`. Es fórmula, no calco: nunca se
+  copian caras de otras personas, logos de canales ni sus textos. Pruebas sin gastar: `MINIREF_SIMULAR=1` y
+  `python tests/test_miniaturas_referencia.py`.
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)
