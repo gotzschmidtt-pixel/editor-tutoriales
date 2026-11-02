@@ -279,10 +279,25 @@ try:
     r = lanzado()
     ok(st == 200 and r and r[0] == ['testimonios', 'final_sin_trailer'] and r[1].get('confirmo') == 'SI' and r[1].get('_reanudar'),
        f'«Reintentar» con SI arranca desde el paso que falló: {st} {b[:200]!r} {r}')
-    app.RESULTADO['voces']['repetir']['opciones']['confirmo'] = 'SI'  # la vuelta que falló ya traía tu SI: sigue sin preguntar
+    ok(r and r[1].get('_aprobado') == [f'la narración de 1 testimonio (unos {len(texto + " y feliz")} créditos)'],
+       f'el SI escrito al reintentar queda anotado con lo que se pagaba entonces: {r}')
+    # la vuelta que falló ya traía tu SI para esa misma narración: sigue sin preguntar
+    gasta_ahora = app.gastos_sin_si(d, 'testimonios', ['testimonios', 'final_sin_trailer'], {'solo': ['testimonios']})
+    app.RESULTADO['voces']['repetir']['opciones'].update(confirmo='SI', _aprobado=list(gasta_ahora))
     st, b = pedir('POST', '/api/reintentar?p=voces')
     ok(st == 200 and lanzado(), f'«Reintentar» de una vuelta que ya traía tu SI no vuelve a preguntar: {st} {b[:200]!r}')
+    # pero tu SI era para otra cosa (otro texto, o la vuelta arrancó con un SI que nadie escribió porque no había nada que
+    # pagar): lo que ahora cambió vuelve a pedir SI
+    for aprobado in ([], ['la narración de 1 testimonio (unos 12 créditos)'], None):
+        app.RESULTADO['voces']['repetir']['opciones'].update(confirmo='SI', _aprobado=aprobado)
+        st, b = pedir('POST', '/api/reintentar?p=voces')
+        ok(st != 200 and json.loads(b).get('gasta') == gasta_ahora and lanzado(0.3) is None,
+           f'«Reintentar» con un SI aprobado para otra cosa ({aprobado}) debe volver a preguntar: {st} {b[:200]!r}')
     app.RESULTADO.pop('voces', None)
+    # «▶ Hacer todo», «Agregar extras»… con tu SI: queda anotado qué se pagaba al escribirlo (para «↻ Reintentar»)
+    st, b = pedir('POST', '/api/ejecutar?p=voces&paso=extras', json.dumps({'solo': ['testimonios'], 'confirmo': 'SI'}).encode())
+    r = lanzado()
+    ok(st == 200 and r and r[1].get('_aprobado') == gasta_ahora, f'el SI escrito queda anotado con lo que se pagaba: {st} {b[:200]!r} {r}')
     # y si el texto cambia mientras el trabajo ya corre (arrancó sin SI porque no había nada que pagar), el paso se frena en
     # vez de pedirle la voz a ElevenLabs: la app marca esas vueltas con SIN_SI
     vistos = {}
@@ -605,6 +620,127 @@ const caja = {className: '', textContent: ''}, $ = () => caja;
                    {'avisos': ['prompt'], 'mandados': [['trailer_version', 'gpt', False, 'SI']], 'costo': [True]},
                    {'avisos': [], 'mandados': [['trailer_version', 'gpt', True, '']], 'costo': []}],
            f'«▶ Ver con voz» / «💾 Guardar y rehacer»: SI escrito solo si su frase falta pagar, y sin voz no pregunta: {res}')
+
+    # P4) «🌙 Cola de noche»: el SI se guarda solo si lo escribiste, y de noche vale solo para lo que se pagaba al escribirlo
+    def proyecto_cola(nombre, textos):
+        d = os.path.join(app.PROYECTOS, nombre)
+        crear(d, ['original.mp4', 'musica.mp3'])
+        json.dump({'bloques': [{'id': f'L{k + 1}', 'texto': t} for k, t in enumerate(textos)]},
+                  open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+        return d
+    agregar = lambda p, si: pedir('POST', '/api/cola', json.dumps({'accion': 'agregar', 'p': p, 'calidad': 'alta', 'confirmo': si}).encode())
+    item = lambda p: next((x for x in app.flujo.leer_cola(app.PROYECTOS).get('items', []) if x['p'] == p), {})
+    d_sin = proyecto_cola('cola_sin', [''])  # todas las voces hechas (aquí: nada que decir): la página no pregunta SI
+    st, b = agregar('cola_sin', '')
+    ok(st == 200 and item('cola_sin').get('confirmo') == '' and 'aprobado' not in item('cola_sin'),
+       f'sin SI escrito la cola no guarda ningún SI: {st} {b[:200]!r} {item("cola_sin")}')
+    d_mas = proyecto_cola('cola_mas', ['Hola, hoy quitamos la cuenta de Google'])
+    gasta_mas = app.gastos_sin_si(d_mas, 'todo', ['voz', 'musica'], {})
+    st, b = agregar('cola_mas', 'SI')
+    ok(st == 200 and gasta_mas and item('cola_mas').get('confirmo') == 'SI' and item('cola_mas').get('aprobado') == gasta_mas,
+       f'con SI la cola guarda lo que se pagaba al escribirlo: {st} {b[:200]!r} {item("cola_mas")} {gasta_mas}')
+    proyecto_cola('cola_igual', ['Otro bloque que aprobaste pagar'])
+    agregar('cola_igual', 'SI')
+    d_viejo = proyecto_cola('cola_viejo', ['Uno puesto antes del arreglo, con un SI que nadie escribió'])
+    app.flujo.cambiar_cola(app.PROYECTOS, lambda c: c['items'].insert(0, {'id': 'viejo1', 'p': 'cola_viejo', 'estado': 'espera',
+                                                                         'calidad': 'alta', 'agregado': time.time(), 'confirmo': 'SI'}))
+    # después reescribes bloques en «📝 Ver y editar guion» y solo guardas
+    json.dump({'bloques': [{'id': 'L1', 'texto': 'Ahora este bloque sí tiene voz que pagar'}]}, open(os.path.join(d_sin, 'guion.json'), 'w', encoding='utf-8'))
+    json.dump({'bloques': [{'id': 'L1', 'texto': 'Hola, hoy quitamos la cuenta de Google'}, {'id': 'L2', 'texto': 'Y otro bloque nuevo'}]},
+              open(os.path.join(d_mas, 'guion.json'), 'w', encoding='utf-8'))
+    LANZADOS.clear()
+    app.flujo.cambiar_cola(app.PROYECTOS, lambda c: c.update(andando=True))
+    sigue = app.flujo.siguiente(app.PROYECTOS, PUERTO, lambda: False)  # de noche: arranca el primero que pueda
+    r = lanzado()
+    ok(sigue == 'cola_igual' and r and r[1].get('confirmo') == 'SI' and not LANZADOS,
+       f'de noche solo arranca el que no cambió desde tu SI: {sigue} {r} {LANZADOS}')
+    for p, aviso in (('cola_viejo', 'SI'), ('cola_sin', 'SI'), ('cola_mas', 'Cambió lo que se paga')):
+        ok(item(p).get('estado') == 'fallo' and aviso in item(p).get('msg', ''),
+           f'«{p}» no debe gastar sin tu SI (queda como fallado, con el motivo): {item(p)}')
+    app.flujo.cambiar_cola(app.PROYECTOS, lambda c: c.update(andando=False, items=[]))
+
+    # las páginas mandan confirmo 'SI' solo si de verdad se preguntó y lo escribiste (antes iba fijo: con nada que pagar al
+    # pulsar, lo que cambiaras después se pagaba sin preguntar)
+    nombres = ('pedirSi', 'confirmarVoz', 'confirmarMusica', 'confirmarGuionIA', 'confirmarVocesExtras', 'ejecutar', 'probarBloques',
+               'seguirTodo', 'actualizarProyecto', 'colaAgregar')
+    ok(all(funcion('index.html', n) for n in nombres), f'faltan funciones en index.html: {[n for n in nombres if not funcion("index.html", n)]}')
+    if shutil.which('node') and all(funcion('index.html', n) for n in nombres):
+        res = nodo('si_escrito', r"""
+const P = 'p', q = encodeURIComponent;
+let SI_ESCRITO = false, VOZ = null, EXTRAS = null, RESP = 'SI', preguntas = 0, mandados = [];
+async function api(url, op) {
+  if (url.startsWith('/api/costo_voz')) return VOZ;
+  if (url.startsWith('/api/costo_extras')) { mandados.push({costo: decodeURIComponent(url.split('solo=')[1] || '')}); return EXTRAS; }
+  if (url.startsWith('/api/estado')) return {archivos: {'guion.json': {}, 'original.mp4': {}, 'musica.mp3': {}, '8_testimonios.mp4': {}, 'trailer.mp4': {}}};
+  if (url.startsWith('/api/ajustes')) return {ajustes: {}};
+  if (url.startsWith('/api/capas_por_fuera')) return {solas: [], a_mano: []};
+  if (url.startsWith('/api/actualizar')) return {extras: ['testimonios', 'trailer']};
+  if (url.startsWith('/api/ejecutar') || url.startsWith('/api/cola')) mandados.push({url: url.split('?')[0] + (url.match(/paso=\w+/) || [''])[0], ...JSON.parse(op.body)});
+  return {items: []};
+}
+function prompt() { preguntas++; return RESP; }
+function confirm() { return true; } function alert() {} function soltarVideo() {} function refrescar() {} function pintarCola() {}
+const caja = {value: 'alta', checked: false}, $ = () => caja;
+""" + '\n'.join(funcion('index.html', n) for n in nombres) + r"""
+(async () => {
+  const res = {};
+  const botones = {todo: () => ejecutar('todo'), voz: () => ejecutar('voz'), prueba: () => probarBloques(), seguirTodo, actualizarProyecto, colaAgregar};
+  for (const [nombre, f] of Object.entries(botones)) {
+    for (const [caso, voz, extras, resp] of [['gratis', {bloques: [], caracteres: 0}, {gasta: [], letras: 0}, 'SI'],
+                                             ['con SI', {bloques: ['L1'], caracteres: 71}, {gasta: [], letras: 0}, 'SI'],
+                                             ['cancela', {bloques: ['L1'], caracteres: 71}, {gasta: [], letras: 0}, null],
+                                             ['extras con SI', {bloques: [], caracteres: 0}, {gasta: ['la narración de 1 testimonio (unos 47 créditos)'], letras: 47}, 'SI']]) {
+      VOZ = voz; EXTRAS = extras; RESP = resp; preguntas = 0; mandados = []; SI_ESCRITO = false;
+      if (nombre === 'prueba') caja.value = 'L1';
+      await f();
+      caja.value = 'alta';
+      res[nombre + ' ' + caso] = {preguntas, confirmo: mandados.filter(m => m.url).map(m => m.confirmo || ''), costo: mandados.filter(m => m.costo !== undefined).map(m => m.costo)};
+    }
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        for nombre in ('todo', 'voz', 'prueba', 'seguirTodo', 'actualizarProyecto', 'colaAgregar') if res else ():
+            gratis, con_si, cancela, extras = (res[f'{nombre} {c}'] for c in ('gratis', 'con SI', 'cancela', 'extras con SI'))
+            ok(gratis['preguntas'] == 0 and gratis['confirmo'] == [''], f'{nombre}: sin nada que pagar no pregunta y no manda un SI fijo: {gratis}')
+            ok(con_si['preguntas'] == 1 and con_si['confirmo'] == ['SI'], f'{nombre}: con voz que pagar manda el SI que escribiste: {con_si}')
+            ok(cancela['preguntas'] == 1 and cancela['confirmo'] == [], f'{nombre}: sin SI no manda nada: {cancela}')
+        if res:
+            x = res['actualizarProyecto extras con SI']
+            ok(x['preguntas'] == 1 and x['confirmo'] == ['SI'] and x['costo'] == ['testimonios,trailer'],
+               f'«🔁 Rehacer video» pregunta también por la voz del tráiler y los testimonios que vuelven: {x}')
+    # el editor por pistas y el editor de guion: lo mismo
+    ok(funcion('pistas.html', 'armar') and funcion('pistas.html', 'pedirSiGasto'), 'falta armar() en pistas.html')
+    if shutil.which('node') and funcion('pistas.html', 'armar'):
+        res = nodo('pistas_si', r"""
+const P = 'p', q = encodeURIComponent, L = {extras: ['testimonios'], etiquetas: [], senales: []};
+let PENDIENTE_REHACER = true, VOZ = null, RESP = 'SI', preguntas = 0, mandados = [];
+async function guardar() { return {rehacer: true}; }
+async function api(url, op) {
+  if (url.startsWith('/api/costo_voz')) return VOZ;
+  if (url.startsWith('/api/costo_extras')) return {gasta: [], letras: 0};
+  if (url.startsWith('/api/estado')) return {archivos: {'musica.mp3': {}}};
+  if (url.startsWith('/api/ejecutar')) mandados.push(JSON.parse(op.body));
+  return {};
+}
+function prompt() { preguntas++; return RESP; } function confirm() { return true; } function alert() {} function pintar() {}
+const caja = {textContent: '', className: ''}, $ = () => caja;
+""" + funcion('pistas.html', 'pedirSiGasto') + '\n' + funcion('pistas.html', 'armar') + r"""
+(async () => {
+  const res = [];
+  for (const [voz, resp] of [[{bloques: [], caracteres: 0}, 'SI'], [{bloques: ['L1'], caracteres: 71}, 'SI']]) {
+    VOZ = voz; RESP = resp; preguntas = 0; mandados = []; PENDIENTE_REHACER = true;
+    await armar();
+    res.push({preguntas, confirmo: mandados.map(m => m.confirmo)});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'preguntas': 0, 'confirmo': ['']}, {'preguntas': 1, 'confirmo': ['SI']}],
+           f'«Armar» del editor por pistas (rehacer) manda SI solo si lo escribiste: {res}')
+    seguir_g = funcion('guion.html', 'seguir')
+    ok("confirmo: gasta.length ? 'SI' : ''" in seguir_g and "confirmo: 'SI'" not in seguir_g,
+       'el editor de guion («Seguir») manda SI solo si preguntó y lo escribiste')
 
     # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
     d = os.path.join(app.PROYECTOS, 'cruce')

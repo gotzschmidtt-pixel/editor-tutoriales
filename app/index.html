@@ -1127,10 +1127,13 @@ function pintarPasos(pasos, t, fallo) {
 }
 // Segunda confirmación antes de gastar ElevenLabs (pedido de fabian, 29/10/2026: un «▶ Hacer todo» generó la voz entera sin
 // que él lo ordenara). Un clic en «Aceptar» no alcanza: hay que escribir SI. El servidor tampoco arranca sin ese SI.
+// SI_ESCRITO: si se preguntó y lo escribiste. Los botones mandan confirmo 'SI' solo así: un SI fijo, sin haber preguntado,
+// dejaba que el servidor pagara lo que cambiaras después (la «🌙 Cola de noche», un testimonio cambiado mientras trabaja…)
+let SI_ESCRITO = false;
 function pedirSi(texto) {
   const r = prompt('⚠ ' + texto + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
   if (r === null) return false;
-  if (/^\s*s[ií]\s*$/i.test(r)) return true;
+  if (/^\s*s[ií]\s*$/i.test(r)) return SI_ESCRITO = true;
   alert('No escribiste SI: no hice nada y no se gastó nada.');
   return false;
 }
@@ -1218,12 +1221,13 @@ async function volverAGuardado(nombre) {
 }
 async function ejecutar(paso) {
   if (paso === 'todo' && !(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;  // el SI que cuenta es el de la voz o la música (el de la IA del guion no paga ElevenLabs)
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
   if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
-  if (paso === 'todo' || paso === 'voz') op.confirmo = 'SI';  // ya lo escribiste en confirmarVoz / confirmarMusica
+  if ((paso === 'todo' || paso === 'voz') && SI_ESCRITO) op.confirmo = 'SI';  // solo si lo escribiste en confirmarVoz / confirmarMusica
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
@@ -1252,9 +1256,10 @@ let esperaPrueba = false;
 async function probarBloques() {
   const desde = $('#bloqueDesde').value.trim(), hasta = $('#bloqueHasta').value.trim() || desde;
   if (!desde) return alert('Escribe el primer bloque a probar (por ejemplo L23) y, si son varios, el último (L27).');
+  SI_ESCRITO = false;
   if (!(await confirmarVoz(desde, hasta))) return;
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value, confirmo: 'SI'})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})}); }
   catch (e) { return alert(e.message); }
   esperaPrueba = true; refrescar();
 }
@@ -3216,9 +3221,11 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
-  if (!(await confirmarGuionIA()) || !(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar
+  if (!(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: 'SI'})}); } catch (e) { alert(e.message); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})}); } catch (e) { alert(e.message); }
   refrescar();
 }
 
@@ -3240,13 +3247,14 @@ async function actualizarProyecto() {  // «🔁 Rehacer video»: reutiliza tran
     + lista('Se vuelve a poner solo:', capas.solas)
     + lista('⚠ NO se vuelve a poner solo (queda solo en la copia):', capas.a_mano)
     + (capas.a_mano.length ? '\n\nRecomendación: NO lo rehagas si no hace falta. Para ver lo último, usa «↻ Actualizar».' : ''))) return;
+  SI_ESCRITO = false;
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
-  let a = {}; try { a = (await api(`/api/estado?p=${q(P)}`)).archivos; } catch (e) {}  // los testimonios y modelos que vuelven
-  if ((await confirmarVocesExtras([a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos'].filter(Boolean))) === null) return;
+  let a = {}; try { a = (await api(`/api/estado?p=${q(P)}`)).archivos; } catch (e) {}  // los testimonios, modelos y tráiler que vuelven
+  if ((await confirmarVocesExtras([a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos', a['trailer.mp4'] && 'trailer'].filter(Boolean))) === null) return;
   soltarVideo();
   let r;
   try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true, confirmo: 'SI'})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true, confirmo: SI_ESCRITO ? 'SI' : ''})}); }
   catch (e) { alert(e.message); }
   refrescar();
 }
@@ -3343,8 +3351,11 @@ async function abrirCola() {
 }
 async function colaAgregar() {
   if (!P) return alert('Abre primero un proyecto.');
-  if (!(await confirmarGuionIA()) || !(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
-  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: 'SI'})})); }
+  if (!(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
+  // el SI solo si lo escribiste: la cola lo guarda con lo que se pagaba ahora, y de noche no paga nada nuevo sin él
+  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})})); }
   catch (e) { alert(e.message); }
 }
 async function colaAccion(accion, id) {

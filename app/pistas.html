@@ -559,7 +559,7 @@ async function armar() {
   const si = await pedirSiGasto(extras, rehacer);
   if (si === null) { PENDIENTE_REHACER = rehacer; return; }
   try {
-    if (rehacer) await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({luego_extras: extras, sin_ia: true, confirmo: 'SI'})});
+    if (rehacer) await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({luego_extras: extras, sin_ia: true, confirmo: si})});  // 'SI' solo si lo escribiste
     else if (extras.length) await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({solo: extras, sin_ia: true, confirmo: si})});
     else { $('#msg').textContent = '✓ Guardado (no hay extras que poner)'; return; }
   } catch (e) { $('#msg').textContent = '✗ ' + e.message; $('#msg').className = 'msg err'; return; }

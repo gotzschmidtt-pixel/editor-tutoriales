@@ -2165,6 +2165,11 @@ def con_si(datos):
     return str(datos.get('confirmo') or '').strip().upper() in ('SI', 'SÍ')
 
 
+def aprobado_cubre(ahora, aprobado):
+    """Si lo que se pagaría ahora ya estaba en lo que aprobaste al escribir SI (nada nuevo, ni otro texto, ni más caro)."""
+    return isinstance(aprobado, list) and set(ahora) <= {str(x) for x in aprobado}
+
+
 def gasto_sin_confirmar(d, paso, pasos, datos):
     """Si el trabajo gastaría créditos de ElevenLabs (la voz del video o una música nueva) y no viene con «SI» escrito,
     el motivo para no arrancarlo; None si puede arrancar. Pedido de fabian (29/10/2026): un «▶ Hacer todo» generó la voz
@@ -2995,16 +3000,20 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == '/api/cola':  # «🌙 Cola de noche»: agregar, quitar, empezar, parar, limpiar lo terminado
                 nuevo = json.loads(self.rfile.read(largo) or b'{}')
                 acc = nuevo.get('accion')
+                # con tu SI, lo que se pagaba al ponerlo en la cola (la voz y la música de «▶ Hacer todo»): de noche no arranca
+                # si hay algo más (ver /api/ejecutar). Sin SI escrito no se guarda ninguno: lo que haya que pagar lo frena
+                aprobado = gastos_sin_si(carpeta(nuevo['p']), 'todo', ['voz', 'musica'], {}) if acc == 'agregar' and con_si(nuevo) else None
 
                 def cambio(c):
                     if acc == 'agregar':
                         carpeta(nuevo['p'])  # que exista
                         if any(x['p'] == nuevo['p'] and x['estado'] in ('espera', 'corriendo') for x in c['items']):
                             raise ValueError(f"«{nuevo['p']}» ya está en la cola")
-                        # el «SI» que escribiste al ponerlo en la cola: de noche arranca sin volver a preguntar
+                        # el «SI» que escribiste al ponerlo en la cola: de noche arranca sin volver a preguntar, solo para eso
                         c['items'].append({'id': uuid.uuid4().hex[:8], 'p': nuevo['p'], 'estado': 'espera',
                                            'calidad': nuevo.get('calidad') or 'alta', 'agregado': time.time(),
-                                           'confirmo': 'SI' if str(nuevo.get('confirmo') or '').strip().upper() in ('SI', 'SÍ') else ''})
+                                           'confirmo': 'SI' if aprobado is not None else '',
+                                           **({'aprobado': aprobado} if aprobado is not None else {})})
                     elif acc == 'quitar':
                         c['items'] = [x for x in c['items'] if x['id'] != nuevo.get('id') or x['estado'] == 'corriendo']
                     elif acc == 'limpiar':
@@ -3299,6 +3308,14 @@ class Manejador(BaseHTTPRequestHandler):
                 aprobada = datos.get('revisado') and any(x in pasos for x in ('etiquetas', 'senales'))
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
+                if con_si(datos):
+                    # tu SI vale para lo que se pagaba cuando lo escribiste: queda anotado para «↻ Reintentar», y la «🌙 Cola de
+                    # noche» lo trae (aprobado) y no arranca si desde entonces hay algo más que pagar (cambiaste el guion)
+                    ahora = gastos_sin_si(carpeta(q['p']), q['paso'], pasos, {**datos, 'confirmo': ''})
+                    if 'aprobado' in datos and not aprobado_cubre(ahora, datos.pop('aprobado')):
+                        return self.error('Cambió lo que se paga desde que escribiste SI: ahora ' + ' y '.join(ahora)
+                                          + '. No lo arranqué: vuelve a ponerlo y escribe SI otra vez.')
+                    datos['_aprobado'] = ahora
                 falta_si = gasto_sin_confirmar(carpeta(q['p']), q['paso'], pasos, datos)
                 if falta_si:
                     return self.error(falta_si)
@@ -3467,10 +3484,15 @@ class Manejador(BaseHTTPRequestHandler):
                 if not rep or not rep.get('pasos'):
                     return self.error('Este fallo no se reintenta solo: hay que corregir antes lo que dice el diagnóstico.')
                 opciones = {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}
+                ahora = gastos_sin_si(carpeta(q['p']), rep['pasos'][0], rep['pasos'], {**opciones, 'confirmo': ''})
                 if con_si(json.loads(self.rfile.read(largo) or b'{}') if largo else {}):
-                    opciones['confirmo'] = 'SI'
+                    opciones.update(confirmo='SI', _aprobado=ahora)
+                elif con_si(opciones) and not aprobado_cubre(ahora, opciones.get('_aprobado')):
+                    # el SI de la vuelta que falló vale solo para lo que se pagaba entonces: si ahora hay algo nuevo (cambiaste
+                    # el texto de un testimonio después de la falla), se vuelve a preguntar
+                    opciones['confirmo'] = ''
                 # lo que se paga ahora (cambiaste el texto de un testimonio después de la falla…): sin tu SI no se reintenta
-                gasta = gastos_sin_si(carpeta(q['p']), rep['pasos'][0], rep['pasos'], opciones)
+                gasta = [] if con_si(opciones) else ahora
                 if gasta:
                     return self.responder({'error': 'Reintentar gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo reintenté porque '
                                            'falta escribir SI: vuelve a pulsar «↻ Reintentar» y escríbelo.', 'gasta': gasta}, codigo=400)

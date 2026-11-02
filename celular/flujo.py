@@ -107,8 +107,10 @@ def siguiente(proyectos, puerto, ocupado):
         guardar_cola(proyectos, c)
     try:
         q = urllib.parse.urlencode({'p': item['p'], 'paso': 'todo'})
-        pedido = urllib.request.Request(f'http://127.0.0.1:{puerto}/api/ejecutar?{q}', method='POST',
-                                        data=json.dumps({'calidad': item.get('calidad') or 'alta', 'confirmo': item.get('confirmo') or ''}).encode())
+        datos = {'calidad': item.get('calidad') or 'alta', 'confirmo': item.get('confirmo') or ''}
+        if datos['confirmo']:  # lo que se pagaba cuando escribiste SI: si ahora hay más, la app no lo arranca (uno viejo, sin
+            datos['aprobado'] = item.get('aprobado') or []  # anotar, solo arranca si no hay nada que pagar)
+        pedido = urllib.request.Request(f'http://127.0.0.1:{puerto}/api/ejecutar?{q}', method='POST', data=json.dumps(datos).encode())
         urllib.request.urlopen(pedido, timeout=30).close()
     except Exception as e:  # p. ej. «primero sube tu video»: se anota y se sigue con el próximo
         msg = e.read().decode(errors='replace') if hasattr(e, 'read') else str(e)

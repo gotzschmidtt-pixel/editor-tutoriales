@@ -291,7 +291,8 @@ async function seguir() {
     if (r === null) return;
     if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
   }
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({confirmo: 'SI'})}); }
+  // el SI solo si lo escribiste: sin gasto no se preguntó, y si cambias un texto mientras trabaja no se paga sin preguntarte
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({confirmo: gasta.length ? 'SI' : ''})}); }
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; return; }
   $('#msg').className = 'msg ok'; $('#msg').textContent = '✓ Armando el video: míralo avanzar en la pestaña de la app.';
 }
