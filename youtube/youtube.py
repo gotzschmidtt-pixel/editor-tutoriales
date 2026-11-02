@@ -25,6 +25,27 @@ class ErrorYT(Exception):
     pass
 
 
+def limpiar_yt(texto):
+    """YouTube rechaza los corchetes angulares en títulos y descripciones («No se permiten los corchetes angulares», fabian,
+    02/11/2026): «>» pasa a «→», «<» a «←», y las comillas « » a comillas rectas."""
+    if isinstance(texto, list):
+        return [limpiar_yt(x) for x in texto]
+    if not isinstance(texto, str):
+        return texto
+    return texto.replace('>', '→').replace('<', '←').replace('«', '"').replace('»', '"')
+
+
+def con_capitulos(desc, capitulos_texto):
+    """Regla de fabian: la descripción SIEMPRE lleva los capítulos. Si ya los tiene (una línea «0:00 …»), no se repiten;
+    si no, van después del primer párrafo de texto (debajo del bloque de WhatsApp)."""
+    desc, cap = (desc or '').strip(), (capitulos_texto or '').strip()
+    if not cap or re.search(r'(?m)^\s*0:00\b', desc):
+        return desc
+    partes = desc.split('\n\n')
+    i = next((k for k, p in enumerate(partes) if 'wa.me/' not in p and 'whatsapp.com' not in p and p.strip()), len(partes) - 1)
+    return '\n\n'.join(partes[:i + 1] + ['⏱️ CAPÍTULOS\n' + cap] + partes[i + 1:]).strip()
+
+
 def con_contacto(desc, idioma='es'):
     """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, LO
     PRIMERO de todo (regla de fabian: va en la primera línea, antes de cualquier otro texto). Si ya estaba en otro lugar,

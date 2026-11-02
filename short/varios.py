@@ -27,6 +27,19 @@ def titulo(tomas, usados=()):
     return ' '.join(palabras[:6]).capitalize()
 
 
+def revisar_short(d, salida, ass):
+    """«✅ Revisor automático» (revision/revisor_auto.py) sobre el Short recién armado: subtítulos, planos largos al inicio,
+    que lo que nombra la voz se lea y datos privados (los difumina solo en el dato). {'ok': …, 'informe': …}."""
+    sys.path.insert(0, os.path.join(os.path.dirname(AQUI), 'revision'))
+    try:
+        import revisor_auto
+        inf = revisor_auto.revisar(os.path.join(d, salida), os.path.join(d, ass), True, arreglar=True)
+        return {'ok': inf['ok'], 'informe': os.path.splitext(salida)[0] + '.revision.md'}
+    except Exception as e:  # el revisor nunca frena el armado, pero sin revisión no queda como listo
+        print(f'· no pude revisar {salida}: {e}', flush=True)
+        return {'ok': False, 'informe': None, 'error': str(e)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', default='.')
@@ -38,6 +51,10 @@ def main():
     d = os.path.abspath(a.proyecto)
     n = max(2, min(5, a.cantidad))
     usados, hechos = set(), []
+    try:
+        plan_bloques = json.load(open(os.path.join(d, 'shorts_plan.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        plan_bloques = None
     elegir_original = short.elegir
 
     def elegir_sin_repetir(dd, g, objetivo, dur_video):
@@ -51,6 +68,8 @@ def main():
         salida = f'SHORT_{k}.mp4'
         print(f'=== Short {k} de {n} ===', flush=True)
         sys.argv = ['short.py', '--proyecto', d, '--duracion', str(a.duracion), '--salida', salida]
+        if plan_bloques and len(plan_bloques) >= k:  # shorts_plan.json: los bloques de cada Short, elegidos a mano
+            sys.argv += ['--bloques', ','.join(plan_bloques[k - 1])]
         try:
             short.main()
         except SystemExit as e:
@@ -64,12 +83,15 @@ def main():
             break
         usados.update(ids)
         shutil.copyfile(os.path.join(d, 'short.json'), os.path.join(d, f'short_{k}.json'))
+        shutil.copyfile(os.path.join(d, 'short_subs.ass'), os.path.join(d, f'short_{k}_subs.ass'))
+        revision = revisar_short(d, salida, f'short_{k}_subs.ass')
         hechos.append({'archivo': salida, 'titulo': titulo(plan['tomas'], [h['titulo'] for h in hechos]), 'duracion': plan['duracion'], 'tomas': ids,
                        'publicar': (inicio + datetime.timedelta(days=(k - 1) * a.cada)).isoformat(),
-                       'descripcion': 'Mira el tutorial completo en mi canal (link en el comentario fijado).'})
+                       'descripcion': 'Mira el tutorial completo en mi canal (link en el comentario fijado).', 'revision': revision})
     json.dump({'shorts': hechos}, open(os.path.join(d, 'shorts.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     for h in hechos:
-        print(f"· {h['archivo']}: «{h['titulo']}», {h['duracion']:.0f} s, publicar el {h['publicar']} ({', '.join(h['tomas'])})", flush=True)
+        print(f"· {h['archivo']}: «{h['titulo']}», {h['duracion']:.0f} s, publicar el {h['publicar']} ({', '.join(h['tomas'])})"
+              + ('' if h['revision']['ok'] else ' · ❌ NO está listo: mira su revisión'), flush=True)
     print(f'Listo: {len(hechos)} Shorts distintos.', flush=True)
 
 

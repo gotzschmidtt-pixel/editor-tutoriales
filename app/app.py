@@ -1713,13 +1713,11 @@ def yt_publicar(p, op):
     est = YT[p] = {'estado': 'subiendo', 'avance': 0, 'avisos': []}
     try:
         c = yt_config()
-        meta = json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8'))
+        meta = {k: youtube.limpiar_yt(v) for k, v in json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8')).items()}
         titulo = (meta.get('titulo') or (meta.get('titulos') or [{}])[meta.get('elegido') or 0].get('titulo') or '').strip()
         if not titulo:
             raise youtube.ErrorYT('Falta el título: pulsa «✨ Proponer» o escribe uno.')
-        desc = yt_contacto(d, meta.get('descripcion', '').strip())
-        if meta.get('capitulos_texto'):
-            desc += '\n\n' + meta['capitulos_texto'].strip()
+        desc = youtube.con_capitulos(yt_contacto(d, meta.get('descripcion', '').strip()), meta.get('capitulos_texto'))  # siempre con capítulos, sin repetirlos
         if meta.get('advertencia'):
             desc += '\n\n⚠️ ' + meta['advertencia'].strip()
         vid = youtube.subir_video(c, os.path.join(d, 'FINAL.mp4'),
@@ -2169,6 +2167,10 @@ class Manejador(BaseHTTPRequestHandler):
             r['descripcion'] = yt_contacto(d, r.get('descripcion', ''))
             r['descripciones'] = [yt_contacto(d, x) for x in r.get('descripciones') or [] if isinstance(x, str)]
             r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
+            r['descripcion'] = youtube.con_capitulos(r.get('descripcion', ''), r['capitulos_texto'])  # regla de fabian: siempre con capítulos
+            for k in ('titulo', 'descripcion', 'descripciones', 'etiquetas', 'comentario'):  # YouTube rechaza < y >
+                r[k] = youtube.limpiar_yt(r.get(k))
+            r['titulos'] = [dict(x, titulo=youtube.limpiar_yt(x.get('titulo', ''))) if isinstance(x, dict) else x for x in r.get('titulos') or []]
             json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return self.responder(r)
         if ruta == '/api/youtube/guardar':  # lo que corregiste a mano: título, descripción, capítulos, etiquetas, comentario
@@ -2176,7 +2178,7 @@ class Manejador(BaseHTTPRequestHandler):
             os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
             f = os.path.join(d, 'youtube', 'metadatos.json')
             viejo = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else {}
-            viejo.update({k: nuevo[k] for k in ('titulo', 'descripcion', 'capitulos_texto', 'etiquetas', 'comentario', 'advertencia') if k in nuevo})
+            viejo.update({k: youtube.limpiar_yt(nuevo[k]) for k in ('titulo', 'descripcion', 'capitulos_texto', 'etiquetas', 'comentario', 'advertencia') if k in nuevo})
             json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return self.responder({'ok': True})
         if ruta == '/api/youtube/miniatura':

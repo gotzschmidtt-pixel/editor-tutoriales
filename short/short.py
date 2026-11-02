@@ -347,26 +347,151 @@ def palabras_voz(d, bid, carpeta='voz'):
     return out
 
 
+def seguir_ref(cap, s0, largo, conf, d):
+    """Encuadre guiado por una referencia (short_encuadres.json del proyecto): la ventana del programa se busca en cada
+    momento con SIFT (aunque la cámara se mueva) y el Short se acerca a la «zona» de la que habla la voz (el registro con
+    «OKAY, Finished» y el botón Erase FRP By Code), con el zoom justo para que se lea en el celular. fabian, 02/11/2026: al
+    pasar a vertical la ventana quedaba cortada y no se veía el mensaje que decía la voz. None si no la encuentra."""
+    import cv2, numpy as np, statistics
+    ref = cv2.imread(os.path.join(d, conf['referencia']), cv2.IMREAD_GRAYSCALE)
+    if ref is None:
+        return None
+    sift = cv2.SIFT_create()
+    kr, dr = sift.detectAndCompute(ref, None)
+    zx, zy, zw, zh = conf['zona']
+    esquinas = np.float32([[zx, zy], [zx + zw, zy], [zx + zw, zy + zh], [zx, zy + zh]]).reshape(-1, 1, 2)
+    bf = cv2.BFMatcher()
+    claves, anchos = [], []
+    t = 0.0
+    while t <= largo:
+        cap.set(cv2.CAP_PROP_POS_MSEC, (s0 + t) * 1000)
+        ok, fr = cap.read()
+        if ok:
+            kf, df = sift.detectAndCompute(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY), None)
+            if df is not None and len(kf) > 10:
+                buenos = [m for m, n in (p for p in bf.knnMatch(dr, df, k=2) if len(p) == 2) if m.distance < 0.7 * n.distance]
+                if len(buenos) >= 20:
+                    Hm, _ = cv2.findHomography(np.float32([kr[m.queryIdx].pt for m in buenos]).reshape(-1, 1, 2),
+                                               np.float32([kf[m.trainIdx].pt for m in buenos]).reshape(-1, 1, 2), cv2.RANSAC, 5.0)
+                    if Hm is not None:
+                        q = cv2.perspectiveTransform(esquinas, Hm).reshape(-1, 2)
+                        claves.append((round(t, 2), float(q[:, 0].mean()), float(q[:, 1].mean())))
+                        anchos.append(float(q[:, 0].max() - q[:, 0].min()))
+        t += PASO_SEG
+    if len(claves) < max(2, int(largo / PASO_SEG) // 3):
+        return None
+    cw = min(statistics.median(anchos) * 1.15, H * 9 / 16)
+    zoom = round(H / (cw * 16 / 9), 3)
+    # sin saltos: mediana móvil de 3 posiciones
+    suave = [(claves[i][0], statistics.median(c[1] for c in claves[max(0, i - 1):i + 2]),
+              statistics.median(c[2] for c in claves[max(0, i - 1):i + 2])) for i in range(len(claves))]
+    return suave, zoom, 'ventana'
+
+
+def rotar_gancho(d, c, largo, dur_video, tomas):
+    """El gancho del Short en trozos de 3-5 s de momentos distintos del grabado, uno por frase de la voz (montaje/rotar.py:
+    antes → herramienta → cable → proceso → después). Sin datos sensibles (los tramos de difuminar_datos.json y lo que el
+    mapa leyó con correo, serial, IMEI o precio) y sin repetir lo que muestran las otras tomas. None si no alcanza."""
+    if largo < 8:
+        return None
+    import rotar
+    fr = rotar.frases(os.path.join(d, c.get('carpeta', 'voz')), c['id'], 0.0)
+    por_tema = rotar.candidatos(os.path.join(d, 'mapa_video.json'), dur_video)
+    if not fr or not por_tema:
+        return None
+    try:
+        privados = json.load(open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8')).get('tramos', [])
+    except (OSError, ValueError):
+        privados = []
+    otros = [(x['src_inicio'] - 3, x['src_inicio'] + x['voz'] + 3) for x in tomas if x is not c]
+    cortes = [0.0]
+    for s, _ in fr:
+        if s - cortes[-1] >= rotar.TROZO[0] and largo - s >= rotar.TROZO[0]:
+            cortes.append(s)
+    cortes.append(largo)
+    piezas, usados, previo = [], [], None
+    for a, z in zip(cortes, cortes[1:]):
+        frase = next((f for s, f in reversed(fr) if s <= a + 0.5), fr[0][1])
+        ult = {tt: max((m.end() for m in re.finditer(v, frase, re.I)), default=-1) for tt, (v, _) in rotar.TEMAS.items()}
+        tema = max(ult, key=ult.get) if max(ult.values()) >= 0 else rotar.tema_de(frase, previo)  # «empieza bloqueado y termina libre» → después
+        for dur in rotar.trozos(z - a):
+            elegido = None
+            for tt in [tema] + [x for x in rotar.ORDEN if x != tema]:
+                for s in sorted(por_tema.get(tt, []), reverse=(tt == 'despues')):
+                    if (all(abs(s - u) > rotar.SEPARACION for u in usados) and s + dur < dur_video
+                            and not any(p0 - dur <= s <= p1 for p0, p1 in privados + otros)):
+                        elegido = (s, tt)
+                        break
+                if elegido:
+                    break
+            if not elegido:
+                return None
+            usados.append(elegido[0]); previo = elegido[1]
+            piezas.append((elegido[0], dur, elegido[1]))
+    print(f"· {c['id']}: el gancho rota {len(piezas)} trozos: " + ', '.join(f'{t} {s:.0f}s' for s, _, t in piezas), flush=True)
+    return piezas
+
+
+def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida):
+    """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima."""
+    lista = []
+    for k, (s0, dur, _) in enumerate(piezas):
+        claves, zoom, _ = seguir(cap, s0, dur, marcas, memoria)
+        ch = round(H / zoom / 2) * 2
+        cw = round(ch * 9 / 16 / 2) * 2
+        cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
+        vf = (f"crop={cw}:{ch}:x='{expr(cl, 1, 0, W - cw)}':y='{expr(cl, 2, 0, H - ch)}',"
+              f'scale={SW}:{SH},setsar=1,fps=30,format=yuv420p')
+        p = os.path.join(tmp, f'p{i:02d}_{k:02d}.mp4')
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf, '-an',
+                       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
+        lista.append(p)
+    lf = os.path.join(tmp, f'rot{i:02d}.txt')
+    open(lf, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in lista))
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lf, '-i', mp3,
+                   '-filter_complex', f'[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
+                   'aresample=44100,aformat=channel_layouts=stereo[a]',
+                   '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+                   '-c:a', 'aac', '-b:a', '160k', salida], check=True)
+
+
 def ass_tiempo(s):
     s = max(0.0, s)
     return f'{int(s // 3600)}:{int(s % 3600 // 60):02d}:{s % 60:05.2f}'
 
 
 def subtitulos(d, tomas, retraso):
-    lineas = ['[Script Info]', 'ScriptType: v4.00+', f'PlayResX: {SW}', f'PlayResY: {SH}', '', '[V4+ Styles]',
+    lineas = ['[Script Info]', 'ScriptType: v4.00+', 'WrapStyle: 2', f'PlayResX: {SW}', f'PlayResY: {SH}', '', '[V4+ Styles]',
               'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, '
               'StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-              'Style: S,Arial Black,84,&H00FFFFFF,&H0000D2FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,7,2,2,60,60,560,1',
+              'Style: S,Arial Black,126,&H00FFFFFF,&H0000D2FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,9,3,2,50,50,700,1',
               '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text']
-    t0 = 0.0
+    t0, eventos = 0.0, []
     for c in tomas:
         pal = palabras_voz(d, c['id'], c.get('carpeta', 'voz'))
-        for i in range(0, len(pal), 3):  # de a 3 palabras: se leen de un vistazo en el celular
-            grupo = pal[i:i + 3]
-            txt = ' '.join(p[2] for p in grupo).replace('{', '').replace('}', '')
-            lineas.append(f'Dialogue: 0,{ass_tiempo(t0 + retraso + grupo[0][0])},{ass_tiempo(t0 + retraso + grupo[-1][1] + 0.05)},'
-                          f'S,,0,0,0,,{txt.upper()}')
+        grupos, g = [], []
+        for p in pal:  # estilo C (fabian): una línea corta de 2-3 palabras, máx. ~12 letras
+            if g and (len(g) == 3 or len(' '.join(x[2] for x in g + [p])) > 12):
+                grupos.append(g); g = []
+            g.append(p)
+        if g:
+            grupos.append(g)
+        for grupo in grupos:  # la palabra que se dice, en amarillo y un poco más grande
+            pals = [x[2].replace('{', '').replace('}', '').upper() for x in grupo]
+            largo_txt = len(' '.join(pals))
+            ancho = '{\\fscx%d}' % (100 * 12 // largo_txt) if largo_txt > 12 else ''  # una sola línea aunque la palabra sea larga
+            for j, (a0, a1, _) in enumerate(grupo):
+                fin = grupo[j + 1][0] if j + 1 < len(grupo) else a1 + 0.05
+                txt = ancho + ' '.join('{\\c&H0000D2FF&\\fscy112}' + w + '{\\c&H00FFFFFF&\\fscy100}' if k == j else w
+                                       for k, w in enumerate(pals))
+                eventos.append([t0 + retraso + a0, t0 + retraso + fin, txt])
         t0 += c['largo']
+    eventos.sort(key=lambda e: e[0])
+    for k, (a0, a1, txt) in enumerate(eventos):  # nunca dos subtítulos a la vez (fabian, 02/11/2026: salían encimados)
+        if k + 1 < len(eventos):
+            a1 = min(a1, eventos[k + 1][0] - 0.01)
+        if a1 > a0:
+            lineas.append(f'Dialogue: 0,{ass_tiempo(a0)},{ass_tiempo(a1)},S,,0,0,0,,{txt}')
     return '\n'.join(lineas) + '\n'
 
 
@@ -375,6 +500,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--duracion', type=float, default=60)
     ap.add_argument('--salida', default='SHORT.mp4')
+    ap.add_argument('--bloques', help='los bloques del Short, en orden (L01,L20,L21): sin esto los elige la app')
     ap.add_argument('--voz-nueva', action='store_true', help='voz escrita para el Short (short_guion.json), gasta ElevenLabs')
     a = ap.parse_args()
     import cv2
@@ -393,13 +519,20 @@ def main():
     else:
         if reservado:
             print(f'· {reservado:.0f} s son del testimonio y el cierre: elijo tomas para {max(10, a.duracion - reservado):.0f} s', flush=True)
-        tomas = elegir(d, g, max(10.0, a.duracion - reservado), dur_video)
+        tomas = elegir(d, g, max(10.0, a.duracion - reservado), dur_video) if not a.bloques else [
+            {'k': k, 'id': b['id'], 'voz': round(duracion(os.path.join(d, 'voz', f"{b['id']}.mp3")), 2), 'puntos': 0,
+             'por_que': 'elegido para este Short', 'src_inicio': float((b.get('montaje') or {})['src_inicio']), 'texto': b['texto']}
+            for k, b in enumerate(g['bloques']) if b['id'] in a.bloques.split(',')]
     if not tomas:
         raise SystemExit('ERROR: no encontré tomas con voz para el Short (falta generar la voz del video).')
     print(f'Elegí {len(tomas)} tomas para un Short de {a.duracion:.0f} s:', flush=True)
     for c in tomas:
         print(f"· {c['id']} ({c['voz']:.1f} s): {c['por_que']}", flush=True)
     marcas = marcas_autor(d)
+    try:  # encuadres guiados por bloque (la ventana del programa, la zona de la que habla la voz)
+        encuadres = json.load(open(os.path.join(d, 'short_encuadres.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        encuadres = {}
     memoria = deteccion.Memoria(orig)
     tmp = codificar.temporal('short')
     retraso = 0.15
@@ -408,7 +541,16 @@ def main():
     for i, c in enumerate(tomas):
         largo = round(max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0), 2)  # que se alcance a ver la acción
         s0 = min(c['src_inicio'], max(0.0, dur_video - largo - 0.1))
-        claves, zoom, encuadre = seguir(cap, s0, largo, marcas, memoria)
+        piezas = rotar_gancho(d, c, largo, dur_video, tomas) if i == 0 and c['id'] == g['bloques'][0]['id'] else None
+        if piezas:  # regla de fabian: el inicio rota trozos distintos de 3-5 s según lo que dice la voz
+            p = os.path.join(tmp, f'p{i:02d}.mp4')
+            armar_rotado(cap, orig, piezas, marcas, memoria, os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
+                         retraso, largo, tmp, i, p)
+            c.update(largo=largo, src_inicio=round(s0, 2), zoom=1, encuadre='rotado')
+            partes.append(p)
+            continue
+        guiado = seguir_ref(cap, s0, largo, encuadres[c['id']], d) if c['id'] in encuadres else None
+        claves, zoom, encuadre = guiado or seguir(cap, s0, largo, marcas, memoria)
         ch = round(H / zoom / 2) * 2
         cw = round(ch * 9 / 16 / 2) * 2
         cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
