@@ -1448,6 +1448,13 @@ def correr(proyecto, pasos, opciones):
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
         if opciones.get('_limpiar_extras'):
+            # «✨ Agregar extras»: antes de borrar el FINAL, si le hiciste arreglos a mano queda copiado (si el paso siguiente
+            # falla no te quedas sin video). Solo FINAL.mp4, como en «Hacer todo»; el que armó la app y nadie tocó no se copia
+            # (la app lo vuelve a armar), así cada vuelta no suma otra copia de varios GB
+            if existe(d, 'FINAL.mp4') and respaldo.tocado_por_fuera(d):
+                copias = respaldo.respaldar(d, finales=('FINAL.mp4',))
+                if copias:
+                    log.write(f"· copia del video final antes de agregarle los extras: {', '.join(copias)}\n"); log.flush()
             # los extras se vuelven a poner sobre el video base: uno viejo no debe quedar en el final
             for viejo in VIDEOS_EXTRAS + ['FINAL.mp4']:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
@@ -1535,6 +1542,8 @@ def correr(proyecto, pasos, opciones):
             informes.append(informe_paso(d, proyecto, paso, info, ejec, 'ok', log))  # solo si hubo llamadas fallidas o rechazadas
             shutil.rmtree(env['CACHE_IA'], ignore_errors=True)  # el paso terminó: sus respuestas guardadas ya no hacen falta
             hechos.append(info['nombre'])
+            if paso in ('trailer', 'final_sin_trailer') and existe(d, 'FINAL.mp4'):
+                respaldo.anotar_final(d)  # este FINAL lo armó la app: si nadie lo toca, no hace falta copiarlo antes de rehacerlo
             if paso == 'voz':  # armaste la voz: el guion quedó aprobado y sirve de ejemplo para los próximos
                 try:
                     conocimiento.aprender_guion(d)

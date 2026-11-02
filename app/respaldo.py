@@ -15,10 +15,38 @@ def respaldar(d, fecha=None, finales=FINALES):
     for f in finales:
         src = os.path.join(d, f)
         if os.path.isfile(src):
-            dst = os.path.join(d, f'{PREFIJO}{fecha}_{f}')
+            dst, k = os.path.join(d, f'{PREFIJO}{fecha}_{f}'), 1
+            while os.path.exists(dst):  # dos copias en el mismo minuto: la segunda no pisa la primera
+                k += 1
+                dst = os.path.join(d, f'{PREFIJO}{fecha}_{k}_{f}')
             shutil.copy2(src, dst)
             hechas.append(os.path.basename(dst))
     return hechas
+
+
+MARCA = '.final_de_la_app.json'  # tamaño y fecha del último FINAL.mp4 que armó la app (y que nadie tocó después)
+
+
+def anotar_final(d, f='FINAL.mp4'):
+    """Anota el FINAL que la app acaba de armar. Mientras siga igual no hace falta copiarlo antes de rehacerlo: la app lo
+    vuelve a armar sola. Así «✨ Agregar extras» no suma una copia de varios GB en cada vuelta."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        with open(os.path.join(d, MARCA), 'w', encoding='utf-8') as fh:
+            json.dump({'archivo': f, 'tam': st.st_size, 'fecha': st.st_mtime}, fh)
+    except OSError:
+        pass
+
+
+def tocado_por_fuera(d, f='FINAL.mp4'):
+    """True si el FINAL no es el que dejó la app (le hiciste arreglos a mano, o no hay anotación): ese sí se copia."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        with open(os.path.join(d, MARCA), encoding='utf-8') as fh:
+            m = json.load(fh)
+        return not (m.get('archivo') == f and m.get('tam') == st.st_size and float(m.get('fecha')) == st.st_mtime)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return True
 
 
 def capas_por_fuera(d):
