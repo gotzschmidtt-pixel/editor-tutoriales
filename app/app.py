@@ -2812,6 +2812,10 @@ class Manejador(BaseHTTPRequestHandler):
                 if 'trailer' in solo and not existe(d, 'trailer.json') and aj.get('modelo') and aj.get('url'):
                     solo.append('trailer_ia')  # sin plan propio, la IA arma el tráiler con su frase (como en /api/ejecutar)
                 return self.responder(voces_extras(d, solo))
+            if ruta == '/api/costo_paso':  # antes de un paso suelto que puede gastar ElevenLabs («▶ Ver con voz» de una IA del
+                # tráiler…): lo mismo que miraría /api/ejecutar sin tu SI, para que la página pida escribirlo solo si hace falta
+                datos = {k: v for k, v in q.items() if k not in ('p', 'paso', 'confirmo')}
+                return self.responder({'gasta': gastos_sin_si(carpeta(q['p']), q['paso'], [q['paso']], datos)})
             if ruta == '/api/frases':  # «🎞 Frase por frase»: cuándo dice la voz real cada frase de cada bloque
                 return self.responder(frases_guion(carpeta(q['p'])))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden

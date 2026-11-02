@@ -562,6 +562,49 @@ const caja = {className: '', textContent: ''}, $ = () => caja;
             ok(gratis['preguntas'] == 0 and len(gratis['mandados']) == 1 and not gratis['mandados'][0].get('confirmo'),
                f'{nombre}: sin gasto no pregunta nada: {gratis}')
             ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
+    # «▶ Ver con voz» y «💾 Guardar y rehacer» del tráiler de cada IA: su frase (trailer_<ia>.json) tampoco se paga con un
+    # solo Aceptar. El servidor dice si falta pagarla (/api/costo_paso) y la página pide SI solo entonces
+    frase_ia = 'La frase nueva que propuso GPT para su tráiler'
+    json.dump({'voz': frase_ia, 'clips': []}, open(os.path.join(d, 'trailer_gpt.json'), 'w', encoding='utf-8'))
+    costo_v = lambda: json.loads(pedir('GET', '/api/costo_paso?p=travoz&paso=trailer_version&v=gpt')[1])
+    ok(costo_v() == {'gasta': [f'la frase de voz del tráiler (unos {len(frase_ia)} créditos)']}, f'la frase de la IA sin hacer cuesta su largo: {costo_v()}')
+    st, b = pedir('POST', '/api/ejecutar?p=travoz&paso=trailer_version', json.dumps({'v': 'gpt', 'sin_voz': False}).encode())
+    ok(st != 200 and lanzado(0.3) is None, f'«▶ Ver con voz» sin SI no paga la frase de la IA: {st} {b[:200]!r}')
+    open(os.path.join(d, 'trailer_gpt.voz.mp3'), 'wb').write(b'mp3')  # como la deja trailer.py junto a trailer_gpt.mp4
+    open(os.path.join(d, 'trailer_gpt.voz.mp3.txt'), 'w', encoding='utf-8').write(frase_ia)
+    ok(costo_v() == {'gasta': []}, f'la frase de la IA ya hecha no se vuelve a pagar: {costo_v()}')
+    ok(funcion('trailer.html', 'verTrailerIA') and funcion('trailer.html', 'siVozTrailer'), 'falta verTrailerIA() en trailer.html')
+    if shutil.which('node') and funcion('trailer.html', 'verTrailerIA'):
+        res = nodo('trailer_ia', r"""
+const P = 'p', q = encodeURIComponent, TEXTOS = {gpt: {voz: 'frase'}};
+let COSTO = null, RESP = 'SI', avisos = [], mandados = [], costos = [];
+async function api(url, op) {
+  if (url.startsWith('/api/costo_')) { costos.push(url); if (COSTO === 'error') throw new Error('sin conexión'); return COSTO; }
+  if (url.startsWith('/api/ejecutar')) mandados.push({paso: url.split('paso=')[1], ...JSON.parse(op.body)});
+  return {};
+}
+function confirm(t) { avisos.push('confirm'); return true; } function prompt(t) { avisos.push('prompt'); return RESP; }
+function alert() {} async function esperar() {} async function cargar() {}
+const caja = {className: '', textContent: ''}, $ = () => caja;
+""" + funcion('trailer.html', 'siVozTrailer') + '\n' + funcion('trailer.html', 'verTrailerIA') + r"""
+(async () => {
+  const res = [];
+  for (const [costo, resp, sinVoz] of [[{gasta: ['la frase de voz del tráiler (unos 46 créditos)']}, 'SI', false],
+                                       [{gasta: ['la frase de voz del tráiler (unos 46 créditos)']}, null, false],
+                                       [{gasta: []}, null, false], ['error', 'si', false], ['error', null, true]]) {
+    COSTO = costo; RESP = resp; avisos = []; mandados = []; costos = [];
+    await verTrailerIA('gpt', sinVoz);
+    res.push({avisos, mandados: mandados.map(m => [m.paso, m.v, m.sin_voz, m.confirmo]), costo: costos.map(u => u.includes('paso=trailer_version&v=gpt'))});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'avisos': ['prompt'], 'mandados': [['trailer_version', 'gpt', False, 'SI']], 'costo': [True]},
+                   {'avisos': ['prompt'], 'mandados': [], 'costo': [True]},
+                   {'avisos': [], 'mandados': [['trailer_version', 'gpt', False, '']], 'costo': [True]},
+                   {'avisos': ['prompt'], 'mandados': [['trailer_version', 'gpt', False, 'SI']], 'costo': [True]},
+                   {'avisos': [], 'mandados': [['trailer_version', 'gpt', True, '']], 'costo': []}],
+           f'«▶ Ver con voz» / «💾 Guardar y rehacer»: SI escrito solo si su frase falta pagar, y sin voz no pregunta: {res}')
 
     # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
     d = os.path.join(app.PROYECTOS, 'cruce')
