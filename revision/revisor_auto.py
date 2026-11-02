@@ -175,7 +175,7 @@ def logos_esperados(ev):
     return out, carpeta
 
 
-def revisar_logos(video, ev, alto_rel=0.24):
+def revisar_logos(video, ev, alto_rel=0.30):
     """Cada logo que nombra la voz tiene que verse en ese momento (se busca el PNG en el cuadro, en su tamaño de Short)."""
     esperados, carpeta = logos_esperados(ev)
     fallas, c = [], cv2.VideoCapture(video)
@@ -195,9 +195,13 @@ def revisar_logos(video, ev, alto_rel=0.24):
                 ancho = int(alto * png.shape[1] / png.shape[0])
                 if ancho >= fr.shape[1] or alto < 20:
                     continue
-                plantilla = cv2.resize(png[:, :, :3], (ancho, alto))
-                r = cv2.matchTemplate(fr[: int(h * 0.7)], plantilla, cv2.TM_CCOEFF_NORMED)
-                if float(r.max()) > 0.55:
+                chico = cv2.resize(png, (ancho, alto))
+                plantilla = chico[:, :, :3]
+                mascara = (chico[:, :, 3] > 128).astype(np.uint8) * 255 if png.shape[2] == 4 else None
+                mascara = cv2.merge([mascara] * 3) if mascara is not None else None
+                r = cv2.matchTemplate(fr[: int(h * 0.7)], plantilla, cv2.TM_CCORR_NORMED, mask=mascara)
+                r = np.nan_to_num(r, nan=0, posinf=0, neginf=0)
+                if float(r.max()) > 0.93:
                     visto = True
                     break
             if visto:

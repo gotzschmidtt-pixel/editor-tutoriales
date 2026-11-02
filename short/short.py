@@ -478,9 +478,10 @@ def poner_logos(d, tomas, video, retraso):
     salida = video.replace('.mp4', '_logos.mp4')
     r = subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', video, '--guion', g,
                         '--voz', os.path.join(d, carpetas.pop()), '--logos', carpeta_logos, '--salida', salida,
-                        '--alto', '0.24', '--centro-y', '0.3', '--desfase', str(retraso)], cwd=d, capture_output=True, text=True)
+                        '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--desfase', str(retraso)], cwd=d, capture_output=True, text=True)
     print(r.stdout.strip(), flush=True)
     if r.returncode == 0 and os.path.exists(salida):
+        os.replace(video, video.replace('.mp4', '_sin_logos.mp4'))  # para volver a ponerlos sin rearmar el Short
         os.replace(salida, video)
         return True
     return False

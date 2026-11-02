@@ -139,6 +139,7 @@ def main():
     ap.add_argument('--alto', type=float, default=ALTO, help='alto del logo en parte del alto del video (Shorts: 0.26)')
     ap.add_argument('--centro-y', type=float, default=0.5, help='dónde va el centro del logo (Shorts: 0.33, por encima de los subtítulos)')
     ap.add_argument('--desfase', type=float, default=DESFASE, help='cuánto después del inicio del bloque entra la voz')
+    ap.add_argument('--queda-max', type=float, default=99, help='tope de segundos en pantalla (Shorts: 3, que no tape el paso siguiente)')
     ap.add_argument('--capa', help='no codifica: deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
     try:
@@ -162,7 +163,7 @@ def main():
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     uno = [x for fila in filas for x in fila]
     for k, (t, l) in enumerate(uno):
-        queda = float(l.get('queda') or QUEDA)  # «queda» en logos.json: más tiempo para leerlo (la tarjeta de WhatsApp)
+        queda = min(float(l.get('queda') or QUEDA), a.queda_max)  # «queda» en logos.json: más tiempo para leerlo (la tarjeta de WhatsApp)
         sig = uno[k + 1][0] if k + 1 < len(uno) else t + queda
         hasta = min(total - 0.1, t + queda, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
         if hasta - t < MINIMO:
