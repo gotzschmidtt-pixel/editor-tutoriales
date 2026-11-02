@@ -27,6 +27,16 @@ def titulo(tomas, usados=()):
     return ' '.join(palabras[:6]).capitalize()
 
 
+def con_modelo(d, txt):
+    """El título del Short con el nombre del modelo como va en el título del video largo (youtube/metadatos.json, campo
+    «modelo»; p. ej. «Honor Magic 8 Lite», lo que dice la caja). Pedido del 02/11/2026."""
+    try:
+        modelo = (json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8')).get('modelo') or '').strip()
+    except (OSError, ValueError):
+        modelo = ''
+    return f'{modelo}: {txt}' if modelo and modelo.lower() not in txt.lower() else txt
+
+
 def revisar_short(d, salida, ass):
     """«✅ Revisor automático» (revision/revisor_auto.py) sobre el Short recién armado: subtítulos, planos largos al inicio,
     que lo que nombra la voz se lea y datos privados (los difumina solo en el dato). {'ok': …, 'informe': …}."""
@@ -69,7 +79,11 @@ def main():
         print(f'=== Short {k} de {n} ===', flush=True)
         sys.argv = ['short.py', '--proyecto', d, '--duracion', str(a.duracion), '--salida', salida]
         if plan_bloques and len(plan_bloques) >= k:  # shorts_plan.json: los bloques de cada Short, elegidos a mano
-            sys.argv += ['--bloques', ','.join(plan_bloques[k - 1])]
+            pk = plan_bloques[k - 1]
+            if isinstance(pk, dict):  # {"bloques": [...], "gancho": [78, 3.5]}
+                sys.argv += ['--bloques', ','.join(pk['bloques'])] + (['--gancho', ','.join(map(str, pk['gancho']))] if pk.get('gancho') else [])
+            else:
+                sys.argv += ['--bloques', ','.join(pk)]
         try:
             short.main()
         except SystemExit as e:
@@ -85,7 +99,7 @@ def main():
         shutil.copyfile(os.path.join(d, 'short.json'), os.path.join(d, f'short_{k}.json'))
         shutil.copyfile(os.path.join(d, 'short_subs.ass'), os.path.join(d, f'short_{k}_subs.ass'))
         revision = revisar_short(d, salida, f'short_{k}_subs.ass')
-        hechos.append({'archivo': salida, 'titulo': titulo(plan['tomas'], [h['titulo'] for h in hechos]), 'duracion': plan['duracion'], 'tomas': ids,
+        hechos.append({'archivo': salida, 'titulo': con_modelo(d, titulo(plan['tomas'], [h['titulo'] for h in hechos])), 'duracion': plan['duracion'], 'tomas': ids,
                        'publicar': (inicio + datetime.timedelta(days=(k - 1) * a.cada)).isoformat(),
                        'descripcion': 'Mira el tutorial completo en mi canal (link en el comentario fijado).', 'revision': revision})
     json.dump({'shorts': hechos}, open(os.path.join(d, 'shorts.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

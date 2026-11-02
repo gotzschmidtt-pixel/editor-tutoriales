@@ -435,8 +435,10 @@ def rotar_gancho(d, c, largo, dur_video, tomas):
 def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida):
     """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima."""
     lista = []
-    for k, (s0, dur, _) in enumerate(piezas):
+    for k, pz in enumerate(piezas):
+        s0, dur = pz[0], pz[1]
         claves, zoom, _ = seguir(cap, s0, dur, marcas, memoria)
+        zoom = min(zoom * (pz[3] if len(pz) > 3 else 1), 3.0)  # el mismo momento, otro plano (más cerca de los botones, del cable)
         ch = round(H / zoom / 2) * 2
         cw = round(ch * 9 / 16 / 2) * 2
         cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
@@ -448,7 +450,8 @@ def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i
         lista.append(p)
     lf = os.path.join(tmp, f'rot{i:02d}.txt')
     open(lf, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in lista))
-    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lf, '-i', mp3,
+    audio_in = ['-i', mp3] if mp3 else ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo']  # el gancho sin voz: solo la música
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lf] + audio_in + [
                    '-filter_complex', f'[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
                    'aresample=44100,aformat=channel_layouts=stereo[a]',
                    '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
@@ -500,6 +503,7 @@ def main():
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--duracion', type=float, default=60)
     ap.add_argument('--salida', default='SHORT.mp4')
+    ap.add_argument('--gancho', help='segundo del grabado y duración de un gancho sin voz delante (78,3.5)')
     ap.add_argument('--bloques', help='los bloques del Short, en orden (L01,L20,L21): sin esto los elige la app')
     ap.add_argument('--voz-nueva', action='store_true', help='voz escrita para el Short (short_guion.json), gasta ElevenLabs')
     a = ap.parse_args()
@@ -538,10 +542,24 @@ def main():
     retraso = 0.15
     cap = cv2.VideoCapture(orig)
     partes = []
+    gancho = None
+    if a.gancho:  # un gancho de 3-4 s del resultado (la pantalla que se consigue), antes de la voz
+        gs, gd = (float(x) for x in a.gancho.split(','))
+        p = os.path.join(tmp, 'gancho.mp4')
+        armar_rotado(cap, orig, [(gs, gd, 'gancho', 1.15)], marcas, memoria, None, 0, gd, tmp, 99, p)
+        partes.append(p)
+        gancho = {'id': 'GANCHO', 'src_inicio': gs, 'largo': gd, 'zoom': 1.15, 'encuadre': 'gancho', 'por_que': 'gancho del resultado',
+                  'texto': '', 'voz': 0}
     for i, c in enumerate(tomas):
         largo = round(max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0), 2)  # que se alcance a ver la acción
         s0 = min(c['src_inicio'], max(0.0, dur_video - largo - 0.1))
         piezas = rotar_gancho(d, c, largo, dur_video, tomas) if i == 0 and c['id'] == g['bloques'][0]['id'] else None
+        cortes = (encuadres.get(c['id']) or {}).get('cortes')
+        if not piezas and cortes:  # una toma larga del mismo paso: planos de ≤ «cortes» s seguidos, con zoom distinto (sin saltar el paso)
+            import math
+            n = max(1, math.ceil(largo / float(cortes)))
+            zooms = (encuadres[c['id']].get('zooms') or [1.0, 1.6, 1.25])
+            piezas = [(s0 + j * largo / n, largo / n, 'plano', zooms[j % len(zooms)]) for j in range(n)]
         if piezas:  # regla de fabian: el inicio rota trozos distintos de 3-5 s según lo que dice la voz
             p = os.path.join(tmp, f'p{i:02d}.mp4')
             armar_rotado(cap, orig, piezas, marcas, memoria, os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
@@ -584,6 +602,8 @@ def main():
     open(lista, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in partes))
     junto = os.path.join(tmp, 'junto.mp4')
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', junto], check=True)
+    if gancho:
+        tomas.insert(0, gancho)
     open(os.path.join(d, 'short_subs.ass'), 'w', encoding='utf-8').write(subtitulos(d, tomas, retraso))
     entradas = ['-i', junto]
     if os.path.exists(MUSICA):
