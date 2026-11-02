@@ -1,0 +1,42 @@
+"""Respaldo antes de «🔁 Rehacer video» (pedido de fabian, 02/11/2026: pulsó «Actualizar» y la app borró el FINAL con los
+arreglos puestos por fuera). Antes de borrar nada, los finales se copian a FINAL_antes_rehacer_<fecha>_<nombre>.mp4, que
+el rehacer no toca. También dice qué capas puestas por fuera se vuelven a poner solas y cuáles no.
+"""
+import glob, json, os, shutil, time
+
+FINALES = ('FINAL.mp4', 'FINAL_EN.mp4', 'FINAL_PT.mp4', 'FINAL_480p.mp4', 'FINAL_EN_480p.mp4', 'FINAL_720p.mp4', 'FINAL_1080p.mp4')
+PREFIJO = 'FINAL_antes_rehacer_'
+
+
+def respaldar(d, fecha=None):
+    """Copia los finales que haya. Devuelve los nombres de las copias."""
+    fecha = fecha or time.strftime('%Y%m%d_%H%M')
+    hechas = []
+    for f in FINALES:
+        src = os.path.join(d, f)
+        if os.path.isfile(src):
+            dst = os.path.join(d, f'{PREFIJO}{fecha}_{f}')
+            shutil.copy2(src, dst)
+            hechas.append(os.path.basename(dst))
+    return hechas
+
+
+def capas_por_fuera(d):
+    """Lo que se puso encima del video fuera de los pasos de la app: {'solas': [...], 'a_mano': [...]}.
+    «solas» se vuelven a poner en «Video final sin tráiler»; «a_mano» no, y quedan solo en la copia de respaldo."""
+    solas, a_mano = [], []
+    try:
+        fijo = json.load(open(os.path.join(d, 'inicio_fijo.json'), encoding='utf-8'))
+        solas.append(f"inicio fijo ({fijo.get('video', '')}, hasta {fijo.get('hasta', '?')} s)")
+    except (OSError, ValueError):
+        pass
+    if os.path.exists(os.path.join(d, 'difuminar_datos.json')):
+        solas.append('datos difuminados (difuminar_datos.json)')
+    # versiones en otro idioma y arreglos guardados como FINAL_antes_*.mp4: señal de que hubo cambios a mano encima del final
+    if os.path.exists(os.path.join(d, 'FINAL_EN.mp4')):
+        a_mano.append('la versión en inglés (FINAL_EN.mp4) no se rehace sola')
+    arreglos = sorted({os.path.basename(f)[len('FINAL_antes_'):-4] for f in glob.glob(os.path.join(d, 'FINAL_antes_*.mp4'))
+                       if not os.path.basename(f).startswith(PREFIJO)})
+    if arreglos:
+        a_mano.append('arreglos hechos por fuera del final: ' + ', '.join(arreglos))
+    return {'solas': solas, 'a_mano': a_mano}

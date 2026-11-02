@@ -52,6 +52,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'miniatura'))
 import referencias as miniref  # noqa: E402  «🖼️ Miniaturas de referencia»: subes miniaturas que te gustan, la IA saca la fórmula y GPT genera las tuyas
 sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
 import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
+import respaldo  # noqa: E402  copia de los finales antes de «🔁 Rehacer video»
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
@@ -2327,6 +2328,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'pistas.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/linea':
                 return self.responder(linea_tiempo(carpeta(q['p'])))
+            if ruta == '/api/capas_por_fuera':  # para el aviso de «🔁 Rehacer video»
+                return self.responder(respaldo.capas_por_fuera(carpeta(q['p'])))
             if ruta == '/api/edicion':
                 return self.responder(edicion(carpeta(q['p'])))
             if ruta == '/guion':  # el editor de guion, en su propia pestaña
@@ -3656,11 +3659,12 @@ class Manejador(BaseHTTPRequestHandler):
                         else:
                             TRABAJO['proc'].terminate()
                 return self.responder({'ok': True})
-            if ruta == '/api/actualizar':  # «Actualizar»: quita videos y fallas viejas; voces, guion y transcripción quedan
+            if ruta == '/api/actualizar':  # «🔁 Rehacer video»: quita videos y fallas viejas; voces, guion y transcripción quedan
                 d = carpeta(q['p'])
                 with CANDADO:
                     if TRABAJO['proyecto'] == q['p']:
                         return self.error('Hay un paso trabajando en este proyecto. Detenlo primero.')
+                copias = respaldo.respaldar(d)  # antes de borrar: los finales (con lo que se les puso por fuera) quedan copiados
                 # los extras que tenía el video, para volver a ponerlos después de rehacerlo
                 extras = [p['id'] for p in PASOS if p['id'] in EXTRAS and (existe(d, p['produce']) or p['id'] in capas_hechas(d))
                           and p['produce'] != 'FINAL.mp4']
@@ -3671,7 +3675,7 @@ class Manejador(BaseHTTPRequestHandler):
                 if existe(d, 'registro.txt'):  # el registro viejo queda aparte, para no confundir con fallas pasadas
                     os.replace(os.path.join(d, 'registro.txt'), os.path.join(d, 'registro_anterior.txt'))
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
-                return self.responder({'ok': True, 'quitados': quitados, 'extras': extras})
+                return self.responder({'ok': True, 'quitados': quitados, 'extras': extras, 'copias': copias})
             if ruta == '/api/empezar_de_nuevo':  # «Borrar todo»: quita lo generado y deja lo que subiste
                 d = carpeta(q['p'])
                 with CANDADO:

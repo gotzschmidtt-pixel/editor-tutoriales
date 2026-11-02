@@ -110,6 +110,19 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   copian caras de otras personas, logos de canales ni sus textos. Pruebas sin gastar: `MINIREF_SIMULAR=1` y
   `python tests/test_miniaturas_referencia.py`.
 
+## Decisiones del autor (02/11/2026)
+
+- **«↻ Actualizar» solo refresca la vista**: vuelve a leer el proyecto y muestra lo último (no borra ni rehace nada).
+  fabian lo pulsó esperando eso y la app borró el FINAL con arreglos puestos por fuera (giro + fotos, difuminados).
+- Lo que hacía antes es **«🔁 Rehacer video»**, en el menú 📁 Proyecto (no es el botón principal). Antes de borrar copia los
+  finales a `FINAL_antes_rehacer_<fecha>_<nombre>.mp4` (`app/respaldo.py`) y el aviso dice qué capas se vuelven a poner
+  solas (inicio fijo, datos difuminados) y cuáles no (versión en inglés, arreglos guardados como `FINAL_antes_*.mp4`),
+  y recomienda no rehacer si hay de las segundas. Prueba: `python tests/test_actualizar_no_borra.py`.
+- HONOR 8 LITE: el giro del teléfono (tapa trasera, 6:21 del grabado, con todo lo de la laptop desenfocado) y 3 fotos
+  van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el
+  teléfono de la derecha NO es un Honor 8 Lite (cámara de píldora): se tapa con la etiqueta «DESPUÉS ✓»; «ANTES» va
+  arriba a la derecha del de la izquierda sin tapar su cámara (`_referencias/honor_8_lite_fotos/etiquetas_antes_despues.py`).
+
 ---
 
 ## ⚠ REGLAS DEL AUTOR PARA ESCRIBIR EL GUION (obligatorias, antes de escribir nada)

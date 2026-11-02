@@ -184,9 +184,10 @@
 <header>
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
-  <button class="principal" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo, sin gastar créditos en lo que ya está">🔄 Actualizar</button>
+  <button class="principal" onclick="refrescar()" title="Vuelve a leer el proyecto y muestra lo último que se hizo (por ejemplo, lo que te dejó Claude). No borra ni rehace nada">↻ Actualizar</button>
   <details class="menu"><summary title="Nuevo, abrir, guardar, comprimir y la cola de la noche">📁 Proyecto</summary><div class="lista">
     <button id="nuevo">+ Nuevo proyecto</button>
+    <button onclick="actualizarProyecto()" title="Rearma el video desde cero con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Antes copia tus finales a FINAL_antes_rehacer_…">🔁 Rehacer video</button>
     <button onclick="$('#abrirZip').click()" title="Abre un proyecto guardado en .zip (de otra PC, de «Guardar como» o el que te pasa Claude): queda como un proyecto más, sin pisar los tuyos">📂 Abrir proyecto</button>
     <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
     <button onclick="abrirCola()" title="Deja varios proyectos en fila y la app los arma uno detrás del otro (de noche). También: lo gastado este mes en voz e IA">🌙 Cola y gastos</button>
@@ -278,7 +279,7 @@
         <button onclick="importarClaude.click()" title="El .zip que te manda Claude desde la nube (guion con preguntas e ideas, etiquetas, círculos y flechas): lo revisas aquí antes de armar">📥 Importar lo de Claude</button><input type="file" id="importarClaude" accept=".zip" hidden>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
-        <button id="actualizar" onclick="actualizarProyecto()" title="Quita videos y fallas viejas y vuelve a hacer todo. Guarda tus voces, guion y transcripción (no gasta créditos de ElevenLabs en lo que ya está).">🔄 Actualizar</button>
+        <button id="actualizar" onclick="refrescar()" title="Vuelve a leer el proyecto y muestra lo último que se hizo. No borra ni rehace nada">↻ Actualizar</button>
         <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
@@ -3107,10 +3108,16 @@ let reiniciando = false, PAGINA = null;
 function soltarVideo() {  // Windows no deja borrar ni reemplazar un video que el reproductor tiene abierto
   const v = $('#video'); v.pause(); v.removeAttribute('src'); v.load(); ultimo = null;
 }
-async function actualizarProyecto() {  // reutiliza transcripción, guion y voces; rehace el resto y vuelve a poner los extras que tenía
-  if (!confirm(`¿Actualizar «${P}»?\n\nBorro los videos hechos (FINAL.mp4 y los de cada paso) y las fallas viejas, y vuelvo a hacer el video `
-    + 'con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y '
-    + 'tráiler que tenía se vuelven a poner al final.')) return;
+async function actualizarProyecto() {  // «🔁 Rehacer video»: reutiliza transcripción, guion y voces; rehace el resto y vuelve a poner los extras que tenía
+  let capas = {solas: [], a_mano: []};
+  try { capas = await api(`/api/capas_por_fuera?p=${q(P)}`); } catch (e) {}
+  const lista = (t, xs) => xs.length ? `\n\n${t}\n• ` + xs.join('\n• ') : '';
+  if (!confirm(`¿Rehacer el video «${P}» desde cero?\n\nLa app vuelve a armar todo el video con tu transcripción, guion y voces `
+    + '(no gasta créditos en lo que ya está). Las etiquetas, flechas, tarjetas, testimonios y tráiler que tenía se vuelven a poner al final. '
+    + 'Antes de borrar, tus videos finales quedan copiados como FINAL_antes_rehacer_….mp4.'
+    + lista('Se vuelve a poner solo:', capas.solas)
+    + lista('⚠ NO se vuelve a poner solo (queda solo en la copia):', capas.a_mano)
+    + (capas.a_mano.length ? '\n\nRecomendación: NO lo rehagas si no hace falta. Para ver lo último, usa «↻ Actualizar».' : ''))) return;
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
   soltarVideo();
   let r;
@@ -3120,7 +3127,7 @@ async function actualizarProyecto() {  // reutiliza transcripción, guion y voce
   refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔄 Actualizar»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔁 Rehacer video»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
   try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
