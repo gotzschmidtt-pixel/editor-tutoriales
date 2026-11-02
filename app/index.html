@@ -991,9 +991,14 @@ async function listaProyectos() {
   return null;
 }
 async function cargarProyectos(sel) {
-  const lista = await listaProyectos();
-  if (!lista) return;
-  $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
+  const todas = await listaProyectos();
+  if (!todas) return;
+  // una carpeta con puntos, paréntesis o «+» en el nombre se abría como otra (la app quita esos signos) y salía vacía:
+  // no se puede elegir y se avisa que hay que renombrarla (02/11/2026)
+  const raras = todas.filter(p => p.replace(/[^\p{L}\p{N}_\- ]/gu, '').trim() !== p);
+  const lista = todas.filter(p => !raras.includes(p));
+  $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('')
+    + raras.map(p => `<option disabled>⚠ ${p}: renombra la carpeta sin puntos, paréntesis ni signos</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;
   if (!sel) sel = new URLSearchParams(location.search).get('p') || '';  // un link con ?p=PROYECTO abre ese proyecto

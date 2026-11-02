@@ -163,7 +163,10 @@ $('#nombre').textContent = P || 'sin proyecto';
 let CONECTADO = false;
 
 async function conexion() {
-  const e = await api('/api/youtube/estado?canal=1'), c = $('#conexionCuerpo');
+  const c = $('#conexionCuerpo');
+  let e;
+  try { e = await api('/api/youtube/estado?canal=1'); }
+  catch (x) { c.innerHTML = `<p class="err">No pude revisar la conexión con YouTube: ${esc(x.message)}</p>`; return; }  // antes quedaba en «Revisando…»
   CONECTADO = e.conectado;
   if (e.conectado && e.canal) {
     c.innerHTML = `<p class="ok">✅ Conectado a <b>${esc(e.canal.titulo)}</b> · ${Number(e.canal.suscriptores || 0).toLocaleString('es')} suscriptores · ${esc(e.canal.videos)} videos</p>`

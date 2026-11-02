@@ -119,6 +119,8 @@ def _pedir_token(datos):
         if 'invalid_grant' in cuerpo:
             raise ErrorYT('Google ya no acepta el permiso guardado (se venció o lo quitaste). Vuelve a «Conectar YouTube».')
         raise ErrorYT(f'Google no dio el permiso ({e.code}): {cuerpo[:300]}')
+    except urllib.error.URLError as e:  # sin internet: un mensaje claro (antes la página quedaba en «Revisando…» para siempre)
+        raise ErrorYT('Sin conexión con YouTube: revisa tu internet (' + str(e.reason) + ').')
 
 
 def canjear(c, code, estado, redirect):
@@ -167,6 +169,8 @@ def pedir(c, metodo, url, params=None, cuerpo=None, datos=None, tipo='applicatio
         except (ValueError, KeyError, TypeError):
             motivo, msg = '', cuerpo[:300]
         raise ErrorYT(EXPLICAR.get(motivo, f'YouTube contestó {e.code}: {msg}'))
+    except urllib.error.URLError as e:  # sin internet (va después de HTTPError, que también es un URLError)
+        raise ErrorYT('Sin conexión con YouTube: revisa tu internet (' + str(e.reason) + ').')
 
 
 EXPLICAR = {

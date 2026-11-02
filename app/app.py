@@ -1290,6 +1290,10 @@ def ultimo_proyecto():
         d = os.path.join(PROYECTOS, x)
         if not os.path.isdir(d):
             continue
+        # las mismas que salen en la lista: «.canal» (lo escribe «📊 Aprender de todo mi canal») o «_prueba…» no son
+        # proyectos, y una carpeta con puntos o paréntesis no se puede abrir; si no, se abría el primero de la lista
+        if x.startswith(('_', '.')) or re.sub(r'[^\w\- ]', '', x).strip() != x:
+            continue
         try:
             cuando = max([os.path.getmtime(d)] + [os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)])
         except OSError:
@@ -2693,6 +2697,12 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
+        except Exception as e:  # sin internet u otro error: contesta con su mensaje, como do_POST (antes cortaba la conexión
+            traceback.print_exc()  # y la página quedaba esperando, p. ej. «▶️ YouTube» en «Revisando…» para siempre)
+            try:
+                return self.error(f'{type(e).__name__}: {e}', 500)
+            except OSError:  # el navegador ya cerró la conexión (dejó de ver un video): no hay a quién contestar
+                return
         self.error('no encontrado', 404)
 
     def servir(self, f, nombre=''):
@@ -3884,12 +3894,12 @@ class Manejador(BaseHTTPRequestHandler):
                     except (ValueError, OSError) as e:
                         return self.error(str(e))
                     return self.responder({'ok': True, 'cancelado': not r, 'ruta': r})
-                try:
-                    respaldo = volver_a_guardado(d, str(datos.get('nombre') or ''))
+                try:  # «copia» y no «respaldo»: ese nombre tapaba el módulo respaldo y «🔁 Rehacer video» daba error 500
+                    copia = volver_a_guardado(d, str(datos.get('nombre') or ''))
                 except ValueError as e:
                     return self.error(str(e))
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
-                return self.responder({'ok': True, 'respaldo': respaldo})
+                return self.responder({'ok': True, 'respaldo': copia})
             if ruta == '/api/borrar':
                 if os.path.basename(q['f']) in ('', '.', '..'):  # «.» borraba el proyecto entero
                     return self.error('nombre de archivo no válido')
