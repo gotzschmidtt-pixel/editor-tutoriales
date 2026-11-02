@@ -2111,7 +2111,14 @@ class Manejador(BaseHTTPRequestHandler):
         Wi‑Fi de casa o Tailscale y con el PIN. Devuelve True si ya contestó (y el pedido no sigue)."""
         ip = self.client_address[0]
         if celular.es_local(ip):
-            return False
+            # desde este PC, solo con su propio nombre (localhost, 127.0.0.1, estudio.localhost): una página de internet
+            # que se hace pasar por este PC (DNS rebinding) llega con su nombre y no puede leer tus videos ni tus archivos
+            h = (self.headers.get('Host') or '').lower()
+            h = h[1:h.find(']')] if h.startswith('[') else h.split(':')[0]
+            if h in ('localhost', '127.0.0.1', '::1', '') or h.endswith('.localhost'):
+                return False
+            self.error('nombre no permitido: abre la app con http://localhost:' + str(PUERTO), 403)
+            return True
         aj = leer_ajustes()
         if not (celular.activo(aj) and celular.red_permitida(ip) and celular.host_valido(self.headers.get('Host'))):
             self.error('acceso desde otro aparato apagado', 403)
@@ -3283,12 +3290,15 @@ class Manejador(BaseHTTPRequestHandler):
                     PRESTAMO.update(hasta=time.time() + 300, fallos=0)
                     return self.responder({'ok': True, 'minutos': 5, 'direcciones': celular.direcciones(PUERTO)})
                 datos = json.loads(self.rfile.read(min(largo, 4096)) or b'{}')  # la otra PC (ya pasó por puerta(): red de casa o Tailscale)
-                if time.time() > PRESTAMO['hasta']:
+                with CANDADO:  # el intento se cuenta ANTES de revisar el PIN: una tanda de pedidos a la vez no se salta el límite de 3
+                    abierto = time.time() <= PRESTAMO['hasta'] and PRESTAMO['fallos'] < 3
+                    if abierto:
+                        PRESTAMO['fallos'] += 1
+                if not abierto:
                     return self.error('En la otra PC no está abierto «📤 Prestar mis claves» (dura 5 minutos): púlsalo allá y vuelve a probar.', 403)
                 aj = leer_ajustes()
                 cookie, aviso = celular.entrar(aj, self.client_address[0], str(datos.get('pin') or ''))
                 if not cookie:
-                    PRESTAMO['fallos'] += 1
                     if PRESTAMO['fallos'] >= 3:  # 3 PIN equivocados: se cierra y hay que volver a abrirlo en el PC
                         PRESTAMO['hasta'] = 0.0
                     return self.error(aviso, 401)
@@ -3383,7 +3393,11 @@ class Manejador(BaseHTTPRequestHandler):
                 narr = {'narr_' + re.sub(r'\W+', '', os.path.splitext(u)[0]) for u in usados}
                 for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
                     base = f[:-4] if f.endswith('.txt') else f
-                    if f != nombre and base not in usados and os.path.splitext(f)[0] not in narr:
+                    # el audio o la imagen de antes (NOMBRE_sin_limpiar.mp4, _sin_zoom, _sin_color) de una pista que sigue:
+                    # sin él «↩ Volver al audio de antes» no puede volver y limpiar otra vez se haría sobre el ya limpio
+                    raiz, ext = os.path.splitext(f)
+                    de = next((raiz[:-len(s)] + ext for s in mejoras.RESPALDOS.values() if raiz.endswith(s)), None)
+                    if f != nombre and base not in usados and raiz not in narr and de not in usados:
                         os.remove(os.path.join(d, f))
                 return self.responder({'ok': True})
             if ruta == '/api/estilo':
@@ -3824,7 +3838,9 @@ class Manejador(BaseHTTPRequestHandler):
                     {'short_extras', 'short_extras.json', 'miniatura_subida.jpg', 'miniatura_subida.png',  # lo que subiste o ya pagaste
                      'avatar_ahorro', 'apoyo', 'memes', 'capturas', 'graficos', 'miniatura', 'youtube',  # (HeyGen, miniaturas, tomas)
                      'inicio_fijo.json', 'difuminar_datos.json',  # sin esto el próximo FINAL saldría sin difuminar tus datos
-                     'FINAL_EN.mp4'}  # la versión en inglés se hace por fuera: la app no la vuelve a hacer sola
+                     'prueba_inicio',  # el inicio hecho aparte (lo que usa inicio_fijo.json)
+                     'FINAL_EN.mp4',  # la versión en inglés se hace por fuera: la app no la vuelve a hacer sola
+                     *mejoras.SUBIDAS.values()}  # lo que subiste en «🎛 Audio e imagen»: pantalla grabada y fotos HD de la miniatura
                 try:  # el video del inicio fijo y las imágenes de lo que se difumina también quedan
                     with open(os.path.join(d, 'inicio_fijo.json'), encoding='utf-8') as fh:
                         quedan.add(str(json.load(fh).get('video') or '').replace('\\', '/').split('/')[0])
