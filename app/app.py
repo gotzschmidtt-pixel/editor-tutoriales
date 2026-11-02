@@ -2020,12 +2020,28 @@ def costo_voz(d, desde=None, hasta=None):
         if x in ids and y in ids:
             i, j = sorted((ids.index(x), ids.index(y)))
             datos['bloques'] = datos['bloques'][i:j + 1]
+    return costo_guion(d, datos, 'voz')
+
+
+def costo_voz_short(d):
+    """La voz nueva del «📱 Short» (short.py --voz-nueva): qué frases de short_guion.json todavía no tienen su voz en
+    voz_short/ y cuántos caracteres. Arma el mismo guion que short.py (voz_nueva) le pasa a voz.py. No llama a ElevenLabs."""
+    try:
+        with open(os.path.join(d, 'short_guion.json'), encoding='utf-8') as fh:
+            bloques = [{'id': x['id'], 'texto': x['texto'], 'tipo': 'libre', 'humor': False} for x in json.load(fh)['tomas']]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {'bloques': [], 'caracteres': 0}  # sin el guion del Short, short.py se para antes de pedir la voz
+    return costo_guion(d, {'bloques': bloques}, 'voz_short')
+
+
+def costo_guion(d, datos, salida):
+    """Lo que voz.py --costo dice de un guion (`datos`) con sus voces en `salida`: {'bloques', 'caracteres'}."""
     f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, dir=d, prefix='.costo_', encoding='utf-8')
     json.dump(datos, f, ensure_ascii=False)
     f.close()
     try:
         # el hijo escribe en utf-8 (en Windows sería cp1252 y el aviso de emociones recortadas «·» rompía la lectura)
-        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'] + voz_args(d),
+        r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, salida), '--costo'] + voz_args(d),
                            capture_output=True, text=True, encoding='utf-8', timeout=60,
                            env=dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1'), **SIN_VENTANA)
         return json.loads(r.stdout.strip().splitlines()[-1])
@@ -2202,6 +2218,25 @@ def gastos_sin_si(d, paso, pasos, datos):
         n = f'{max(1, round(minutos * 330)):,}'.replace(',', '.')
         gasta.append(f'{que} (unos {n} créditos: ~330 por minuto de tu grabación)' if minutos else
                      f'{que} (~330 créditos por minuto de tu grabación; no pude medir cuánto dura)')
+    if paso == 'm_limpiar' and datos.get('motor') == 'eleven' and not datos.get('deshacer'):
+        # «🎙 Limpiar la voz» con el aislador de ElevenLabs: ~1.000 créditos por minuto de audio (todos los testimonios se suman)
+        que = datos.get('archivo') or 'original.mp4'
+        fs = [os.path.join('testimonios', f) for f in mejoras.testimonios_de_la_lista(d)] if que == 'testimonios' else \
+            [que] if que in ('original.mp4', 'material.mp4') else []  # otro archivo: mejoras.comandos no lo acepta (no gasta)
+        minutos = sum(duracion_original(d, f) for f in fs) / 60
+        n = f'{max(1, round(minutos * 1000)):,}'.replace(',', '.')
+        if fs:
+            gasta.append(f'limpiar la voz con ElevenLabs (unos {n} créditos: ~1.000 por minuto de audio)' if minutos else
+                         'limpiar la voz con ElevenLabs (~1.000 créditos por minuto de audio; no pude medir cuánto dura)')
+    if paso == 'm_sonidos' and datos.get('motor') == 'eleven':  # «🔊 Efectos de sonido → ✨ Con ElevenLabs»: ~100 por sonido
+        n = 1 if datos.get('solo') in mejoras.sonidos.SONIDOS else len(mejoras.sonidos.SONIDOS)
+        gasta.append(f"crear {'el sonido' if n == 1 else f'{n} sonidos'} con ElevenLabs (unos {n * 100} créditos)")
+    if paso == 'short' and datos.get('voz_nueva'):  # «📱 Short» con «🎙 Voz nueva»: las frases nuevas o cambiadas de su guion
+        c = costo_voz_short(d)
+        if c.get('desconocido'):
+            gasta.append('la voz nueva del Short (no pude calcular cuánta)')
+        elif c.get('caracteres'):
+            gasta.append(f"la voz nueva del Short (unos {c['caracteres']:,} créditos: {len(c['bloques'])} frase{'' if len(c['bloques']) == 1 else 's'})".replace(',', '.'))
     if paso == 'trailer_version' and not datos.get('sin_voz'):  # «▶ Ver con voz» / «💾 Guardar y rehacer» de una IA del tráiler
         v = re.sub(r'[^a-z]', '', str(datos.get('v') or ''))
         frase = frase_trailer_por_pagar(d, f'trailer_{v}.json', f'trailer_{v}.mp4') if v else ''

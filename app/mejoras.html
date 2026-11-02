@@ -314,17 +314,34 @@ async function emoGuardar() {
   catch (e) { aviso('#emoMsg', e.message, 'err'); }
 }
 function sonTipos() { edicion({sonidos_tipos: [...document.querySelectorAll('#sonTipos input:checked')].map(i => i.value)}); }
-function sonCrear(n) {
-  if (!confirm(`ElevenLabs crea el sonido «${n}» una sola vez (unos 100 créditos) y queda para todos tus videos. ¿Seguir?`)) return;
-  correr('m_sonidos', {motor: 'eleven', solo: n}, '#sonMsg', 'Creando el sonido con ElevenLabs…');
+// lo que gasta ElevenLabs se aprueba escribiendo SI (pedido de fabian, 29/10/2026): un Aceptar no alcanza. El servidor dice
+// cuánto (lo mismo que mira antes de arrancar el paso). Devuelve 'SI', '' (no gasta: no se pregunta) o null (no seguir)
+async function siGasto(paso, datos, antes = '') {
+  let c = null;
+  try { c = await api(`/api/costo_paso?p=${q(P)}&paso=${paso}&${new URLSearchParams(datos)}`); } catch (e) {}
+  if (c && !c.gasta.length) return '';
+  const r = prompt(`${antes}⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'créditos (no pude calcular cuántos)'}.`
+    + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
+  if (r !== null && /^\s*s[ií]\s*$/i.test(r)) return 'SI';
+  if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.');
+  return null;
+}
+async function sonCrear(n) {
+  const si = await siGasto('m_sonidos', {motor: 'eleven', solo: n}, `ElevenLabs crea el sonido «${n}» una sola vez y queda para todos tus videos.\n\n`);
+  if (si === null) return;
+  correr('m_sonidos', {motor: 'eleven', solo: n, confirmo: si}, '#sonMsg', 'Creando el sonido con ElevenLabs…');
 }
 async function sonQuitar(n) {
   if (!confirm(`Vuelve al sonido «${n}» hecho en tu PC. El de ElevenLabs o el tuyo no se borra: queda guardado en mis_sonidos como ${n}.mp3.eleven. ¿Seguir?`)) return;
   await api(`/api/mejoras/sonido_quitar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nombre: n})}); await cargar(); }
-function limpiar(deshacer) {
-  const motor = $('#limMotor').value;
-  if (!deshacer && motor === 'eleven' && !confirm('El aislador de voz de ElevenLabs gasta unos 1000 créditos por minuto de audio. ¿Seguir?')) return;
-  correr('m_limpiar', {archivo: $('#limArchivo').value, motor, deshacer: !!deshacer}, '#limMsg', deshacer ? 'Volviendo al audio de antes…' : 'Limpiando la voz…');
+async function limpiar(deshacer) {
+  const motor = $('#limMotor').value, archivo = $('#limArchivo').value;
+  let si = '';
+  if (!deshacer && motor === 'eleven') {  // el aislador de voz de ElevenLabs: ~1000 créditos por minuto de audio, con SI escrito
+    si = await siGasto('m_limpiar', {archivo, motor}, 'El aislador de voz de ElevenLabs gasta unos 1000 créditos por minuto de audio.\n\n');
+    if (si === null) return;
+  }
+  correr('m_limpiar', {archivo, motor, deshacer: !!deshacer, confirmo: si}, '#limMsg', deshacer ? 'Volviendo al audio de antes…' : 'Limpiando la voz…');
 }
 function miniaturas() {  // con GPT gasta: hay que escribir SI (como antes de gastar ElevenLabs)
   const gpt = $('#minGpt').checked, short = $('#minShort').checked;

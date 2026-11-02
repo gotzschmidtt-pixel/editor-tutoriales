@@ -5,6 +5,9 @@ y tus ajustes y proyectos no se tocan (todo va a una carpeta temporal).
   su voz guardada; la página pregunta antes de mandar el pedido);
 - guardar una lista vieja de testimonios o tarjetas (otra pestaña, el celular) no borra nada: lo quitado va a _papelera/
   y lo subido hace menos de 10 minutos no se toca.
+Y lo que salió en la revisión 3: el FINAL abierto en otro programa se copia una sola vez por vuelta; los botones mandan SI
+solo si lo escribiste (la «🌙 Cola de noche» y «↻ Reintentar» valen solo para lo aprobado); y piden SI escrito «▶ Ponerlas
+en el video», el tráiler de cada IA, transcribir o alinear con ElevenLabs, limpiar la voz, los sonidos y la voz del Short.
 Uso: python tests/test_revision_pendientes.py   (sale con 1 si algo falla)
 """
 import http.client, http.server, io, json, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.request
@@ -796,6 +799,107 @@ const caja = {value: 'alta'}, $ = () => caja;
         ok(res == [{'preguntas': 1, 'costos': ['scribe'], 'mandados': [['scribe', 'SI']]}, {'preguntas': 1, 'costos': ['scribe'], 'mandados': []},
                    {'preguntas': 1, 'costos': ['alinear'], 'mandados': [['alinear', 'SI']]}, {'preguntas': 0, 'costos': [], 'mandados': [['whisper', '']]}],
            f'«Transcribir tu voz»: Scribe o alinear piden SI escrito con los créditos; Whisper no pregunta: {res}')
+
+    # P6) «🎙 Limpiar la voz» con ElevenLabs, «🔊 Efectos de sonido → ✨ Con ElevenLabs» y la voz nueva del «📱 Short»: con SI escrito
+    d = os.path.join(app.PROYECTOS, 'mejoras')
+    crear(d, ['original.mp4', 'testimonios/t1.mp4', 'testimonios/t2.mp4'])
+    json.dump({'TESTIMONIOS': [{'archivo': 't1.mp4'}, {'archivo': 't2.mp4'}]}, open(os.path.join(d, 'testimonios', 'testimonios.json'), 'w'))
+    json.dump({'tomas': [{'id': 'S1', 'texto': 'Así quitas la cuenta en dos minutos', 'src_inicio': 3}]},
+              open(os.path.join(d, 'short_guion.json'), 'w', encoding='utf-8'))
+    LANZADOS.clear()
+    gastan = (('m_limpiar', {'archivo': 'original.mp4', 'motor': 'eleven'}), ('m_limpiar', {'archivo': 'testimonios', 'motor': 'eleven'}),
+              ('m_sonidos', {'motor': 'eleven', 'solo': 'clic'}), ('m_sonidos', {'motor': 'eleven'}), ('short', {'duracion': 60, 'voz_nueva': True}))
+    for paso, datos in gastan:
+        st, b = pedir('POST', f'/api/ejecutar?p=mejoras&paso={paso}', json.dumps(datos).encode())
+        ok(st != 200 and 'ElevenLabs' in b.decode('utf-8') and lanzado(0.3) is None, f'«{paso}» {datos} sin SI no debe arrancar: {st} {b[:200]!r}')
+        st, b = pedir('POST', f'/api/ejecutar?p=mejoras&paso={paso}', json.dumps({**datos, 'confirmo': 'SI'}).encode())
+        ok(st == 200 and lanzado(), f'«{paso}» {datos} con SI arranca: {st} {b[:200]!r}')
+    for paso, datos in (('m_limpiar', {'archivo': 'original.mp4', 'motor': 'pc'}), ('m_limpiar', {'archivo': 'original.mp4', 'motor': 'eleven', 'deshacer': True}),
+                        ('m_sonidos', {'motor': 'pc'}), ('short', {'duracion': 60})):
+        st, b = pedir('POST', f'/api/ejecutar?p=mejoras&paso={paso}', json.dumps(datos).encode())
+        ok(st == 200 and lanzado(), f'«{paso}» {datos} no gasta ElevenLabs: arranca sin pedir SI: {st} {b[:200]!r}')
+    viejo_dur = app.duracion_original
+    app.duracion_original = lambda d_, nombre='original.mp4': 90.0 if nombre.startswith('testimonios') else 900.0
+    try:
+        costo_m = lambda extra: json.loads(pedir('GET', f'/api/costo_paso?p=mejoras&{extra}')[1])
+        ok(costo_m('paso=m_limpiar&archivo=original.mp4&motor=eleven') == {'gasta': ['limpiar la voz con ElevenLabs (unos 15.000 créditos: ~1.000 por minuto de audio)']},
+           f"limpiar con ElevenLabs dice cuánto gasta tu grabación: {costo_m('paso=m_limpiar&archivo=original.mp4&motor=eleven')}")
+        ok(costo_m('paso=m_limpiar&archivo=testimonios&motor=eleven') == {'gasta': ['limpiar la voz con ElevenLabs (unos 3.000 créditos: ~1.000 por minuto de audio)']},
+           f"«Todos los testimonios» suma los de tu lista: {costo_m('paso=m_limpiar&archivo=testimonios&motor=eleven')}")
+        ok(costo_m('paso=m_sonidos&motor=eleven&solo=clic') == {'gasta': ['crear el sonido con ElevenLabs (unos 100 créditos)']}, 'un sonido de ElevenLabs')
+        largo = getattr(app, 'costo_voz_short', lambda d_: {})(d).get('caracteres')  # lo que voz.py le pediría (el texto con su punto final)
+        ok(largo and largo >= len('Así quitas la cuenta en dos minutos')
+           and costo_m('paso=short&voz_nueva=1') == {'gasta': [f'la voz nueva del Short (unos {largo} créditos: 1 frase)']},
+           f"la voz nueva del Short cuenta las frases sin hacer: {costo_m('paso=short&voz_nueva=1')}")
+    finally:
+        app.duracion_original = viejo_dur
+    if shutil.which('node') and funcion('mejoras.html', 'siGasto'):
+        res = nodo('mejoras_si', r"""
+const P = 'p', q = encodeURIComponent;
+let COSTO = null, RESP = 'SI', preguntas = 0, mandados = [], costos = [], MOTOR = 'eleven';
+async function api(url, op) {
+  if (url.startsWith('/api/costo_paso')) { costos.push(url.split('paso=')[1]); if (COSTO === 'error') throw new Error('x'); return COSTO; }
+  return {};
+}
+function correr(paso, datos) { mandados.push([paso, datos.motor, datos.confirmo]); }
+function prompt() { preguntas++; return RESP; } function confirm() { return true; } function alert() {}
+const $ = s => ({'#limMotor': {value: MOTOR}, '#limArchivo': {value: 'original.mp4'}})[s];
+""" + funcion('mejoras.html', 'siGasto') + '\n' + funcion('mejoras.html', 'sonCrear') + '\n' + funcion('mejoras.html', 'limpiar') + r"""
+(async () => {
+  const res = [];
+  for (const [f, motor, costo, resp] of [[() => limpiar(), 'eleven', {gasta: ['limpiar la voz con ElevenLabs (unos 15.000 créditos)']}, 'SI'],
+                                         [() => limpiar(), 'eleven', {gasta: ['limpiar la voz con ElevenLabs (unos 15.000 créditos)']}, null],
+                                         [() => limpiar(), 'eleven', 'error', 'no'], [() => limpiar(), 'pc', null, null],
+                                         [() => limpiar(true), 'eleven', null, null],
+                                         [() => sonCrear('clic'), 'eleven', {gasta: ['crear el sonido con ElevenLabs (unos 100 créditos)']}, 'si'],
+                                         [() => sonCrear('clic'), 'eleven', {gasta: ['crear el sonido con ElevenLabs (unos 100 créditos)']}, null]]) {
+    MOTOR = motor; COSTO = costo; RESP = resp; preguntas = 0; mandados = []; costos = [];
+    await f();
+    res.push({preguntas, costos, mandados});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'preguntas': 1, 'costos': ['m_limpiar&archivo=original.mp4&motor=eleven'], 'mandados': [['m_limpiar', 'eleven', 'SI']]},
+                   {'preguntas': 1, 'costos': ['m_limpiar&archivo=original.mp4&motor=eleven'], 'mandados': []},
+                   {'preguntas': 1, 'costos': ['m_limpiar&archivo=original.mp4&motor=eleven'], 'mandados': []},
+                   {'preguntas': 0, 'costos': [], 'mandados': [['m_limpiar', 'pc', '']]},
+                   {'preguntas': 0, 'costos': [], 'mandados': [['m_limpiar', 'eleven', '']]},
+                   {'preguntas': 1, 'costos': ['m_sonidos&motor=eleven&solo=clic'], 'mandados': [['m_sonidos', 'eleven', 'SI']]},
+                   {'preguntas': 1, 'costos': ['m_sonidos&motor=eleven&solo=clic'], 'mandados': []}],
+           f'«🎙 Limpiar» con ElevenLabs y «✨ Con ElevenLabs» de los sonidos piden SI escrito; gratis o «Volver» no preguntan: {res}')
+    else:
+        ok(False, 'falta siGasto() en mejoras.html')
+    if shutil.which('node') and funcion('index.html', 'shortHacer'):
+        res = nodo('short_si', r"""
+const P = 'p', q = encodeURIComponent;
+let SI_ESCRITO = false, COSTO = null, RESP = 'SI', VOZ = true, preguntas = 0, mandados = [];
+async function api(url, op) {
+  if (url.startsWith('/api/costo_paso')) return COSTO;
+  if (url.startsWith('/api/ejecutar')) mandados.push(JSON.parse(op.body));
+  if (url.startsWith('/api/estado')) return {trabajo: {}};
+  return {};
+}
+function prompt() { preguntas++; return RESP; } function confirm() { return true; } function alert() {}
+async function sxGuardar() {} async function shortVer() {}
+globalThis.setTimeout = f => f();
+const caja = {className: '', textContent: '36', disabled: false}, $ = s => s === '#shortVozNueva' ? {checked: VOZ} : s === '#shortDur' ? {value: '60'} : caja;
+""" + funcion('index.html', 'pedirSi') + '\n' + funcion('index.html', 'shortHacer') + r"""
+(async () => {
+  const res = [];
+  for (const [voz, costo, resp] of [[true, {gasta: ['la voz nueva del Short (unos 36 créditos: 1 frase)']}, 'SI'],
+                                    [true, {gasta: ['la voz nueva del Short (unos 36 créditos: 1 frase)']}, null],
+                                    [true, {gasta: []}, null], [false, null, null]]) {
+    VOZ = voz; COSTO = costo; RESP = resp; preguntas = 0; mandados = [];
+    await shortHacer();
+    res.push({preguntas, mandados: mandados.map(m => [m.voz_nueva, m.confirmo])});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'preguntas': 1, 'mandados': [[True, 'SI']]}, {'preguntas': 1, 'mandados': []},
+                   {'preguntas': 0, 'mandados': [[True, '']]}, {'preguntas': 0, 'mandados': [[False, '']]}],
+           f'«📱 Short» con voz nueva pide SI escrito solo si hay frases que pagar: {res}')
 
     # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
     d = os.path.join(app.PROYECTOS, 'cruce')

@@ -2465,10 +2465,19 @@ async function shortHacer() {
     if (!(dur >= 10 && dur <= 180)) { $('#shortMsg').className = 'msg err'; $('#shortMsg').textContent = 'Escribe entre 10 y 180 segundos.'; return; }
   }
   const voz = $('#shortVozNueva').checked;
-  if (voz && !confirm(`La voz nueva del Short gasta ElevenLabs: unos ${$('#shortLetras').textContent} créditos (las frases que no cambiaron se reutilizan, no gastan). ¿Seguir?`)) return;
+  let si = '';
+  if (voz) {  // la voz nueva del Short gasta ElevenLabs en las frases nuevas o cambiadas: hay que escribir SI (un Aceptar no alcanza)
+    let c = null;
+    try { c = await api(`/api/costo_paso?p=${q(P)}&paso=short&voz_nueva=1`); } catch (e) {}
+    if (!c || c.gasta.length) {
+      if (!pedirSi(`Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : `la voz nueva del Short (unos ${$('#shortLetras').textContent} créditos como mucho; no pude calcular cuánto)`}.`
+        + '\n\nLas frases que no cambiaron se reutilizan (no gastan).')) return;
+      si = 'SI';
+    }
+  }
   const m = $('#shortMsg'); m.className = 'msg'; m.textContent = 'Armando el Short (unos 2 minutos)…'; $('#shortBtn').disabled = true;
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=short`, {method: 'POST', body: JSON.stringify({duracion: parseFloat(dur) || 60, voz_nueva: voz})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=short`, {method: 'POST', body: JSON.stringify({duracion: parseFloat(dur) || 60, voz_nueva: voz, confirmo: si})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);
