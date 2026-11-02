@@ -12,3 +12,7 @@ d = youtube.con_capitulos('🌐 WhatsApp:\nhttps://wa.me/1\n\nPrimer párrafo.\n
 assert d.split('\n\n')[2].startswith('⏱️ CAPÍTULOS\n0:00 Inicio'), d
 assert youtube.con_capitulos(d, cap) == d  # no se repiten
 print('ok: limpiar YouTube y capítulos')
+assert youtube.signos_es('Ya probaste todo? Así sí') == '¿Ya probaste todo? Así sí'
+assert youtube.signos_es('¿Ya? Listo!') == '¿Ya? ¡Listo!', youtube.signos_es('¿Ya? Listo!')
+assert youtube.signos_es('Honor 8 Lite | Todos 2026') == 'Honor 8 Lite | Todos 2026'
+print('ok: signos de apertura en español')

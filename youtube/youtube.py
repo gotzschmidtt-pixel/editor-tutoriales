@@ -35,6 +35,22 @@ def limpiar_yt(texto):
     return texto.replace('>', '→').replace('<', '←').replace('«', '"').replace('»', '"')
 
 
+def signos_es(texto):
+    """En español, las preguntas y exclamaciones llevan su signo de apertura: «Ya probaste todo?» → «¿Ya probaste todo?»
+    (fabian, 02/11/2026). Solo agrega el que falta, en cada frase que termina en ? o !."""
+    if not isinstance(texto, str):
+        return texto
+
+    def arreglar(m):
+        frase, signo = m.group(1), m.group(2)
+        abre = '¿' if signo == '?' else '¡'
+        if abre in frase:
+            return m.group(0)
+        espacio = len(frase) - len(frase.lstrip())
+        return frase[:espacio] + abre + frase[espacio:] + signo
+    return re.sub(r'([^?!.:|\n]+)([?!])', arreglar, texto)
+
+
 def con_capitulos(desc, capitulos_texto):
     """Regla de fabian: la descripción SIEMPRE lleva los capítulos. Si ya los tiene (una línea «0:00 …»), no se repiten;
     si no, van después del primer párrafo de texto (debajo del bloque de WhatsApp)."""

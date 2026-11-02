@@ -49,6 +49,8 @@ import canal as canal_yt  # noqa: E402  «📊 Todo tu canal»: estadísticas de
 sys.path.insert(0, os.path.join(RAIZ, 'mejoras'))
 import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, limpieza, zoom, color, pantalla, revisión, Shorts, miniatura
 sys.path.insert(0, os.path.join(RAIZ, 'miniatura'))
+sys.path.insert(0, os.path.join(RAIZ, 'short'))
+import resumen as shorts_resumen  # noqa: E402  «📱 3 Shorts resumen»: 3 Shorts con el proceso completo y ganchos distintos
 import referencias as miniref  # noqa: E402  «🖼️ Miniaturas de referencia»: subes miniaturas que te gustan, la IA saca la fórmula y GPT genera las tuyas
 sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
 import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
@@ -2171,6 +2173,9 @@ class Manejador(BaseHTTPRequestHandler):
             for k in ('titulo', 'descripcion', 'descripciones', 'etiquetas', 'comentario'):  # YouTube rechaza < y >
                 r[k] = youtube.limpiar_yt(r.get(k))
             r['titulos'] = [dict(x, titulo=youtube.limpiar_yt(x.get('titulo', ''))) if isinstance(x, dict) else x for x in r.get('titulos') or []]
+            if idioma_video(d) == 'es':  # ¿ y ¡ de apertura en los títulos en español
+                r['titulo'] = youtube.signos_es(r.get('titulo'))
+                r['titulos'] = [dict(x, titulo=youtube.signos_es(x.get('titulo', ''))) if isinstance(x, dict) else x for x in r['titulos']]
             json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return self.responder(r)
         if ruta == '/api/youtube/guardar':  # lo que corregiste a mano: título, descripción, capítulos, etiquetas, comentario
@@ -2363,6 +2368,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(open(os.path.join(AQUI, 'avatar.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/avatar/'):
                 return avatar_ahorro.get(self, ruta, q, carpeta(q['p']))
+            if ruta == '/shorts_resumen':  # «📱 3 Shorts resumen», en su propia pestaña
+                return self.responder(open(os.path.join(AQUI, 'shorts_resumen.html'), 'rb').read(), 'text/html; charset=utf-8')
+            if ruta.startswith('/api/shorts_resumen/'):
+                return shorts_resumen.get(self, ruta, q, carpeta(q['p']))
             if ruta == '/miniref':  # «🖼️ Miniaturas de referencia», en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'miniref.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta.startswith('/api/miniref/'):
@@ -2765,6 +2774,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return mejoras.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta.startswith('/api/avatar/'):
                 return avatar_ahorro.post(self, ruta, q, largo, carpeta(q['p']))
+            if ruta.startswith('/api/shorts_resumen/'):
+                return shorts_resumen.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta.startswith('/api/miniref/'):
                 return miniref.post(self, ruta, q, largo, carpeta(q['p']))
             if ruta == '/api/actualizar_app':
