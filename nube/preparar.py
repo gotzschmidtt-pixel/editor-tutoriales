@@ -59,7 +59,8 @@ def main():
 
     lista = [(f, os.path.join(d, f)) for f in ARCHIVOS if os.path.isfile(os.path.join(d, f))]
     for c in CARPETAS:
-        for raiz, _, fs in os.walk(os.path.join(d, c)):
+        for raiz, subs, fs in os.walk(os.path.join(d, c)):
+            subs[:] = [x for x in subs if x != '_papelera']  # lo que quitaste de la lista (app.py, a_papelera) no viaja
             for f in sorted(fs):
                 ruta = os.path.join(raiz, f)
                 lista.append((os.path.relpath(ruta, d).replace(os.sep, '/'), ruta))

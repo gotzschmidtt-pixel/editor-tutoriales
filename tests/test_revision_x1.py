@@ -65,11 +65,13 @@ try:
     # 3. guardar la lista de testimonios no borra el audio de antes de uno que sigue
     d = os.path.join(app.PROYECTOS, 'testi', 'testimonios')
     crear(d, ['abc.mp4', 'abc_sin_limpiar.mp4', 'abc_sin_zoom.mp4', 'xyz.mp4', 'xyz_sin_limpiar.mp4'])
+    for f in os.listdir(d):  # subidos hace rato (los recién subidos no se tocan: pueden venir del celular)
+        os.utime(os.path.join(d, f), (time.time() - 3600, time.time() - 3600))
     pedir('POST', '/api/pistas?p=testi&g=testimonios', json.dumps({'TESTIMONIOS': [{'archivo': 'abc.mp4', 'nota': 'nueva'}]}).encode())
     ok(all(os.path.exists(os.path.join(d, f)) for f in ('abc.mp4', 'abc_sin_limpiar.mp4', 'abc_sin_zoom.mp4')),
        'guardar los testimonios borró el audio de antes de uno que sigue: ' + str(sorted(os.listdir(d))))
     ok(not os.path.exists(os.path.join(d, 'xyz.mp4')) and not os.path.exists(os.path.join(d, 'xyz_sin_limpiar.mp4')),
-       'el testimonio quitado (y su audio de antes) debía borrarse: ' + str(sorted(os.listdir(d))))
+       'el testimonio quitado (y su audio de antes) debía salir de la carpeta: ' + str(sorted(os.listdir(d))))
 
     # 4. «📤 Prestar mis claves» desde la otra PC: máximo 3 PIN, aunque lleguen todos a la vez
     app.celular.es_local = lambda ip: False  # el pedido hace de venir de la otra PC de la casa

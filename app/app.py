@@ -390,6 +390,30 @@ def borrar_seguro(f, intentos=10):
     return False
 
 
+PAPELERA = '_papelera'  # dentro de cada carpeta de testimonios, tarjetas, pistas…: lo que quitaste de la lista
+
+
+def a_papelera(d, f, reciente=600):
+    """Saca d/f de la lista moviéndolo a d/_papelera/ (con otro nombre si ya hay uno igual): nunca se borra. Un archivo
+    subido hace menos de `reciente` segundos no se toca: puede venir del celular o de otra pestaña que todavía no guardó su
+    lista (antes, guardar una lista vieja desde el PC borraba el testimonio recién subido desde el celular)."""
+    src = os.path.join(d, f)
+    try:
+        if time.time() - os.path.getmtime(src) < reciente:
+            return False
+        p = os.path.join(d, PAPELERA)
+        os.makedirs(p, exist_ok=True)
+        raiz, ext = os.path.splitext(f)
+        dst, k = os.path.join(p, f), 1
+        while os.path.exists(dst):
+            k += 1
+            dst = os.path.join(p, f'{raiz}_{k}{ext}')
+        os.rename(src, dst)  # en Windows no pisa nada; si el archivo está abierto en otro programa, queda donde está
+        return True
+    except OSError:
+        return False
+
+
 _DURACIONES = {}
 
 
@@ -947,7 +971,8 @@ def carpeta(p):
 
 
 GUARDADOS = 'guardados'  # puntos de guardado del proyecto: lo hecho (guion, voces, respuestas, extras), sin los videos
-NO_SE_GUARDA = {GUARDADOS, '.montaje_partes', 'hojas_2s', 'acciones', 'ia_capturas', 'para_claude', 'historial_guion'}
+NO_SE_GUARDA = {GUARDADOS, '.montaje_partes', 'hojas_2s', 'acciones', 'ia_capturas', 'para_claude', 'historial_guion',
+                PAPELERA}  # lo que quitaste de testimonios, tarjetas o pistas no se copia en cada guardado
 
 
 def _entra_en_guardado(nombre, es_carpeta):
@@ -3492,13 +3517,15 @@ class Manejador(BaseHTTPRequestHandler):
                 # la narración guardada de cada testimonio que sigue (testimonios.py): borrarla obliga a pagarla otra vez
                 narr = {'narr_' + re.sub(r'\W+', '', os.path.splitext(u)[0]) for u in usados}
                 for f in os.listdir(d):  # los archivos de pistas borradas (y su transcripción en caché)
+                    if not os.path.isfile(os.path.join(d, f)):  # la papelera (y cualquier carpeta) no se toca
+                        continue
                     base = f[:-4] if f.endswith('.txt') else f
                     # el audio o la imagen de antes (NOMBRE_sin_limpiar.mp4, _sin_zoom, _sin_color) de una pista que sigue:
                     # sin él «↩ Volver al audio de antes» no puede volver y limpiar otra vez se haría sobre el ya limpio
                     raiz, ext = os.path.splitext(f)
                     de = next((raiz[:-len(s)] + ext for s in mejoras.RESPALDOS.values() if raiz.endswith(s)), None)
                     if f != nombre and base not in usados and raiz not in narr and de not in usados:
-                        os.remove(os.path.join(d, f))
+                        a_papelera(d, f)
                 return self.responder({'ok': True})
             if ruta == '/api/estilo':
                 e = carpeta_estilo(json.loads(self.rfile.read(largo))['nombre'])

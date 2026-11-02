@@ -3,12 +3,14 @@ y tus ajustes y proyectos no se tocan (todo va a una carpeta temporal).
 - «✨ Agregar extras» copia el FINAL con tus arreglos a mano antes de borrarlo, y no suma otra copia en cada vuelta;
 - la narración de los testimonios y la frase de «Nuevos modelos» no gastan ElevenLabs sin SI (solo se pregunta si falta
   su voz guardada; la página pregunta antes de mandar el pedido);
+- guardar una lista vieja de testimonios o tarjetas (otra pestaña, el celular) no borra nada: lo quitado va a _papelera/
+  y lo subido hace menos de 10 minutos no se toca.
 Uso: python tests/test_revision_pendientes.py   (sale con 1 si algo falla)
 """
 import http.client, http.server, io, json, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for sub in ('app', 'testimonios', 'nuevos_modelos'):
+for sub in ('app', 'testimonios', 'nuevos_modelos', 'mejoras', 'voz'):
     sys.path.insert(0, os.path.join(RAIZ, sub))
 os.environ['SIN_NAVEGADOR'] = '1'
 for k in ('VOZ_ID', 'VOZ_IDIOMA', 'ELEVENLABS_API_KEY'):
@@ -16,6 +18,10 @@ for k in ('VOZ_ID', 'VOZ_IDIOMA', 'ELEVENLABS_API_KEY'):
 import app  # noqa: E402
 import testimonios as te  # noqa: E402
 import nuevos_modelos as nm  # noqa: E402
+import mejoras  # noqa: E402
+import pronunciacion  # noqa: E402
+
+PAPELERA = '_papelera'  # donde va lo que quitas de la lista de testimonios, tarjetas o pistas (app.a_papelera)
 
 fallos = []
 
@@ -147,6 +153,7 @@ try:
     try:
         urllib.request.urlopen, pedidos = falsa_eleven(b'mp3 falso')
         te.dur_mp3 = lambda f: 3.0
+        pronunciacion.para_pedido = lambda *a, **k: {}  # el diccionario de pronunciación tampoco va a ElevenLabs
         os.environ['ELEVENLABS_API_KEY'] = 'sk-prueba'
         te.narrar(os.path.join(d, 'testimonios'), 't1', texto, '94zOad0g7T7K4oa7zhDq', 'eleven_v4', 0.5, 'es')
         urllib.request.urlopen, pedidos2 = falsa_eleven(json.dumps({'audio_base64': 'AAAA', 'alignment': {
@@ -221,6 +228,67 @@ function soltarVideo() {} function refrescar() {} function confirm() { return tr
                 ok(gratis['preguntas'] == 0 and len(gratis['mandados']) == 1 and not gratis['mandados'][0].get('confirmo'),
                    f'{nombre}: sin gasto no pregunta nada y funciona igual: {gratis}')
                 ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
+
+    # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
+    d = os.path.join(app.PROYECTOS, 'cruce')
+    t = os.path.join(d, 'testimonios')
+    crear(d, ['original.mp4', 'guion.json'])
+    os.makedirs(t)
+    for f in ('t1.mp4', 't2.mp4', 'narr_t2.mp3', 'narr_t2.json'):
+        open(os.path.join(t, f), 'wb').write(f'video {f}'.encode())
+    hace_rato = lambda *fs: [os.utime(os.path.join(t, f), (time.time() - 3600,) * 2) for f in fs if os.path.exists(os.path.join(t, f))]
+    listar = lambda c: sorted(os.listdir(c)) if os.path.isdir(c) else []
+    hace_rato('t1.mp4')  # t1 lo subiste hace rato; t2 lo acaba de subir el celular
+    guardar = lambda lista, g='testimonios', ap='TESTIMONIOS': pedir(
+        'POST', f'/api/pistas?p=cruce&g={g}', json.dumps({ap: [{'archivo': a} for a in lista]}).encode())
+    st, b = guardar(['t1.mp4'])  # el PC guarda la lista vieja, sin t2
+    ok(st == 200 and all(os.path.exists(os.path.join(t, f)) for f in ('t1.mp4', 't2.mp4', 'narr_t2.mp3')),
+       f'un testimonio recién subido (otra pestaña o el celular) no se toca al guardar una lista vieja: {st} {sorted(os.listdir(t))}')
+    hace_rato('t2.mp4', 'narr_t2.mp3', 'narr_t2.json')
+    st, b = guardar(['t1.mp4'])  # ya pasó un rato: lo quitado sale de la lista, pero a la papelera, sin borrarse
+    pap = os.path.join(t, PAPELERA)
+    ok(st == 200 and not os.path.exists(os.path.join(t, 't2.mp4')) and os.path.exists(os.path.join(t, 't1.mp4')),
+       f'lo que no está en la lista sale de la carpeta: {st} {b[:200]!r} {sorted(os.listdir(t))}')
+    ok(os.path.isfile(os.path.join(pap, 't2.mp4')) and open(os.path.join(pap, 't2.mp4'), 'rb').read() == b'video t2.mp4'
+       and os.path.exists(os.path.join(pap, 'narr_t2.mp3')), f'lo quitado debe quedar entero en _papelera/: {listar(t)}')
+    open(os.path.join(t, 't2.mp4'), 'wb').write(b'otro t2')  # otro con el mismo nombre: no pisa el de la papelera
+    hace_rato('t2.mp4')
+    st, b = guardar(['t1.mp4'])
+    ok(st == 200 and listar(pap) == ['narr_t2.json', 'narr_t2.mp3', 't2.mp4', 't2_2.mp4']
+       and open(os.path.join(pap, 't2_2.mp4'), 'rb').read() == b'otro t2', f'la papelera no pisa nada: {st} {b[:200]!r} {listar(pap)}')
+    ok(st == 200 and os.path.isdir(pap), f'guardar otra vez con la papelera ya hecha funciona y no la toca: {st} {b[:200]!r}')
+    # la papelera no es un testimonio: ni en la lista, ni en «🎛 Audio e imagen», ni en el montaje (testimonios.py usa la lista)
+    lista = json.loads(pedir('GET', '/api/pistas?p=cruce&g=testimonios')[1])
+    ok(lista == {'TESTIMONIOS': [{'archivo': 't1.mp4'}]}, f'la lista de testimonios solo trae los tuyos: {lista}')
+    ok(mejoras.estado(d)['testimonios'] == ['t1.mp4'], f"«🎛 Audio e imagen» lista la papelera: {mejoras.estado(d)['testimonios']}")
+    # tarjetas: lo mismo, y la papelera no se copia en «💾 Guardar proyecto» ni viaja en el paquete de la nube
+    tj = os.path.join(d, 'tarjetas')
+    os.makedirs(tj)
+    for f in ('c1.png', 'c2.png'):
+        open(os.path.join(tj, f), 'wb').write(b'img')
+        os.utime(os.path.join(tj, f), (time.time() - 3600,) * 2)
+    st, b = guardar(['c1.png'], 'tarjetas', 'COMENTARIOS')
+    ok(st == 200 and os.path.exists(os.path.join(tj, PAPELERA, 'c2.png')), f'la tarjeta quitada va a la papelera: {listar(tj)}')
+    os.makedirs(os.path.join(tj, PAPELERA), exist_ok=True)  # (por si la de arriba falló: estas pruebas miran solo la carpeta)
+    open(os.path.join(tj, PAPELERA, 'vieja.png'), 'wb').write(b'img')
+    g = app.guardar_proyecto(d)
+    copia = os.path.join(d, app.GUARDADOS, g)
+    ok(os.path.exists(os.path.join(copia, 'tarjetas', 'c1.png')) and not os.path.exists(os.path.join(copia, 'tarjetas', PAPELERA)),
+       'el guardado del proyecto no debe copiar la papelera')
+    aj = os.path.join(tmp, 'ajustes_nube.json')
+    json.dump({}, open(aj, 'w'))
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, 'nube', 'preparar.py'), '--proyecto', d, '--ajustes', aj, '--estilos', tmp],
+                       capture_output=True, text=True)
+    try:
+        rutas = [x['ruta'] for x in json.load(open(os.path.join(d, 'para_claude', 'parametros.json'), encoding='utf-8'))['archivos']]
+    except (OSError, ValueError, KeyError):
+        rutas = None
+    ok(rutas and 'testimonios/t1.mp4' in rutas and not any(PAPELERA in x for x in rutas),
+       f'el paquete de la nube no lleva la papelera: {rutas} {r.stderr[-300:]}')
+    # «🗑 Borrar todo» la trata como tus demás carpetas: se queda
+    pedir('POST', '/api/empezar_de_nuevo?p=cruce')
+    ok(os.path.exists(os.path.join(pap, 't2.mp4')) and os.path.exists(os.path.join(t, 't1.mp4'))
+       and not os.path.exists(os.path.join(d, 'guion.json')), f'«Borrar todo» debe conservar la papelera: {sorted(os.listdir(d))}')
 finally:
     srv.shutdown()
     shutil.rmtree(tmp, ignore_errors=True)
