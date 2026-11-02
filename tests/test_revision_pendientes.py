@@ -523,10 +523,18 @@ const caja = {className: '', textContent: ''}, $ = () => caja;
     ok(st == 200 and listar(pap) == ['narr_t2.json', 'narr_t2.mp3', 't2.mp4', 't2_2.mp4']
        and open(os.path.join(pap, 't2_2.mp4'), 'rb').read() == b'otro t2', f'la papelera no pisa nada: {st} {b[:200]!r} {listar(pap)}')
     ok(st == 200 and os.path.isdir(pap), f'guardar otra vez con la papelera ya hecha funciona y no la toca: {st} {b[:200]!r}')
+    # subes un testimonio por error y lo quitas enseguida con ✕: se queda 10 minutos en la carpeta (podría venir del celular),
+    # pero ya no es un testimonio del video: ni «🎛 Audio e imagen» ni su «Limpiar todos» ni el paquete de la nube lo usan
+    open(os.path.join(t, 't3.mp4'), 'wb').write(b'subido por error')
+    st, b = guardar(['t1.mp4'])
+    ok(st == 200 and os.path.exists(os.path.join(t, 't3.mp4')), f'lo recién subido no se toca al guardar: {listar(t)}')
+    limpiar = mejoras.comandos('m_limpiar', d, {'archivo': 'testimonios'}, 'py', 'aj')[0]
+    ok(limpiar[limpiar.index('--entrada') + 1:limpiar.index('--motor')] == [os.path.join('testimonios', 't1.mp4')],
+       f'«Limpiar la voz» de todos los testimonios solo toma los de tu lista: {limpiar}')
     # la papelera no es un testimonio: ni en la lista, ni en «🎛 Audio e imagen», ni en el montaje (testimonios.py usa la lista)
     lista = json.loads(pedir('GET', '/api/pistas?p=cruce&g=testimonios')[1])
     ok(lista == {'TESTIMONIOS': [{'archivo': 't1.mp4'}]}, f'la lista de testimonios solo trae los tuyos: {lista}')
-    ok(mejoras.estado(d)['testimonios'] == ['t1.mp4'], f"«🎛 Audio e imagen» lista la papelera: {mejoras.estado(d)['testimonios']}")
+    ok(mejoras.estado(d)['testimonios'] == ['t1.mp4'], f"«🎛 Audio e imagen» debe listar solo los testimonios de tu lista: {mejoras.estado(d)['testimonios']}")
     # tarjetas: lo mismo, y la papelera no se copia en «💾 Guardar proyecto» ni viaja en el paquete de la nube
     tj = os.path.join(d, 'tarjetas')
     os.makedirs(tj)
@@ -551,6 +559,8 @@ const caja = {className: '', textContent: ''}, $ = () => caja;
         rutas = None
     ok(rutas and 'testimonios/t1.mp4' in rutas and not any(PAPELERA in x for x in rutas),
        f'el paquete de la nube no lleva la papelera: {rutas} {r.stderr[-300:]}')
+    ok(rutas and 'testimonios/t3.mp4' not in rutas and 'testimonios/testimonios.json' in rutas,
+       f'el paquete de la nube no lleva el testimonio que quitaste recién: {rutas}')
     # «🗑 Borrar todo» la trata como tus demás carpetas: se queda
     pedir('POST', '/api/empezar_de_nuevo?p=cruce')
     ok(os.path.exists(os.path.join(pap, 't2.mp4')) and os.path.exists(os.path.join(t, 't1.mp4'))

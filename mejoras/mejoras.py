@@ -59,10 +59,15 @@ def comandos(paso, d, op, py, ajustes):
     if paso == 'm_limpiar':
         que = op.get('archivo', 'original.mp4')
         motor = op.get('motor') if op.get('motor') in ('pc', 'ffmpeg', 'eleven') else 'pc'
-        entrada = 'testimonios' if que == 'testimonios' else que if que in ('original.mp4', 'material.mp4') else None
+        if que == 'testimonios':  # los de tu lista, no todo lo que hay en la carpeta (ver testimonios_de_la_lista)
+            entrada = [os.path.join('testimonios', f) for f in testimonios_de_la_lista(d)]
+            if not entrada:
+                raise ValueError('todavía no hay testimonios en tu lista: súbelos en el panel de testimonios')
+        else:
+            entrada = [que] if que in ('original.mp4', 'material.mp4') else None
         if not entrada:
             raise ValueError('archivo no válido')
-        return [[py, m('limpieza', 'limpiar_voz.py'), '--entrada', entrada, '--motor', motor] + (['--deshacer'] if op.get('deshacer') else [])]
+        return [[py, m('limpieza', 'limpiar_voz.py'), '--entrada', *entrada, '--motor', motor] + (['--deshacer'] if op.get('deshacer') else [])]
     if paso == 'm_zoom':
         f = op.get('archivo') if op.get('archivo') in ARCHIVOS_ZOOM else 'material.mp4'
         return [[py, m('zoom_pc', 'zoom_pc.py'), '--entrada', f, '--max', f"{min(max(float(op.get('max') or 2.2), 1.2), 3):g}"]
@@ -123,6 +128,17 @@ def _leer(d, f, defecto=None):
         return defecto
 
 
+def testimonios_de_la_lista(d):
+    """Los testimonios de tu lista (testimonios/testimonios.json) que están en la carpeta. No todo lo que hay en la carpeta:
+    uno que quitaste recién se queda ahí 10 minutos (app.py, a_papelera, no toca lo recién subido) y ya no es del video."""
+    testi = os.path.join(d, 'testimonios')
+    lista = _leer(testi, 'testimonios.json', {})
+    lista = lista.get('TESTIMONIOS') if isinstance(lista, dict) else None
+    nombres = {os.path.basename(str(x.get('archivo') or '')) for x in lista or [] if isinstance(x, dict)}
+    return sorted(f for f in nombres if f.lower().endswith(('.mp4', '.mov')) and '_sin_limpiar' not in f
+                  and os.path.isfile(os.path.join(testi, f)))
+
+
 def _escribir(f, datos):
     with open(f + '.tmp', 'w', encoding='utf-8') as fh:
         json.dump(datos, fh, ensure_ascii=False, indent=1)
@@ -160,7 +176,6 @@ def estado(d):
              [f'SHORT_{k}.mp4' for k in range(1, 6)] + [f'miniatura_{k}.jpg' for k in range(1, 4)]:
         if os.path.exists(os.path.join(d, f)):
             arch[f] = _fecha(d, f)
-    testi = os.path.join(d, 'testimonios')
     biblio = {}
     for n, (para, _, _, _) in sonidos.SONIDOS.items():
         f = sonidos.archivo(n)
@@ -182,7 +197,7 @@ def estado(d):
                     for b in g.get('bloques', []) if str(b.get('texto') or '').strip()],
         'sonidos': biblio, 'plan_sonidos': plan[:200],
         'archivos': arch,
-        'testimonios': sorted(f for f in os.listdir(testi) if f.lower().endswith(('.mp4', '.mov')) and '_sin_limpiar' not in f) if os.path.isdir(testi) else [],
+        'testimonios': testimonios_de_la_lista(d),
         'revision': _leer(d, 'revision_final.json'), 'shorts': _leer(d, 'shorts.json'), 'miniaturas': _leer(d, 'miniatura.json'),
         'zoom': _leer(d, 'zoom_pc.json'), 'pantalla': _leer(d, 'pantalla_celular.json'),
         'legales': legales,

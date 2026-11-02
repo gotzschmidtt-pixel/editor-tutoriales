@@ -7,7 +7,7 @@ parametros.json dice qué es cada uno (con su huella sha256), así se vuelve a a
 
 Uso: python preparar.py --proyecto . --ajustes ../../app/ajustes.json --estilos ../../mis_estilos --mb 300
 """
-import argparse, hashlib, json, os, shutil, time
+import argparse, hashlib, json, os, re, shutil, time
 
 # lo que subes o eliges tú (lo que la app genera no hace falta: se rehace allá)
 ARCHIVOS = ['original.mp4', 'material.mp4', 'imagen.png', 'musica.mp3', 'idea.txt', 'referencias.json', 'guion.json',
@@ -23,6 +23,39 @@ CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'test
 SECRETOS = ('clave', 'key', 'token', 'secret', 'password', 'contrase', 'elevenlabs', 'pin_hash', 'tema')  # nunca viajan, estén donde estén
 NO_VIAJAN = ('celular', 'avisos', 'youtube')  # PIN del celular (sal y huella), tema de avisos y cuenta de YouTube: se quedan en la PC
 SALIDA = 'para_claude'
+# las carpetas con lista (como GRUPOS en app.py): un archivo que quitaste de la lista hace menos de 10 minutos sigue en la
+# carpeta (app.py, a_papelera, no toca lo recién subido), pero ya no es del video y no viaja
+LISTAS = {'pistas_trailer': ('pistas.json', ('ANTES', 'DURANTE', 'DESPUES')), 'tarjetas': ('tarjetas.json', ('COMENTARIOS', 'WHATSAPP')),
+          'testimonios': ('testimonios.json', ('TESTIMONIOS',)), 'nuevos_modelos': ('modelos.json', ('MODELOS',)),
+          'marcas_senales': ('marcas.json', ('MARCAS',))}
+RESPALDOS = ('_sin_zoom', '_sin_color', '_sin_limpiar')  # el audio o la imagen de antes de una pista (mejoras.RESPALDOS)
+
+
+def fuera_de_la_lista(d, c):
+    """Los archivos sueltos de la carpeta c que su lista ya no usa. Mismo criterio que la app al guardar la lista (app.py,
+    /api/pistas): la pista, su transcripción, la narración guardada de un testimonio y el audio o la imagen de antes quedan."""
+    if c not in LISTAS or not os.path.isdir(os.path.join(d, c)):
+        return set()
+    nombre, apartados = LISTAS[c]
+    try:
+        with open(os.path.join(d, c, nombre), encoding='utf-8') as fh:
+            datos = json.load(fh)
+    except FileNotFoundError:
+        datos = {}  # sin lista (quitaste todo): la app ya no usa nada de la carpeta
+    except (OSError, ValueError):
+        return set()  # no se pudo leer: viaja todo, como antes
+    if not isinstance(datos, dict):
+        return set()
+    usados = {os.path.basename(str(p.get('archivo') or '')) for x in apartados for p in datos.get(x) or [] if isinstance(p, dict)}
+    narr = {'narr_' + re.sub(r'\W+', '', os.path.splitext(u)[0]) for u in usados}
+    fuera = set()
+    for f in os.listdir(os.path.join(d, c)):
+        base = f[:-4] if f.endswith('.txt') else f
+        raiz, ext = os.path.splitext(f)
+        de = next((raiz[:-len(s)] + ext for s in RESPALDOS if raiz.endswith(s)), None)
+        if f != nombre and base not in usados and raiz not in narr and de not in usados:
+            fuera.add(f)
+    return fuera
 
 
 def sin_secretos(x):
@@ -59,9 +92,12 @@ def main():
 
     lista = [(f, os.path.join(d, f)) for f in ARCHIVOS if os.path.isfile(os.path.join(d, f))]
     for c in CARPETAS:
+        fuera = fuera_de_la_lista(d, c)
         for raiz, subs, fs in os.walk(os.path.join(d, c)):
             subs[:] = [x for x in subs if x != '_papelera']  # lo que quitaste de la lista (app.py, a_papelera) no viaja
             for f in sorted(fs):
+                if f in fuera and raiz == os.path.join(d, c):  # quitado de la lista hace un momento: tampoco viaja
+                    continue
                 ruta = os.path.join(raiz, f)
                 lista.append((os.path.relpath(ruta, d).replace(os.sep, '/'), ruta))
     try:
