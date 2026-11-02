@@ -8,11 +8,11 @@ FINALES = ('FINAL.mp4', 'FINAL_EN.mp4', 'FINAL_PT.mp4', 'FINAL_480p.mp4', 'FINAL
 PREFIJO = 'FINAL_antes_rehacer_'
 
 
-def respaldar(d, fecha=None):
-    """Copia los finales que haya. Devuelve los nombres de las copias."""
+def respaldar(d, fecha=None, finales=FINALES):
+    """Copia los finales que haya (o solo los de `finales`). Devuelve los nombres de las copias."""
     fecha = fecha or time.strftime('%Y%m%d_%H%M')
     hechas = []
-    for f in FINALES:
+    for f in finales:
         src = os.path.join(d, f)
         if os.path.isfile(src):
             dst = os.path.join(d, f'{PREFIJO}{fecha}_{f}')

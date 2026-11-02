@@ -1439,7 +1439,9 @@ def correr(proyecto, pasos, opciones):
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
             if existe(d, 'FINAL.mp4'):  # antes de borrar, el final (con lo que se le puso por fuera) queda copiado, como en «🔁 Rehacer video»
-                copias = respaldo.respaldar(d)
+                # solo FINAL.mp4, que es el que se borra aquí: FINAL_EN/FINAL_PT no se tocan y las exportaciones salen del FINAL;
+                # copiarlos todos en cada «Hacer todo» sumaba varios GB por vuelta en el disco
+                copias = respaldo.respaldar(d, finales=('FINAL.mp4',))
                 if copias:
                     log.write(f"· copia del video final antes de rehacerlo: {', '.join(copias)}\n"); log.flush()
             for viejo in VIDEOS_GENERADOS:

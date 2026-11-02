@@ -85,6 +85,7 @@ try:
     d = os.path.join(app.PROYECTOS, 'rehacer')
     crear(d, ['original.mp4', 'guion.json'])
     open(os.path.join(d, 'FINAL.mp4'), 'wb').write(b'final con arreglos')
+    open(os.path.join(d, 'FINAL_EN.mp4'), 'wb').write(b'version en ingles')  # no se borra al rehacer: no se copia cada vez
     viejos = (app.comandos, app.asegurar_librerias, app.asegurar_node)
     app.comandos, app.asegurar_librerias, app.asegurar_node = (lambda *a: []), (lambda *a: None), (lambda *a: None)
     try:
@@ -96,6 +97,8 @@ try:
     copias = [f for f in os.listdir(d) if f.startswith('FINAL_antes_rehacer_')]
     ok(not os.path.exists(os.path.join(d, 'FINAL.mp4')) and copias and
        open(os.path.join(d, copias[0]), 'rb').read() == b'final con arreglos', f'el FINAL debe quedar copiado antes de borrarlo: {os.listdir(d)}')
+    ok(len(copias) == 1 and os.path.exists(os.path.join(d, 'FINAL_EN.mp4')),
+       f'solo se copia el FINAL que se borra (FINAL_EN.mp4 no se duplica en cada «Hacer todo»): {copias}')
 
     # 4) miniatura con título de GPT: cambiar el título dibuja el título nuevo (y no reutiliza el viejo)
     d = os.path.join(tmp, 'mini')
