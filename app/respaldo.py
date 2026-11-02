@@ -38,6 +38,15 @@ def anotar_final(d, f='FINAL.mp4'):
         pass
 
 
+def firma(d, f='FINAL.mp4'):
+    """Tamaño y fecha del FINAL (None si no hay): si cambian mientras corre un paso, ese paso lo escribió."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        return st.st_size, st.st_mtime_ns
+    except OSError:
+        return None
+
+
 def tocado_por_fuera(d, f='FINAL.mp4'):
     """True si el FINAL no es el que dejó la app (le hiciste arreglos a mano, o no hay anotación): ese sí se copia."""
     try:

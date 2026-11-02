@@ -1530,6 +1530,8 @@ def correr(proyecto, pasos, opciones):
             env['CACHE_IA'] = os.path.join(d, 'cache_ia', paso)
             if not env['REANUDAR_IA']:
                 shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
+            arma_final = paso in ('trailer', 'final_sin_trailer')
+            final_antes = respaldo.firma(d) if arma_final else None
             for c in comandos(paso, d, opciones):
                 with CANDADO:  # «■ Detener» mientras se instalaba node (puede tardar minutos): el paso ya no arranca
                     parar = TRABAJO.get('detenido')
@@ -1540,6 +1542,11 @@ def correr(proyecto, pasos, opciones):
                     FALLOS[proyecto] = {'paso': paso, 'msg': 'detenido por ti'}
                     log.write(f'\n■ Detenido antes de «{info["nombre"]}»\n'); log.flush()
                     return
+                proc.wait()
+                if arma_final and respaldo.firma(d) not in (None, final_antes):
+                    # este paso escribió FINAL.mp4: lo armó la app, aunque el paso falle después (el revisor automático, el
+                    # inicio fijo, ■ Detener…). Sin anotarlo, cada vuelta siguiente lo copiaba entero como si fuera un arreglo a mano
+                    respaldo.anotar_final(d)
                 if proc.wait() != 0 and info.get('blando') and len(pasos) > 1 and not TRABAJO.get('detenido'):
                     # un extra de la IA que no salió no frena el video: se sigue sin eso
                     log.write(f'· {info["nombre"]}: no se pudo ({causa(d)}). Sigo sin eso.\n'); log.flush()
@@ -1567,8 +1574,6 @@ def correr(proyecto, pasos, opciones):
             informes.append(informe_paso(d, proyecto, paso, info, ejec, 'ok', log))  # solo si hubo llamadas fallidas o rechazadas
             shutil.rmtree(env['CACHE_IA'], ignore_errors=True)  # el paso terminó: sus respuestas guardadas ya no hacen falta
             hechos.append(info['nombre'])
-            if paso in ('trailer', 'final_sin_trailer') and existe(d, 'FINAL.mp4'):
-                respaldo.anotar_final(d)  # este FINAL lo armó la app: si nadie lo toca, no hace falta copiarlo antes de rehacerlo
             if paso == 'voz':  # armaste la voz: el guion quedó aprobado y sirve de ejemplo para los próximos
                 try:
                     conocimiento.aprender_guion(d)

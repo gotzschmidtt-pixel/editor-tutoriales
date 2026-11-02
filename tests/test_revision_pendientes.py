@@ -37,14 +37,16 @@ def crear(d, nombres):
         open(os.path.join(d, n), 'w').write('{}')
 
 
-def correr(proyecto, pasos, opciones, hace_final=None):
+def correr(proyecto, pasos, opciones, hace_final=None, falla_despues=False):
     """Corre los pasos con los comandos simulados: no hacen nada, salvo el paso del final, que escribe FINAL.mp4 con
-    `hace_final` (como si la app lo armara)."""
+    `hace_final` (como si la app lo armara). Con `falla_despues`, después falla otro comando del mismo paso (como el
+    revisor automático cuando hay un plano largo al inicio)."""
     viejos = (app.comandos, app.asegurar_librerias, app.asegurar_node)
 
     def comandos(paso, d, op):
         if paso in ('final_sin_trailer', 'trailer') and hace_final is not None:
-            return [[sys.executable, '-c', f'open("FINAL.mp4", "wb").write({hace_final!r})']]
+            return [[sys.executable, '-c', f'open("FINAL.mp4", "wb").write({hace_final!r})']] + \
+                ([[sys.executable, '-c', 'raise SystemExit(1)']] if falla_despues else [])
         return []
     app.comandos, app.asegurar_librerias, app.asegurar_node = comandos, (lambda *a: None), (lambda *a: None)
     try:
@@ -117,6 +119,14 @@ try:
     contenidos = sorted(open(os.path.join(d, f), 'rb').read() for f in copias())
     ok(contenidos == [b'final con arreglos a mano', b'otro arreglo a mano, mas largo'],
        f'cada FINAL con arreglos a mano queda copiado, sin pisar el anterior: {copias()} {contenidos}')
+    # el paso escribe el FINAL y después falla (el revisor marca un plano largo al inicio): ese FINAL también es de la app,
+    # y las vueltas siguientes no lo copian como si fuera un arreglo a mano
+    antes = copias()
+    correr('extras', ['final_sin_trailer'], {'_limpiar_extras': True}, b'final de la app, el revisor fallo', falla_despues=True)
+    ok(app.FALLOS.get('extras'), 'la prueba debía simular un paso del final que falla después de escribir el FINAL')
+    for k in range(3):
+        correr('extras', ['final_sin_trailer'], {'_limpiar_extras': True}, b'final de la app, el revisor fallo otra vez', falla_despues=True)
+    ok(copias() == antes, f'un FINAL que armó la app no se copia aunque el paso haya fallado después: {copias()}')
 
     # P2) testimonios narrados y «Nuevos modelos»: su voz (ElevenLabs) no se hace sin SI, y solo se pregunta si falta
     d = os.path.join(app.PROYECTOS, 'voces')
