@@ -98,15 +98,16 @@ def entrar(aj, ip, pin):
         return '', 'El acceso desde el celular está apagado en la app del PC.'
     with _CANDADO:
         n, desde = _FALLOS.get(ip, (0, 0))
-        if n >= INTENTOS and time.time() - desde < ESPERA:
+        if time.time() - desde >= ESPERA:
+            n = 0  # pasaron 5 min desde el último intento: se cuenta de nuevo
+        if n >= INTENTOS:
             return '', f'Demasiados PIN equivocados. Espera {int(ESPERA - (time.time() - desde)) // 60 + 1} min.'
+        # el intento se cuenta ANTES de revisar el PIN: así miles de pedidos a la vez no se saltan el límite de 5
+        _FALLOS[ip] = [n + 1, time.time()]
     if hmac.compare_digest(_hash((pin or '').strip(), c['sal']), c['pin_hash']):
         with _CANDADO:
             _FALLOS.pop(ip, None)
         return (f'{COOKIE}={_ficha(c)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict'), ''
-    with _CANDADO:
-        n, desde = _FALLOS.get(ip, (0, 0))
-        _FALLOS[ip] = [n + 1 if time.time() - desde < ESPERA else 1, time.time()]
     return '', 'PIN equivocado.'
 
 
@@ -118,10 +119,12 @@ def direcciones(puerto):
             ips.add(x[4][0])
     except OSError:
         pass
+    real = ''
     try:  # la IP con que el PC sale a internet (la del Wi‑Fi o el cable), sin mandar nada
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
-        ips.add(s.getsockname()[0])
+        real = s.getsockname()[0]
+        ips.add(real)
         s.close()
     except OSError:
         pass
@@ -132,11 +135,23 @@ def direcciones(puerto):
             continue
         tipo = 'Tailscale (datos móviles)' if i in _REDES[3] else 'Wi‑Fi de casa'
         salida.append({'tipo': tipo, 'url': f'http://{ip}:{puerto}'})
-    return sorted(salida, key=lambda x: x['tipo'] != 'Wi‑Fi de casa')
+    # primero la del Wi‑Fi o el cable de verdad: la de WSL, Docker o Hyper‑V (172.x) el celular no la alcanza
+    return sorted(salida, key=lambda x: (x['tipo'] != 'Wi‑Fi de casa', x['url'] != f'http://{real}:{puerto}'))
+
+
+def volver_seguro(volver):
+    """A dónde vuelve el celular después del PIN: solo a una página de esta misma app, si no a «/». El navegador toma
+    «\\» como «/», así que «/\\otro-sitio.com» llevaría a otra página. Tampoco deja tabs ni saltos de línea: el
+    navegador los borra («/<tab>/otro-sitio.com» queda «//otro-sitio.com») y en la cabecera dejarían meter otras."""
+    volver = str(volver or '')
+    v = volver.replace('\\', '/')
+    if volver.startswith('/') and not v.startswith('//') and not any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
+        return volver
+    return '/'
 
 
 def pagina_pin(volver='/', aviso=''):
-    volver = volver if volver.startswith('/') and not volver.startswith('//') else '/'
+    volver = volver_seguro(volver)
     return f'''<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Estudio · PIN</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#06070c">

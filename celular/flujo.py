@@ -116,6 +116,13 @@ def siguiente(proyectos, puerto, ocupado):
             msg = json.loads(msg).get('error', msg)
         except ValueError:
             pass
+        if str(msg).startswith('ya está corriendo'):  # el PC se ocupó justo ahora: vuelve a la fila y sigue al terminar ese
+            def a_la_fila(c):
+                for x in c['items']:
+                    if x.get('id') == item['id'] and x.get('estado') == 'corriendo':
+                        x['estado'] = 'espera'
+            cambiar_cola(proyectos, a_la_fila)
+            return
         def fallo(c):
             for x in c['items']:
                 if x.get('id') == item['id']:

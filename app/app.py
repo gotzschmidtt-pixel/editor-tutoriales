@@ -1846,9 +1846,14 @@ def al_terminar(proyecto):
         print(f'· aviso o cola: {type(e).__name__}: {e}', flush=True)
 
 
+_AVANZA = threading.Lock()  # uno a la vez: con dos toques a «▶ Empezar» el segundo ve el PC ocupado y no marca otro como fallado
+
+
 def avanzar_cola():
     """Arranca el próximo de la «🌙 Cola»; si ya no queda ninguno, avisa cómo salió la noche."""
-    if flujo.siguiente(PROYECTOS, PUERTO, ocupado) == 'vacia':
+    with _AVANZA:
+        sigue = flujo.siguiente(PROYECTOS, PUERTO, ocupado)
+    if sigue == 'vacia':
         hechos = [x for x in flujo.leer_cola(PROYECTOS).get('items', []) if x.get('estado') in ('hecho', 'fallo')]
         ok = sum(x['estado'] == 'hecho' for x in hechos)
         flujo.avisar(leer_ajustes(), '🌙 Cola terminada', f'{ok} de {len(hechos)} proyectos salieron bien.', url_celular(), fallo=ok < len(hechos))
@@ -2738,7 +2743,7 @@ class Manejador(BaseHTTPRequestHandler):
                     return self.responder(celular.pagina_pin(volver, aviso).encode(), 'text/html; charset=utf-8', 401)
                 self.send_response(303)
                 self.send_header('Set-Cookie', cookie)
-                self.send_header('Location', volver if volver.startswith('/') and not volver.startswith('//') else '/')
+                self.send_header('Location', celular.volver_seguro(volver))
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 return
@@ -3963,8 +3968,9 @@ def poner_arranque(si):
         if os.path.exists(f):
             os.remove(f)
         return
-    with open(f, 'w', encoding='mbcs' if sys.platform == 'win32' else 'utf-8', newline='') as a:
-        a.write(f'@echo off\r\ncd /d "{RAIZ}"\r\nset SIN_NAVEGADOR=1\r\nstart "Estudio" /min "{PY}" app\\app.py\r\n')
+    # en UTF-8 y con «chcp 65001»: así una carpeta con tildes o ñ (C:\Users\José\…) se lee bien al prender el PC
+    with open(f, 'w', encoding='utf-8', newline='') as a:
+        a.write(f'@echo off\r\nchcp 65001 >nul\r\ncd /d "{RAIZ}"\r\nset SIN_NAVEGADOR=1\r\nstart "Estudio" /min "{PY}" app\\app.py\r\n')
 
 
 def mantener_despierto():

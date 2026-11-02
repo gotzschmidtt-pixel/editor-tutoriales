@@ -5,6 +5,10 @@ echo === Creando Estudio.exe ===
 echo.
 rem Si la app esta abierta con Estudio.exe, Windows no deja reemplazarlo
 taskkill /f /im Estudio.exe >nul 2>nul
+rem El Estudio.exe viejo se borra para crearlo de nuevo con los cambios (si queda, el bucle de abajo lo salta)
+timeout /t 1 /nobreak >nul 2>nul
+if exist "%~dp0Estudio.exe" del /f /q "%~dp0Estudio.exe" >nul 2>nul
+if exist "%~dp0Estudio.exe" (echo No pude reemplazar Estudio.exe. Cierra Estudio y vuelve a probar. & pause & exit /b 1)
 set "OBRA=%LOCALAPPDATA%\EstudioTutoriales\crear_exe"
 if exist "%OBRA%" rmdir /s /q "%OBRA%"
 python -m pip install --upgrade pyinstaller

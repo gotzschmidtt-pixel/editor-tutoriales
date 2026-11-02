@@ -16,7 +16,8 @@ rm -rf "$O" && mkdir -p "$O/clases" "$O/res"
 "$BT/aapt2" compile --dir res -o "$O/res"
 "$BT/aapt2" link -I "$JAR" --manifest AndroidManifest.xml -o "$O/sin_codigo.apk" "$O"/res/*.flat
 javac -source 8 -target 8 -bootclasspath "$JAR" -classpath "$BT/core-lambda-stubs.jar" -Xlint:-options -d "$O/clases" $(find src -name '*.java')
-"$BT/d8" --min-api 24 --lib "$JAR" --output "$O" $(find "$O/clases" -name '*.class')
+# con -print0 / -0 anda aunque la carpeta tenga espacios (/mnt/c/Users/PC/Downloads/CLOUDE SINCRONIZACION/…)
+find "$O/clases" -name '*.class' -print0 | xargs -0 "$BT/d8" --min-api 24 --lib "$JAR" --output "$O"
 cp "$O/sin_codigo.apk" "$O/sin_firmar.apk"
 (cd "$O" && zip -q sin_firmar.apk classes.dex)
 "$BT/zipalign" -f -p 4 "$O/sin_firmar.apk" "$O/alineado.apk"

@@ -1,13 +1,16 @@
 package com.estudio.tutoriales;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
@@ -37,7 +40,7 @@ import android.widget.Toast;
  * (la del Wi‑Fi de casa o la de Tailscale para datos móviles) y la recuerda. El PIN lo pide la propia app del PC.
  */
 public class MainActivity extends Activity {
-    private static final int ELEGIR_ARCHIVO = 1;
+    private static final int ELEGIR_ARCHIVO = 1, PERMISO_DESCARGAS = 2;
     private static final int FONDO = Color.rgb(6, 7, 12), ROSA = Color.rgb(255, 43, 214);
 
     private SharedPreferences prefs;
@@ -185,13 +188,28 @@ public class MainActivity extends Activity {
             }
         });
         web.setDownloadListener((url, agente, disposicion, tipo, largo) -> {  // bajar el video terminado al celular
-            DownloadManager.Request d = new DownloadManager.Request(Uri.parse(url));
-            String nombre = URLUtil.guessFileName(url, disposicion, tipo);
-            d.addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url));
-            d.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            d.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, nombre);
-            ((DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(d);
-            Toast.makeText(this, "Bajando " + nombre + " a Descargas", Toast.LENGTH_LONG).show();
+            if (!URLUtil.isNetworkUrl(url)) {  // el guion como texto, JSON o Word se arma en la página (blob:): Android no lo baja
+                Toast.makeText(this, "Esta descarga no se puede en el APK: ábrela desde Chrome", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (Build.VERSION.SDK_INT < 29
+                    && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                // Android 7, 8 y 9 piden permiso para guardar en Descargas (sin él, el APK se cerraba)
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISO_DESCARGAS);
+                Toast.makeText(this, "Dale permiso para guardar en Descargas y vuelve a tocar «⬇»", Toast.LENGTH_LONG).show();
+                return;
+            }
+            try {
+                DownloadManager.Request d = new DownloadManager.Request(Uri.parse(url));
+                String nombre = URLUtil.guessFileName(url, disposicion, tipo);
+                d.addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url));
+                d.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                d.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, nombre);
+                ((DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(d);
+                Toast.makeText(this, "Bajando " + nombre + " a Descargas", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {  // que el APK no se cierre: avisa el motivo
+                Toast.makeText(this, "No pude bajar el archivo: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
         });
         raiz.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         web.loadUrl(pc + "/");
