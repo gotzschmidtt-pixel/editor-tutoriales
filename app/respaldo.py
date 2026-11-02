@@ -24,12 +24,13 @@ def respaldar(d, fecha=None, finales=FINALES):
     return hechas
 
 
-MARCA = '.final_de_la_app.json'  # tamaño y fecha del último FINAL.mp4 que armó la app (y que nadie tocó después)
+MARCA = '.final_de_la_app.json'  # tamaño y fecha del último FINAL.mp4 que armó la app o que ya quedó copiado
 
 
 def anotar_final(d, f='FINAL.mp4'):
-    """Anota el FINAL que la app acaba de armar. Mientras siga igual no hace falta copiarlo antes de rehacerlo: la app lo
-    vuelve a armar sola. Así «✨ Agregar extras» no suma una copia de varios GB en cada vuelta."""
+    """Anota el FINAL que la app acaba de armar (o que acaba de copiar). Mientras siga igual no hace falta copiarlo antes de
+    rehacerlo: la app lo vuelve a armar sola, o ya está la copia. Así «✨ Agregar extras» no suma una copia de varios GB en
+    cada vuelta."""
     try:
         st = os.stat(os.path.join(d, f))
         with open(os.path.join(d, MARCA), 'w', encoding='utf-8') as fh:

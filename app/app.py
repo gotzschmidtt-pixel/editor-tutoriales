@@ -1531,6 +1531,13 @@ def correr(proyecto, pasos, opciones):
             if not env['REANUDAR_IA']:
                 shutil.rmtree(env['CACHE_IA'], ignore_errors=True)
             arma_final = paso in ('trailer', 'final_sin_trailer')
+            if arma_final and existe(d, 'FINAL.mp4') and respaldo.tocado_por_fuera(d):
+                # este paso vuelve a armar FINAL.mp4 encima (ffmpeg -y, trailer.py --final): si le hiciste arreglos a mano
+                # (giro, fotos, difuminados), antes queda copiado. Vale para todos los botones: «Rehacer» de «Video final sin
+                # tráiler», la tarjeta «Etiquetas, flechas y tarjetas», «▶ Armar y unir al video» del tráiler…
+                copias = respaldo.respaldar(d, finales=('FINAL.mp4',))  # si no se puede copiar, el paso no sigue
+                log.write(f"· copia del video final antes de rearmarlo: {', '.join(copias)}\n"); log.flush()
+                respaldo.anotar_final(d)  # ya quedó copiado: si este paso falla antes de reescribirlo, no se copia otra vez
             final_antes = respaldo.firma(d) if arma_final else None
             for c in comandos(paso, d, opciones):
                 with CANDADO:  # «■ Detener» mientras se instalaba node (puede tardar minutos): el paso ya no arranca

@@ -127,6 +127,26 @@ try:
     for k in range(3):
         correr('extras', ['final_sin_trailer'], {'_limpiar_extras': True}, b'final de la app, el revisor fallo otra vez', falla_despues=True)
     ok(copias() == antes, f'un FINAL que armó la app no se copia aunque el paso haya fallado después: {copias()}')
+    # los otros botones que rearman el FINAL encima («Rehacer» de «Video final sin tráiler», la tarjeta «Etiquetas, flechas
+    # y tarjetas», «▶ Armar y unir al video» del tráiler) también copian antes el FINAL con arreglos a mano
+    d = os.path.join(app.PROYECTOS, 'rearmar')
+    crear(d, ['original.mp4', '3_voz.mp4', '4_musica.mp4', 'trailer.json'])
+    copias = lambda: sorted(f for f in os.listdir(d) if f.startswith('FINAL_antes_rehacer_'))
+    contenido = lambda f: open(os.path.join(d, f), 'rb').read()
+    for k, pasos in enumerate((['final_sin_trailer'], ['etiquetas', 'final_sin_trailer'], ['trailer'])):
+        open(os.path.join(d, 'FINAL.mp4'), 'wb').write(b'giro y fotos a mano %d' % k)
+        correr('rearmar', pasos, {}, b'final que arma la app %d' % k)
+        ok(len(copias()) == k + 1 and any(contenido(f) == b'giro y fotos a mano %d' % k for f in copias())
+           and contenido('FINAL.mp4') == b'final que arma la app %d' % k,
+           f'{pasos}: el FINAL con arreglos a mano debe quedar copiado antes de rearmarlo: {copias()}')
+        correr('rearmar', pasos, {}, b'final que arma la app, otra vez %d' % k)  # el que armó la app no se copia
+        ok(len(copias()) == k + 1, f'{pasos}: el FINAL que armó la app no se copia al rearmarlo: {copias()}')
+    # ya copiado y el paso falla antes de reescribirlo: al volver a pulsar no se copia otra vez (son varios GB)
+    open(os.path.join(d, 'FINAL.mp4'), 'wb').write(b'otro arreglo a mano')
+    correr('rearmar', ['final_sin_trailer'], {})
+    correr('rearmar', ['final_sin_trailer'], {})
+    ok(len(copias()) == 4 and sum(contenido(f) == b'otro arreglo a mano' for f in copias()) == 1,
+       f'el FINAL ya copiado no se vuelve a copiar en cada intento: {copias()}')
 
     # P2) testimonios narrados y «Nuevos modelos»: su voz (ElevenLabs) no se hace sin SI, y solo se pregunta si falta
     d = os.path.join(app.PROYECTOS, 'voces')
