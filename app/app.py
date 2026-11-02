@@ -85,6 +85,17 @@ def idioma_video(d):
         return 'es'
 
 
+def yt_contacto(d, desc):
+    """El bloque de WhatsApp de fabian en la descripción, solo en videos de desbloqueo/FRP/servicios (los que son de una
+    marca de teléfono). Las noticias (Movistar→Tigo…) no llevan publicidad de desbloqueo."""
+    try:
+        if not conocimiento.marca_de_proyecto(d):
+            return desc
+    except Exception:
+        return desc
+    return youtube.con_contacto(desc, idioma_video(d))
+
+
 def voz_env(d):
     """La voz y el idioma de un proyecto traducido (vacío si es español: Mauricio, como siempre). Van como variables de
     entorno a todo lo que habla: voz.py, la voz nueva del Short, los testimonios narrados, nuevos modelos y el tráiler."""
@@ -1706,7 +1717,7 @@ def yt_publicar(p, op):
         titulo = (meta.get('titulo') or (meta.get('titulos') or [{}])[meta.get('elegido') or 0].get('titulo') or '').strip()
         if not titulo:
             raise youtube.ErrorYT('Falta el título: pulsa «✨ Proponer» o escribe uno.')
-        desc = meta.get('descripcion', '').strip()
+        desc = yt_contacto(d, meta.get('descripcion', '').strip())
         if meta.get('capitulos_texto'):
             desc += '\n\n' + meta['capitulos_texto'].strip()
         if meta.get('advertencia'):
@@ -2155,6 +2166,8 @@ class Manejador(BaseHTTPRequestHandler):
             r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', []),
                                        'busquedas': busq, 'investigacion': yt_investigacion(d)})
             r['titulo'] = ((r.get('titulos') or [{}])[r.get('elegido') or 0] or {}).get('titulo', '')
+            r['descripcion'] = yt_contacto(d, r.get('descripcion', ''))
+            r['descripciones'] = [yt_contacto(d, x) for x in r.get('descripciones') or [] if isinstance(x, str)]
             r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
             json.dump(r, open(os.path.join(d, 'youtube', 'metadatos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             return self.responder(r)

@@ -17,8 +17,30 @@ PERMISOS = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googl
             'https://www.googleapis.com/auth/yt-analytics.readonly']
 
 
+CONTACTO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mis_conocimientos', 'youtube_canal',
+                        'contacto_descripcion.json')
+
+
 class ErrorYT(Exception):
     pass
+
+
+def con_contacto(desc, idioma='es'):
+    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, después
+    del primer párrafo (lo que se ve sin «Mostrar más»). Si ya está, no se repite. Los videos de noticias no lo llevan:
+    eso lo decide quien llama."""
+    try:
+        bloques = json.load(open(CONTACTO, encoding='utf-8'))
+    except (OSError, ValueError):
+        return desc
+    bloque = (bloques.get(idioma) or bloques.get('es') or '').strip()
+    desc = (desc or '').strip()
+    if not bloque or 'wa.me/573186888787' in desc:
+        return desc
+    if '\n\n' not in desc:
+        return (desc + '\n\n' + bloque).strip()
+    primero, resto = desc.split('\n\n', 1)
+    return f'{primero}\n\n{bloque}\n\n{resto}'
 
 
 def config(aj):
