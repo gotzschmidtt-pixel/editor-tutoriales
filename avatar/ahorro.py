@@ -59,6 +59,12 @@ def ff(*a):
 def ajustes(aj=None):
     out = dict(AJUSTES)
     out.update({k: v for k, v in (aj or {}).items() if k in AJUSTES and v is not None})
+    # con 0 en «cambio de imagen cada … s» o en «plano cada … s» los cortes no terminaban nunca y «Montar» se colgaba
+    for k, minimo in (('rotar_inicio', 1.0), ('rotar', 1.0), ('plano_s', 3.0)):
+        try:
+            out[k] = max(minimo, float(out[k]))
+        except (TypeError, ValueError):
+            out[k] = AJUSTES[k]
     return out
 
 
@@ -214,6 +220,8 @@ def cortes(s, e, frases_s, aj=None):
     out, t = [s], s
     while True:
         paso = aj['rotar_inicio'] if t < 60 else aj['rotar']
+        if not paso > 0:  # nunca se queda dando vueltas
+            break
         meta = t + paso
         if meta >= e - paso * 0.5:
             break
@@ -325,28 +333,30 @@ def apoyo_de(d):
             and 'hoja' not in os.path.basename(f).lower()]
 
 
-def _clip_apoyo(f, dd, salida, k, desde=0.0):
+def _clip_apoyo(f, dd, salida, k, desde=0.0, n=None):
     """Un trozo de apoyo de dd s a 1920x1080, en la caja de arriba (los subtítulos van abajo): video desde `desde`, o
-    imagen con un zoom suave (acerca o aleja)."""
+    imagen con un zoom suave (acerca o aleja). n: cuántos cuadros exactos (montar() los cuenta sobre el tiempo total, así
+    el redondeo de cada trozo no se va sumando y la imagen no se adelanta a la voz)."""
     cw, ch, y = CAJA
+    n = n or max(1, round(dd * FPS))
     caja = f'scale={cw}:{ch}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:{y}:color={FONDO}'
     if f.lower().endswith(('.mp4', '.mov')):
-        ff('-stream_loop', '-1', '-ss', f'{desde:.2f}', '-i', f, '-t', f'{dd:.3f}', '-vf', f'{caja},fps={FPS},setsar=1',
+        ff('-stream_loop', '-1', '-ss', f'{desde:.2f}', '-i', f, '-vf', f'{caja},fps={FPS},setsar=1', '-frames:v', str(n),
            '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
         return
-    n = max(1, round(dd * FPS))
     z = f"'1+0.08*on/{n}'" if k % 2 == 0 else f"'1.08-0.08*on/{n}'"
-    ff('-loop', '1', '-i', f, '-t', f'{dd:.3f}', '-vf',
+    ff('-loop', '1', '-i', f, '-vf',
        f'{caja},scale={W * 2}:{H * 2},zoompan=z={z}:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=1:s={W}x{H}:fps={FPS},setsar=1',
        '-frames:v', str(n), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
 
 
-def _clip_avatar(f, desde, dd, salida, acercado=False):
-    """dd s de la imagen del clip de HeyGen desde `desde` (si se acaba, se queda en su último cuadro), en plano abierto o
-    acercado a la cara."""
+def _clip_avatar(f, desde, dd, salida, acercado=False, n=None):
+    """dd s (o n cuadros exactos) de la imagen del clip de HeyGen desde `desde` (si se acaba, se queda en su último
+    cuadro), en plano abierto o acercado a la cara."""
     cw, ch, x, y = ACERCADO
+    n = n or max(1, round(dd * FPS))
     plano = f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}' + (f',crop={cw}:{ch}:{x}:{y},scale={W}:{H}' if acercado else '')
-    ff('-ss', f'{desde:.3f}', '-i', f, '-t', f'{dd:.3f}', '-vf', f'{plano},fps={FPS},setsar=1,tpad=stop_mode=clone:stop_duration={dd:.3f}',
+    ff('-ss', f'{desde:.3f}', '-i', f, '-frames:v', str(n), '-vf', f'{plano},fps={FPS},setsar=1,tpad=stop_mode=clone:stop_duration={dd:.3f}',
        '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', salida)
 
 
@@ -357,6 +367,9 @@ def montar(tramos, voz, clips_avatar, apoyo, salida, aj=None, frases_s=(), semil
     aj = ajustes(aj)
     rnd = random.Random(semilla)
     pool, ultimo, desde_de = list(apoyo), None, {}
+    # los cuadros de cada trozo se cuentan sobre el tiempo total (no con -t por trozo): así el redondeo no se suma y
+    # el avatar del cierre no queda adelantado a la voz
+    cuadros = lambda a, b: round(b * FPS) - round(a * FPS)
     with tempfile.TemporaryDirectory() as tmp:
         partes, k_av, k = [], 0, 0
         nuevo = lambda: os.path.join(tmp, f'{len(partes):03d}.mp4')
@@ -365,13 +378,19 @@ def montar(tramos, voz, clips_avatar, apoyo, salida, aj=None, frases_s=(), semil
                 # plano abierto / acercado cada ~plano_s, cambiando en el inicio de una frase si hay una cerca
                 pl = cortes(t['s'], t['e'], frases_s, {'rotar_inicio': aj['plano_s'], 'rotar': aj['plano_s']})
                 for j, (a, b) in enumerate(zip(pl, pl[1:])):
+                    n = cuadros(a, b)
+                    if n <= 0:
+                        continue
                     p = nuevo()
-                    _clip_avatar(clips_avatar[k_av], a - t['s'], b - a, p, acercado=j % 2 == 1)
+                    _clip_avatar(clips_avatar[k_av], a - t['s'], b - a, p, acercado=j % 2 == 1, n=n)
                     partes.append(p)
                 k_av += 1
                 continue
             cs = cortes(t['s'], t['e'], frases_s, aj)
             for a, b in zip(cs, cs[1:]):
+                n = cuadros(a, b)
+                if n <= 0:
+                    continue
                 if not pool:
                     pool = list(apoyo)
                     rnd.shuffle(pool)
@@ -388,7 +407,7 @@ def montar(tramos, voz, clips_avatar, apoyo, salida, aj=None, frases_s=(), semil
                 desde = desde_de[f]
                 desde_de[f] = desde + (b - a)
                 p = nuevo()
-                _clip_apoyo(f, b - a, p, k, desde)
+                _clip_apoyo(f, b - a, p, k, desde, n=n)
                 k += 1
                 partes.append(p)
         total = tramos[-1]['e']
@@ -421,7 +440,7 @@ def montar_proyecto(d):
     if faltan:
         raise SystemExit('Faltan los videos de HeyGen en avatar_ahorro/heygen/: ' + ', '.join(faltan))
     apoyo = apoyo_de(d)
-    if not apoyo:
+    if not apoyo and any(t['tipo'] == 'voz' for t in p['tramos']):  # «🧑 Todo con avatar» no necesita apoyo
         raise SystemExit('No hay material de apoyo (gráficas, memes, capturas o la carpeta apoyo/) para la voz en off.')
     salida = os.path.join(c, 'AVATAR_AHORRO.mp4')
     montar(p['tramos'], vc, clips, apoyo, salida, p.get('ajustes'), p.get('frases_s', []))

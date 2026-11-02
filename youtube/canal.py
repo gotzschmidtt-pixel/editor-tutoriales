@@ -104,7 +104,7 @@ def _curvas(c, videos, avance):
     def una(v):
         try:
             curva = youtube.retencion(c, v['id'], desde=v['publicado'] or '2015-01-01')
-        except youtube.ErrorYT as e:
+        except (youtube.ErrorYT, OSError) as e:  # un corte de internet (URLError, TimeoutError) en una curva no tira abajo las demás
             avance(f'· {v["titulo"][:40]}: {e}')
             return
         json.dump(curva, open(os.path.join(CURVAS, v['id'] + '.json'), 'w', encoding='utf-8'))

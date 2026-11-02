@@ -48,7 +48,8 @@ def signos_es(texto):
             return m.group(0)
         espacio = len(frase) - len(frase.lstrip())
         return frase[:espacio] + abre + frase[espacio:] + signo
-    return re.sub(r'([^?!.:|\n]+)([?!])', arreglar, texto)
+    # un punto entre dos números («HyperOS 2.0», «Android 15.1») no corta la frase
+    return re.sub(r'((?:[^?!.:|\n]|(?<=\d)\.(?=\d))+)([?!])', arreglar, texto)
 
 
 def con_capitulos(desc, capitulos_texto):
@@ -187,14 +188,33 @@ def canal(c):
             'videos': x['statistics'].get('videoCount')}
 
 
+def _etiquetas(lista):
+    """Las etiquetas que entran en el límite de YouTube: 500 letras en total, contando las comillas que lleva cada una con
+    espacios y una coma entre ellas (si se pasa, la subida falla con «invalidTags»)."""
+    out, total = [], 0
+    for t in (lista or [])[:30]:
+        t = str(t).strip()
+        if not t:
+            continue
+        largo = len(t) + (2 if ' ' in t else 0) + (1 if out else 0)
+        if total + largo > 500:
+            break
+        out.append(t)
+        total += largo
+    return out
+
+
 def subir_video(c, ruta, meta, avance=None):
     """Subida reanudable en trozos de 8 MB: un corte de internet no obliga a empezar de cero el trozo anterior."""
     estado = {'privacyStatus': meta.get('privacidad', 'private'), 'selfDeclaredMadeForKids': False}
     if meta.get('publicar_en'):  # programado: queda privado hasta esa hora y YouTube lo publica solo
         estado.update(privacyStatus='private', publishAt=meta['publicar_en'])
-    cuerpo = {'snippet': {'title': meta['titulo'][:100], 'description': meta.get('descripcion', '')[:5000],
-                          'tags': meta.get('etiquetas', [])[:30], 'categoryId': meta.get('categoria', '28'),
-                          'defaultLanguage': 'es', 'defaultAudioLanguage': 'es'}, 'status': estado}
+    # la descripción: 5000 bytes como mucho (tildes, ñ y emojis ocupan más de uno), sin partir una letra por la mitad
+    desc = meta.get('descripcion', '').encode('utf-8')[:5000].decode('utf-8', 'ignore')
+    idioma = meta.get('idioma') or 'es'  # el de la voz del video (una versión en inglés no se marca como español)
+    cuerpo = {'snippet': {'title': meta['titulo'][:100], 'description': desc,
+                          'tags': _etiquetas(meta.get('etiquetas', [])), 'categoryId': meta.get('categoria', '28'),
+                          'defaultLanguage': idioma, 'defaultAudioLanguage': idioma}, 'status': estado}
     largo = os.path.getsize(ruta)
     r = pedir(c, 'POST', SUBIR + '/videos', {'uploadType': 'resumable', 'part': 'snippet,status'}, cuerpo=cuerpo,
               cabeceras={'X-Upload-Content-Type': 'video/mp4', 'X-Upload-Content-Length': str(largo)}, crudo=True)

@@ -123,7 +123,8 @@ def voz_al_dia(carpeta_voz, bid, texto):
     try:
         al = json.load(open(os.path.join(carpeta_voz, f'{bid}.align.json'), encoding='utf-8'))
         dicho = ''.join(al['characters']).strip()
-        return dicho in ((texto or '').strip(), texto_voz(texto))
+        import emociones  # la voz guarda sus tiempos sin las etiquetas de emoción ([excited]…): voz.py
+        return dicho in ((texto or '').strip(), texto_voz(texto), emociones.ETIQUETA.sub('', texto_voz(texto)).strip())
     except (OSError, ValueError, KeyError, TypeError):
         return False
 

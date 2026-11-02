@@ -202,6 +202,7 @@ def main():
             pc = json.load(open(os.path.join(RAIZ, 'mis_conocimientos', 'procesos_pc.json'), encoding='utf-8')).get(marca, True) is not False
         except (OSError, ValueError):
             pc = True
+        con_img = aj.get('imagenes', True) is not False  # DeepSeek o un modelo de Ollama solo texto no ven imágenes (daban 400)
         pedido = (('OJO, REGLA DEL AUTOR: este proceso NECESITA PC. Nunca propongas «SIN PC» ni lo prometas (aunque la competencia lo use). '
                    if pc else '') +
                   f'Eres el estratega de YouTube del canal Xiaomiunlock (tutoriales de desbloqueo de celulares, en español). '
@@ -210,16 +211,18 @@ def main():
                   f'LO QUE LA GENTE ESCRIBE EN YOUTUBE: {json.dumps(yt, ensure_ascii=False)}\n'
                   f'LO QUE LA GENTE ESCRIBE EN GOOGLE: {json.dumps(google, ensure_ascii=False)}\n'
                   f'LO QUE BUSCARON PARA LLEGAR A LOS VIDEOS DEL CANAL (90 días): {json.dumps(propias[:20], ensure_ascii=False)}\n'
-                  f'ETIQUETAS QUE MÁS USAN ESOS VIDEOS: {json.dumps(etiquetas[:20], ensure_ascii=False)}\n\n'
-                  'Las imágenes son las miniaturas de los videos que más vistas por día juntan, en el mismo orden. '
+                  f'ETIQUETAS QUE MÁS USAN ESOS VIDEOS: {json.dumps(etiquetas[:20], ensure_ascii=False)}\n\n' +
+                  ('Las imágenes son las miniaturas de los videos que más vistas por día juntan, en el mismo orden. ' if con_img else
+                   'No tienes las miniaturas (esta IA no ve imágenes): en "miniaturas" escribe "(no se miraron)". ') +
                   'Analiza todo y responde SOLO con JSON: {"palabras_clave": ["las 10 a 15 que más se buscan, en orden"], '
                   '"titulos": "cómo son los títulos que ganan (largo, palabras, año, signos) en 2 o 3 frases", '
                   '"miniaturas": "qué tienen en común las miniaturas que más funcionan (colores, texto, teléfono, caras, flechas) en 2 o 3 frases", '
                   '"competencia": "qué canales dominan y qué hacen", "oportunidad": "qué hueco hay para destacar", '
                   '"ideas_titulo": ["5 títulos para este video, de 100 letras o menos, que usen lo que funciona sin copiar"]}')
-        avisar('· [75%] La IA está mirando los títulos y las miniaturas…')
+        avisar('· [75%] La IA está mirando los títulos y las miniaturas…' if con_img else
+               '· [75%] La IA está mirando los títulos (tu IA no ve imágenes: las miniaturas no se miraron)…')
         try:
-            r = ia.extraer_json(ia.llamar(dict(aj, imagenes=True), pedido, caps))
+            r = ia.extraer_json(ia.llamar(dict(aj, imagenes=con_img), pedido, caps if con_img else []))
             r = r if isinstance(r, dict) else {}
             if pc:  # por si igual lo propone
                 for k in ('palabras_clave', 'ideas_titulo'):

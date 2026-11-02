@@ -1761,9 +1761,11 @@ def yt_publicar(p, op):
         desc = youtube.con_capitulos(yt_contacto(d, meta.get('descripcion', '').strip()), meta.get('capitulos_texto'))  # siempre con capítulos, sin repetirlos
         if meta.get('advertencia'):
             desc += '\n\n⚠️ ' + meta['advertencia'].strip()
+        idioma = idioma_video(d)  # el de la voz: una versión en inglés no se sube marcada como audio en español
         vid = youtube.subir_video(c, os.path.join(d, 'FINAL.mp4'),
                                   {'titulo': titulo, 'descripcion': desc, 'etiquetas': meta.get('etiquetas', []),
-                                   'privacidad': op.get('privacidad', 'private'), 'publicar_en': op.get('publicar_en')},
+                                   'privacidad': op.get('privacidad', 'private'), 'publicar_en': op.get('publicar_en'),
+                                   'idioma': idioma},
                                   lambda x: est.update(avance=round(x * 100)))
         est.update(avance=100, estado='detalles', id=vid)
         json.dump({'id': vid, 'url': f'https://youtu.be/{vid}', 'titulo': titulo, 'cuando': time.strftime('%Y-%m-%d %H:%M')},
@@ -1772,9 +1774,10 @@ def yt_publicar(p, op):
             f = yt_srt_final(d)
             try:
                 if f:
-                    youtube.subir_subtitulos(c, vid, 'es', 'Español', open(f, encoding='utf-8', errors='replace').read())
+                    youtube.subir_subtitulos(c, vid, idioma, 'Español' if idioma == 'es' else idioma,
+                                             open(f, encoding='utf-8', errors='replace').read())
                 cortes = existe(d, '8_testimonios.mp4') or existe(d, '9_modelos.mp4')
-                otros = [x for x in (subtitulos.leer(d).get('textos') or {}) if x != 'es']
+                otros = [x for x in (subtitulos.leer(d).get('textos') or {}) if x not in ('es', idioma)]
                 if otros and cortes:
                     est['avisos'].append('Los subtítulos en otros idiomas no se subieron: con testimonios o nuevos modelos sus tiempos no coinciden.')
                 elif otros:
@@ -1946,8 +1949,10 @@ def costo_voz(d, desde=None, hasta=None):
     json.dump(datos, f, ensure_ascii=False)
     f.close()
     try:
+        # el hijo escribe en utf-8 (en Windows sería cp1252 y el aviso de emociones recortadas «·» rompía la lectura)
         r = subprocess.run([PY, m('voz', 'voz.py'), '--guion', f.name, '--salida', os.path.join(d, 'voz'), '--costo'] + voz_args(d),
-                           capture_output=True, text=True, encoding='utf-8', timeout=60, **SIN_VENTANA)
+                           capture_output=True, text=True, encoding='utf-8', timeout=60,
+                           env=dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1'), **SIN_VENTANA)
         return json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError, subprocess.TimeoutExpired):
         return {'bloques': [], 'caracteres': 0, 'desconocido': True}
@@ -1973,7 +1978,9 @@ def frases_guion(d):
             txt, t0, t1 = ''.join(al['characters']), al['character_start_times_seconds'], al['character_end_times_seconds']
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        if not txt.strip() or txt.strip() not in (str(b.get('texto') or '').strip(), texto_voz(b.get('texto'))):
+        import emociones  # la voz guarda sus tiempos sin las etiquetas de emoción ([excited]…): voz.py
+        if not txt.strip() or txt.strip() not in (str(b.get('texto') or '').strip(), texto_voz(b.get('texto')),
+                                                  emociones.ETIQUETA.sub('', texto_voz(b.get('texto'))).strip()):
             continue  # la voz es de otro texto: el editor estima
         out[b['id']] = {'texto': b.get('texto') or '',  # el editor usa estos tiempos solo mientras el texto siga igual
                         'frases': [{'texto': m.group().strip(), 't0': t0[m.start()], 't1': t1[min(m.end(), len(t1)) - 1]}

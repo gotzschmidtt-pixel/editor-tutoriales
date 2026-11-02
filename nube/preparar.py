@@ -20,7 +20,8 @@ ARCHIVOS = ['original.mp4', 'material.mp4', 'imagen.png', 'musica.mp3', 'idea.tx
             'mapa_video.json', 'guion_para_leer.md', 'mejoras_guion.txt']
 CARPETAS = ['referencias', 'pistas_trailer', 'tarjetas', 'marcas_senales', 'testimonios', 'nuevos_modelos',
             'hojas_2s', 'ia_capturas', 'acciones']  # hojas de contacto, capturas de la IA y capturas de cada acción
-SECRETOS = ('clave', 'key', 'token', 'secret', 'password', 'contrase', 'elevenlabs')  # nunca viajan, estén donde estén
+SECRETOS = ('clave', 'key', 'token', 'secret', 'password', 'contrase', 'elevenlabs', 'pin_hash', 'tema')  # nunca viajan, estén donde estén
+NO_VIAJAN = ('celular', 'avisos', 'youtube')  # PIN del celular (sal y huella), tema de avisos y cuenta de YouTube: se quedan en la PC
 SALIDA = 'para_claude'
 
 
@@ -66,6 +67,9 @@ def main():
         ajustes = json.load(open(a.ajustes, encoding='utf-8'))
     except (OSError, ValueError):
         ajustes = {}
+    if not isinstance(ajustes, dict):
+        ajustes = {}
+    ajustes = {k: v for k, v in ajustes.items() if k not in NO_VIAJAN}
     estilo = ajustes.get('estilo')
     if estilo:
         for f in ('perfil.md', 'perfil.json'):

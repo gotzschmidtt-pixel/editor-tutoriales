@@ -83,6 +83,24 @@ def texto_pedido(b, a):
 _AVISADO = set()
 
 
+def sin_etiquetas(al):
+    """Los tiempos por letra de ElevenLabs sin las etiquetas de emoción ([excited], [chuckles]…) ni el espacio que las
+    sigue. Se buscan en lo que devolvió ElevenLabs y no por el largo del texto: emociones.py las quita o las cambia
+    ([laughs] → [chuckles]) y entonces el largo ya no sirve (cortaba «Ho» de «Hola» o dejaba solo «de Google!»)."""
+    import emociones
+    ch = al.get('characters') or []
+    dicho = ''.join(ch)
+    if len(dicho) != len(ch):  # cada elemento debería ser una letra; si no, mejor no tocar nada
+        return al
+    fuera = set()
+    for m in emociones.ETIQUETA.finditer(dicho):
+        fuera.update(range(*m.span()))
+    if not fuera:
+        return al
+    return {k: [x for i, x in enumerate(v) if i not in fuera] if isinstance(v, list) and len(v) == len(ch) else v
+            for k, v in al.items()}
+
+
 def firma(b, a):
     f = {'texto': b['texto'], 'voz': a.voz, 'modelo': a.modelo, 'estabilidad': a.estabilidad}
     pron = pronunciacion.firma_bloque(b['texto'])
@@ -176,7 +194,8 @@ def ajustar_guion(guion, carpeta):
                     mo['velocidad'] = 1.0
                     mo['src_fin'] = round(mo['src_inicio'] + min(tramo, quiere), 2)
                 else:
-                    tope = 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else VEL_MAX  # «⭐ corte importante»: nunca se acelera
+                    # «⭐ corte importante»: nunca se acelera; los pasos de configuración, a ×2 como máximo
+                    tope = 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else 2.0 if mo.get('paso') else VEL_MAX
                     mo['velocidad'] = round(min(tope, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
             if largo_bloque(mo) < antes_b - 0.3:
                 avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
@@ -237,10 +256,9 @@ def main():
                 time.sleep(2 * (intento + 1))
         open(mp3, 'wb').write(base64.b64decode(r['audio_base64']))
         al = r.get('alignment')
-        corte = len(pedido) - len(texto_voz(b['texto']))
-        if al and corte and ''.join(al['characters'][:corte]) == pedido[:corte]:
-            # la etiqueta de emoción no se dice: fuera de los tiempos, así subtítulos y etiquetas ven solo el texto
-            al = {k: v[corte:] for k, v in al.items()}
+        if al and a.modelo.startswith(CON_EMOCION):
+            # las etiquetas de emoción no se dicen: fuera de los tiempos, así subtítulos y etiquetas ven solo el texto
+            al = sin_etiquetas(al)
         json.dump(al, open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)
