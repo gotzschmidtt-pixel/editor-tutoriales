@@ -742,6 +742,61 @@ const caja = {textContent: '', className: ''}, $ = () => caja;
     ok("confirmo: gasta.length ? 'SI' : ''" in seguir_g and "confirmo: 'SI'" not in seguir_g,
        'el editor de guion («Seguir») manda SI solo si preguntó y lo escribiste')
 
+    # P5) transcribir con ElevenLabs (Scribe o Forced Alignment, ~330 créditos por minuto): con SI escrito, no con un Aceptar
+    d = os.path.join(app.PROYECTOS, 'transcribe')
+    crear(d, ['original.mp4', 'transcripcion.txt'])
+    LANZADOS.clear()
+    for datos in ({'motor': 'scribe'}, {'motor': 'alinear'}):
+        st, b = pedir('POST', '/api/ejecutar?p=transcribe&paso=transcribir', json.dumps(datos).encode())
+        ok(st != 200 and 'ElevenLabs' in b.decode('utf-8') and lanzado(0.3) is None, f'transcribir {datos} sin SI no debe arrancar: {st} {b[:200]!r}')
+    json.dump({'elevenlabs': 'sk-prueba'}, open(app.AJUSTES, 'w'))  # con clave, «auto» es Scribe: también pide SI
+    st, b = pedir('POST', '/api/ejecutar?p=transcribe&paso=transcribir', json.dumps({'motor': 'auto'}).encode())
+    ok(st != 200 and lanzado(0.3) is None, f'transcribir «auto» (Scribe con tu clave) sin SI no debe arrancar: {st} {b[:200]!r}')
+    json.dump({}, open(app.AJUSTES, 'w'))
+    for datos in ({'motor': 'scribe', 'confirmo': 'SI'}, {'motor': 'whisper'}, {}):
+        st, b = pedir('POST', '/api/ejecutar?p=transcribe&paso=transcribir', json.dumps(datos).encode())
+        ok(st == 200 and lanzado(), f'transcribir {datos} arranca (con SI, o con Whisper, gratis): {st} {b[:200]!r}')
+    c = app.comandos('transcribir', d, {})[0]
+    ok(c[c.index('--motor') + 1] == 'whisper', f'sin motor elegido se transcribe con Whisper (gratis), no con Scribe: {c}')
+    viejo_dur = app.duracion_original
+    app.duracion_original = lambda d_, nombre='original.mp4': 900.0  # una grabación de 15 min
+    try:
+        c = json.loads(pedir('GET', '/api/costo_paso?p=transcribe&paso=transcribir&motor=scribe')[1])
+    finally:
+        app.duracion_original = viejo_dur
+    ok(c == {'gasta': ['transcribir con ElevenLabs Scribe (unos 4.950 créditos: ~330 por minuto de tu grabación)']},
+       f'transcribir con Scribe dice cuántos créditos gasta: {c}')
+    ok(json.loads(pedir('GET', '/api/costo_paso?p=transcribe&paso=transcribir&motor=whisper')[1]) == {'gasta': []}, 'Whisper no gasta')
+    ok("{'motor': 'auto', 'confirmo': 'SI'} if a.confirmo_creditos" in open(os.path.join(RAIZ, 'deepseek', 'video.py'), encoding='utf-8').read(),
+       'DeepSeek con --confirmo-creditos manda el SI del autor al transcribir con Scribe')
+    if shutil.which('node') and funcion('index.html', 'ejecutar'):
+        res = nodo('transcribir', r"""
+const P = 'p', q = encodeURIComponent;
+let SI_ESCRITO = false, ACEPTA = [], RESP = 'SI', preguntas = 0, mandados = [], costos = [];
+async function api(url, op) {
+  if (url.startsWith('/api/costo_paso')) { costos.push(url.split('motor=')[1]); return {gasta: ['transcribir con ElevenLabs Scribe (unos 4.950 créditos)']}; }
+  if (url.startsWith('/api/estado')) return {archivos: {'transcripcion.txt': {}}};
+  if (url.startsWith('/api/ejecutar')) mandados.push(JSON.parse(op.body));
+  return {};
+}
+function prompt() { preguntas++; return RESP; } function confirm() { return ACEPTA.shift(); } function alert() {}
+function refrescar() {} function soltarVideo() {}
+const caja = {value: 'alta'}, $ = () => caja;
+""" + funcion('index.html', 'pedirSi') + '\n' + funcion('index.html', 'ejecutar') + r"""
+(async () => {
+  const res = [];
+  for (const [acepta, resp] of [[[false, true], 'SI'], [[false, true], null], [[true], 'si'], [[false, false], 'SI']]) {
+    ACEPTA = acepta; RESP = resp; preguntas = 0; mandados = []; costos = [];
+    await ejecutar('transcribir');
+    res.push({preguntas, costos, mandados: mandados.map(m => [m.motor, m.confirmo || ''])});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'preguntas': 1, 'costos': ['scribe'], 'mandados': [['scribe', 'SI']]}, {'preguntas': 1, 'costos': ['scribe'], 'mandados': []},
+                   {'preguntas': 1, 'costos': ['alinear'], 'mandados': [['alinear', 'SI']]}, {'preguntas': 0, 'costos': [], 'mandados': [['whisper', '']]}],
+           f'«Transcribir tu voz»: Scribe o alinear piden SI escrito con los créditos; Whisper no pregunta: {res}')
+
     # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
     d = os.path.join(app.PROYECTOS, 'cruce')
     t = os.path.join(d, 'testimonios')

@@ -1244,9 +1244,17 @@ async function ejecutar(paso) {
   if (paso === 'transcribir') {
     // con una transcripción ya hecha (y corregida a mano en transcripcion.txt), Forced Alignment solo le pone los tiempos exactos
     const hay = (est || await api(`/api/estado?p=${q(P)}`)).archivos['transcripcion.txt'];
-    if (hay && confirm('¿Alinear la transcripción corregida?\n\nUsa el texto de transcripcion.txt (el que corregiste a mano) y ElevenLabs Forced Alignment le pone el segundo exacto de cada palabra, sin volver a transcribir. Usa ElevenLabs. La versión anterior queda como *.antes_alinear.\n\nCancelar = transcribir de nuevo.'))
+    if (hay && confirm('¿Alinear la transcripción corregida?\n\nUsa el texto de transcripcion.txt (el que corregiste a mano) y ElevenLabs Forced Alignment le pone el segundo exacto de cada palabra, sin volver a transcribir. Usa ElevenLabs (gasta créditos: antes te pido escribir SI). La versión anterior queda como *.antes_alinear.\n\nCancelar = transcribir de nuevo.'))
       op.motor = 'alinear';
-    else op.motor = confirm('¿Transcribir en línea con ElevenLabs? (Cancelar = Whisper en tu PC, sin internet)') ? 'scribe' : 'whisper';
+    else op.motor = confirm('¿Transcribir en línea con ElevenLabs Scribe? Gasta créditos (~330 por minuto de tu grabación; antes te pido escribir SI).\n\nCancelar = Whisper en tu PC, gratis y sin internet.') ? 'scribe' : 'whisper';
+    if (op.motor !== 'whisper') {  // Scribe y Forced Alignment gastan ElevenLabs: un Aceptar (o Enter) no alcanza, hay que escribir SI
+      let c = null;
+      try { c = await api(`/api/costo_paso?p=${q(P)}&paso=transcribir&motor=${op.motor}`); } catch (e) {}
+      if (!c || c.gasta.length) {
+        if (!pedirSi(`Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'unos 330 créditos por minuto de tu grabación (no pude medir cuánto dura)'}.`)) return;
+        op.confirmo = 'SI';
+      }
+    }
   }
   try { await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { alert(e.message); }
   refrescar();

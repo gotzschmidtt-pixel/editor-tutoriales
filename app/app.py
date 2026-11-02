@@ -622,7 +622,7 @@ def comandos(paso, d, op):
         return mejoras.comandos(paso, d, op, PY, AJUSTES)
     g = ['--guion', 'guion.json']
     if paso == 'transcribir':
-        motor = op.get('motor', 'scribe')
+        motor = op.get('motor') or 'whisper'  # Scribe y Forced Alignment gastan ElevenLabs: solo si se piden (y con tu SI)
         return [[PY, m('transcripcion', 'transcribir.py'), '--video', 'original.mp4', '--salida', 'transcripcion', '--motor', motor]]
     if paso == 'voz':
         return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz'] + voz_args(d)]
@@ -1530,7 +1530,7 @@ def correr(proyecto, pasos, opciones):
                 log.write(f'\n✗ {info["nombre"]}: falta {", ".join(falta)}\n'); log.flush()
                 FALLOS[proyecto] = {'paso': paso, 'msg': 'falta ' + ', '.join(falta)}
                 return
-            eleven = paso in USAN_ELEVEN or (paso == 'transcribir' and opciones.get('motor', 'scribe') in ('scribe', 'alinear'))
+            eleven = paso in USAN_ELEVEN or (paso == 'transcribir' and opciones.get('motor') in ('scribe', 'alinear'))
             if eleven and sys.platform == 'win32' and not env.get('ELEVENLABS_API_KEY'):
                 raise RuntimeError('Falta tu clave de ElevenLabs. Pulsa el botón «🔑 Clave ElevenLabs» arriba a la derecha, '
                                    'pégala y guarda. (Para transcribir sin clave usa Whisper: «Cancelar» al preguntar.)')
@@ -2195,6 +2195,13 @@ def gastos_sin_si(d, paso, pasos, datos):
             gasta.append(f"unos {n} créditos de voz ({len(c['bloques'])} bloque{'' if len(c['bloques']) == 1 else 's'}: {', '.join(c['bloques'])})")
     if 'musica' in pasos and not os.path.exists(MUSICA_FIJA) and not existe(d, 'musica.mp3'):
         gasta.append('una música nueva (unos 2.950 créditos)')
+    if 'transcribir' in pasos and datos.get('motor') in ('scribe', 'alinear'):
+        # ElevenLabs Scribe o Forced Alignment: ~330 créditos por minuto de tu grabación (un video de 15 min, unos 5.000)
+        que = 'alinear la transcripción con ElevenLabs' if datos['motor'] == 'alinear' else 'transcribir con ElevenLabs Scribe'
+        minutos = duracion_original(d) / 60
+        n = f'{max(1, round(minutos * 330)):,}'.replace(',', '.')
+        gasta.append(f'{que} (unos {n} créditos: ~330 por minuto de tu grabación)' if minutos else
+                     f'{que} (~330 créditos por minuto de tu grabación; no pude medir cuánto dura)')
     if paso == 'trailer_version' and not datos.get('sin_voz'):  # «▶ Ver con voz» / «💾 Guardar y rehacer» de una IA del tráiler
         v = re.sub(r'[^a-z]', '', str(datos.get('v') or ''))
         frase = frase_trailer_por_pagar(d, f'trailer_{v}.json', f'trailer_{v}.mp4') if v else ''

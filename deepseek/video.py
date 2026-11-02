@@ -337,7 +337,8 @@ def main():
             else:
                 print('Transcribo tu voz con Whisper en esta PC (gratis). Para usar ElevenLabs Scribe, más preciso pero gasta '
                       'créditos, pregúntale al autor y repite con --confirmo-creditos.', flush=True)
-            correr(p, 'transcribir', {'motor': 'auto' if a.confirmo_creditos else 'whisper'})
+            # con el permiso del autor la app lo recibe como SI (Scribe gasta ElevenLabs y sin SI no arranca)
+            correr(p, 'transcribir', {'motor': 'auto', 'confirmo': 'SI'} if a.confirmo_creditos else {'motor': 'whisper'})
         print('Armo el encargo del guion (capturas, mapa del video y hojas)…', flush=True)
         correr(p, 'ia', {'tarea': 'guion', 'modo': 'prompt'})
         out, n = hojas_2s(d)
