@@ -166,11 +166,12 @@ def logos_esperados(ev):
         if dicha and (not tiempos or tiempos[-1][0] != a0):
             texto += dicha + ' '
             tiempos += [(a0, None)] * (len(dicha) + 1)
-    out, visto = [], {}
+    out, visto, veces = [], {}, {}
     for pos, l in sorted(lg.menciones(texto, lib), key=lambda x: x[0]):
         s = tiempos[min(pos, len(tiempos) - 1)][0]
-        if s - visto.get(l['archivo'], -999) >= lg.NO_REPETIR:
+        if s - visto.get(l['archivo'], -999) >= lg.NO_REPETIR and veces.get(l['archivo'], 0) < int(l.get('max_veces') or 99):
             visto[l['archivo']] = s
+            veces[l['archivo']] = veces.get(l['archivo'], 0) + 1  # como logos.py: «Google» sale una sola vez
             out.append((s, l))
     return out, carpeta
 
