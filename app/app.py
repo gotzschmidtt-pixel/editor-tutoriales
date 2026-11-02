@@ -369,7 +369,7 @@ def guion_fuera_de_largo(d):
                                     os.path.join(d, 'original.mp4')], capture_output=True, text=True, **SIN_VENTANA).stdout)
         idea = open(os.path.join(d, 'idea.txt'), encoding='utf-8').read() if existe(d, 'idea.txt') else ''
         # solo lo que escribió el autor: las respuestas de «Datos confirmados» («tarda 3 minutos») no son la duración
-        m = re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:utos?)?\b', idea.split('Datos confirmados por el autor:')[0])
+        m = re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:s|ut\w*)?\b', idea.split('Datos confirmados por el autor:')[0])
         meta = int(m.group(1)) * 60 if m else dur
         t = float(g.get('duracion_s') or sum(b.get('fin_max', 0) - b.get('inicio_min', 0) for b in g.get('bloques', [])))
         return not (meta * 0.9 <= t <= meta * 1.15)

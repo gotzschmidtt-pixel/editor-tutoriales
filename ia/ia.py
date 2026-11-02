@@ -1168,7 +1168,8 @@ def minutos_pedidos(idea):
     """«que dure unos N minutos» en la idea. Solo en lo que escribió el autor, antes de «Datos confirmados por el autor:»:
     una respuesta como «tarda unos 3 minutos en reiniciar» no es la duración del video."""
     idea_autor = (idea or '').split('Datos confirmados por el autor:')[0]
-    return re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:utos?)?\b', idea_autor)
+    # «min», «mins», «minuto(s)», «minutitos» sí; «mínimo» o «minimo» no
+    return re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:s|ut\w*)?\b', idea_autor)
 
 
 def meta_guion(d, dur, idea=None):

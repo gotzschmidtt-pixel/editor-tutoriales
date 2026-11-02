@@ -29,6 +29,8 @@ try:
     ok(ia.meta_guion(tmp, 860)[0] == 600, '«que dure unos 10 minutos» del autor debería mandar')
     ok(ia.minutos_pedidos('de 5 a 7 min.').group(1) == '5', '«de 5 a 7 min.» debería contar')
     ok(ia.minutos_pedidos('pon 3 minimo') is None, '«3 minimo» no es una duración')
+    for txt in ('que dure 10 mins', 'unos 10 minutitos', '10min'):  # como antes de la revisión: también cuentan
+        ok(ia.minutos_pedidos(txt) and ia.minutos_pedidos(txt).group(1) == '10', f'«{txt}» debería contar como 10 minutos')
 
     # respuestas: solo las nuevas, y las cortas quedan como dato confirmado
     open(os.path.join(tmp, 'idea.txt'), 'w', encoding='utf-8').write('Sí funciona con Android 15\n')
