@@ -202,7 +202,7 @@ def armar(d, cuales=(1, 2, 3)):
                            'aresample=44100,aformat=channel_layouts=stereo[a]', '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}',
                            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', p], check=True)
             partes.append(p)
-            tomas.append({'id': bid, 'carpeta': 'voz_short', 'largo': largo})
+            tomas.append({'id': bid, 'carpeta': 'voz_short', 'largo': largo, 'texto': f['texto']})
         cap.release()
         memoria.guardar()
         lista = os.path.join(tmp, 'lista.txt')
@@ -221,9 +221,22 @@ def armar(d, cuales=(1, 2, 3)):
                       ['-filter_complex', f'[0:v]ass={ass}[v];{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
                        '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
                       check=True, cwd=d)
-        hechos.append({'archivo': salida, 'duracion': round(short.duracion(os.path.join(d, salida)), 1)})
+        short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
+        hechos.append({'archivo': salida, 'duracion': round(short.duracion(os.path.join(d, salida)), 1),
+                       'revision': _revisar(d, salida, ass)})
     textos(d, r)
     return hechos
+
+
+def _revisar(d, salida, ass):
+    """«✅ Revisor automático» sobre el Short recién armado; sin ❌ graves no queda como listo."""
+    sys.path.insert(0, os.path.join(RAIZ, 'revision'))
+    try:
+        import revisor_auto
+        inf = revisor_auto.revisar(os.path.join(d, salida), os.path.join(d, ass), True)
+        return {'ok': inf['ok'], 'informe': os.path.splitext(salida)[0] + '.revision.md'}
+    except Exception as e:
+        return {'ok': False, 'informe': None, 'error': str(e)}
 
 
 def textos(d, r=None):

@@ -9,7 +9,8 @@ Revisa:
   2. Planos largos: en los primeros 30 s ningún plano igual más de 5 s (regla «el inicio rota escenas»).
   3. Lo que nombra la voz se ve: en el segundo en que la voz dice «OKAY», «Finished», «Erase FRP», «Omitir»…, esa palabra
      tiene que leerse en el cuadro (OCR local, sin contar la franja de los subtítulos).
-  4. Datos privados: OCR + patrones (correo, IMEI de 15 dígitos, seriales/keys largas, teléfonos, montos con $) en cada
+  4. Duración del Short (15 s a 3 min).
+  5. Datos privados (APAGADO por defecto, --privados: fabian no quiere difuminados en los Shorts): OCR + patrones (correo, IMEI de 15 dígitos, seriales/keys largas, teléfonos, montos con $) en cada
      segundo. Con --arreglar los difumina con un recuadro chico solo sobre el dato y lo anota.
   5. Voz vs imagen con IA de visión: se marca «omitido» si no hay una IA local con visión (no gasta).
 Deja <video>.revision.json y <video>.revision.md al lado del video. Devuelve 1 si algo falla.
@@ -21,7 +22,8 @@ import argparse, json, os, re, shutil, subprocess, sys, tempfile
 import cv2
 import numpy as np
 
-PALABRAS_PANTALLA = ['okay', 'finished', 'erase', 'omitir', 'fastboot', 'verifica', 'ajustes', 'reboot', 'read fastboot']
+PALABRAS_PANTALLA = {'okay', 'finished', 'erase', 'omitir', 'fastboot', 'verifica', 'ajustes', 'reboot'}  # palabras completas
+DUR_SHORT = (15.0, 180.0)  # un Short entre 15 s y 3 min
 PRIVADO = [
     ('correo', re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+')),
     ('IMEI', re.compile(r'(?<!\d)\d{15}(?!\d)')),
@@ -30,6 +32,16 @@ PRIVADO = [
     ('monto', re.compile(r'\$\s?\d')),
 ]
 PLANO_MAX, INICIO = 5.0, 30.0
+
+
+def normal(txt):
+    """Minúsculas y sin acentos, para comparar palabras («Omitir» = «omitir», «Configuración» = «configuracion»)."""
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', (txt or '').lower()) if unicodedata.category(c) != 'Mn')
+
+
+def palabras(txt):
+    return set(re.findall(r'[a-z0-9]{3,}', normal(txt)))
 
 
 def _ocr():
@@ -75,12 +87,12 @@ def revisar_subs(ev, margen, wrap2, alto, es_short):
     return fallas
 
 
-def muestras(video, cada):
-    """[(segundo, cuadro)] cada «cada» segundos."""
+def muestras(video, cada, hasta=None):
+    """[(segundo, cuadro)] cada «cada» segundos (hasta «hasta» s, si se da) y la duración del video."""
     c = cv2.VideoCapture(video)
     dur = c.get(cv2.CAP_PROP_FRAME_COUNT) / (c.get(cv2.CAP_PROP_FPS) or 30)
     t, out = 0.0, []
-    while t < dur:
+    while t < min(dur, hasta or dur):
         c.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ok, fr = c.read()
         if ok:
@@ -90,16 +102,23 @@ def muestras(video, cada):
 
 
 def revisar_planos(cuadros):
-    """Planos de más de PLANO_MAX s en los primeros INICIO s (la imagen casi no cambia respecto del inicio del plano)."""
+    """Planos de más de PLANO_MAX s en los primeros INICIO s. Un plano sigue mientras los colores del cuadro se parecen al
+    primero (histograma de tono y saturación): así cuenta como «la misma escena» la pantalla de «Verifica tu cuenta» aunque
+    la cámara se mueva un poco, como lo ve fabian."""
     fallas, ini, base = [], None, None
+    previo = None
     for t, fr in cuadros:
         if t > INICIO:
             break
-        g = cv2.resize(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY), (64, 114)).astype(np.float32)
-        if base is None or float(np.mean(np.abs(g - base))) > 28:
-            if ini is not None and t - ini > PLANO_MAX:
-                fallas.append({'s': ini, 'que': f'el mismo plano {t - ini:.0f} s seguidos (máx. {PLANO_MAX:.0f} s al inicio)'})
-            ini, base = t, g
+        h = cv2.calcHist([cv2.cvtColor(cv2.resize(fr, (108, 192)), cv2.COLOR_BGR2HSV)], [0, 1], None, [30, 16], [0, 180, 0, 256])
+        cv2.normalize(h, h)
+        if base is None or cv2.compareHist(base, h, cv2.HISTCMP_CORREL) < 0.7:
+            if ini is not None and previo - ini > PLANO_MAX:
+                fallas.append({'s': ini, 'que': f'el mismo plano {previo - ini:.0f} s seguidos (máx. {PLANO_MAX:.0f} s al inicio)'})
+            ini, base = t, h
+        previo = t
+    if ini is not None and previo is not None and previo - ini > PLANO_MAX:
+        fallas.append({'s': ini, 'que': f'el mismo plano {previo - ini:.0f} s seguidos (máx. {PLANO_MAX:.0f} s al inicio)'})
     return fallas
 
 
@@ -115,18 +134,76 @@ def revisar_voz_pantalla(ocr, video, ev, banda):
     """En el momento en que se dice una palabra que se ve en pantalla, esa palabra tiene que leerse en el cuadro."""
     fallas, c = [], cv2.VideoCapture(video)
     for a0, a1, _, dicha in ev:
-        w = dicha.lower().strip('.,¿?¡!:;')
-        if not any(w and w in p for p in PALABRAS_PANTALLA):
+        w = normal(dicha).strip('.,¿?¡!:;…')
+        if len(w) < 3 or w not in PALABRAS_PANTALLA:  # solo palabras completas que se ven en pantalla («era» no es «erase»)
             continue
         visto = False
         for dt in (0.0, 0.4, 0.8):
             c.set(cv2.CAP_PROP_POS_MSEC, (a0 + dt) * 1000)
             ok, fr = c.read()
-            if ok and any(w in txt.lower() for _, txt in texto_cuadro(ocr, fr, banda)):
+            if ok and any(w in palabras(txt) for _, txt in texto_cuadro(ocr, fr, banda)):
                 visto = True
                 break
         if not visto:
             fallas.append({'s': round(a0, 2), 'que': f'la voz dice «{dicha}» y no se lee en el cuadro (recorte o zoom equivocado)'})
+    return fallas
+
+
+def logos_esperados(ev):
+    """[(segundo, logo)] que la voz nombra (las palabras disparadoras de mis_conocimientos/logos/logos.json), con las mismas
+    reglas que los pone logos.py (de a uno, sin repetir antes de 30 s)."""
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    carpeta = os.path.join(raiz, 'mis_conocimientos', 'logos')
+    sys.path.insert(0, os.path.join(raiz, 'logos'))
+    try:
+        import logos as lg
+        lib = [l for l in json.load(open(os.path.join(carpeta, 'logos.json'), encoding='utf-8')).get('logos', [])
+               if os.path.isfile(os.path.join(carpeta, l.get('archivo', '')))]
+    except Exception:
+        return [], carpeta
+    texto, tiempos = '', []
+    for a0, _a1, _txt, dicha in ev:  # una palabra dicha por subtítulo (estilo C): el texto hablado con su segundo
+        if dicha and (not tiempos or tiempos[-1][0] != a0):
+            texto += dicha + ' '
+            tiempos += [(a0, None)] * (len(dicha) + 1)
+    out, visto = [], {}
+    for pos, l in sorted(lg.menciones(texto, lib), key=lambda x: x[0]):
+        s = tiempos[min(pos, len(tiempos) - 1)][0]
+        if s - visto.get(l['archivo'], -999) >= lg.NO_REPETIR:
+            visto[l['archivo']] = s
+            out.append((s, l))
+    return out, carpeta
+
+
+def revisar_logos(video, ev, alto_rel=0.24):
+    """Cada logo que nombra la voz tiene que verse en ese momento (se busca el PNG en el cuadro, en su tamaño de Short)."""
+    esperados, carpeta = logos_esperados(ev)
+    fallas, c = [], cv2.VideoCapture(video)
+    for s, l in esperados:
+        png = cv2.imread(os.path.join(carpeta, l['archivo']), cv2.IMREAD_UNCHANGED)
+        if png is None:
+            continue
+        visto = False
+        for dt in (0.35, 0.6):
+            c.set(cv2.CAP_PROP_POS_MSEC, (s + dt) * 1000)
+            ok, fr = c.read()
+            if not ok:
+                continue
+            h = fr.shape[0]
+            for esc in (1.0, 0.85, 1.15):
+                alto = int(h * alto_rel * esc * (0.52 if png.shape[1] / png.shape[0] > 1.3 else 1))
+                ancho = int(alto * png.shape[1] / png.shape[0])
+                if ancho >= fr.shape[1] or alto < 20:
+                    continue
+                plantilla = cv2.resize(png[:, :, :3], (ancho, alto))
+                r = cv2.matchTemplate(fr[: int(h * 0.7)], plantilla, cv2.TM_CCOEFF_NORMED)
+                if float(r.max()) > 0.55:
+                    visto = True
+                    break
+            if visto:
+                break
+        if not visto:
+            fallas.append({'s': round(s, 2), 'que': f"la voz nombra {l.get('nombre') or l['archivo']} y su logo no aparece"})
     return fallas
 
 
@@ -175,7 +252,7 @@ def difuminar(video, hallados, ventana=0.6):
     shutil.rmtree(tmp, ignore_errors=True)
 
 
-def revisar(video, ass=None, es_short=None, arreglar=False):
+def revisar(video, ass=None, es_short=None, arreglar=False, privados=False):
     c = cv2.VideoCapture(video)
     alto = int(c.get(cv2.CAP_PROP_FRAME_HEIGHT))
     es_short = (alto > c.get(cv2.CAP_PROP_FRAME_WIDTH)) if es_short is None else es_short
@@ -189,37 +266,39 @@ def revisar(video, ass=None, es_short=None, arreglar=False):
         banda = (max(0, y - 230), min(alto, y + 40))  # la franja de los subtítulos no cuenta para el OCR
     else:
         puntos['subtitulos'] = []
-    cuadros, _ = muestras(video, 0.5)
+    cuadros, dur = muestras(video, 0.5, hasta=None if (es_short or privados) else INICIO + 1)
     puntos['planos'] = revisar_planos(cuadros)
-    ocr = _ocr()
-    if ocr is None:
-        puntos['voz_pantalla'] = [{'s': 0, 'que': 'sin OCR local (rapidocr): no se pudo revisar'}]
-        puntos['privados'] = [{'s': 0, 'que': 'sin OCR local (rapidocr): no se pudo revisar'}]
-    else:
-        puntos['voz_pantalla'] = revisar_voz_pantalla(ocr, video, ev, banda) if ev else []
-        hallados = buscar_privados(ocr, cuadros[::2], banda)  # uno por segundo
+    puntos['duracion'] = ([{'s': round(dur, 1), 'que': f'dura {dur:.0f} s: un Short va de {DUR_SHORT[0]:.0f} s a {DUR_SHORT[1]:.0f} s'}]
+                          if es_short and not DUR_SHORT[0] <= dur <= DUR_SHORT[1] else [])
+    if ev:
+        puntos['logos'] = revisar_logos(video, ev)
+    ocr = _ocr() if (ev or privados) else None
+    if ev:
+        puntos['voz_pantalla'] = (revisar_voz_pantalla(ocr, video, ev, banda) if ocr
+                                  else [{'s': 0, 'que': 'sin OCR local (rapidocr): no se pudo revisar'}])
+    if privados and ocr:  # apagado por defecto: fabian no quiere difuminados en los Shorts (02/11/2026)
+        hallados = buscar_privados(ocr, cuadros[::2], banda)
         if hallados and arreglar:
             difuminar(video, hallados)
             for x in hallados:
                 x['que'] += ' → difuminado'
-            quedan = buscar_privados(ocr, [x for x in muestras(video, 1.0)[0]], banda)
-            puntos['privados'] = quedan
             puntos['privados_arreglados'] = hallados
         else:
-            puntos['privados'] = hallados
+            puntos['privados'] = [dict(x, aviso=True) for x in hallados]
     puntos['voz_imagen_ia'] = 'omitido (no hay IA local con visión; no gasta)'
-    ok = not any(v for k, v in puntos.items() if isinstance(v, list) and k != 'privados_arreglados')
+    ok = not any(v for k, v in puntos.items() if isinstance(v, list) and k not in ('privados_arreglados', 'privados'))
     informe = {'video': os.path.basename(video), 'ok': ok, 'puntos': puntos}
     base = os.path.splitext(video)[0]
     json.dump(informe, open(base + '.revision.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     nombres = {'subtitulos': 'Subtítulos', 'planos': 'Planos largos al inicio', 'voz_pantalla': 'Lo que dice la voz se ve',
+               'duracion': 'Duración', 'logos': 'Logos de lo que nombra la voz',
                'privados': 'Datos privados', 'privados_arreglados': 'Datos privados difuminados por el revisor'}
     md = [f"# Revisión automática de {informe['video']}: {'✅ todo bien' if ok else '❌ hay que corregir'}", '']
     for k, v in puntos.items():
         if isinstance(v, str):
             md.append(f'- ⚪ Voz vs imagen (IA): {v}')
             continue
-        marca = 'ℹ️' if k == 'privados_arreglados' else ('✅' if not v else '❌')
+        marca = 'ℹ️' if k in ('privados_arreglados', 'privados') and v else ('✅' if not v else '❌')
         md.append(f'- {marca} {nombres.get(k, k)}' + ('' if v else ''))
         md += [f"  - {x['s']:.1f} s: {x['que']}" for x in v]
     open(base + '.revision.md', 'w', encoding='utf-8').write('\n'.join(md) + '\n')
@@ -233,8 +312,9 @@ def main():
     ap.add_argument('--ass')
     ap.add_argument('--short', action='store_true')
     ap.add_argument('--arreglar', action='store_true')
+    ap.add_argument('--privados', action='store_true', help='buscar datos privados (apagado: fabian no quiere difuminados)')
     a = ap.parse_args()
-    inf = revisar(a.video, a.ass, True if a.short else None, a.arreglar)
+    inf = revisar(a.video, a.ass, True if a.short else None, a.arreglar, a.privados)
     sys.exit(0 if inf['ok'] else 1)
 
 

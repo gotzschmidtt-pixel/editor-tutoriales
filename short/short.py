@@ -458,6 +458,34 @@ def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i
                    '-c:a', 'aac', '-b:a', '160k', salida], check=True)
 
 
+def poner_logos(d, tomas, video, retraso):
+    """Los logos de la biblioteca (Android 15/16/17, MagicOS, parche, Google, WhatsApp…) en el segundo en que la voz del Short
+    los nombra, con pop-up, de a uno, grandes y centrados POR ENCIMA de los subtítulos. Pedido de fabian (02/11/2026: «¿por
+    qué no aparecen los logos?»): el video largo los tenía (logos/logos.py) y los Shorts no los llamaban."""
+    carpeta_logos = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
+    if not os.path.isfile(os.path.join(carpeta_logos, 'logos.json')):
+        return False
+    bloques, t0 = [], 0.0
+    for c in tomas:
+        if c.get('id') and c['id'] != 'GANCHO':
+            bloques.append({'id': c['id'], 'texto': c.get('texto') or 'x', 'inicio_min': round(t0, 3)})
+        t0 += c['largo']
+    carpetas = {c.get('carpeta', 'voz') for c in tomas if c.get('id') != 'GANCHO'}
+    if len(carpetas) != 1:
+        return False
+    g = os.path.join(d, '.short_logos_guion.json')
+    json.dump({'bloques': bloques}, open(g, 'w', encoding='utf-8'), ensure_ascii=False)
+    salida = video.replace('.mp4', '_logos.mp4')
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', video, '--guion', g,
+                        '--voz', os.path.join(d, carpetas.pop()), '--logos', carpeta_logos, '--salida', salida,
+                        '--alto', '0.24', '--centro-y', '0.3', '--desfase', str(retraso)], cwd=d, capture_output=True, text=True)
+    print(r.stdout.strip(), flush=True)
+    if r.returncode == 0 and os.path.exists(salida):
+        os.replace(salida, video)
+        return True
+    return False
+
+
 def ass_tiempo(s):
     s = max(0.0, s)
     return f'{int(s // 3600)}:{int(s % 3600 // 60):02d}:{s % 60:05.2f}'
@@ -616,6 +644,7 @@ def main():
                   ['-filter_complex', f'[0:v]ass=short_subs.ass[v];{audio}', '-map', '[v]', '-map', '[a]',
                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart',
                    a.salida], check=True, cwd=d)
+    poner_logos(d, tomas, os.path.join(d, a.salida), retraso)  # los logos de lo que nombra la voz, como en el video largo
     total = duracion(os.path.join(d, a.salida))  # con el testimonio y el cierre
     json.dump({'duracion_pedida': a.duracion, 'duracion': round(total, 1), 'formato': '9:16',
                'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'encuadre', 'por_que', 'texto')} for c in tomas]},

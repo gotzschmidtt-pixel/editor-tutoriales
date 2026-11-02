@@ -886,6 +886,52 @@ def vista_grilla(img, salida):
     cv2.imwrite(salida, np.hstack(lado), [cv2.IMWRITE_JPEG_QUALITY, 88])
 
 
+def borde_texto_arriba(img, ocr=None):
+    """El y más alto donde hay texto en la portada (OCR local); None si no se puede leer."""
+    try:
+        if ocr is None:
+            from rapidocr_onnxruntime import RapidOCR
+            ocr = RapidOCR()
+        r, _ = ocr(img)
+    except Exception:
+        return None
+    ys = [min(p[1] for p in caja) for caja, txt, conf in (r or []) if len(txt.strip()) >= 3 and conf > 0.5]
+    return int(min(ys)) if ys else None
+
+
+def ajustar_grilla(img, arriba=220, abajo=0.80):
+    """Fabian, 02/11/2026: en la grilla de Shorts el título no se puede cortar. Si el texto empieza más arriba que «arriba»
+    px (de 1920), baja el contenido y, si hace falta para que lo de abajo no caiga en el 20 % de los botones, lo achica un
+    poco. La franja que queda arriba se rellena con la misma imagen estirada y desenfocada (sin bandas ni costuras).
+    Devuelve (imagen, cambió)."""
+    h, w = img.shape[:2]
+    y0 = borde_texto_arriba(img)
+    if y0 is None or y0 >= arriba:
+        return img, False
+    bajar = arriba - y0 + 10
+    escala = max(0.85, min(1.0, (h * abajo - (arriba - y0)) / (h * abajo)))
+    nw, nh = int(w * escala) // 2 * 2, int(h * escala) // 2 * 2
+    fondo = cv2.GaussianBlur(cv2.resize(img, (w, h)), (0, 0), 40)
+    chico = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    x = (w - nw) // 2
+    y = min(bajar, h - 1)
+    lienzo = fondo.copy()
+    alto = min(nh, h - y)
+    # fundido suave en los bordes del contenido: sin costuras
+    mascara = np.zeros((alto, nw), np.float32)
+    mascara[:] = 1.0
+    borde = 24
+    for i in range(borde):
+        v = (i + 1) / borde
+        mascara[i, :] = np.minimum(mascara[i, :], v)
+        mascara[:, i] = np.minimum(mascara[:, i], v)
+        mascara[:, nw - 1 - i] = np.minimum(mascara[:, nw - 1 - i], v)
+    m3 = mascara[..., None]
+    zona = lienzo[y:y + alto, x:x + nw].astype(np.float32)
+    lienzo[y:y + alto, x:x + nw] = (chico[:alto].astype(np.float32) * m3 + zona * (1 - m3)).astype(np.uint8)
+    return lienzo, True
+
+
 def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
     """La portada vertical (9:16) del Short con el estilo de fabian, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
@@ -936,6 +982,7 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
         f = f'{salida_base}_{idioma}.jpg'
         img = cv2.resize(img, (1080, 1920), interpolation=cv2.INTER_CUBIC)
+        img, _ = ajustar_grilla(img)  # que la grilla de Shorts no corte el título
         cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         vista_grilla(img, f'{salida_base}_{idioma}_vista_grilla.jpg')
         hechas.append(os.path.basename(f))

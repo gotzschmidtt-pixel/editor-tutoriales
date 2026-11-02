@@ -73,7 +73,7 @@ def menciones(texto, logos):
     return out
 
 
-def plan(guion, carpeta_voz, logos):
+def plan(guion, carpeta_voz, logos, desfase=DESFASE):
     """[(segundo, logo)] de todo el video, con los tiempos reales de la voz."""
     out = []
     for b in guion['bloques']:
@@ -85,7 +85,7 @@ def plan(guion, carpeta_voz, logos):
             continue
         txt, t0 = ''.join(al['characters']), al['character_start_times_seconds']
         for pos, l in menciones(txt, logos):
-            out.append((round(b['inicio_min'] + DESFASE + t0[min(pos, len(t0) - 1)], 2), l))
+            out.append((round(b['inicio_min'] + desfase + t0[min(pos, len(t0) - 1)], 2), l))
     out.sort(key=lambda x: x[0])
     filas, visto, veces = [], {}, {}
     for t, l in out:
@@ -136,6 +136,9 @@ def main():
     ap.add_argument('--voz', required=True)
     ap.add_argument('--logos', required=True, help='carpeta con logos.json y los PNG')
     ap.add_argument('--salida', required=True)
+    ap.add_argument('--alto', type=float, default=ALTO, help='alto del logo en parte del alto del video (Shorts: 0.26)')
+    ap.add_argument('--centro-y', type=float, default=0.5, help='dónde va el centro del logo (Shorts: 0.33, por encima de los subtítulos)')
+    ap.add_argument('--desfase', type=float, default=DESFASE, help='cuánto después del inicio del bloque entra la voz')
     ap.add_argument('--capa', help='no codifica: deja la capa en este .json; capas/capas.py la pega junto con las demás')
     a = ap.parse_args()
     try:
@@ -148,7 +151,7 @@ def main():
         idioma = json.load(open(os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'idioma_video.json'), encoding='utf-8')).get('idioma') or 'es'
     except (OSError, ValueError, AttributeError):
         idioma = 'es'
-    filas = plan(json.load(open(a.guion, encoding='utf-8')), a.voz, logos)
+    filas = plan(json.load(open(a.guion, encoding='utf-8')), a.voz, logos, a.desfase)
     if not filas:
         print('La voz no nombra ninguno de tus logos: no pongo nada.')
         return
@@ -167,7 +170,7 @@ def main():
         dur = hasta - t
         png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
         ancho_rel = proporcion(png)
-        alto = round(H * (ALTO_ANCHO if ancho_rel > 1.3 else ALTO)) // 2 * 2  # las insignias anchas, más bajas
+        alto = round(H * (ALTO_ANCHO * a.alto / ALTO if ancho_rel > 1.3 else a.alto)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
         # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
         suave = min(ENTRA, dur * 0.15)  # los que se nombran rápido («quince, dieciséis…») casi no se desvanecen
@@ -177,7 +180,7 @@ def main():
                               f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
                               f"fade=t=in:st=0:d={suave:.2f}:alpha=1,fade=t=out:st={max(0, dur - suave):.2f}:d={suave:.2f}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",
-                       'overlay': f"x='(W-w)/2':y='(H-h)/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
+                       'overlay': f"x='(W-w)/2':y='H*{a.centro_y}-h/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
         n = len(piezas)
         ins += piezas[-1]['args']
         filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
