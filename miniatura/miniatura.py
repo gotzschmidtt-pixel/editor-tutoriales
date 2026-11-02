@@ -869,6 +869,23 @@ PROMESA = {'es': 'EN INSTANTES - DE RAÍZ', 'en': 'IN SECONDS - PERMANENT', 'pt'
 SIN_PC = {'es': 'SIN PC', 'en': 'NO PC', 'pt': 'SEM PC'}
 
 
+def vista_grilla(img, salida):
+    """Cómo se ve la portada en la grilla de Shorts del canal (medido el 02/11/2026 con la de Movistar): YouTube muestra solo
+    el centro 2:3, 1080×1620, y se pierden ~150 px arriba y abajo. Al lado, la portada entera con la zona segura marcada
+    (sin texto en el 12 % de arriba ni en el 15 % de abajo, donde además va la interfaz del Short)."""
+    h, w = img.shape[:2]
+    corte = (h - w * 3 // 2) // 2
+    grilla = img[corte:h - corte]
+    marcada = img.copy()
+    capa = marcada.copy()
+    cv2.rectangle(capa, (0, 0), (w, int(h * 0.12)), (0, 0, 255), -1)
+    cv2.rectangle(capa, (0, int(h * 0.85)), (w, h), (0, 0, 255), -1)
+    marcada = cv2.addWeighted(capa, 0.35, marcada, 0.65, 0)
+    alto = 960
+    lado = [cv2.resize(x, (int(x.shape[1] * alto / x.shape[0]), alto)) for x in (marcada, grilla)]
+    cv2.imwrite(salida, np.hstack(lado), [cv2.IMWRITE_JPEG_QUALITY, 88])
+
+
 def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt')):
     """La portada vertical (9:16) del Short con el estilo de fabian, una por idioma. Devuelve los archivos."""
     import base64, urllib.request, uuid
@@ -897,10 +914,12 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   'la pantalla bloqueada bien legible y una flecha roja curva hacia ella; ARRIBA el título en una o dos franjas '
                   'oscuras redondeadas, letra blanca muy gruesa, condensada e itálica, perfectamente escrita, en '
                   f'{nombre}: {texto}' + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  f'; al lado del título el logo de {marca_logo} en un cuadrado; ABAJO una franja azul con «{PROMESA[idioma]}» y '
+                  f'; al lado del título el logo de {marca_logo} en un cuadrado; más abajo (por ENCIMA del 15 % final) una franja azul con «{PROMESA[idioma]}» y '
                   + pildora +
                   'Letras grandes que se lean en el celular. Ningún otro texto, ningún logo ni persona inventados. Todo completo '
-                  'dentro de la imagen vertical, sin cortar nada.')
+                  'dentro de la imagen vertical, sin cortar nada. ZONA VISIBLE (fabian, 02/11/2026): en la grilla de Shorts YouTube '
+                  'muestra solo el centro 2:3 (se pierde ~8 % arriba y abajo) y abajo la interfaz tapa más: NINGÚN texto en el 12 % '
+                  'de arriba ni en el 15 % de abajo, ni pegado al borde derecho; el título empieza a ~12 % del alto.')
         b = uuid.uuid4().hex
         cuerpo = b''
         for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '864x1536', 'quality': 'high', 'output_format': 'png'}.items():
@@ -916,7 +935,9 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         r = pedir_imagen(req)
         img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
         f = f'{salida_base}_{idioma}.jpg'
-        cv2.imwrite(f, cv2.resize(img, (1080, 1920), interpolation=cv2.INTER_CUBIC), [cv2.IMWRITE_JPEG_QUALITY, 92])
+        img = cv2.resize(img, (1080, 1920), interpolation=cv2.INTER_CUBIC)
+        cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        vista_grilla(img, f'{salida_base}_{idioma}_vista_grilla.jpg')
         hechas.append(os.path.basename(f))
         print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas
