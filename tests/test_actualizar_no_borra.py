@@ -1,5 +1,5 @@
 """Prueba rápida (pedido de fabian, 02/11/2026: pulsó «Actualizar» y la app rehízo el video y borró su FINAL con arreglos):
-- los botones «↻ Actualizar» solo refrescan la vista (llaman a refrescar(), nunca a rehacer ni a /api/actualizar);
+- los botones «↻ Actualizar» recargan la página como F5 (recargar(): solo location.reload, nunca rehacer ni /api/actualizar);
 - «🔁 Rehacer video» está aparte, en el menú Proyecto, y no es el botón principal;
 - antes de rehacer, los finales se copian a FINAL_antes_rehacer_… (app/respaldo.py) y el aviso nombra las capas que no
   se vuelven a poner solas.
@@ -23,7 +23,9 @@ html = open(os.path.join(RAIZ, 'app', 'index.html'), encoding='utf-8').read()
 botones = re.findall(r'<button[^>]*>[^<]*Actualizar</button>', html)
 ok(botones, 'no encontré los botones «Actualizar»')
 for b in botones:
-    ok('refrescar()' in b and 'actualizarProyecto' not in b, f'«Actualizar» no debe rehacer el video: {b[:120]}')
+    ok('recargar()' in b and 'actualizarProyecto' not in b, f'«Actualizar» no debe rehacer el video: {b[:120]}')
+m = re.search(r'function recargar\(\) \{(.*?)\n\}', html, re.S)
+ok(m and 'location.reload()' in m.group(1) and 'api(' not in m.group(1), 'recargar() solo debe recargar la página (como F5)')
 rehacer = re.findall(r'<button[^>]*actualizarProyecto\(\)[^>]*>([^<]*)</button>', html)
 ok(rehacer and all('Rehacer' in t for t in rehacer), f'el que rehace tiene que llamarse «Rehacer video»: {rehacer}')
 ok(not re.search(r'class="principal"[^>]*actualizarProyecto', html), '«Rehacer video» no debe ser el botón principal')

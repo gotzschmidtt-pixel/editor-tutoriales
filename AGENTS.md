@@ -112,7 +112,7 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 
 ## Decisiones del autor (02/11/2026)
 
-- **«↻ Actualizar» solo refresca la vista**: vuelve a leer el proyecto y muestra lo último (no borra ni rehace nada).
+- **«↻ Actualizar» es como F5**: recarga la página con el mismo proyecto abierto (no borra ni rehace nada; un paso que esté trabajando sigue).
   fabian lo pulsó esperando eso y la app borró el FINAL con arreglos puestos por fuera (giro + fotos, difuminados).
 - Lo que hacía antes es **«🔁 Rehacer video»**, en el menú 📁 Proyecto (no es el botón principal). Antes de borrar copia los
   finales a `FINAL_antes_rehacer_<fecha>_<nombre>.mp4` (`app/respaldo.py`) y el aviso dice qué capas se vuelven a poner

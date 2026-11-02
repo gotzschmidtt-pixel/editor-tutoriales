@@ -184,7 +184,7 @@
 <header>
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
   <select id="proyecto"></select>
-  <button class="principal" onclick="refrescar()" title="Vuelve a leer el proyecto y muestra lo último que se hizo (por ejemplo, lo que te dejó Claude). No borra ni rehace nada">↻ Actualizar</button>
+  <button class="principal" onclick="recargar()" title="Recarga la página, igual que F5. No borra ni rehace nada">↻ Actualizar</button>
   <details class="menu"><summary title="Nuevo, abrir, guardar, comprimir y la cola de la noche">📁 Proyecto</summary><div class="lista">
     <button id="nuevo">+ Nuevo proyecto</button>
     <button onclick="actualizarProyecto()" title="Rearma el video desde cero con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Antes copia tus finales a FINAL_antes_rehacer_…">🔁 Rehacer video</button>
@@ -279,7 +279,7 @@
         <button onclick="importarClaude.click()" title="El .zip que te manda Claude desde la nube (guion con preguntas e ideas, etiquetas, círculos y flechas): lo revisas aquí antes de armar">📥 Importar lo de Claude</button><input type="file" id="importarClaude" accept=".zip" hidden>
         <button onclick="nubeClaude()" title="Parte tus archivos en trozos que Claude acepta y junta tus parámetros (idea, material extra, testimonios, tarjetas, pistas, estilo) en la carpeta para_claude del proyecto. Claude los trae y arma el video en la nube">☁ Hacer en la nube con Claude</button>
         <button onclick="paqueteClaude()" title="Arma un ZIP con el prompt, tus capturas, la transcripción y tu idea para subirlo al chat de ChatGPT, Claude o DeepSeek. La IA te escribe el guion y lo importas con «Revisar respuesta pegada»">📦 Exportar ZIP para el chat</button>
-        <button id="actualizar" onclick="refrescar()" title="Vuelve a leer el proyecto y muestra lo último que se hizo. No borra ni rehace nada">↻ Actualizar</button>
+        <button id="actualizar" onclick="recargar()" title="Recarga la página, igual que F5. No borra ni rehace nada">↻ Actualizar</button>
         <button id="borrarTodo" onclick="borrarTodo()">🗑 Borrar todo</button>
         <label class="aviso">Montaje <select id="calidad">
           <option value="1080">Normal (1080p)</option><option value="720">Prueba rápida 720p</option>
@@ -993,6 +993,12 @@ document.querySelectorAll('details.menu').forEach(m => {
 });
 document.addEventListener('click', e => { if (!e.target.closest('details.menu')) document.querySelectorAll('details.menu[open]').forEach(o => o.open = false); });
 $('#proyecto').onchange = e => cargarProyectos(e.target.value);
+// «↻ Actualizar» = F5 (pedido de fabian, 02/11/2026): recarga la página con el mismo proyecto abierto (la pestaña ya se guarda
+// sola). Un paso que esté trabajando sigue en el servidor: recargar no lo detiene.
+function recargar() {
+  try { if (P) sessionStorage.setItem('proyecto_abierto', P); } catch (e) {}
+  location.reload();
+}
 
 const SUBIENDO = {};  // tipo -> {pc, texto}: la página se repinta cada 2 s y no debe borrar el avance de la subida
 function pintarSubidas(arch) {
@@ -3262,7 +3268,11 @@ async function refrescar() {
 }
 setInterval(refrescar, 2000);
 setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta
-cargarProyectos();
+(() => {  // después de «↻ Actualizar», el mismo proyecto que estaba abierto
+  let p = null;
+  try { p = sessionStorage.getItem('proyecto_abierto'); sessionStorage.removeItem('proyecto_abierto'); } catch (e) {}
+  cargarProyectos(p || undefined);
+})();
 </script>
 </body>
 </html>
