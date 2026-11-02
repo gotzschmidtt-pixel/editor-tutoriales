@@ -207,6 +207,32 @@ try:
        'la vista previa debe contar la narración de los extras que vuelven con las etiquetas')
     st, b = pedir('POST', '/api/ejecutar?p=voces&paso=extras', json.dumps({'solo': ['etiquetas', 'senales'], 'revisado': True, 'sin_ia': True}).encode())
     ok(st != 200 and lanzado(0.3) is None, f'«▶ Ponerlas en el video» sin SI no debe narrar el testimonio cambiado: {st} {b[:200]!r}')
+    # DeepSeek: «extras testimonios --confirmo-creditos» ya tiene el sí del autor y lo manda como SI (antes la app lo frenaba)
+    sys.path.insert(0, os.path.join(RAIZ, 'deepseek'))
+    import video as ds  # noqa: E402
+    ds.URL, ds.PROYECTOS = f'http://127.0.0.1:{PUERTO}', app.PROYECTOS
+    viejo_argv, LANZADOS[:] = sys.argv, []
+    try:
+        for extra in (['nuevos_modelos'], []):
+            sys.argv = ['video.py', 'extras', 'testimonios', *extra, '--nombre', 'voces', '--confirmo-creditos']
+            try:
+                with __import__('contextlib').redirect_stdout(io.StringIO()):
+                    ds.main()
+                fallo_ds = ''
+            except SystemExit as e:
+                fallo_ds = str(e)
+            r = lanzado()
+            ok(not fallo_ds and r and 'testimonios' in r[0] and r[1].get('confirmo') == 'SI',
+               f'DeepSeek con --confirmo-creditos debe arrancar los extras con el SI del autor: {fallo_ds[:300]} {r}')
+        sys.argv = ['video.py', 'extras', 'testimonios', '--nombre', 'voces']  # sin el permiso del autor no se manda nada
+        try:
+            ds.main()
+            fallo_ds = ''
+        except SystemExit as e:
+            fallo_ds = str(e)
+        ok('--confirmo-creditos' in fallo_ds and lanzado(0.3) is None, f'DeepSeek sin --confirmo-creditos no debe arrancar: {fallo_ds[:300]}')
+    finally:
+        sys.argv = viejo_argv
 
     # la página: «✨ Agregar extras» e «Insertar» preguntan SI antes de mandar el pedido, y sin gasto no preguntan nada
     html = open(os.path.join(RAIZ, 'app', 'index.html'), encoding='utf-8').read()

@@ -432,7 +432,9 @@ def main():
         if GASTAN & set(solo) and not a.confirmo_creditos:
             raise SystemExit(f'{", ".join(sorted(GASTAN & set(solo)))} gasta créditos de ElevenLabs. Pregúntale al autor; '
                              'si dice que sí, repite con --confirmo-creditos.')
-        correr(p, 'extras', {'sin_ia': True, 'solo': solo})
+        # el autor ya aprobó el gasto (--confirmo-creditos): la app lo pide como SI antes de narrar testimonios, nuevos
+        # modelos o la frase del tráiler. Sin el permiso no se manda y la app frena si hay algo que pagar
+        correr(p, 'extras', {'sin_ia': True, 'solo': solo, **({'confirmo': 'SI'} if a.confirmo_creditos else {})})
         print('LISTO: ' + os.path.join(d, 'FINAL.mp4'))
 
     elif a.accion == 'exportar':
