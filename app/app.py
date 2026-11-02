@@ -2008,6 +2008,71 @@ def frases_guion(d):
     return out
 
 
+def voces_extras(d, pasos):
+    """La voz de ElevenLabs que gastarían los testimonios narrados y «📱 Nuevos modelos» si corren ahora (no llama a
+    ElevenLabs). La que ya está guardada con el mismo texto y la misma voz no se vuelve a pagar: no cuenta.
+    Devuelve {'gasta': [lo que se pagaría, en palabras], 'letras': N}. Repite lo que miran testimonios.py (narrar) y
+    nuevos_modelos.py (voz) antes de pedir la voz."""
+    env = {**os.environ, **voz_env(d)}  # lo mismo que reciben esos pasos al correr
+    voz_id, idioma, modelo = env.get('VOZ_ID') or VOCES_DEFECTO['es'], env.get('VOZ_IDIOMA') or 'es', 'eleven_v4'
+    gasta, letras = [], 0
+
+    def lista(sub, nombre, apartado):
+        try:
+            with open(os.path.join(d, sub, nombre), encoding='utf-8') as fh:
+                xs = json.load(fh).get(apartado) or []
+        except (OSError, ValueError, AttributeError):
+            return []
+        return [x for x in xs if isinstance(x, dict) and os.path.isfile(os.path.join(d, sub, os.path.basename(str(x.get('archivo') or ''))))]
+    if 'testimonios' in pasos:  # con «texto», tu voz principal narra el testimonio (sin texto suena el cliente: gratis)
+        c, nuevas = os.path.join(d, 'testimonios'), []
+        for t in lista('testimonios', 'testimonios.json', 'TESTIMONIOS'):
+            texto = ' '.join(str(t.get('texto') or '').split())
+            if not texto:
+                continue
+            bid = re.sub(r'\W+', '', os.path.splitext(os.path.basename(str(t['archivo'])))[0])
+            firma = {'texto': texto, 'voz': voz_id, 'modelo': modelo, 'estabilidad': 0.5}
+            if idioma != 'es':
+                firma['idioma'] = idioma
+            try:
+                with open(os.path.join(c, f'narr_{bid}.json'), encoding='utf-8') as fh:
+                    hecha = bool(bid) and os.path.isfile(os.path.join(c, f'narr_{bid}.mp3')) and json.load(fh) == firma
+            except (OSError, ValueError):
+                hecha = False
+            if not hecha:
+                nuevas.append(len(texto))
+        if nuevas:
+            letras += sum(nuevas)
+            gasta.append(f"la narración de {len(nuevas)} testimonio{'' if len(nuevas) == 1 else 's'} (unos {sum(nuevas)} créditos)")
+    modelos_ = lista('nuevos_modelos', 'modelos.json', 'MODELOS') if 'nuevos_modelos' in pasos else []
+    if modelos_:  # la frase «este método sirve para los modelos más recientes», con tu voz
+        x = modelos_[0]  # nuevos_modelos.py usa un video por tutorial
+        clip = os.path.join(d, 'nuevos_modelos', os.path.basename(str(x['archivo'])))
+        frase = str(x.get('frase') or '').strip()
+        if not frase:  # la que escribió la app la vez anterior con este mismo video (trabajo_modelos/leido.json)
+            try:
+                with open(os.path.join(d, 'trabajo_modelos', 'leido.json'), encoding='utf-8') as fh:
+                    previo = json.load(fh)
+                previo = previo if isinstance(previo, dict) and previo.get('clip') == f'{os.path.basename(clip)}|{os.path.getsize(clip)}' else {}
+            except (OSError, ValueError):
+                previo = {}
+            modelos = [m_.strip() for m_ in re.split(r'[,;\n]+', str(x.get('modelos') or '')) if m_.strip()]
+            if not modelos:
+                modelos = previo.get('vistos') if isinstance(previo.get('vistos'), list) else None
+            if modelos is not None and previo.get('escrita') == 'app' and previo.get('frase') and previo.get('modelos') == modelos \
+                    and previo.get('idioma', 'es') == idioma:
+                frase = str(previo['frase'])
+        if not frase:
+            letras += 250
+            gasta.append('la frase de «Nuevos modelos», que escribe la app (unos 250 créditos como mucho)')
+        else:
+            clave = hashlib.sha1(f'{frase}|{voz_id}|{modelo}'.encode() + (f'|{idioma}'.encode() if idioma != 'es' else b'')).hexdigest()[:12]
+            if not all(existe(d, os.path.join('trabajo_modelos', f'voz_{clave}{e}')) for e in ('.mp3', '.align.json')):
+                letras += len(frase)
+                gasta.append(f'la frase de «Nuevos modelos» (unos {len(frase)} créditos)')
+    return {'gasta': gasta, 'letras': letras}
+
+
 def gasto_sin_confirmar(d, paso, pasos, datos):
     """Si el trabajo gastaría créditos de ElevenLabs (la voz del video o una música nueva) y no viene con «SI» escrito,
     el motivo para no arrancarlo; None si puede arrancar. Pedido de fabian (29/10/2026): un «▶ Hacer todo» generó la voz
@@ -2038,6 +2103,8 @@ def gasto_sin_confirmar(d, paso, pasos, datos):
             hecha = False
         if v and frase and not hecha:
             gasta.append(f'la frase de voz del tráiler (unos {len(frase)} créditos)')
+    if 'testimonios' in pasos or 'nuevos_modelos' in pasos:  # «✨ Agregar extras»: solo la voz que todavía no está guardada
+        gasta += voces_extras(d, pasos)['gasta']
     if not gasta:
         return None
     return ('Esto gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo arranqué porque falta escribir SI. Recarga la página '
@@ -2635,6 +2702,18 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
                 return self.responder(costo_voz(carpeta(q['p']), q.get('desde'), q.get('hasta')))
+            if ruta == '/api/costo_extras':  # antes de «✨ Agregar extras»: la voz que falta de testimonios narrados y nuevos modelos
+                d = carpeta(q['p'])
+                solo = [x for x in str(q.get('solo') or '').split(',') if x]
+                if q.get('vista'):  # «▶ Ponerlas en el video»: también vuelven los extras que el video ya llevaba
+                    try:
+                        with open(os.path.join(d, 'vista_pendiente.json'), encoding='utf-8') as fh:
+                            pend = json.load(fh)
+                    except (OSError, ValueError):
+                        pend = {}
+                    if isinstance(pend, dict) and isinstance(pend.get('solo'), list):
+                        solo += [str(x) for x in pend['solo']]
+                return self.responder(voces_extras(d, solo))
             if ruta == '/api/frases':  # «🎞 Frase por frase»: cuándo dice la voz real cada frase de cada bloque
                 return self.responder(frases_guion(carpeta(q['p'])))
             if ruta == '/api/revision_guion':  # lo que la app corrigió del guion y la revisión de orden

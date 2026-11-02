@@ -1151,6 +1151,18 @@ async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del p
     + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
     + 'Queda guardada en el proyecto y no se vuelve a pagar.');
 }
+// los testimonios con texto los narra tu voz y «Nuevos modelos» dice su frase con ElevenLabs: si esa voz todavía no está
+// guardada, gasta créditos (~1 por letra). Devuelve 'SI' (lo escribiste), '' (no gasta nada: no se pregunta) o null (no seguir)
+async function confirmarVocesExtras(solo) {
+  if (!solo.includes('testimonios') && !solo.includes('nuevos_modelos')) return '';
+  let c = null;
+  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=${q(solo.join(','))}`); } catch (e) {}
+  if (!c) return pedirSi('No pude revisar si falta la voz de los testimonios narrados o de «Nuevos modelos». La que falte se hace '
+    + 'con ElevenLabs (~1 crédito por letra); la que ya está guardada se reutiliza.') ? 'SI' : null;
+  if (!c.gasta.length) return '';
+  return pedirSi(`Esto gasta ElevenLabs: ${c.gasta.join(' y ')}.\n\nLas voces que ya están guardadas con el mismo texto se `
+    + 'reutilizan (no gastan).') ? 'SI' : null;
+}
 // sin guion, «▶ Hacer todo» primero se lo pide a la IA (desde tu video): es un pedido que gasta saldo si la IA es de pago
 async function confirmarGuionIA() {
   let e, aj;
@@ -1216,6 +1228,12 @@ async function ejecutar(paso) {
     if (pr === null) return; if (pr) op.prompt = pr;
     if (!pedirSi('Esto gasta unos 2.950 créditos de ElevenLabs Music por cada 3:35 de música.')) return;
     op.confirmo = 'SI';
+  }
+  if (['testimonios', 'nuevos_modelos', 'capas_juntas'].includes(paso)) {  // su voz (si falta) se hace con ElevenLabs
+    const a = paso === 'capas_juntas' ? (await api(`/api/estado?p=${q(P)}`)).archivos : null;  // vuelven los que ya tenía
+    const si = await confirmarVocesExtras(a ? [a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos'].filter(Boolean) : [paso]);
+    if (si === null) return;
+    if (si) op.confirmo = 'SI';
   }
   if (paso === 'transcribir') {
     // con una transcripción ya hecha (y corregida a mano en transcripcion.txt), Forced Alignment solo le pone los tiempos exactos
@@ -3149,8 +3167,9 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
   if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o arma el tráiler en «🎬 Tráiler».');
   const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', logos: 'logos (Android, MagicOS…)', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
   if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
+  const si = await confirmarVocesExtras(solo); if (si === null) return;  // testimonios narrados y nuevos modelos: SI antes de gastar
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo, confirmo: si})}); }
   catch (x) { $('#msgMapa').textContent = '✗ ' + x.message; $('#msgMapa').className = 'msg err'; return; }
   $('#msgMapa').textContent = '⏳ Insertando… mira el avance abajo.'; $('#msgMapa').className = 'msg ok';
   refrescar();
@@ -3173,16 +3192,19 @@ async function abrirExtras() {
 async function agregarExtras() {
   const solo = [...document.querySelectorAll('#listaExtras input[data-extra]:checked')].map(i => i.dataset.extra);
   if (!solo.length) { $('#msgExtras').textContent = 'Marca al menos uno'; $('#msgExtras').className = 'msg err'; return; }
+  const si = await confirmarVocesExtras(solo);  // testimonios narrados y nuevos modelos: SI antes de gastar
+  if (si === null) { $('#msgExtras').textContent = 'No agregué nada: no se gastó nada.'; $('#msgExtras').className = 'msg'; return; }
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo, confirmo: si})}); }
   catch (x) { $('#msgExtras').textContent = x.message; $('#msgExtras').className = 'msg err'; return; }
   dlgExtras.close(); refrescar();
 }
 let SEGUIR_EXTRAS = null;
 async function ponerExtrasAsi() {
   const sg = SEGUIR_EXTRAS || {};
+  const si = await confirmarVocesExtras(sg.solo || ['testimonios', 'nuevos_modelos']); if (si === null) return;  // sin lista van todos
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true, confirmo: si})}); }
   catch (e) { return alert(e.message); }
   refrescar();
 }
@@ -3212,6 +3234,8 @@ async function actualizarProyecto() {  // «🔁 Rehacer video»: reutiliza tran
     + lista('⚠ NO se vuelve a poner solo (queda solo en la copia):', capas.a_mano)
     + (capas.a_mano.length ? '\n\nRecomendación: NO lo rehagas si no hace falta. Para ver lo último, usa «↻ Actualizar».' : ''))) return;
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
+  let a = {}; try { a = (await api(`/api/estado?p=${q(P)}`)).archivos; } catch (e) {}  // los testimonios y modelos que vuelven
+  if ((await confirmarVocesExtras([a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos'].filter(Boolean))) === null) return;
   soltarVideo();
   let r;
   try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
