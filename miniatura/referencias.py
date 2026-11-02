@@ -99,7 +99,8 @@ def llamar_ia(texto, imagenes):
     sys.path.insert(0, os.path.join(RAIZ, 'ia'))
     import ia
     ajustes = dict(json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')), imagenes=True)
-    return ia.llamar(ajustes, texto, list(imagenes))
+    # ia.llamar quiere (nombre, ruta) por imagen, como las capturas del guion (con rutas sueltas fallaba siempre)
+    return ia.llamar(ajustes, texto, [(os.path.basename(f), f) for f in imagenes])
 
 
 def imagen_ia(prompt, refs, size):
@@ -245,8 +246,12 @@ def prompt_imagen(receta, idea, idioma='es', formato='16x9', con_cara=False):
             f'main object {c.get("objeto", "")}; background {c.get("fondo", "")}; palette {", ".join(c.get("paleta") or [])}; '
             f'contrast {c.get("contraste", "")}. ' +
             f'Concept: {idea.get("concepto", "")}. ' +
-            (f'The presenter is the person in the LAST reference image (same face and beard), photorealistic, with a strong '
-             f'{c.get("emocion") or "surprised"} expression. ' if con_cara else 'No real person needs to appear; if a face appears it is a generic one. ') +
+            (f'The presenter is the person in the LAST reference image (same face and beard), photorealistic, with a natural, not '
+             f'exaggerated {c.get("emocion") or "surprised"} expression (no shouting), plain white sweater without logos. ' if con_cara
+             else 'No real person needs to appear; if a face appears it is a generic one. ') +
+            # los gustos de fabian (02/11/2026), con o sin su cara
+            'Any face: natural expression, not exaggerated, no shouting, not too serious, not cheeky (no squinting, no tilted head); '
+            'only two hands; one single headline. ' +
             f'Big headline text, perfectly spelled exactly as given, with correct accents: «{texto}». ' +
             ('Headline in the upper-center third, nothing important in the bottom 20 %. ' if vertical else 'Text readable at small size. ') +
             'If a phone appears it is shown from the BACK only, never a readable screen. One main object. No extra text, no watermark, '
@@ -279,33 +284,36 @@ def generar(d, elegidas, variantes=2, formato='16x9', idioma='es', cara=None, ge
     size = FORMATOS[formato][0]
     hechas = leer(os.path.join(carpeta(d), 'generadas.json'), []) or []
     nuevas, cobradas = [], 0
-    for i in elegidas:
-        idea = lista[int(i) - 1]
-        for v in range(1, int(variantes) + 1):
-            img = generar_img(prompt_imagen(receta, idea, idioma, formato, bool(cara)), refs, size)
-            cobradas += 1
-            nombre = f'idea{int(i)}_v{v}_{idioma}_{formato}_{time.strftime("%H%M%S")}.jpg'
-            f = os.path.join(carpeta(d, 'generadas'), nombre)
-            final = salida_final(img, formato)
-            for q in (92, 85, 78, 70):  # < 2 MB, como pide YouTube
-                ok, buf = cv2.imencode('.jpg', final, [cv2.IMWRITE_JPEG_QUALITY, q])
-                if len(buf) < 2_000_000:
-                    break
-            buf.tofile(f)
-            r = {'archivo': 'generadas/' + nombre, 'idea': int(i), 'variante': v, 'idioma': idioma, 'formato': formato,
-                 'texto': idea.get(idioma) if idioma != 'es' else idea['texto'], 'costo_usd': COSTO_IMAGEN, 'fecha': time.strftime('%Y-%m-%d %H:%M')}
-            if revisar_luego:
-                try:
-                    r['revision'] = revisar(d, r['archivo'], r['texto'], llamar)
-                except Exception as e:  # la revisión no frena lo ya generado (y ya cobrado)
-                    r['revision'] = {'ok': None, 'errores': [f'no se pudo revisar: {e}'[:200]]}
-            hechas.append(r)
-            nuevas.append(r)
-            guardar(os.path.join(carpeta(d), 'generadas.json'), hechas)
-    gastos = leer(os.path.join(carpeta(d), 'gastos.json'), []) or []
-    gastos.append({'fecha': time.strftime('%Y-%m-%d %H:%M'), 'imagenes': cobradas, 'costo_usd': round(cobradas * COSTO_IMAGEN, 2),
-                   'modelo': 'gpt-image-2.5-flare', 'calidad': 'high', 'simulado': _simulando()})
-    guardar(os.path.join(carpeta(d), 'gastos.json'), gastos)
+    try:
+        for i in elegidas:
+            idea = lista[int(i) - 1]
+            for v in range(1, int(variantes) + 1):
+                img = generar_img(prompt_imagen(receta, idea, idioma, formato, bool(cara)), refs, size)
+                cobradas += 1
+                nombre = f'idea{int(i)}_v{v}_{idioma}_{formato}_{time.strftime("%H%M%S")}.jpg'
+                f = os.path.join(carpeta(d, 'generadas'), nombre)
+                final = salida_final(img, formato)
+                for q in (92, 85, 78, 70):  # < 2 MB, como pide YouTube
+                    ok, buf = cv2.imencode('.jpg', final, [cv2.IMWRITE_JPEG_QUALITY, q])
+                    if len(buf) < 2_000_000:
+                        break
+                buf.tofile(f)
+                r = {'archivo': 'generadas/' + nombre, 'idea': int(i), 'variante': v, 'idioma': idioma, 'formato': formato,
+                     'texto': idea.get(idioma) if idioma != 'es' else idea['texto'], 'costo_usd': COSTO_IMAGEN, 'fecha': time.strftime('%Y-%m-%d %H:%M')}
+                if revisar_luego:
+                    try:
+                        r['revision'] = revisar(d, r['archivo'], r['texto'], llamar)
+                    except (Exception, SystemExit) as e:  # la revisión no frena lo ya generado (y ya cobrado); la IA falla con SystemExit
+                        r['revision'] = {'ok': None, 'errores': [f'no se pudo revisar: {e}'[:200]]}
+                hechas.append(r)
+                nuevas.append(r)
+                guardar(os.path.join(carpeta(d), 'generadas.json'), hechas)
+    finally:  # lo ya cobrado queda anotado aunque una imagen falle a mitad
+        if cobradas:
+            gastos = leer(os.path.join(carpeta(d), 'gastos.json'), []) or []
+            gastos.append({'fecha': time.strftime('%Y-%m-%d %H:%M'), 'imagenes': cobradas, 'costo_usd': round(cobradas * COSTO_IMAGEN, 2),
+                           'modelo': 'gpt-image-2.5-flare', 'calidad': 'high', 'simulado': _simulando()})
+            guardar(os.path.join(carpeta(d), 'gastos.json'), gastos)
     return nuevas
 
 

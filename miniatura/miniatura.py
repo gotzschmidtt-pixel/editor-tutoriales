@@ -27,6 +27,25 @@ import enderezar  # noqa: E402  el rectángulo de la pantalla: el recorte más l
 from nitidez import analizar, mejor  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 
+
+def guardar_img(f, img, params=()):
+    """Como cv2.imwrite, pero sirve en Windows con tildes o ñ en la ruta (cv2.imwrite fallaba callado y la miniatura ya
+    pagada no quedaba). Si no se puede guardar, avisa en vez de seguir como si nada."""
+    ok, buf = cv2.imencode(os.path.splitext(f)[1] or '.png', img, list(params))
+    if not ok:
+        raise SystemExit(f'ERROR: no pude guardar la imagen {f}')
+    buf.tofile(f)
+    return f
+
+
+def leer_img(f, modo=cv2.IMREAD_COLOR):
+    """Como cv2.imread (None si no se puede), pero sirve en Windows con tildes o ñ en la ruta."""
+    try:
+        return cv2.imdecode(np.fromfile(f, np.uint8), modo)
+    except (OSError, ValueError, cv2.error):
+        return None
+
+
 W, H = 1280, 720
 FUENTES = ['C:/Windows/Fonts/impact.ttf', 'C:/Windows/Fonts/ariblk.ttf', 'C:/Windows/Fonts/arialbd.ttf',
            '/usr/share/fonts/opentype/inter/InterDisplay-Black.otf', '/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf',
@@ -374,7 +393,7 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         alto = min(h, int(w * 9 / 16))  # ya viene en 16:9 (1536x864): no se corta nada
         img = cv2.resize(img[(h - alto) // 2:(h - alto) // 2 + alto], (W, H), interpolation=cv2.INTER_AREA)
         f = f'{salida_base}_{idioma}.jpg'
-        cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        guardar_img(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         hechas.append(os.path.basename(f))
         print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas
@@ -731,7 +750,7 @@ def titulo_gpt(partes, estilo, salida):
     img = imagen_gpt(prompt, refs, size='1536x1024', transparente=True)
     if img.ndim == 3 and img.shape[2] == 3:  # por si no vino transparente
         img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-    cv2.imwrite(salida, img)
+    guardar_img(salida, img)
     return salida
 
 
@@ -771,7 +790,7 @@ def etiqueta_gpt(texto, color):
     if len(xs):
         img = img[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     os.makedirs(ETIQUETAS_DIR, exist_ok=True)
-    cv2.imwrite(f, img)
+    guardar_img(f, img)
     return f
 
 
@@ -818,8 +837,9 @@ def traducciones_titulo(d, lineas):
     return out
 
 
-def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',), titulo_por_gpt=False, escena=None, esquinas=('NEW 2026', '')):
-    """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos."""
+def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=(), estilos=('placa',), titulo_por_gpt=False, escena=None, esquinas=('NEW 2026', ''), base_titulo=None):
+    """Una escena de GPT sin texto y, encima, lo escrito por la app en cada idioma. Devuelve los archivos.
+    base_titulo: dónde se guarda el título de GPT, sin el fondo en el nombre (con «Los dos» fondos se dibuja una sola vez)."""
     refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 2)
     fondo_txt = FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']).replace('(1) fondo', 'FONDO')
     prompt = ('Escena para una miniatura de YouTube 16:9 del canal Xiaomiunlock, al estilo de las miniaturas de las últimas '
@@ -839,7 +859,7 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
     if escena is None:
         print('· la IA de imágenes hace la escena (sin texto)…', flush=True)
         escena = imagen_gpt(prompt, refs)
-        cv2.imwrite(f'{salida_base}_escena.png', escena)
+        guardar_img(f'{salida_base}_escena.png', escena)
     hechas = []
     tr = traducciones_titulo(d, lineas)
     llenas = [x for x in esquinas if x]  # las esquinas también van traducidas
@@ -852,7 +872,7 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
             if titulo_por_gpt:  # el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)
                 # con una huella del texto: si cambias el título se dibuja el nuevo (antes salía el viejo guardado)
                 huella = hashlib.md5('|'.join(str(x) for x in tr.get(idioma, lineas)).encode('utf-8')).hexdigest()[:8]
-                png = f'{salida_base}_titulo_{estilo}_{idioma}_{huella}.png'
+                png = f'{base_titulo or salida_base}_titulo_{estilo}_{idioma}_{huella}.png'
                 if not os.path.exists(png):
                     print(f'· GPT dibuja el título «{" ".join(tr.get(idioma, lineas))}» ({estilo})…', flush=True)
                     titulo_gpt(tr.get(idioma, lineas), estilo, png)
@@ -885,7 +905,7 @@ def vista_grilla(img, salida):
     marcada = cv2.addWeighted(capa, 0.35, marcada, 0.65, 0)
     alto = 960
     lado = [cv2.resize(x, (int(x.shape[1] * alto / x.shape[0]), alto)) for x in (marcada, grilla)]
-    cv2.imwrite(salida, np.hstack(lado), [cv2.IMWRITE_JPEG_QUALITY, 88])
+    guardar_img(salida, np.hstack(lado), [cv2.IMWRITE_JPEG_QUALITY, 88])
 
 
 def borde_texto_arriba(img, ocr=None):
@@ -985,7 +1005,7 @@ def portadas_short(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
         f = f'{salida_base}_{idioma}.jpg'
         img = cv2.resize(img, (1080, 1920), interpolation=cv2.INTER_CUBIC)
         img, _ = ajustar_grilla(img)  # que la grilla de Shorts no corte el título
-        cv2.imwrite(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        guardar_img(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         vista_grilla(img, f'{salida_base}_{idioma}_vista_grilla.jpg')
         hechas.append(os.path.basename(f))
         print(f'· {os.path.basename(f)} lista', flush=True)
@@ -1046,7 +1066,7 @@ def con_fotos(d, a):
             raise SystemExit(f'ERROR: falta la foto del {k.upper()} ({que}) y no la encontré en tu video. Súbela en «🖼 Miniatura».')
         fotos[k] = os.path.join(d, f'.ref_miniatura_{k}.png')
         temporales.append(fotos[k])
-        cv2.imwrite(fotos[k], c)
+        guardar_img(fotos[k], c)
         print(f'· sin foto del {k.upper()}: uso tu video en {int(s // 60)}:{int(s % 60):02d}', flush=True)
     lineas = list(a.texto.split('|')[:2]) if a.texto else list(textos(d)[0])
     extras = [fotos[k] for k in FOTOS[2:] if k in fotos]
@@ -1055,7 +1075,8 @@ def con_fotos(d, a):
     try:
         for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
             hacer = (lambda *x, **k: miniaturas_mixtas(*x, estilos=estilos_titulo(a), titulo_por_gpt=a.titulo_gpt,
-                                                      esquinas=(a.esquina_izq, a.esquina_der), **k)) if a.mixta else miniaturas_gpt
+                                                      esquinas=(a.esquina_izq, a.esquina_der),
+                                                      base_titulo=os.path.join(d, 'miniatura_fotos_mixta'), **k)) if a.mixta else miniaturas_gpt
             base = os.path.join(d, f"miniatura_fotos_{'mixta' if a.mixta else 'gpt'}_{fondo}")
             for f in hacer(d, [fotos['antes'], fotos['despues']], lineas, base, marca, antes_desc='tal como está en la foto HD',
                            fondo=fondo, extras=extras):
@@ -1096,6 +1117,8 @@ def main():
         raise SystemExit('ERROR: falta tu grabación (original.mp4).')
     col = colores()
     lineas = [tuple(a.texto.split('|')[:2]) + ('',)] * 3 if a.texto else textos(d)
+    # la marca para el logo oficial (como en «🖼 Miniatura»): la del título si es una marca; si no, la del proyecto
+    marca = next((x.strip().upper() for x in lineas[0] if x and x.strip().upper() in MARCAS), textos(d)[0][0])
     print('Busco los mejores cuadros para la miniatura…', flush=True)
     cands = candidatos(d, orig)
     if not cands:
@@ -1111,9 +1134,9 @@ def main():
         c = cv2.resize(c, (1920, 1080)) if c.shape[1] != 1920 else c
         if mejorar.quieres(d):
             f = os.path.join(d, f'.miniatura_{k}.png')
-            cv2.imwrite(f, c)
+            guardar_img(f, c)
             if mejorar.imagen(f):
-                c = cv2.imread(f)
+                c = leer_img(f)
             os.remove(f)
         salida = os.path.join(d, f'miniatura_{k}.jpg')
         l = lineas[(k - 1) % len(lineas)]
@@ -1138,33 +1161,33 @@ def main():
             ok, c = cap.read()
             if ok:
                 refs.append(os.path.join(d, f'.ref_miniatura_{k}.png'))
-                cv2.imwrite(refs[-1], cv2.resize(c, (1280, 720)))
+                guardar_img(refs[-1], cv2.resize(c, (1280, 720)))
         ref = {os.path.basename(r)[len('.ref_miniatura_'):-4]: r for r in refs}
         cap.release()
         try:
             if a.gpt and a.variantes:  # una por cada ANTES, en español, para elegir la mejor
                 for k in antes:
-                    for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), lineas[0][0],
+                    for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), marca,
                                             idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k)):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · ANTES: {k}', 'segundo': round(clave[k], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.mixta:  # GPT hace la escena y la app escribe encima (con --fondos, las dos escenas)
                 for fondo in (('escritorio', 'gpt') if a.fondos else ('escritorio',)):
                     base = os.path.join(d, f'miniatura_mixta_{fondo}' if a.fondos else 'miniatura_mixta')
-                    for f in miniaturas_mixtas(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), base, lineas[0][0],
+                    for f in miniaturas_mixtas(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), base, marca,
                                                antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo, estilos=estilos_titulo(a), titulo_por_gpt=a.titulo_gpt,
-                                               esquinas=(a.esquina_izq, a.esquina_der)):
+                                               esquinas=(a.esquina_izq, a.esquina_der), base_titulo=os.path.join(d, 'miniatura_mixta')):
                         hechas.append({'archivo': f, 'de': f'mixta: escena de GPT ({fondo}) + textos de la app', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
                 for fondo in ('escritorio', 'gpt'):
                     for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_fondo_{fondo}'),
-                                            lineas[0][0], idiomas=('es',), antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
+                                            marca, idiomas=('es',), antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · fondo {fondo}', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt:
-                for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, 'miniatura_gpt'), lineas[0][0],
+                for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, 'miniatura_gpt'), marca,
                                         antes_desc=NOMBRE_ANTES.get(antes[0])):
                     hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             if a.short:  # la portada del Short: vertical, con el estilo de sus Shorts
-                for f in portadas_short(d, [ref[antes[0]]], list(lineas[0]), os.path.join(d, 'portada_short'), lineas[0][0]):
+                for f in portadas_short(d, [ref[antes[0]]], list(lineas[0]), os.path.join(d, 'portada_short'), marca):
                     hechas.append({'archivo': f, 'de': 'portada del Short (gpt-image-2.5-flare)', 'segundo': round(cands[0][1], 1), 'texto': [x for x in lineas[0] if x]})
         finally:
             for f in refs:
