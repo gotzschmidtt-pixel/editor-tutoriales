@@ -183,7 +183,8 @@
 <body>
 <header>
   <h1>🎬 <b>Estudio</b> de tutoriales</h1>
-  <select id="proyecto"></select>
+  <select id="proyecto"><option>Cargando proyectos…</option></select>
+  <button id="reintentarProyectos" hidden onclick="cargarProyectos()" title="Vuelve a pedir la lista de proyectos">⟳ Reintentar</button>
   <button class="principal" onclick="recargar()" title="Recarga la página, igual que F5. No borra ni rehace nada">↻ Actualizar</button>
   <details class="menu"><summary title="Nuevo, abrir, guardar, comprimir y la cola de la noche">📁 Proyecto</summary><div class="lista">
     <button id="nuevo">+ Nuevo proyecto</button>
@@ -967,8 +968,30 @@ const api = async (url, op = {}) => { const r = await fetch(url, op); const j = 
 const tam = b => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : (b / 1e3).toFixed(0) + ' KB';
 const q = s => encodeURIComponent(s);
 
+async function listaProyectos() {
+  // con la PC ocupada (renderizando) la lista puede tardar o fallar: se reintenta sola y nunca queda el selector vacío sin
+  // explicación (fabian vio la lista vacía al recargar, 02/11/2026)
+  const sel = $('#proyecto'), boton = $('#reintentarProyectos');
+  boton.hidden = true;
+  sel.innerHTML = '<option>Cargando proyectos…</option>';
+  for (let k = 0; k < 5; k++) {
+    try {
+      const ctl = new AbortController(), reloj = setTimeout(() => ctl.abort(), 8000);
+      const lista = await api('/api/proyectos', {signal: ctl.signal});
+      clearTimeout(reloj);
+      return lista;
+    } catch (e) {
+      sel.innerHTML = '<option>La app está ocupada; reintentando…</option>';
+      await new Promise(r => setTimeout(r, 2500));
+    }
+  }
+  sel.innerHTML = '<option>No pude cargar los proyectos: la app está ocupada</option>';
+  boton.hidden = false;
+  return null;
+}
 async function cargarProyectos(sel) {
-  const lista = await api('/api/proyectos');
+  const lista = await listaProyectos();
+  if (!lista) return;
   $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;

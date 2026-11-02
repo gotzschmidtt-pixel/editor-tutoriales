@@ -26,6 +26,8 @@ for b in botones:
     ok('recargar()' in b and 'actualizarProyecto' not in b, f'«Actualizar» no debe rehacer el video: {b[:120]}')
 m = re.search(r'function recargar\(\) \{(.*?)\n\}', html, re.S)
 ok(m and 'location.reload()' in m.group(1) and 'api(' not in m.group(1), 'recargar() solo debe recargar la página (como F5)')
+ok('async function listaProyectos()' in html and 'Reintentar' in html and 'Cargando proyectos' in html,
+   'la lista de proyectos tiene que reintentar sola y avisar si la app está ocupada (nunca un selector vacío)')
 rehacer = re.findall(r'<button[^>]*actualizarProyecto\(\)[^>]*>([^<]*)</button>', html)
 ok(rehacer and all('Rehacer' in t for t in rehacer), f'el que rehace tiene que llamarse «Rehacer video»: {rehacer}')
 ok(not re.search(r'class="principal"[^>]*actualizarProyecto', html), '«Rehacer video» no debe ser el botón principal')
