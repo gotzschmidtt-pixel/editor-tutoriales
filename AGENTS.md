@@ -118,7 +118,11 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   finales a `FINAL_antes_rehacer_<fecha>_<nombre>.mp4` (`app/respaldo.py`) y el aviso dice qué capas se vuelven a poner
   solas (inicio fijo, datos difuminados) y cuáles no (versión en inglés, arreglos guardados como `FINAL_antes_*.mp4`),
   y recomienda no rehacer si hay de las segundas. Prueba: `python tests/test_actualizar_no_borra.py`.
-- HONOR 8 LITE: el giro del teléfono (tapa trasera, 6:21 del grabado, con todo lo de la laptop desenfocado) y 3 fotos
+- **Datos privados: difuminar SOLO el dato, nunca todo el fondo.** Recuadros chicos que siguen el dato cuadro por cuadro
+  (SIFT + homografía, `privacidad/difuminar_datos.py`); el resto de la imagen queda nítido (fabian, 02/11/2026: el fondo
+  entero desenfocado «se ve mal»).
+- HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
+  los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el
   teléfono de la derecha NO es un Honor 8 Lite (cámara de píldora): se tapa con la etiqueta «DESPUÉS ✓»; «ANTES» va
   arriba a la derecha del de la izquierda sin tapar su cámara (`_referencias/honor_8_lite_fotos/etiquetas_antes_despues.py`).
