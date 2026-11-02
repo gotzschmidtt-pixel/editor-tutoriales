@@ -193,6 +193,9 @@ def revisar_logos(video, ev, alto_rel=0.30):
             for esc in (1.0, 0.85, 1.15):
                 alto = int(h * alto_rel * esc * (0.52 if png.shape[1] / png.shape[0] > 1.3 else 1))
                 ancho = int(alto * png.shape[1] / png.shape[0])
+                if ancho > fr.shape[1] * 0.8:  # como logos.py: las insignias anchas se achican al 80 % del ancho
+                    ancho = int(fr.shape[1] * 0.8 * esc)
+                    alto = int(ancho * png.shape[0] / png.shape[1])
                 if ancho >= fr.shape[1] or alto < 20:
                     continue
                 chico = cv2.resize(png, (ancho, alto))

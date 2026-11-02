@@ -734,6 +734,8 @@ def comandos(paso, d, op):
             c.append([PY, m('inicio', 'inicio_fijo.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
         if existe(d, 'difuminar_datos.json'):  # datos personales en pantalla (correo, saldo…): se difuminan siguiéndolos
             c.append([PY, m('privacidad', 'difuminar_datos.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
+        # «✅ Revisor automático» (gratis): si el inicio tiene un plano de más de 5 s, el paso no queda como listo
+        c.append([PY, m('revision', 'revisor_auto.py'), 'FINAL.mp4'])
         return c
     raise ValueError(paso)
 
