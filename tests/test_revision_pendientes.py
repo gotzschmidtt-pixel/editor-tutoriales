@@ -147,6 +147,22 @@ try:
     correr('rearmar', ['final_sin_trailer'], {})
     ok(len(copias()) == 4 and sum(contenido(f) == b'otro arreglo a mano' for f in copias()) == 1,
        f'el FINAL ya copiado no se vuelve a copiar en cada intento: {copias()}')
+    # el FINAL con arreglos a mano está abierto en otro programa (VLC, el celular) y Windows no deja borrarlo: «✨ Agregar
+    # extras» y «▶ Hacer todo» lo copian una vez, y el paso del final ya no lo copia otra vez en la misma vuelta
+    viejo_borrar, viejos_pasos = app.borrar_seguro, app.PASOS
+    app.borrar_seguro = lambda f, *a, **k: False if os.path.basename(f) == 'FINAL.mp4' else viejo_borrar(f, *a, **k)
+    app.PASOS = [dict(x, necesita=[]) for x in app.PASOS]  # los pasos simulados no dejan sus videos: que ninguno se salte
+    try:
+        for k, (pasos, op) in enumerate(((['testimonios', 'final_sin_trailer'], {'_limpiar_extras': True}),
+                                         (['montaje', 'mezclar', 'musica', 'final_sin_trailer'], {}))):
+            d = os.path.join(app.PROYECTOS, f'abierto{k}')
+            crear(d, ['original.mp4', '3_voz.mp4', '4_musica.mp4'])
+            open(os.path.join(d, 'FINAL.mp4'), 'wb').write(b'giro y fotos a mano, abierto en VLC')
+            correr(f'abierto{k}', pasos, op)  # ffmpeg tampoco puede escribir el FINAL abierto: el paso del final no lo cambia
+            hechas = [f for f in os.listdir(d) if f.startswith('FINAL_antes_rehacer_')]
+            ok(len(hechas) == 1, f'{pasos}: el FINAL abierto en otro programa se copia una sola vez por vuelta: {hechas}')
+    finally:
+        app.borrar_seguro, app.PASOS = viejo_borrar, viejos_pasos
 
     # P2) testimonios narrados y «Nuevos modelos»: su voz (ElevenLabs) no se hace sin SI, y solo se pregunta si falta
     d = os.path.join(app.PROYECTOS, 'voces')

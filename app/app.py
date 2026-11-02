@@ -1485,6 +1485,7 @@ def correr(proyecto, pasos, opciones):
                 copias = respaldo.respaldar(d, finales=('FINAL.mp4',))
                 if copias:
                     log.write(f"· copia del video final antes de rehacerlo: {', '.join(copias)}\n"); log.flush()
+                    respaldo.anotar_final(d)  # ya quedó copiado: si no se puede borrar (abierto en otro programa), el paso del final no lo copia otra vez
             for viejo in VIDEOS_GENERADOS:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
@@ -1496,6 +1497,7 @@ def correr(proyecto, pasos, opciones):
                 copias = respaldo.respaldar(d, finales=('FINAL.mp4',))
                 if copias:
                     log.write(f"· copia del video final antes de agregarle los extras: {', '.join(copias)}\n"); log.flush()
+                    respaldo.anotar_final(d)  # ya quedó copiado: si no se puede borrar (abierto en otro programa), el paso del final no lo copia otra vez
             # los extras se vuelven a poner sobre el video base: uno viejo no debe quedar en el final
             for viejo in VIDEOS_EXTRAS + ['FINAL.mp4']:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
