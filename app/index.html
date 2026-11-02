@@ -1153,11 +1153,12 @@ async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del p
 }
 // los testimonios con texto los narra tu voz, «Nuevos modelos» dice su frase y el tráiler la suya, con ElevenLabs: si esa
 // voz todavía no está guardada, gasta créditos (~1 por letra). Devuelve 'SI' (lo escribiste), '' (no gasta nada: no se
-// pregunta) o null (no seguir)
-async function confirmarVocesExtras(solo) {
+// pregunta) o null (no seguir). `mas`: lo que el pedido lleva además (&revisado=1), para que el servidor cuente igual que al
+// arrancar (si esa vuelta se para en la propuesta de la IA, todavía no se paga nada)
+async function confirmarVocesExtras(solo, mas = '') {
   if (!['testimonios', 'nuevos_modelos', 'trailer'].some(x => solo.includes(x))) return '';
   let c = null;
-  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=${q(solo.join(','))}`); } catch (e) {}
+  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=${q(solo.join(','))}${mas}`); } catch (e) {}
   if (!c) return pedirSi('No pude revisar si falta la voz de los testimonios narrados, de «Nuevos modelos» o del tráiler. La que '
     + 'falte se hace con ElevenLabs (~1 crédito por letra); la que ya está guardada se reutiliza.') ? 'SI' : null;
   if (!c.gasta.length) return '';
@@ -3203,7 +3204,7 @@ async function agregarExtras() {
 let SEGUIR_EXTRAS = null;
 async function ponerExtrasAsi() {
   const sg = SEGUIR_EXTRAS || {};
-  const si = await confirmarVocesExtras(sg.solo || ['testimonios', 'nuevos_modelos']); if (si === null) return;  // sin lista van todos
+  const si = await confirmarVocesExtras(sg.solo || ['testimonios', 'nuevos_modelos'], '&revisado=1'); if (si === null) return;  // sin lista van todos
   soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true, confirmo: si})}); }
   catch (e) { return alert(e.message); }

@@ -535,7 +535,7 @@ async function pedirSiGasto(extras, rehacer) {
     try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) {}
   }
   const voces = ['testimonios', 'nuevos_modelos', 'trailer'].some(x => extras.includes(x));
-  if (voces) try { v = await api(`/api/costo_extras?p=${q(P)}&solo=${q(extras.join(','))}`); } catch (x) {}
+  if (voces) try { v = await api(`/api/costo_extras?p=${q(P)}&solo=${q(extras.join(','))}&sin_ia=1`); } catch (x) {}  // tus etiquetas tal cual
   const gasta = [];
   if (rehacer) {
     if (!c || c.desconocido) gasta.push('la voz que falte (no pude calcular cuánta)');

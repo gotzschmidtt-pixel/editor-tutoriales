@@ -285,6 +285,38 @@ function soltarVideo() {} function refrescar() {} function confirm() { return tr
                    f'{nombre}: sin gasto no pregunta nada y funciona igual: {gratis}')
                 ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
 
+    # P2c) «✨ Agregar extras» con etiquetas que la IA va a proponer: esa vuelta se para en la propuesta y no paga voces. No se
+    # pregunta SI por nada, y los testimonios elegidos quedan anotados para «▶ Ponerlas en el video», que sí pregunta
+    d = os.path.join(app.PROYECTOS, 'propone')
+    crear(d, ['original.mp4', '3_voz.mp4', '4_musica.mp4', 'guion.json', 'testimonios/t1.mp4'])
+    json.dump({'TESTIMONIOS': [{'archivo': 't1.mp4', 'texto': texto}]}, open(os.path.join(d, 'testimonios', 'testimonios.json'), 'w', encoding='utf-8'))
+    json.dump({'modelo': 'm', 'url': 'http://127.0.0.1:9'}, open(app.AJUSTES, 'w'))  # con IA y sin etiquetas.json
+    costo_p = lambda solo, extra='': json.loads(pedir('GET', f'/api/costo_extras?p=propone&solo={solo}{extra}')[1])
+    ok(costo_p('etiquetas,testimonios') == {'gasta': [], 'letras': 0},
+       f'la vuelta que se para en la propuesta de la IA no gasta voces: no se pregunta SI: {costo_p("etiquetas,testimonios")}')
+    for extra in ('', '&revisado=1', '&sin_ia=1'):
+        solo = 'testimonios' if not extra else 'etiquetas,testimonios'
+        ok(costo_p(solo, extra).get('letras') == len(texto), f'{solo}{extra}: sí se pone el testimonio: cuenta su narración: {costo_p(solo, extra)}')
+    LANZADOS.clear()
+    st, b = pedir('POST', '/api/ejecutar?p=propone&paso=extras', json.dumps({'solo': ['etiquetas', 'testimonios']}).encode())
+    r = lanzado()
+    ok(st == 200 and r and 'testimonios' not in r[0] and 'etiquetas_ia' in r[0], f'la IA propone las etiquetas y se para: {st} {b[:200]!r} {r}')
+    try:
+        pend = json.load(open(os.path.join(d, 'vista_pendiente.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        pend = {}
+    ok(pend.get('solo') == ['testimonios'], f'el testimonio elegido debe quedar anotado para ponerlo después: {pend}')
+    ok(costo_p('etiquetas,senales', '&vista=1').get('letras') == len(texto), '«▶ Ponerlas en el video» cuenta la narración del testimonio')
+    ponerlas = lambda si='': pedir('POST', '/api/ejecutar?p=propone&paso=extras', json.dumps(
+        {'solo': ['etiquetas', 'senales'], 'revisado': True, 'sin_ia': True, 'confirmo': si}).encode())
+    st, b = ponerlas()
+    ok(st != 200 and lanzado(0.3) is None, f'«▶ Ponerlas en el video» sin SI no narra el testimonio: {st} {b[:200]!r}')
+    st, b = ponerlas('SI')  # el segundo intento, con SI: el testimonio sigue en la lista de lo que vuelve
+    r = lanzado()
+    ok(st == 200 and r and 'testimonios' in r[0], f'«▶ Ponerlas en el video» con SI pone el testimonio elegido: {st} {b[:200]!r} {r}')
+    ok(not os.path.exists(os.path.join(d, 'vista_pendiente.json')), 'al arrancar, la vista previa deja de estar pendiente')
+    json.dump({}, open(app.AJUSTES, 'w'))
+
     # P2b) la frase de voz del tráiler (trailer.py la pide a ElevenLabs si cambió o nunca se hizo): tampoco sin SI
     d = os.path.join(app.PROYECTOS, 'travoz')
     crear(d, ['original.mp4', '3_voz.mp4', '4_musica.mp4'])

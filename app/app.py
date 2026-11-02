@@ -540,6 +540,17 @@ def marcas_nuevas(d):
     return os.path.exists(f) and (not os.path.exists(s) or os.path.getmtime(f) > os.path.getmtime(s))
 
 
+def ia_propone(d, extra):
+    """Con una IA configurada, si la IA prepara de nuevo las etiquetas o las flechas antes de ponerlas: no las hay, quedaron
+    de otro guion o montaje, o (las flechas) cambiaste tus capturas o notas. La misma cuenta para /api/ejecutar y para
+    /api/costo_extras: en «✨ Agregar extras» esa vuelta se para en la propuesta de la IA."""
+    if extra == 'etiquetas':
+        return not existe(d, 'etiquetas.json') or bool(etiquetas_viejas(d))
+    if extra == 'senales':
+        return not existe(d, 'senales.json') or bool(senales_viejas(d)) or bool(marcas_nuevas(d))
+    return False
+
+
 def unir_videos(destino, n):
     """Une en orden los n videos subidos juntos (destino.parte01, .parte02…) en uno solo. Si son de la misma cámara se
     pegan tal cual (rápido, sin perder calidad); si no, se pasan a un mismo formato. Devuelve un resumen."""
@@ -2775,6 +2786,11 @@ class Manejador(BaseHTTPRequestHandler):
                     if isinstance(pend, dict) and isinstance(pend.get('solo'), list):
                         solo += [str(x) for x in pend['solo']]
                 aj = leer_ajustes()
+                if not (q.get('vista') or q.get('revisado') or q.get('sin_ia')) and aj.get('modelo') and aj.get('url') \
+                        and any(x in solo and ia_propone(d, x) for x in ('etiquetas', 'senales')):
+                    # esta vuelta de «✨ Agregar extras» solo prepara la propuesta de la IA y se para (como /api/ejecutar): los
+                    # testimonios, nuevos modelos y el tráiler se ponen después, con «▶ Ponerlas en el video», y ahí se pregunta
+                    return self.responder({'gasta': [], 'letras': 0})
                 if 'trailer' in solo and not existe(d, 'trailer.json') and aj.get('modelo') and aj.get('url'):
                     solo.append('trailer_ia')  # sin plan propio, la IA arma el tráiler con su frase (como en /api/ejecutar)
                 return self.responder(voces_extras(d, solo))
@@ -3156,10 +3172,9 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x for x in pasos if x != 'final_sin_trailer'] + ['trailer_ia', 'trailer']  # sin plan propio, lo arma la IA
                 if q['paso'] == 'todo' and aj.get('modelo') and aj.get('url'):
                     # sin etiquetas ni flechas propias, la IA las prepara solas justo antes de ponerlas
-                    for paso_ia, archivo, antes in (('etiquetas_ia', 'etiquetas.json', 'etiquetas'), ('senales_ia', 'senales.json', 'senales')):
+                    for paso_ia, antes in (('etiquetas_ia', 'etiquetas'), ('senales_ia', 'senales')):
                         # guion o montaje nuevo: etiquetas y flechas nuevas (las flechas guardan el lugar en el cuadro de antes)
-                        viejo = etiquetas_viejas(carpeta(q['p'])) if paso_ia == 'etiquetas_ia' else senales_viejas(carpeta(q['p']))
-                        if (not existe(carpeta(q['p']), archivo) or viejo) and antes in pasos:
+                        if antes in pasos and ia_propone(carpeta(q['p']), antes):
                             pasos.insert(pasos.index(antes), paso_ia)
                 if 'senales' in pasos and 'senales_ia' not in pasos and aj.get('modelo') and aj.get('url') and marcas_nuevas(carpeta(q['p'])):
                     pasos.insert(pasos.index('senales'), 'senales_ia')  # cambiaste tus capturas o notas: se vuelven a ubicar
@@ -3242,7 +3257,10 @@ class Manejador(BaseHTTPRequestHandler):
                     # Se arma todo lo demás (sin ellas), se dibujan las diapositivas y se para: «▶ Ponerlas en el video» las pone
                     # (llama con revisado). En la cola de noche el video queda armado y las etiquetas quedan pendientes de aprobar.
                     # los otros extras que este video ya lleva: al aprobar se vuelven a poner junto con ellas (si no, se perdían)
-                    otros = [x for x in EXTRAS if x in pasos and x not in ('etiquetas', 'senales')]
+                    # (si esta vuelta se para en la propuesta de la IA, los demás que elegiste en «✨ Agregar extras» también:
+                    # antes se perdían y el testimonio nunca se ponía)
+                    elegidos_ = (datos.get('_seguir') or {}).get('solo') or []
+                    otros = [x for x in EXTRAS if (x in pasos or x in elegidos_) and x not in ('etiquetas', 'senales')]
                     pasos = [x for x in pasos if x not in ('etiquetas', 'senales')]
                     ia_ = [i for i, x in enumerate(pasos) if x in ('etiquetas_ia', 'senales_ia')]
                     pasos.insert(ia_[-1] + 1 if ia_ else len(pasos), 'vista_previa')
@@ -3254,11 +3272,9 @@ class Manejador(BaseHTTPRequestHandler):
                                        'calidad': datos.get('calidad')}, fh)
                     except OSError:
                         pass
-                elif datos.get('revisado') and any(x in pasos for x in ('etiquetas', 'senales')):
-                    try:  # ya las aprobaste en la vista previa: deja de estar pendiente
-                        os.remove(os.path.join(carpeta(q['p']), 'vista_pendiente.json'))
-                    except OSError:
-                        pass
+                # ya las aprobaste en la vista previa: deja de estar pendiente, pero recién al arrancar (si falta el SI de un
+                # testimonio que vuelve con ellas, la lista de lo que vuelve no se pierde para el segundo intento)
+                aprobada = datos.get('revisado') and any(x in pasos for x in ('etiquetas', 'senales'))
                 if any(p not in {x['id'] for x in PASOS} for p in pasos):
                     return self.error(f"no conozco el paso «{q['paso']}»")
                 falta_si = gasto_sin_confirmar(carpeta(q['p']), q['paso'], pasos, datos)
@@ -3268,6 +3284,11 @@ class Manejador(BaseHTTPRequestHandler):
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=pasos[0], inicio=time.time())
+                if aprobada:
+                    try:
+                        os.remove(os.path.join(carpeta(q['p']), 'vista_pendiente.json'))
+                    except OSError:
+                        pass
                 threading.Thread(target=correr_despierto, args=(q['p'], pasos, datos), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/reescribir_bloque':  # «✨ Reescribir con IA» un bloque: devuelve el texto, no guarda nada
