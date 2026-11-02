@@ -85,8 +85,9 @@ def trozos(largo):
     return [largo / n] * n
 
 
-def planear(bloques, mapa_f, carpeta_voz, dur_original, fps):
-    """{id del bloque: [(segundo del grabado, cuadros)]} para las pausas largas del inicio. Escribe/borra avisos_inicio.json."""
+def planear(bloques, mapa_f, carpeta_voz, dur_original, fps, guardar_avisos=True):
+    """{id del bloque: [(segundo del grabado, cuadros)]} para las pausas largas del inicio. Escribe/borra avisos_inicio.json
+    (con guardar_avisos=False, en una prueba de unos pocos bloques, no lo toca)."""
     plan, avisos, usados = {}, [], []
     por_tema = candidatos(mapa_f, dur_original)
     previo = None
@@ -115,7 +116,7 @@ def planear(bloques, mapa_f, carpeta_voz, dur_original, fps):
                 for t in [tema] + [x for x in ORDEN if x != tema]:  # sin material del tema: el más cercano que haya
                     orden_t = sorted(por_tema.get(t, []), reverse=(t == 'despues'))  # el después, de lo último del grabado
                     libres = [s for s in orden_t if all(abs(s - u) > SEPARACION for u in usados)
-                              and not (m['src_inicio'] - 2 <= s <= m.get('src_fin', m['src_inicio']) + 2)]
+                              and not (m['src_inicio'] - 2 <= s <= (m.get('src_fin') or m['src_inicio']) + 2)]  # «congelar»: src_fin puede venir vacío
                     if libres:
                         elegido = (libres[0], t)
                         break
@@ -138,6 +139,8 @@ def planear(bloques, mapa_f, carpeta_voz, dur_original, fps):
                            'aviso': f'{b["id"]}: no hay suficientes pantallas distintas en el grabado para rotar los {pausa:.0f} s de pausa '
                                     'del inicio: la escena se repite. Acorta la pausa, sube material extra o pide a Claude que elija los trozos.'})
             print('AVISO inicio ·', avisos[-1]['aviso'], flush=True)
+    if not guardar_avisos:
+        return plan
     if avisos:
         json.dump(avisos, open(AVISOS, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     elif os.path.exists(AVISOS):

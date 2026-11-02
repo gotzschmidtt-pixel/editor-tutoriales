@@ -268,8 +268,11 @@ def main():
     partes, voces = [], []
     carpeta_voz = os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'voz')
     # regla de fabian (31/10/2026): en el inicio, las pausas largas rotan trozos reales del grabado (rotar.py)
+    # «Probar solo unos bloques» (prueba_montaje.mp4) es una prueba: no toca los tramos ya hechos del video entero ni el aviso
+    # rojo del inicio (antes borraba los dos y el siguiente «Hacer todo» volvía a armar todo desde cero)
+    completo = os.path.basename(a.salida) == '1_montaje.mp4'
     rota = rotar.planear(d['bloques'], os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'mapa_video.json'),
-                         carpeta_voz, dur_original, FPS)
+                         carpeta_voz, dur_original, FPS, guardar_avisos=completo)
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
     os.makedirs(cache, exist_ok=True)
     usadas = set()
@@ -340,7 +343,9 @@ def main():
         if m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1:
             # una pausa de menos de un cuadro daba un tramo vacío que, al unir, desarmaba los tiempos de todo lo siguiente
             v = (m['src_inicio'] - 1, m['src_inicio'] + 3) if m['modo'] == 'congelar' else (m['src_fin'] - 3, m['src_fin'])
-            t = m.get('cuadro', mejor(*nt, *((m['src_fin'] - 2, m['src_fin']) if agitada else v)))
+            # agitada: el cuadro quieto sale del final del tramo; un «congelar» no tiene tramo (src_fin vacío o sin poner):
+            # ahí sirve su misma ventana de siempre
+            t = m.get('cuadro', mejor(*nt, *((m['src_fin'] - 2, m['src_fin']) if agitada and m['modo'] == 'lento+congelar' else v)))
             f = os.path.join(tmp, f'{i}_b.mp4')
             nfr = int(round(m['congelar_s'] * FPS))
             if i in rota:  # inicio: trozos reales distintos del grabado, uno tras otro, a velocidad normal
@@ -446,7 +451,7 @@ def main():
     else:
         run(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', a.salida])
     shutil.rmtree(tmp)
-    for viejo in glob.glob(os.path.join(cache, '*')):  # se guardan solo los tramos de este guion, para la próxima vez
+    for viejo in glob.glob(os.path.join(cache, '*')) if completo else []:  # se guardan solo los tramos de este guion, para la próxima vez
         if os.path.basename(viejo) not in usadas:
             try:
                 os.remove(viejo)

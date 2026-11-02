@@ -23,7 +23,8 @@ def titulo(tomas, usados=()):
                     (r'icloud', 'Adiós a iCloud'), (r'desbloque|libre|sin cuenta', 'Así queda desbloqueado')):
         if re.search(rx, t, re.I) and txt not in usados:
             return txt
-    palabras = re.findall(r"[\wáéíóúñü']+", tomas[0]['texto'])
+    # la primera toma con texto: el gancho sin voz (GANCHO) no tiene y el título salía vacío
+    palabras = re.findall(r"[\wáéíóúñü']+", next((c['texto'] for c in tomas if c.get('texto')), ''))
     return ' '.join(palabras[:6]).capitalize()
 
 
@@ -92,7 +93,7 @@ def main():
             print(f'· no alcanzan los pasos para el Short {k} ({e}); quedan {k - 1}', flush=True)
             break
         plan = json.load(open(os.path.join(d, 'short.json'), encoding='utf-8'))
-        ids = [t['id'] for t in plan['tomas']]
+        ids = [t['id'] for t in plan['tomas'] if t['id'] != 'GANCHO']  # el gancho sin voz va en todos: no es un bloque usado
         if usados.intersection(ids) or not ids:
             break
         usados.update(ids)

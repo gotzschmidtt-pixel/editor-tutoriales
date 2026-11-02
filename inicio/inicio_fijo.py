@@ -55,18 +55,24 @@ def main():
     if duracion(inicio) < hasta - 0.05:
         raise SystemExit(f'ERROR: {inicio} dura {duracion(inicio):.2f} s y tiene que durar al menos {hasta} s (si no, la voz se corre).')
     import etiquetas as et
+    import idiomas  # «🌐 Etiquetas en otro idioma»: las mismas que dibuja el armado
     tmp = tempfile.mkdtemp(prefix='.inicio_tmp_', dir=os.getcwd())
     try:
         entradas, filtros, ult = ['-i', inicio, '-i', a.entrada], [f'[0:v]trim=0:{hasta},setpts=PTS-STARTPTS,fps=25[a]',
                                  f'[1:v]trim={hasta},setpts=PTS-STARTPTS,fps=25[b]', '[a][b]concat=n=2:v=1:a=0[v0]'], '[v0]'
-        for k, (t, e) in enumerate(etiquetas_del_tramo(hasta), 1):
-            dur = float(e.get('dur') or 4)
-            ancho = 1920 if len(str(e.get('texto') or '')) > 38 else et.ANCHO_ZONA
+        # como en el armado (etiquetas.py): en el idioma del video y, las que se solapan, juntas en una pila (antes cada
+        # una se dibujaba sola en el mismo lugar y quedaban encimadas; y en la versión traducida salían en español)
+        items = [dict(e, t=t, dur=float(e.get('dur') or 4)) for t, e in etiquetas_del_tramo(hasta)]
+        items = idiomas.aplicar(items, '.')[0]
+        for k, g in enumerate(et.agrupar(items), 1):
+            dur, t = round(g['fin'] - g['ini'], 2), g['ini']
+            ancho = 1920 if max(len(str(i.get('texto') or '')) for i in g['items']) > 38 else et.ANCHO_ZONA
             x, y = 1920 - ancho, 0
-            item = {'tipo': e.get('tipo') or 'consejo', 'titulo': e.get('titulo'), 'texto': str(e.get('texto') or ''),
-                    'color': e.get('color'), 'at': 0, 'placa': et.placa_gpt(e.get('tipo') or 'consejo')}
+            lista = [{'tipo': i.get('tipo') or 'consejo', 'titulo': i.get('titulo'), 'texto': str(i.get('texto') or ''),
+                      'color': i.get('color'), 'at': round(i['t'] - t, 2), 'placa': et.placa_gpt(i.get('tipo') or 'consejo')}
+                     for i in g['items']]
             carpeta = os.path.join(tmp, f'e{k}')
-            r = subprocess.run(['node', os.path.join(RAIZ, 'etiquetas', 'render_frames.js'), carpeta, str(dur), json.dumps([item]),
+            r = subprocess.run(['node', os.path.join(RAIZ, 'etiquetas', 'render_frames.js'), carpeta, str(dur), json.dumps(lista),
                                 'arriba', f'{x},{y},{ancho},{et.ALTO_ZONA}'], cwd=RAIZ, capture_output=True, text=True,
                                encoding='utf-8', errors='replace')
             if r.returncode != 0:
@@ -75,7 +81,7 @@ def main():
             idx = sum(1 for z in entradas if z == '-i') - 1
             filtros.append(f'[{idx}:v]setpts=PTS+{t}/TB[e{k}];{ult}[e{k}]overlay={x}:{y}:eof_action=pass[v{k}]')
             ult = f'[v{k}]'
-            print(f'{t:7.2f}s  etiqueta «{e.get("texto")}» redibujada encima del inicio')
+            print(f'{t:7.2f}s  etiqueta «' + ' + '.join(str(i.get('texto')) for i in g['items']) + '» redibujada encima del inicio')
         salida_tmp = os.path.join(tmp, 'salida.mp4')
         ff(*entradas, '-filter_complex', ';'.join(filtros), '-map', ult, '-map', '1:a', '-c:v', 'libx264', '-crf', '18',
            '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', salida_tmp)

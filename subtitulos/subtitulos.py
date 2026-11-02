@@ -226,6 +226,13 @@ def offset_de(d, fuente):
                 return 0.0
         except (OSError, ValueError, AttributeError):
             pass
+        # trailer.mp4 también queda al armar solo el tráiler o si después se hizo «Video final sin tráiler»: si el FINAL dura
+        # lo mismo que el video armado, no lleva tráiler y los subtítulos no se corren (antes salían ~10 s tarde)
+        base = next((os.path.join(d, f) for f in ('9_modelos.mp4', '8_testimonios.mp4', '7b_logos.mp4', '7_tarjetas.mp4',
+                                                   '6_senales.mp4', '5_etiquetas.mp4', '4_musica.mp4', '3_voz.mp4')
+                     if os.path.exists(os.path.join(d, f))), None)
+        if base and duracion(base) and abs(duracion(fuente) - duracion(base)) < 1:
+            return 0.0
         return duracion(os.path.join(d, 'trailer.mp4'))
     return 0.0
 

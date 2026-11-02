@@ -334,8 +334,14 @@ def palabras_voz(d, bid, carpeta='voz'):
     except (OSError, ValueError):
         return []
     out, actual, ini = [], '', None
-    for ch, t0, t1 in zip(a['characters'], a['character_start_times_seconds'], a['character_end_times_seconds']):
-        if ch.isspace():
+    # las etiquetas de emoción ([curious], [sighs deeply]…) no se dicen: no van en los subtítulos (salían como «[CURIOUS]»)
+    texto = ''.join(a['characters'])
+    etiqueta = set()
+    if len(texto) == len(a['characters']):
+        for m in re.finditer(r'\[[^\[\]]{0,40}\][.,]?', texto):
+            etiqueta.update(range(*m.span()))
+    for k, (ch, t0, t1) in enumerate(zip(a['characters'], a['character_start_times_seconds'], a['character_end_times_seconds'])):
+        if ch.isspace() or k in etiqueta:
             if actual:
                 out.append((ini, fin, actual)); actual = ''
             continue
@@ -400,9 +406,27 @@ def rotar_gancho(d, c, largo, dur_video, tomas):
     if not fr or not por_tema:
         return None
     try:
-        privados = json.load(open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8')).get('tramos', [])
+        tramos = json.load(open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8')).get('tramos', [])
     except (OSError, ValueError):
-        privados = []
+        tramos = []
+    # los tramos del difuminado son segundos del video armado y s es un segundo del grabado: se pasan al grabado con los
+    # bloques del guion que caen en cada tramo (antes se comparaban tal cual y el correo o el saldo podían colarse)
+    try:
+        bloques = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')).get('bloques', [])
+    except (OSError, ValueError):
+        bloques = []
+    privados = []
+    for p0, p1 in ((float(x), float(y)) for x, y in tramos):
+        antes = len(privados)
+        for b in bloques:
+            mo = b.get('montaje') or {}
+            if b.get('inicio_min') is None or mo.get('src_inicio') is None:
+                continue
+            if b['inicio_min'] <= p1 and (b.get('fin_max') or b['inicio_min']) >= p0:
+                fin = mo.get('src_fin') or mo['src_inicio'] + float(mo.get('congelar_s') or 0)
+                privados.append((mo['src_inicio'] - 3, fin + 3))
+        if len(privados) == antes:  # sin bloques con sus tiempos: el tramo tal cual, como antes
+            privados.append((p0, p1))
     otros = [(x['src_inicio'] - 3, x['src_inicio'] + x['voz'] + 3) for x in tomas if x is not c]
     cortes = [0.0]
     for s, _ in fr:

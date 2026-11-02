@@ -107,9 +107,14 @@ def agrupar(items, max_pila=3):
     for it in sorted(items, key=lambda x: x['t']):
         g = grupos[-1] if grupos else None
         if g and it['t'] < g['fin'] - 0.8 and len(g['items']) < max_pila:
+            it['t'] = max(it['t'], g['ini'])  # solo cambia si esa pila se corrió (abajo)
             g['items'].append(it)
             g['fin'] = max(g['fin'], it['t'] + it['dur'])
         else:
+            if g and it['t'] < g['fin'] - 0.8:
+                # la pila de antes está llena y sigue en pantalla: en el mismo lugar, esta se dibujaba encima de la primera
+                # y no se leía ninguna; sale cuando la otra se va
+                it['t'] = round(g['fin'], 2)
             grupos.append({'ini': it['t'], 'fin': it['t'] + it['dur'], 'items': [it]})
     return grupos
 

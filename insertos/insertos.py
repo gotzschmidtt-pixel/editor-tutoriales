@@ -79,22 +79,32 @@ def main():
     ap.add_argument('--prueba')
     a = ap.parse_args()
 
-    inicio = {b['id']: b['inicio_min'] for b in json.load(open(a.guion, encoding='utf-8'))['bloques']}
+    bloques = json.load(open(a.guion, encoding='utf-8'))['bloques']
+    inicio = {b['id']: b['inicio_min'] for b in bloques}
+    original = {b['id']: b.get('texto_original') for b in bloques}  # versión traducida: la frase sigue en español
     alin = {}
+
+    class NoEncontrada(Exception):
+        pass
 
     def momento(bloque, frase):
         if bloque not in alin:
             alin[bloque] = json.load(open(os.path.join(a.voz, bloque + '.align.json'), encoding='utf-8'))
-        t = buscar(alin[bloque], frase)
+        t = buscar(alin[bloque], frase, original.get(bloque))
         if t is None:
-            raise SystemExit(f"no encontré «{frase}» en {bloque}")
+            raise NoEncontrada(f"no encontré «{frase}» en {bloque}")
         return round(inicio[bloque] + a.desfase + t, 2)
 
     tmp = codificar.temporal('insertos')
     analisis, colocados = {}, []
     for k, s in enumerate(json.load(open(a.insertos, encoding='utf-8')), 1):
-        t0 = s['t'] if 't' in s else momento(s['bloque'], s['frase'])
-        t1 = momento(s['bloque'], s['hasta']) + s.get('extra', 0) if 'hasta' in s else t0 + s['dur']
+        try:  # una frase que ya no está (texto cambiado) salta solo ese inserto: antes se caían todos
+            t0 = s['t'] if 't' in s else momento(s['bloque'], s['frase'])
+            t1 = momento(s['bloque'], s['hasta']) + s.get('extra', 0) if 'hasta' in s else t0 + s['dur']
+            rels = [c['t'] if 't' in c else momento(s['bloque'], c['frase']) - t0 for c in s['claves']]
+        except NoEncontrada as e:
+            print(f"AVISO: {e}: salto ese inserto ({s.get('nota') or s.get('material')})", flush=True)
+            continue
         n = int(round((t1 - t0) * FPS))
         mat = s['material']
         if mat not in analisis:
@@ -102,8 +112,7 @@ def main():
         ts = s['src_t'] if s.get('exacto') else mejor(*analisis[mat], s['src_t'] - 0.4, s['src_t'] + 0.4)
         cap = cv2.VideoCapture(mat); cap.set(cv2.CAP_PROP_POS_MSEC, ts * 1000); _, cuadro = cap.read()
         claves = []
-        for c in s['claves']:
-            rel = c['t'] if 't' in c else momento(s['bloque'], c['frase']) - t0
+        for c, rel in zip(s['claves'], rels):
             claves.append({'t': max(0.0, rel), 'cx': c['cx'], 'cy': c['cy'], 'w': c['w']})
         claves.sort(key=lambda c: c['t'])
         print(f"{t0:7.2f}s → {t1:7.2f}s  material {ts:5.1f}s  {s.get('nota', '')}")
@@ -120,6 +129,10 @@ def main():
         colocados.append({'t': t0, 'archivo': salida})
 
     if a.prueba:
+        shutil.rmtree(tmp); return
+    if not colocados:  # no quedó ninguno (todas sus frases cambiaron): el video sigue igual, sin fallar
+        print('AVISO: no quedó ningún inserto para poner; el video sigue sin insertos.', flush=True)
+        shutil.copyfile(a.video, a.salida)
         shutil.rmtree(tmp); return
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, c in enumerate(colocados, 1):

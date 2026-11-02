@@ -14,7 +14,7 @@ Pasos (nada gasta hasta que fabian aprueba):
      short_encuadres.json), subtítulos estilo C +50 %, música fija, sin difuminados ni portada. Deja SHORT_RESUMEN_<n>.mp4 y
      shorts_resumen_textos.txt (WhatsApp primero, hashtags y comentario fijado).
 """
-import json, math, os, re, subprocess, sys, tempfile
+import json, math, os, re, shutil, subprocess, sys, tempfile
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -166,64 +166,71 @@ def armar(d, cuales=(1, 2, 3)):
     except (OSError, ValueError):
         encuadres = {}
     hechos = []
+    for n in cuales:  # una frase sin tomas (campo borrado) daba «division by zero» a mitad del armado
+        for k, f in enumerate(r['shorts'][n - 1]['frases'], 1):
+            if not f.get('tomas'):
+                raise ValueError(f'Short {n}, frase {k}: no tiene tomas (escríbelas como 18-22)')
     for n in cuales:
         s = r['shorts'][n - 1]
         cap = cv2.VideoCapture(orig)
         marcas, memoria = short.marcas_autor(d), short.deteccion.Memoria(orig)
         tmp = tempfile.mkdtemp()
-        partes, tomas = [], []
-        for k, f in enumerate(s['frases'], 1):
-            bid = f'S{n}F{k}'
-            mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
-            largo = round(short.duracion(mp3) + AIRE, 2)
-            piezas, cada = [], largo / len(f['tomas'])
-            for a, _b in f['tomas']:
-                m = max(1, math.ceil(cada / TROZO))
-                piezas += [(float(a) + j * cada / m, cada / m) for j in range(m)]
-            lista = []
-            for j, (s0, dur) in enumerate(piezas):
-                conf = _encuadre(encuadres, s0)
-                guiado = short.seguir_ref(cap, s0, dur, conf, d) if conf else None
-                claves, zoom, _ = guiado or short.seguir(cap, s0, dur, marcas, memoria)
-                ch = round(short.H / zoom / 2) * 2
-                cw = round(ch * 9 / 16 / 2) * 2
-                cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
-                vf = (f"crop={cw}:{ch}:x='{short.expr(cl, 1, 0, short.W - cw)}':y='{short.expr(cl, 2, 0, short.H - ch)}',"
-                      f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p')
-                p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
-                codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf,
-                               '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
-                lista.append(p)
-            lf = os.path.join(tmp, f'l{k:02d}.txt')
-            open(lf, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in lista))
-            p = os.path.join(tmp, f'p{k:02d}.mp4')
-            codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lf, '-i', mp3,
-                           '-filter_complex', f'[1:a]adelay={int(RETRASO * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
-                           'aresample=44100,aformat=channel_layouts=stereo[a]', '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}',
-                           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', p], check=True)
-            partes.append(p)
-            tomas.append({'id': bid, 'carpeta': 'voz_short', 'largo': largo, 'texto': f['texto']})
-        cap.release()
-        memoria.guardar()
-        lista = os.path.join(tmp, 'lista.txt')
-        open(lista, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in partes))
-        junto = os.path.join(tmp, 'junto.mp4')
-        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', junto],
-                       check=True)
-        ass = f'short_resumen_{n}_subs.ass'
-        open(os.path.join(d, ass), 'w', encoding='utf-8').write(short.subtitulos(d, tomas, RETRASO))
-        entradas, audio = ['-i', junto], '[0:a]anull[a]'
-        if os.path.exists(short.MUSICA):
-            entradas += ['-stream_loop', '-1', '-i', short.MUSICA]
-            audio = '[1:a]volume=0.10[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]'
-        salida = f'SHORT_RESUMEN_{n}.mp4'
-        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
-                      ['-filter_complex', f'[0:v]ass={ass}[v];{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
-                       '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
-                      check=True, cwd=d)
-        short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
-        hechos.append({'archivo': salida, 'duracion': round(short.duracion(os.path.join(d, salida)), 1),
-                       'revision': _revisar(d, salida, ass)})
+        try:
+            partes, tomas = [], []
+            for k, f in enumerate(s['frases'], 1):
+                bid = f'S{n}F{k}'
+                mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
+                largo = round(short.duracion(mp3) + AIRE, 2)
+                piezas, cada = [], largo / len(f['tomas'])
+                for a, _b in f['tomas']:
+                    m = max(1, math.ceil(cada / TROZO))
+                    piezas += [(float(a) + j * cada / m, cada / m) for j in range(m)]
+                lista = []
+                for j, (s0, dur) in enumerate(piezas):
+                    conf = _encuadre(encuadres, s0)
+                    guiado = short.seguir_ref(cap, s0, dur, conf, d) if conf else None
+                    claves, zoom, _ = guiado or short.seguir(cap, s0, dur, marcas, memoria)
+                    ch = round(short.H / zoom / 2) * 2
+                    cw = round(ch * 9 / 16 / 2) * 2
+                    cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
+                    vf = (f"crop={cw}:{ch}:x='{short.expr(cl, 1, 0, short.W - cw)}':y='{short.expr(cl, 2, 0, short.H - ch)}',"
+                          f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p')
+                    p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
+                    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf,
+                                   '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
+                    lista.append(p)
+                lf = os.path.join(tmp, f'l{k:02d}.txt')
+                open(lf, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in lista))
+                p = os.path.join(tmp, f'p{k:02d}.mp4')
+                codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lf, '-i', mp3,
+                               '-filter_complex', f'[1:a]adelay={int(RETRASO * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
+                               'aresample=44100,aformat=channel_layouts=stereo[a]', '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}',
+                               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', p], check=True)
+                partes.append(p)
+                tomas.append({'id': bid, 'carpeta': 'voz_short', 'largo': largo, 'texto': f['texto']})
+            cap.release()
+            memoria.guardar()
+            lista = os.path.join(tmp, 'lista.txt')
+            open(lista, 'w', encoding='utf-8').write(''.join(f"file '{p}'\n".replace('\\', '/') for p in partes))
+            junto = os.path.join(tmp, 'junto.mp4')
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', junto],
+                           check=True)
+            ass = f'short_resumen_{n}_subs.ass'
+            open(os.path.join(d, ass), 'w', encoding='utf-8').write(short.subtitulos(d, tomas, RETRASO))
+            entradas, audio = ['-i', junto], '[0:a]anull[a]'
+            if os.path.exists(short.MUSICA):
+                entradas += ['-stream_loop', '-1', '-i', short.MUSICA]
+                audio = '[1:a]volume=0.10[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]'
+            salida = f'SHORT_RESUMEN_{n}.mp4'
+            codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
+                          ['-filter_complex', f'[0:v]ass={ass}[v];{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
+                           '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
+                          check=True, cwd=d)
+            short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
+            hechos.append({'archivo': salida, 'duracion': round(short.duracion(os.path.join(d, salida)), 1),
+                           'revision': _revisar(d, salida, ass)})
+        finally:  # los tramos de cada Short pesan cientos de MB: no quedan en %TEMP% (con varias pruebas se llenaba el disco)
+            shutil.rmtree(tmp, ignore_errors=True)
     textos(d, r)
     return hechos
 
