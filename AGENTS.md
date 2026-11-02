@@ -129,6 +129,16 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   sin logos (fabian, 02/11/2026).
 - **Miniaturas SIN las páginas del autor**: nunca poner gsmprime.co, xiaomiunlock.com ni otra web en las miniaturas
   (fabian, 02/11/2026). Las webs van en el video (etiqueta «web»), en la descripción y en las cards/plantillas PSD.
+- **Shorts: flechas y círculos del video largo** (fabian, 02/11/2026: «¿por qué no se muestran, sobre todo en Omitir?»):
+  short.senales_grabado pasa senales.json a segundos de la grabación y short.con_senales las pega ANTES del recorte vertical
+  (siguen al zoom). Si la imagen del video largo no coincide con la grabación, esa señal se salta.
+- **Tarjeta de WhatsApp con tamaño propio por formato** (fabian, 02/11/2026: «están muy pequeñas para ambos»): en
+  logos.json va con "tarjeta": true (o se reconoce por su nombre y su "queda"). logos.TARJETA: ~80 % del alto en el video
+  largo y ~92 % del ancho en el Short, sin pisar los subtítulos. "archivo_short" permite un dibujo propio para el Short.
+- **Cierre de TODOS los Shorts, de todas las marcas** (fabian, 02/11/2026): la última frase es una de las 3 de
+  resumen.CIERRES (ES/EN/PT), rotando (Short 1 → la 1…). Nunca mandar «a la descripción»: en los Shorts esos enlaces no se
+  tocan; lo que lleva al tutorial es el «Video relacionado» (enlace ▶ abajo a la izquierda, se elige al subir). Apenas la
+  voz dice «play» sale el ícono de play (logo con "solo_short": true y la palabra «play») y una flecha rebota hacia el enlace.
 - HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
   los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el

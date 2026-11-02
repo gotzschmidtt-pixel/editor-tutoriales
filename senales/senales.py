@@ -154,6 +154,20 @@ def segundo_montado(bloques, src):
     return None
 
 
+def segundo_grabado(bloques, t):
+    """Lo contrario de segundo_montado: el segundo de la grabación que se ve en el segundo t del video montado (None si ahí
+    no se ve la grabación andando: un congelado, un inserto o un tramo de otro modo)."""
+    for b in bloques:
+        mo = b.get('montaje') or {}
+        a, z = mo.get('src_inicio'), mo.get('src_fin')
+        if a is None or z is None or b.get('inicio_min') is None or not str(mo.get('modo', 'lento')).startswith('lento'):
+            continue
+        v = float(mo.get('velocidad') or 1)
+        if b['inicio_min'] - 0.05 <= t <= b['inicio_min'] + (z - a) / v + 0.05:
+            return round(a + (t - b['inicio_min']) * v, 2)
+    return None
+
+
 def afinar(original, video, src, t, margen=1.5):
     """Busca cerca de t el cuadro del video montado más parecido al de la grabación en src (por si el tramo se corrió)."""
     def gris(cap, s):
@@ -186,6 +200,62 @@ def afinar(original, video, src, t, margen=1.5):
     return round(mejor, 2), parecido
 
 
+def en_el_video(s, inicio, texto_original, voz, desfase):
+    """(segundo del video montado, None) de una señal sin src_t; (None, aviso) si ya no se puede ubicar.
+    También lo usan los Shorts (short/short.py) para llevarla a la grabación."""
+    frase = s.get('frase') or s.get('texto') or 'tu captura'
+    if s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
+        return round(float(s['t']) + s.get('retraso', 0), 2), None
+    if s.get('en') is not None and s.get('bloque') in inicio:  # puesta a mano en el editor por pistas: desde que empieza su bloque
+        return round(inicio[s['bloque']] + desfase + float(s['en']) + s.get('retraso', 0), 2), None
+    f_al = os.path.join(voz, str(s.get('bloque')) + '.align.json')
+    if s.get('bloque') not in inicio or not os.path.exists(f_al):
+        return None, f"AVISO: el bloque {s.get('bloque')} ya no está en el guion, salto «{frase}»"
+    al = json.load(open(f_al, encoding='utf-8'))
+    t = buscar(al, frase, texto_original.get(s['bloque']))
+    if t is None:
+        return None, f"AVISO: no encontré «{frase}» en {s['bloque']}, la salto"
+    return round(inicio[s['bloque']] + desfase + t + s.get('retraso', 0), 2), None
+
+
+def trabajo(video, s, t, salida):
+    """La flecha o el círculo `s` siguiendo lo señalado desde el segundo t de `video`: (trabajo de Remotion, segundos que dura).
+    También lo usan los Shorts (short/short.py), sobre la grabación."""
+    n = int(round(s.get('dur', 3) * FPS))
+    radio = s.get('r', max(s.get('w', 160), s.get('h', 80)) / 2)
+    if s.get('seguir', True):
+        pts, fiables = seguir(video, t, s['x'], s['y'], n, radio)
+        if fiables < n:  # se perdió: la señal dura solo lo fiable (mínimo 1 s)
+            n = max(fiables, FPS); pts = pts[:n]
+    else:
+        pts = [(s['x'], s['y'])] * n
+    props = {k2: s[k2] for k2 in ('tipo', 'r', 'w', 'h', 'color', 'texto', 'foco', 'angulo', 'hueco') if k2 in s}
+    dibujo = kit_gpt(s['tipo'])  # la flecha o el círculo de GPT 2.5 (mis_conocimientos/estilo_video), si está
+    if dibujo:
+        props['sprite'] = dibujo
+    props['puntos'] = pts
+    return {'id': 'Senal', 'props': props, 'salida': salida, 'alfa': True}, round(n / FPS, 2)
+
+
+def dibujar(trabajos, tmp):
+    """Remotion dibuja todas las señales de una vez (cada una, un .mov con transparencia del tamaño del video)."""
+    if not trabajos:
+        return
+    json.dump(trabajos, open(os.path.join(tmp, 'trabajos.json'), 'w', encoding='utf-8'))
+    env = codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp'))
+    chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
+    if os.path.exists(chrome):
+        env.setdefault('REMOTION_CHROME', chrome)
+    r = subprocess.run(['node', 'render_lote.mjs', os.path.join(tmp, 'trabajos.json')], cwd=os.path.join(RAIZ, 'remotion'), env=env,
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    print((r.stdout or '') + (r.stderr or ''), flush=True)
+    if r.returncode != 0:  # se muestra lo que dijo Remotion, no solo «returned non-zero exit status 1»
+        detalle = ' '.join((r.stderr or r.stdout or '').split())[-600:]
+        if 'cannot find' in detalle.lower() or 'err_module_not_found' in detalle.lower():
+            detalle += ' → Faltan las piezas de Remotion: corre instalar.bat (o «npm install» dentro de la carpeta remotion).'
+        raise SystemExit(f'ERROR: Remotion no pudo dibujar las flechas y círculos: {detalle}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--guion', required=True)
@@ -214,36 +284,15 @@ def main():
             if parecido < 0.6:  # no se encontró la misma imagen: mejor no poner un círculo en el lugar equivocado
                 print(f"AVISO: no encontré en el video la imagen de «{s['frase']}» (parecido {parecido:.2f}); la salto"); continue
             t = round(t + s.get('retraso', 0), 2)
-        elif s.get('t') is not None:  # las de tus capturas ya traen el segundo del video
-            t = round(float(s['t']) + s.get('retraso', 0), 2)
-        elif s.get('en') is not None and s.get('bloque') in inicio:  # puesta a mano en el editor por pistas: desde que empieza su bloque
-            t = round(inicio[s['bloque']] + a.desfase + float(s['en']) + s.get('retraso', 0), 2)
         else:
-            f_al = os.path.join(a.voz, str(s.get('bloque')) + '.align.json')
-            if s.get('bloque') not in inicio or not os.path.exists(f_al):  # una señal vieja no frena las demás
-                print(f"AVISO: el bloque {s.get('bloque')} ya no está en el guion, salto «{s['frase']}»"); continue
-            al = json.load(open(f_al, encoding='utf-8'))
-            t = buscar(al, s['frase'], texto_original.get(s['bloque']))
-            if t is None:
-                print(f"AVISO: no encontré «{s['frase']}» en {s['bloque']}, la salto"); continue
-            t = round(inicio[s['bloque']] + a.desfase + t + s.get('retraso', 0), 2)
-        n = int(round(s.get('dur', 3) * FPS))
-        radio = s.get('r', max(s.get('w', 160), s.get('h', 80)) / 2)
-        if s.get('seguir', True):
-            pts, fiables = seguir(a.video, t, s['x'], s['y'], n, radio)
-            if fiables < n:  # se perdió: la señal dura solo lo fiable (mínimo 1 s)
-                n = max(fiables, FPS); pts = pts[:n]
-        else:
-            pts = [(s['x'], s['y'])] * n
-        props = {k2: s[k2] for k2 in ('tipo', 'r', 'w', 'h', 'color', 'texto', 'foco', 'angulo', 'hueco') if k2 in s}
-        dibujo = kit_gpt(s['tipo'])  # la flecha o el círculo de GPT 2.5 (mis_conocimientos/estilo_video), si está
-        if dibujo:
-            props['sprite'] = dibujo
-        props['puntos'] = pts
-        salida = os.path.join(tmp, f's{k:02d}.mov')
-        trabajos.append({'id': 'Senal', 'props': props, 'salida': salida, 'alfa': True})
-        colocadas.append({'t': t, 'archivo': salida, 'frase': s['frase'], 'dur': round(n / FPS, 2), 'tipo': s['tipo']})
-        print(f"{t:7.2f}s  {s['tipo']:8s} {s['frase']}  ({n / FPS:.1f}s)")
+            t, aviso = en_el_video(s, inicio, texto_original, a.voz, a.desfase)
+            if t is None:  # una señal vieja no frena las demás
+                print(aviso); continue
+        tr, dur = trabajo(a.video, s, t, os.path.join(tmp, f's{k:02d}.mov'))
+        pts, radio = tr['props']['puntos'], s.get('r', max(s.get('w', 160), s.get('h', 80)) / 2)
+        trabajos.append(tr)
+        colocadas.append({'t': t, 'archivo': tr['salida'], 'frase': s['frase'], 'dur': dur, 'tipo': s['tipo']})
+        print(f"{t:7.2f}s  {s['tipo']:8s} {s['frase']}  ({dur:.1f}s)")
         if a.prueba:
             os.makedirs(a.prueba, exist_ok=True)
             mitad = min(len(pts) - 1, int(0.6 * FPS))
@@ -254,20 +303,7 @@ def main():
 
     if a.prueba and not a.salida:
         return
-    json.dump(trabajos, open(os.path.join(tmp, 'trabajos.json'), 'w', encoding='utf-8'))
-    env = codificar.env_temporal(os.environ, os.path.join(tmp, 'node_tmp'))
-    chrome = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell'
-    if os.path.exists(chrome):
-        env.setdefault('REMOTION_CHROME', chrome)
-    if trabajos:
-        r = subprocess.run(['node', 'render_lote.mjs', os.path.join(tmp, 'trabajos.json')], cwd=os.path.join(RAIZ, 'remotion'), env=env,
-                           capture_output=True, text=True, encoding='utf-8', errors='replace')
-        print((r.stdout or '') + (r.stderr or ''), flush=True)
-        if r.returncode != 0:  # se muestra lo que dijo Remotion, no solo «returned non-zero exit status 1»
-            detalle = ' '.join((r.stderr or r.stdout or '').split())[-600:]
-            if 'cannot find' in detalle.lower() or 'err_module_not_found' in detalle.lower():
-                detalle += ' → Faltan las piezas de Remotion: corre instalar.bat (o «npm install» dentro de la carpeta remotion).'
-            raise SystemExit(f'ERROR: Remotion no pudo dibujar las flechas y círculos: {detalle}')
+    dibujar(trabajos, tmp)
     tiempos = os.path.splitext(a.salida)[0] + '.senales_tiempos.json'
     if a.capa:  # se pega después junto con etiquetas y tarjetas: una sola codificación
         capas.guardar(a.capa, [{'args': ['-i', c['archivo']], 'pre': f"setpts=PTS+{c['t']}/TB", 'overlay': '0:0:eof_action=pass'}

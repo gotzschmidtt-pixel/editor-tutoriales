@@ -203,6 +203,128 @@ def marcas_autor(d):
     return out
 
 
+def _senales():
+    sys.path.insert(0, os.path.join(RAIZ, 'senales'))
+    import senales
+    return senales
+
+
+def senales_grabado(d):
+    """Las flechas y círculos del video largo (senales.json) en segundos y píxeles de la GRABACIÓN (original.mp4):
+    [{..., 'src': segundo}]. fabian, 02/11/2026: «¿por qué no se muestran flechas y círculos, sobre todo en Omitir?».
+    El Short sale de la grabación y las señales solo se dibujaban encima del video largo.
+    Las que traen el segundo del video largo se pasan a la grabación con los tramos del guion y se confirma que la imagen
+    sea la misma (si no, se saltan: mejor sin círculo que con uno en el lugar equivocado)."""
+    try:
+        lista = json.load(open(os.path.join(d, 'senales.json'), encoding='utf-8'))
+        bloques = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(lista, list) or not lista:
+        return []
+    senales = _senales()
+    inicio = {b['id']: b['inicio_min'] for b in bloques if b.get('inicio_min') is not None}
+    texto_original = {b['id']: b.get('texto_original') for b in bloques}
+    orig = os.path.join(d, 'original.mp4')
+    montado = next((os.path.join(d, f) for f in ('3_voz.mp4', '4_musica.mp4', '1_montaje.mp4') if os.path.exists(os.path.join(d, f))), None)
+    out = []
+    for s in lista:
+        if not isinstance(s, dict) or s.get('tipo') not in ('circulo', 'flecha', 'caja') or s.get('x') is None or s.get('y') is None:
+            continue
+        frase = s.get('frase') or s.get('texto') or 'tu captura'
+        try:
+            if s.get('src_t') is not None:  # ya viene en segundos de la grabación
+                out.append(dict(s, src=round(float(s['src_t']) + float(s.get('retraso') or 0), 2)))
+                continue
+            t, aviso = senales.en_el_video(s, inicio, texto_original, os.path.join(d, 'voz'), 0.3)
+            src = senales.segundo_grabado(bloques, t) if t is not None else None
+        except (ValueError, TypeError, OSError) as e:
+            print(f'· flecha o círculo «{frase}»: no la pude ubicar ({e})', flush=True)
+            continue
+        if src is None:
+            if aviso:
+                print('·', aviso, flush=True)
+            continue
+        if montado and os.path.exists(orig):  # la misma imagen en el video largo y en la grabación
+            src, parecido = senales.afinar(montado, orig, t, src, margen=1.0)
+            if parecido < 0.6:
+                print(f'· flecha o círculo «{frase}»: no encontré esa imagen en la grabación (parecido {parecido:.2f}), la salto', flush=True)
+                continue
+        out.append(dict(s, src=round(src, 2)))
+    return out
+
+
+def dibujar_senales(orig, senales_src, rangos, tmp):
+    """Dibuja con Remotion (las mismas del video largo, con el dibujo de GPT si está) las señales que caen en los tramos
+    [(s0, s1)] de la grabación que usa el Short, siguiendo lo señalado: [{'src', 'dur', 'archivo', 'x', 'y'}].
+    Si Remotion falla, el Short sale igual, sin flechas (y lo avisa)."""
+    usar = [s for s in senales_src if any(a - 0.5 <= s['src'] < b for a, b in rangos)]
+    if not usar:
+        return []
+    senales = _senales()
+    trabajos, hechas = [], []
+    for k, s in enumerate(usar, 1):
+        tr, dur = senales.trabajo(orig, s, s['src'], os.path.join(tmp, f'senal{k:02d}.mov'))
+        trabajos.append(tr)
+        hechas.append({'src': s['src'], 'dur': dur, 'archivo': tr['salida'], 'x': s['x'], 'y': s['y']})
+    try:
+        senales.dibujar(trabajos, tmp)
+    except SystemExit as e:
+        print(f'· AVISO: el Short sale sin flechas ni círculos: {e}', flush=True)
+        return []
+    print(f'· {len(hechas)} flechas y círculos del video largo van en el Short', flush=True)
+    return [h for h in hechas if os.path.exists(h['archivo'])]
+
+
+def con_senales(s0, dur, dibujadas, primera):
+    """Para un trozo [s0, s0+dur] de la grabación: (entradas de ffmpeg, filtro, etiqueta) que pegan encima, ANTES del
+    recorte vertical, las flechas y círculos que caen ahí (así siguen al recorte y al zoom). `primera` es el número de
+    entrada de ffmpeg que toca a la primera señal. Sin señales: ([], '', '0:v')."""
+    ins, filtro, ult = [], '', '0:v'
+    for c in dibujadas:
+        if c['src'] >= s0 + dur or c['src'] + c['dur'] <= s0:
+            continue
+        k = primera + len(ins) // 2
+        off = c['src'] - s0
+        pre = f'setpts=PTS+{off:.3f}/TB' if off >= 0 else f'trim=start={-off:.3f},setpts=PTS-STARTPTS'
+        ins += ['-i', c['archivo']]
+        filtro += f'[{k}:v]{pre}[s{k}];[{ult}][s{k}]overlay=0:0:eof_action=pass[o{k}];'
+        ult = f'o{k}'
+    return ins, filtro, ult
+
+
+def flecha_al_enlace(tmp):
+    """PNG de una flecha que apunta abajo a la izquierda, donde YouTube pone el enlace ▶ del «Video relacionado» en los
+    Shorts (fabian, 02/11/2026: el cierre manda ahí). Usa la flecha de GPT del kit (mis_conocimientos/estilo_video) si está."""
+    from PIL import Image, ImageDraw
+    kit = os.path.join(RAIZ, 'mis_conocimientos', 'estilo_video', 'flecha.png')
+    try:
+        im = Image.open(kit).convert('RGBA') if os.path.exists(kit) else None
+    except OSError:
+        im = None
+    if im is None:  # una flecha gruesa amarilla con borde negro, apuntando a la derecha
+        im = Image.new('RGBA', (440, 170), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(im)
+        forma = [(14, 60), (290, 60), (290, 14), (426, 85), (290, 156), (290, 110), (14, 110)]
+        dr.polygon(forma, fill=(255, 210, 0, 255), outline=(0, 0, 0, 255), width=10)
+    k = 330 / max(im.size)
+    im = im.resize((max(1, round(im.size[0] * k)), max(1, round(im.size[1] * k))), Image.LANCZOS)
+    im = im.rotate(225, expand=True, resample=Image.BICUBIC)  # de «hacia la derecha» a «hacia abajo a la izquierda»
+    im = im.crop(im.getbbox() or (0, 0, im.size[0], im.size[1]))
+    out = os.path.join(tmp, 'flecha_enlace.png')
+    im.save(out)
+    return out
+
+
+def filtro_flecha(entrada, base, desde, hasta, salida):
+    """Filtro de ffmpeg que pone la flecha (entrada número `entrada`) sobre [base] entre desde y hasta, rebotando hacia el
+    enlace de abajo a la izquierda, por encima de la barra de YouTube."""
+    rebote = f'22*abs(sin(5*(t-{desde:.2f})))'
+    return (f"[{entrada}:v]format=rgba,fade=t=in:st={desde:.2f}:d=0.3:alpha=1[fl];"
+            f"[{base}][fl]overlay=x='{SW * 0.17:.0f}+{rebote}':y='{SH * 0.78:.0f}-h-{rebote}':eval=frame:shortest=1:"
+            f"enable='between(t,{desde:.2f},{hasta:.2f})'[{salida}]")
+
+
 def seguir(cap, s0, largo, marcas, memoria=None):
     """Dónde mirar en cada momento del tramo: [(t relativo, cx, cy)], el zoom (1 con tu cara, más cerca en pantallas) y
     qué se sigue ('cara', 'telefono' o 'pantalla').
@@ -456,8 +578,9 @@ def rotar_gancho(d, c, largo, dur_video, tomas):
     return piezas
 
 
-def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida):
-    """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima."""
+def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida, dibujadas=()):
+    """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima (y las flechas y
+    círculos del video largo que caen en cada trozo)."""
     lista = []
     for k, pz in enumerate(piezas):
         s0, dur = pz[0], pz[1]
@@ -469,7 +592,9 @@ def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i
         vf = (f"crop={cw}:{ch}:x='{expr(cl, 1, 0, W - cw)}':y='{expr(cl, 2, 0, H - ch)}',"
               f'scale={SW}:{SH},setsar=1,fps=30,format=yuv420p')
         p = os.path.join(tmp, f'p{i:02d}_{k:02d}.mp4')
-        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf, '-an',
+        ins, filtro, ult = con_senales(s0, dur, dibujadas, 1)
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig] + ins +
+                      ['-filter_complex', f'{filtro}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}', '-an',
                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
         lista.append(p)
     lf = os.path.join(tmp, f'rot{i:02d}.txt')
@@ -502,7 +627,8 @@ def poner_logos(d, tomas, video, retraso):
     salida = video.replace('.mp4', '_logos.mp4')
     r = subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', video, '--guion', g,
                         '--voz', os.path.join(d, carpetas.pop()), '--logos', carpeta_logos, '--salida', salida,
-                        '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--desfase', str(retraso)], cwd=d, capture_output=True, text=True)
+                        '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--desfase', str(retraso),
+                        '--formato', 'short'], cwd=d, capture_output=True, text=True)
     print(r.stdout.strip(), flush=True)
     if r.returncode == 0 and os.path.exists(salida):
         os.replace(video, video.replace('.mp4', '_sin_logos.mp4'))  # para volver a ponerlos sin rearmar el Short
@@ -593,6 +719,10 @@ def main():
     memoria = deteccion.Memoria(orig)
     tmp = codificar.temporal('short')
     retraso = 0.15
+    rangos = [(c['src_inicio'], c['src_inicio'] + max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0))
+              for c in tomas]
+    dibujadas = dibujar_senales(orig, senales_grabado(d), rangos, tmp)  # las flechas y círculos del video largo
+    marcas += [(c['src'] + c['dur'] / 2, c['x'], c['y']) for c in dibujadas]  # el recorte deja adentro lo señalado
     cap = cv2.VideoCapture(orig)
     partes = []
     gancho = None
@@ -616,7 +746,7 @@ def main():
         if piezas:  # regla de fabian: el inicio rota trozos distintos de 3-5 s según lo que dice la voz
             p = os.path.join(tmp, f'p{i:02d}.mp4')
             armar_rotado(cap, orig, piezas, marcas, memoria, os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
-                         retraso, largo, tmp, i, p)
+                         retraso, largo, tmp, i, p, dibujadas)
             c.update(largo=largo, src_inicio=round(s0, 2), zoom=1, encuadre='rotado')
             partes.append(p)
             continue
@@ -631,11 +761,12 @@ def main():
         p = os.path.join(tmp, f'p{i:02d}.mp4')
         que = {'cara': 'tu cara', 'telefono': f'el teléfono, zoom ×{zoom:g}'}.get(encuadre, 'pantalla, con zoom')
         print(f"· armo {c['id']} ({que})…", flush=True)
+        ins, filtro, ult = con_senales(s0, largo, dibujadas, 2)
         codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{largo:.3f}', '-i', orig,
-                       '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
-                       '-filter_complex', f'[0:v]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
+                       '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3")] + ins +
+                      ['-filter_complex', f'{filtro}[{ult}]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
                        'aresample=44100,aformat=channel_layouts=stereo[a]',
-                       '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+                       '-map', '[v]', '-map', '[a]', '-t', f'{largo:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
                        '-c:a', 'aac', '-b:a', '160k', p], check=True)
         partes.append(p)
     cap.release()

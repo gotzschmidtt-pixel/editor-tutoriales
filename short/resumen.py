@@ -26,8 +26,47 @@ GANCHOS = [('antes_despues', 'Antes y después: empieza diciendo que el teléfon
            ('ya_probaste', '¿Ya probaste todo?: le habla al que ya intentó TalkBack, Bluetooth y códigos sin resultado')]
 EMOCION = re.compile(r'\[[a-z ]+\]\s*')
 TROZO, AIRE, RETRASO = 4.5, 0.3, 0.1
-FIN = {'es': 'Tutorial completo en mi canal (link en el comentario fijado).', 'en': 'Full tutorial on my channel (link in the pinned comment).',
-       'pt': 'Tutorial completo no meu canal (link no comentário fixado).'}
+# En los Shorts los enlaces de la descripción y de los comentarios no se pueden tocar: lo que lleva al tutorial es el
+# «Video relacionado» (el enlace con ▶ que YouTube pone abajo a la izquierda; se elige al subir el Short)
+FIN = {'es': 'Tutorial completo: toca el enlace con el ícono de play que aparece abajo del Short.',
+       'en': 'Full tutorial: tap the link with the play icon below the Short.',
+       'pt': 'Tutorial completo: toque no link com o ícone de play que aparece embaixo do Short.'}
+# el cierre de TODOS los Shorts, de todas las marcas (fabian, 02/11/2026): las 3 frases rotan (Short 1 → la 1…) y, apenas la
+# voz dice «play», sale el ícono de play (biblioteca de logos, solo en Shorts) con una flecha hacia el enlace de abajo
+CIERRES = {'es': ['Toca el enlace con el ícono de play, aquí abajo, y mira el tutorial completo.',
+                  '¿Quieres verlo paso a paso? El video completo está aquí abajo, en el enlace con el play.',
+                  'Mira el tutorial completo: toca el play que aparece abajo.'],
+           'en': ['Tap the link with the play icon, right down below, and watch the full tutorial.',
+                  'Want to see it step by step? The full video is right down below, in the link with the play icon.',
+                  'Watch the full tutorial: tap the play button down below.'],
+           'pt': ['Toque no link com o ícone de play, aqui embaixo, e assista ao tutorial completo.',
+                  'Quer ver passo a passo? O vídeo completo está aqui embaixo, no link com o play.',
+                  'Assista ao tutorial completo: toque no play que aparece embaixo.']}
+LLAMADA = re.compile(r'tutorial completo|video completo|v[ií]deo completo|en mi canal|full tutorial|full video|play', re.I)
+
+
+def cierre(n, idioma='es'):
+    """La frase de cierre del Short n (1, 2, 3…): rotan."""
+    lista = CIERRES.get(idioma) or CIERRES['es']
+    return lista[(n - 1) % len(lista)]
+
+
+def poner_cierres(r, idioma='es'):
+    """La última frase de cada Short pasa a ser su cierre fijo. Si la última ya manda al tutorial, se cambia su texto (con sus
+    tomas); si no, se agrega una frase más con la última toma."""
+    for n, s in enumerate(r.get('shorts') or [], 1):
+        frases = s.get('frases') or []
+        if not frases:
+            continue
+        texto = cierre(n, idioma)
+        if EMOCION.sub('', frases[-1].get('texto', '')).strip() == texto:
+            continue
+        if LLAMADA.search(frases[-1].get('texto', '')):
+            frases[-1]['texto'] = texto
+        else:
+            ultima = (frases[-1].get('tomas') or [[0, 3]])[-1]
+            frases.append({'texto': texto, 'tomas': [list(ultima)]})
+    return r
 FIJADO = {'es': '📌 Tutorial completo paso a paso: (pega aquí el enlace del video largo cuando lo subas)',
           'en': '📌 Full step-by-step tutorial: (paste the long video link here once it is up)',
           'pt': '📌 Tutorial completo passo a passo: (cole aqui o link do vídeo longo quando ele estiver no ar)'}
@@ -72,7 +111,7 @@ Reglas obligatorias de fabian:
 - Una frase corta con las versiones: «Android quince, dieciséis, diecisiete o superior, y MagicOS nueve, diez u once, con cualquier parche» (adáptala a la marca si no es Honor).
 - NUNCA digas «sin PC». Números escritos como se dicen. Nombra el modelo como «{modelo}».
 - Máximo 3 etiquetas de emoción por guion entre corchetes en inglés ([curious], [excited], [serious]), nunca dos seguidas.
-- La última frase manda al tutorial completo del canal.
+- La última frase de cada Short es EXACTAMENTE su cierre: Short 1 «{cierre(1)}», Short 2 «{cierre(2)}», Short 3 «{cierre(3)}».
 - No inventes datos: usa solo lo que dice el guion del video largo.
 Para cada frase da las tomas del grabado original (segundos [desde, hasta], 3-5 s cada una) que muestran EXACTAMENTE lo que dice,
 usando los segundos del guion (src) y del mapa de pantallas.
@@ -98,6 +137,9 @@ def validar(r):
             avisos.append(f'Short {n}: {letras(txt)} letras (lo ideal, 750-820 para 55-60 s)')
         if any(not f.get('tomas') for f in s.get('frases') or []):
             avisos.append(f'Short {n}: hay frases sin toma')
+        ultima = EMOCION.sub('', ((s.get('frases') or [{}])[-1]).get('texto', '')).strip()
+        if ultima not in [c for v in CIERRES.values() for c in v]:
+            avisos.append(f'Short {n}: la última frase no es el cierre fijo («{cierre(n)}»)')
     return avisos
 
 
@@ -105,6 +147,7 @@ def proponer(d, llamar=None):
     r = _json((llamar or _llamar_ia)(prompt(d)))
     if not r.get('shorts'):
         raise ValueError('La IA no devolvió los 3 guiones; prueba de nuevo.')
+    poner_cierres(r)
     r['avisos'] = validar(r)
     r['costo'] = costo(r)
     json.dump(r, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -170,13 +213,13 @@ def armar(d, cuales=(1, 2, 3)):
         for k, f in enumerate(r['shorts'][n - 1]['frases'], 1):
             if not f.get('tomas'):
                 raise ValueError(f'Short {n}, frase {k}: no tiene tomas (escríbelas como 18-22)')
+    senales_src = short.senales_grabado(d)  # las flechas y círculos del video largo, en segundos de la grabación
     for n in cuales:
         s = r['shorts'][n - 1]
         cap = cv2.VideoCapture(orig)
-        marcas, memoria = short.marcas_autor(d), short.deteccion.Memoria(orig)
         tmp = tempfile.mkdtemp()
         try:
-            partes, tomas = [], []
+            plan = []  # primero los trozos de todo el Short: así se dibujan de una vez solo las señales que caen en ellos
             for k, f in enumerate(s['frases'], 1):
                 bid = f'S{n}F{k}'
                 mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
@@ -185,6 +228,13 @@ def armar(d, cuales=(1, 2, 3)):
                 for a, _b in f['tomas']:
                     m = max(1, math.ceil(cada / TROZO))
                     piezas += [(float(a) + j * cada / m, cada / m) for j in range(m)]
+                plan.append((k, f, bid, mp3, largo, piezas))
+            dibujadas = short.dibujar_senales(orig, senales_src, [(a, a + b) for *_, pz in plan for a, b in pz], tmp)
+            # el recorte vertical deja adentro lo que señala cada flecha o círculo (como tus marcas)
+            marcas = short.marcas_autor(d) + [(c['src'] + c['dur'] / 2, c['x'], c['y']) for c in dibujadas]
+            memoria = short.deteccion.Memoria(orig)
+            partes, tomas = [], []
+            for k, f, bid, mp3, largo, piezas in plan:
                 lista = []
                 for j, (s0, dur) in enumerate(piezas):
                     conf = _encuadre(encuadres, s0)
@@ -196,7 +246,9 @@ def armar(d, cuales=(1, 2, 3)):
                     vf = (f"crop={cw}:{ch}:x='{short.expr(cl, 1, 0, short.W - cw)}':y='{short.expr(cl, 2, 0, short.H - ch)}',"
                           f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p')
                     p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
-                    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf,
+                    ins, filtro, ult = short.con_senales(s0, dur, dibujadas, 1)
+                    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig] + ins +
+                                  ['-filter_complex', f'{filtro}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}',
                                    '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
                     lista.append(p)
                 lf = os.path.join(tmp, f'l{k:02d}.txt')
@@ -221,9 +273,15 @@ def armar(d, cuales=(1, 2, 3)):
             if os.path.exists(short.MUSICA):
                 entradas += ['-stream_loop', '-1', '-i', short.MUSICA]
                 audio = '[1:a]volume=0.10[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]'
+            video = f'[0:v]ass={ass}[v]'
+            if LLAMADA.search(tomas[-1]['texto']):  # el cierre: una flecha hacia el enlace ▶ de abajo mientras se dice
+                desde = round(sum(x['largo'] for x in tomas[:-1]) + RETRASO + 0.3, 2)
+                entradas += ['-loop', '1', '-i', short.flecha_al_enlace(tmp)]
+                video = f'[0:v]ass={ass}[s];' + short.filtro_flecha(entradas.count('-i') - 1, 's', desde,
+                                                                    round(sum(x['largo'] for x in tomas), 2), 'v')
             salida = f'SHORT_RESUMEN_{n}.mp4'
             codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
-                          ['-filter_complex', f'[0:v]ass={ass}[v];{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
+                          ['-filter_complex', f'{video};{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
                            '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
                           check=True, cwd=d)
             short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz

@@ -157,8 +157,8 @@ def logos_esperados(ev):
     sys.path.insert(0, os.path.join(raiz, 'logos'))
     try:
         import logos as lg
-        lib = [l for l in json.load(open(os.path.join(carpeta, 'logos.json'), encoding='utf-8')).get('logos', [])
-               if os.path.isfile(os.path.join(carpeta, l.get('archivo', '')))]
+        lib = lg.para_formato([l for l in json.load(open(os.path.join(carpeta, 'logos.json'), encoding='utf-8')).get('logos', [])
+                               if os.path.isfile(os.path.join(carpeta, l.get('archivo', '')))], 'short')
     except Exception:
         return [], carpeta
     texto, tiempos = '', []
@@ -180,8 +180,9 @@ def revisar_logos(video, ev, alto_rel=0.30):
     """Cada logo que nombra la voz tiene que verse en ese momento (se busca el PNG en el cuadro, en su tamaño de Short)."""
     esperados, carpeta = logos_esperados(ev)
     fallas, c = [], cv2.VideoCapture(video)
+    import logos as lg  # logos_esperados ya dejó su carpeta en sys.path
     for s, l in esperados:
-        png = cv2.imread(os.path.join(carpeta, l['archivo']), cv2.IMREAD_UNCHANGED)
+        png = cv2.imread(os.path.join(carpeta, lg.del_idioma(l, carpeta, 'es', 'short')), cv2.IMREAD_UNCHANGED)
         if png is None:
             continue
         visto = False
@@ -192,9 +193,12 @@ def revisar_logos(video, ev, alto_rel=0.30):
                 continue
             h = fr.shape[0]
             for esc in (1.0, 0.85, 1.15):
-                alto = int(h * alto_rel * esc * (0.52 if png.shape[1] / png.shape[0] > 1.3 else 1))
-                ancho = int(alto * png.shape[1] / png.shape[0])
-                if ancho > fr.shape[1] * 0.8:  # como logos.py: las insignias anchas se achican al 80 % del ancho
+                if lg.es_tarjeta(l):  # la tarjeta de WhatsApp va con su tamaño propio de Short (logos.TARJETA)
+                    ancho, alto = (int(v * esc) for v in lg.medida_tarjeta(l, 'short', fr.shape[1], h, png.shape[1] / png.shape[0]))
+                else:
+                    alto = int(h * alto_rel * esc * (0.52 if png.shape[1] / png.shape[0] > 1.3 else 1))
+                    ancho = int(alto * png.shape[1] / png.shape[0])
+                if not lg.es_tarjeta(l) and ancho > fr.shape[1] * 0.8:  # como logos.py: las insignias anchas se achican al 80 % del ancho
                     ancho = int(fr.shape[1] * 0.8 * esc)
                     alto = int(ancho * png.shape[0] / png.shape[1])
                 if ancho >= fr.shape[1] or alto < 20:
