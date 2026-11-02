@@ -102,7 +102,7 @@ def iniciar(entrada, perfil='youtube', alto=0, rapido=False, salida=''):
             _correr(entrada, salida, perfil, alto, rapido)
             ESTADO.update(pct=100.0, tam_despues=os.path.getsize(salida), segundos=round(time.time() - ESTADO['inicio']))
         except Exception as e:
-            ESTADO['error'] = str(e)
+            ESTADO['error'] = ESTADO.get('error') or str(e)  # «Cancelado.» se queda (no el error del ffmpeg cortado)
             if os.path.exists(salida):
                 try:
                     os.remove(salida)
@@ -117,8 +117,8 @@ def iniciar(entrada, perfil='youtube', alto=0, rapido=False, salida=''):
 def cancelar():
     pid = ESTADO.get('pid')
     if ESTADO.get('activo') and pid:
+        ESTADO['error'] = 'Cancelado.'  # antes de cortarlo: si no, «Rápido con la gráfica» volvía a empezar con el procesador
         subprocess.run(['taskkill', '/PID', str(pid), '/F'] if os.name == 'nt' else ['kill', str(pid)], capture_output=True)
-        ESTADO['error'] = 'Cancelado.'
 
 
 def main():

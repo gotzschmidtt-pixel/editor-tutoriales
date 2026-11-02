@@ -122,6 +122,8 @@ def revisar_bloque(idx, b, frases, lo, hi, mo=None):
 def ajustar(b, revision, lo, hi):
     """Corre inicio y velocidad del tramo para que las frases caigan donde está su pantalla. Devuelve el montaje nuevo o None."""
     mo = dict(b['montaje'])
+    if mo.get('importante'):  # «⭐ corte importante»: va entero y a ×1; la frase queda como aviso en alineacion.txt
+        return None
     pts = [(t, donde if donde is not None else s) for _, t, s, _, donde in revision]
     if not any(donde is not None for *_, donde in revision):
         return None

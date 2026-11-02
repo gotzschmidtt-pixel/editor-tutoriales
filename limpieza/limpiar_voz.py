@@ -134,8 +134,15 @@ def limpiar_video(entrada, salida=None, motor='pc', respaldo=True):
         wav = os.path.join(tmp, 'limpio.wav')
         que = limpiar_audio(fuente, wav, motor)
         destino = salida or (base + '.limpio' + ext)
-        ff(['-i', fuente, '-i', wav, '-map', '0:v?', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest',
-            '-movflags', '+faststart', destino])
+        # la imagen sale del archivo de ahora (no del respaldo): el color o el zoom puestos después no se pierden.
+        # Un .webm solo acepta audio Opus (con AAC ffmpeg fallaba y quedaba un archivo roto)
+        audio = ['-c:a', 'libopus'] if ext.lower() == '.webm' else ['-c:a', 'aac', '-movflags', '+faststart']
+        try:
+            ff(['-i', entrada, '-i', wav, '-map', '0:v?', '-map', '1:a', '-c:v', 'copy'] + audio + ['-b:a', '160k', '-shortest', destino])
+        except subprocess.CalledProcessError:
+            if salida is None and os.path.exists(destino):  # no queda un .limpio a medias
+                os.remove(destino)
+            raise
         if salida is None:
             if respaldo and not os.path.exists(previo):
                 os.replace(entrada, previo)
@@ -172,11 +179,18 @@ def main():
             archivos.append(e)
     if not archivos:
         raise SystemExit('ERROR: no encontré videos para limpiar.')
+    fallaron = []
     for f in archivos:
         if a.deshacer:
             print(f"· {os.path.basename(f)}: {'audio de antes puesto' if deshacer(f) else 'no tenía uno de antes'}", flush=True)
         else:
-            limpiar_video(f, a.salida if len(archivos) == 1 else None, a.motor)
+            try:  # si uno falla, los demás igual se limpian
+                limpiar_video(f, a.salida if len(archivos) == 1 else None, a.motor)
+            except (subprocess.CalledProcessError, OSError, SystemExit) as e:
+                print(f'· {os.path.basename(f)}: no se pudo limpiar ({e})', flush=True)
+                fallaron.append(os.path.basename(f))
+    if fallaron:
+        raise SystemExit('ERROR: no pude limpiar la voz de ' + ', '.join(fallaron) + ' (mira el registro).')
 
 
 if __name__ == '__main__':

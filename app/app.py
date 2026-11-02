@@ -2891,6 +2891,12 @@ class Manejador(BaseHTTPRequestHandler):
                     os.remove(destino + '.parcial')
                     return self.error('La subida se cortó antes de terminar. Vuelve a subir el archivo.')
                 os.replace(destino + '.parcial', destino)
+                if q['tipo'] == 'original' and parte == de:  # otra grabación: el análisis del video viejo (nitidez, OCR) ya no sirve
+                    for viejo in ('original.nitidez.npz', 'original.miniaturas.npz', 'ocr_pantalla.json'):
+                        try:
+                            os.remove(os.path.join(carpeta(q['p']), viejo))
+                        except OSError:
+                            pass
                 if de > 1 and parte == de:
                     try:
                         return self.responder({'ok': True, 'unido': unir_videos(os.path.join(carpeta(q['p']), SUBIBLES[q['tipo']]), de)})
