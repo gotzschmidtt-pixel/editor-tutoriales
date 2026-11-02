@@ -93,6 +93,25 @@ def lanzado(espera=5):
     return None
 
 
+def funcion(pagina, nombre):
+    """El código de una función (async o no) de una página de app/."""
+    html = open(os.path.join(RAIZ, 'app', pagina), encoding='utf-8').read()
+    m = re.search(r'\n((?:async )?function ' + nombre + r'\(.*?\n\})', html, re.S)
+    return m.group(1) if m else ''
+
+
+def nodo(nombre, js):
+    """Corre un trozo de la página con node (sin navegador): devuelve lo que imprime en su última línea, como JSON."""
+    f = os.path.join(tmp, nombre + '.js')
+    open(f, 'w', encoding='utf-8').write(js)
+    r = subprocess.run(['node', f], capture_output=True, text=True, encoding='utf-8')
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        fallos.append(f'no pude probar {nombre} con node: {r.stdout[-300:]} {r.stderr[-600:]}')
+        return None
+
+
 try:
     # P1) «✨ Agregar extras» borra el FINAL para volver a armarlo: antes queda copiado si tiene arreglos a mano
     d = os.path.join(app.PROYECTOS, 'extras')
@@ -423,6 +442,39 @@ function refrescar() {}
     ok(st == 200 and r and 'testimonios' in r[0], f'«▶ Ponerlas en el video» con SI pone el testimonio elegido: {st} {b[:200]!r} {r}')
     ok(not os.path.exists(os.path.join(d, 'vista_pendiente.json')), 'al arrancar, la vista previa deja de estar pendiente')
     json.dump({}, open(app.AJUSTES, 'w'))
+    # la página «👀 Vista previa»: si hay voz que pagar no dice antes «No gasta créditos»; solo pide el SI escrito
+    ok(funcion('vista.html', 'poner'), 'falta poner() en vista.html')
+    if shutil.which('node') and funcion('vista.html', 'poner'):
+        res = nodo('vista', r"""
+const P = 'p', q = encodeURIComponent;
+let COSTO = null, RESP = 'SI', avisos = [], mandados = [];
+async function api(url, op) {
+  if (url.startsWith('/api/costo_extras')) { if (COSTO === 'error') throw new Error('sin conexión'); return COSTO; }
+  if (url.startsWith('/api/ejecutar')) mandados.push(JSON.parse(op.body));
+  if (url.startsWith('/api/estado')) return {trabajo: {}};
+  return {};
+}
+function confirm(t) { avisos.push(['confirm', t]); return true; } function prompt(t) { avisos.push(['prompt', t]); return RESP; }
+function alert() {} function msg() {} const caja = {disabled: false}, $ = () => caja;
+globalThis.setTimeout = f => f();
+""" + funcion('vista.html', 'poner') + r"""
+(async () => {
+  const res = [];
+  for (const [costo, resp] of [[{gasta: ['la narración de 1 testimonio (unos 20 créditos)'], letras: 20}, 'SI'],
+                               [{gasta: ['la narración de 1 testimonio (unos 20 créditos)'], letras: 20}, null],
+                               [{gasta: [], letras: 0}, null], ['error', 'si']]) {
+    COSTO = costo; RESP = resp; avisos = []; mandados = [];
+    await poner();
+    res.push({avisos: avisos.map(([t, x]) => t + (x.includes('No gasta') ? ':no gasta' : '')), confirmo: mandados.map(m => m.confirmo)});
+  }
+  console.log(JSON.stringify(res));
+})();
+""")
+        ok(res == [{'avisos': ['prompt'], 'confirmo': ['SI']}, {'avisos': ['prompt'], 'confirmo': []},
+                   {'avisos': ['confirm:no gasta'], 'confirmo': ['']}, {'avisos': ['prompt'], 'confirmo': ['SI']}],
+           f'«▶ Ponerlas en el video»: con gasto, solo el SI (sin «No gasta créditos» antes); sin gasto, un Aceptar: {res}')
+    ok('sin gastar créditos' not in open(os.path.join(RAIZ, 'app', 'vista.html'), encoding='utf-8').read(),
+       '«▶ Ponerlas en el video» no debe decir «sin gastar créditos» si puede gastar la voz de los extras que vuelven')
 
     # P2b) la frase de voz del tráiler (trailer.py la pide a ElevenLabs si cambió o nunca se hizo): tampoco sin SI
     d = os.path.join(app.PROYECTOS, 'travoz')

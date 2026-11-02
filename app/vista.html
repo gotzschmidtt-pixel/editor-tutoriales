@@ -80,7 +80,7 @@
   <h1>👀 Vista previa · <span id="nombre"></span></h1>
   <button onclick="generar()" id="btnGen" title="Dibuja cada etiqueta y cada círculo sobre el cuadro exacto del video (1–2 min). No gasta nada">🔄 Generar / actualizar</button>
   <button onclick="abrirMano()" id="btnMano" title="Pausa el video donde quieras y pon tú un círculo, una flecha, un recuadro o una etiqueta">➕ Marcar a mano</button>
-  <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min, sin gastar créditos)">▶ Ponerlas en el video</button>
+  <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min). Si con ellas vuelve un testimonio narrado, «Nuevos modelos» o el tráiler sin su voz guardada, antes te pide escribir SI (gasta ElevenLabs)">▶ Ponerlas en el video</button>
   <span class="msg" id="msg"></span>
 </header>
 <main>
@@ -289,12 +289,15 @@ async function generar(solo = '') {
   $('#btnGen').disabled = false;
 }
 async function poner() {
-  if (!confirm('Pongo en el video las etiquetas y los círculos que no quitaste (unos 15 min). No gasta créditos. ¿Seguir?')) return;
-  // con ellas vuelven los extras que el video ya llevaba: si falta la voz de un testimonio narrado o de nuevos modelos, gasta
+  // con ellas vuelven los extras que el video ya llevaba: si falta la voz de un testimonio narrado, de nuevos modelos o del
+  // tráiler, gasta. Se mira antes de preguntar: sin gasto basta Aceptar; con gasto solo se pide el SI (sin un «No gasta» antes)
+  const que = 'Pongo en el video las etiquetas y los círculos que no quitaste (unos 15 min).';
   let c = null, si = '';
   try { c = await api(`/api/costo_extras?p=${q(P)}&solo=etiquetas,senales&vista=1`); } catch (e) {}
-  if (!c || c.gasta.length) {
-    const r = prompt(`⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la voz que falte de los testimonios narrados, de «Nuevos modelos» o del tráiler (no pude calcular cuánta)'}.`
+  if (c && !c.gasta.length) {
+    if (!confirm(que + ' No gasta créditos. ¿Seguir?')) return;
+  } else {
+    const r = prompt(`${que}\n\n⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la voz que falte de los testimonios narrados, de «Nuevos modelos» o del tráiler (no pude calcular cuánta)'}.`
       + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
     if (r === null || !/^\s*s[ií]\s*$/i.test(r)) { if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.'); return; }
     si = 'SI';
