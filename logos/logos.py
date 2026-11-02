@@ -28,6 +28,9 @@ MINIMO = 0.35     # menos que esto no se alcanza a ver: ese logo se salta
 # formato tiene su tamaño (y el Short puede tener su propio dibujo, "archivo_short" en logos.json).
 TARJETA = {'largo': {'alto': 0.80, 'ancho': 0.62, 'centro_y': 0.5, 'queda_min': 5.0},
            'short': {'alto': 0.52, 'ancho': 0.92, 'centro_y': 0.30, 'queda_min': 4.5}}
+# grande, la tarjeta tapa lo que pasa abajo: se va cuando termina la frase que la nombra (en el Short de prueba del 02/11/2026
+# tapaba el círculo de la KEY y el momento de pegarla), pero nunca antes de esto, para que se alcance a leer
+TARJETA_MINIMO = 2.5
 ES_TARJETA = re.compile(r'whats|wasap|soporte|tarjeta|contacto', re.I)
 POP = 0.35        # segundos que tarda en crecer al entrar
 ENTRA = 0.3
@@ -108,6 +111,30 @@ def plan(guion, carpeta_voz, logos, desfase=DESFASE):
     return filas
 
 
+def frases(guion, carpeta_voz, desfase=DESFASE):
+    """[(desde, hasta)] de lo que dice la voz en cada bloque, en segundos del video."""
+    out = []
+    for b in guion['bloques']:
+        if b.get('inicio_min') is None:
+            continue
+        try:
+            al = json.load(open(os.path.join(carpeta_voz, f"{b['id']}.align.json"), encoding='utf-8'))
+            fin = max(al.get('character_end_times_seconds') or al['character_start_times_seconds'])
+        except (OSError, ValueError, KeyError):
+            continue
+        out.append((b['inicio_min'] + desfase, b['inicio_min'] + desfase + fin))
+    return out
+
+
+def fin_tarjeta(t, queda_hasta, dichas):
+    """Hasta cuándo queda una tarjeta nombrada en t: cuando termina esa frase (sin tapar lo que viene), con un mínimo para
+    leerla y sin pasar de queda_hasta."""
+    fin = next((z for a, z in dichas if a - 0.05 <= t <= z + 0.05), None)
+    if fin is None:
+        return queda_hasta
+    return min(queda_hasta, max(t + TARJETA_MINIMO, fin + 0.2))
+
+
 def duracion(v):
     return float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', v],
                                 capture_output=True, text=True, check=True).stdout)
@@ -185,7 +212,9 @@ def main():
         idioma = json.load(open(os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'idioma_video.json'), encoding='utf-8')).get('idioma') or 'es'
     except (OSError, ValueError, AttributeError):
         idioma = 'es'
-    filas = plan(json.load(open(a.guion, encoding='utf-8')), a.voz, logos, a.desfase)
+    guion = json.load(open(a.guion, encoding='utf-8'))
+    filas = plan(guion, a.voz, logos, a.desfase)
+    dichas = frases(guion, a.voz, a.desfase)
     if not filas:
         print('La voz no nombra ninguno de tus logos: no pongo nada.')
         return
@@ -202,6 +231,8 @@ def main():
             queda = max(queda, min(float(l.get('queda') or QUEDA), TARJETA[a.formato]['queda_min']))
         sig = uno[k + 1][0] if k + 1 < len(uno) else t + queda
         hasta = min(total - 0.1, t + queda, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
+        if tarjeta:
+            hasta = fin_tarjeta(t, hasta, dichas)
         if hasta - t < MINIMO:
             continue
         dur = hasta - t

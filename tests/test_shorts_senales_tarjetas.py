@@ -81,6 +81,16 @@ assert alto_l >= 1080 * 0.75 > 1080 * 0.5, alto_l           # antes: el 50 % del
 assert ancho_s >= 1080 * 0.85 > 1080 * 0.6, ancho_s         # antes: ~560 px de 1080
 assert 1920 * 0.30 + alto_s / 2 < 1920 - 700 - 126          # no pisa los subtítulos del Short
 assert logos.medida_tarjeta(dict(tarjeta, alto_largo=0.5), 'largo', 1920, 1080, 1.0)[1] == 540
+# se va cuando termina la frase que la nombra (no tapa la KEY que viene después), pero dura al menos 2,5 s
+dichas = [(30.0, 35.8), (35.9, 42.0)]
+assert logos.fin_tarjeta(35.5, 40.0, dichas) == 38.0      # «WhatsApp» al final de la frase: el mínimo para leerla
+assert logos.fin_tarjeta(31.0, 35.5, dichas) == 35.5      # a mitad de frase: su tope de siempre
+assert logos.fin_tarjeta(31.0, 40.0, [(30.0, 39.0)]) == 39.2  # la frase sigue: hasta que termina
+assert logos.fin_tarjeta(50.0, 54.0, dichas) == 54.0      # sin frase conocida: lo de siempre
+os.makedirs(os.path.join(d, 'voz'))
+json.dump({'characters': list('hola'), 'character_start_times_seconds': [0, .1, .2, .3],
+           'character_end_times_seconds': [.1, .2, .3, 1.4]}, open(os.path.join(d, 'voz', 'L1.align.json'), 'w'))
+assert logos.frases({'bloques': [{'id': 'L1', 'inicio_min': 10.0}, {'id': 'L2', 'inicio_min': 20.0}]}, os.path.join(d, 'voz'), 0.1) == [(10.1, 11.5)]
 open(os.path.join(d, 'whatsapp.png'), 'wb').write(b'x')
 open(os.path.join(d, 'whatsapp_vertical.png'), 'wb').write(b'x')
 t2 = dict(tarjeta, archivo_short='whatsapp_vertical.png')
