@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🖼️ Miniaturas de referencia</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 13px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 70px; }
+  main { padding: 18px 20px; display: grid; gap: 16px; max-width: 1200px; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .msg { font-size: 13px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .soltar { border: 2px dashed var(--borde); border-radius: 12px; padding: 18px; text-align: center; color: var(--suave); }
+  .soltar.encima { border-color: var(--rosa); color: var(--texto); }
+  .grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; }
+  .tarjeta { background: #0f1426; border: 1px solid var(--borde); border-radius: 10px; padding: 8px; font-size: 13px; }
+  .tarjeta img { width: 100%; border-radius: 6px; display: block; }
+  .tarjeta.mal { border-color: var(--rojo); } .tarjeta.elegida { border-color: var(--verde); box-shadow: 0 0 0 2px var(--verde); }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .idea { display: grid; grid-template-columns: 26px 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--borde); }
+  .idea input[type=text] { width: 100%; box-sizing: border-box; }
+  .rojo { color: var(--rojo); } .verde { color: var(--verde); }
+  dialog { background: var(--panel); color: var(--texto); border: 1px solid var(--rosa); border-radius: 14px; max-width: 460px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🖼️ Miniaturas de referencia</h1>
+  <span class="aviso">Subes miniaturas que te gustan → la IA saca la fórmula → ideas → GPT genera las tuyas. Fórmula, no calco.</span>
+  <span class="msg" id="msg"></span>
+</header>
+<main>
+  <section>
+    <h2>1 · Referencias</h2>
+    <div class="soltar" id="soltar">Arrastra aquí miniaturas (JPG, PNG o WEBP) o <button onclick="$('#archivos').click()">📁 Elegir archivos</button>
+      <input type="file" id="archivos" accept=".jpg,.jpeg,.png,.webp" multiple hidden></div>
+    <div class="grilla" id="refs"></div>
+  </section>
+  <section>
+    <h2>2 · Receta <button onclick="analizar()" id="bAnalizar">🔍 Analizar</button></h2>
+    <p class="aviso">La IA de texto de la app mira las referencias (cuesta centavos) y saca cara, emoción, letras, objeto, fondo, paleta y por qué dan clic. Puedes corregirla.</p>
+    <div id="receta"></div>
+  </section>
+  <section>
+    <h2>3 · Ideas <button onclick="pedirIdeas()" id="bIdeas">💡 Proponer ideas</button></h2>
+    <p class="aviso">Con la receta, el título del video y tu guía de estilo. Máximo 4 palabras. Marca las que quieres generar; puedes editar el texto.</p>
+    <div id="ideas"></div>
+  </section>
+  <section>
+    <h2>4 · Generar</h2>
+    <div class="fila">
+      <label>Variantes por idea <input type="number" id="variantes" value="2" min="1" max="4" style="width:56px"></label>
+      <label>Formato <select id="formato"><option value="16x9">16:9 · 1280×720 (video)</option><option value="9x16">9:16 · 1080×1920 (Short)</option></select></label>
+      <label>Idioma del texto <select id="idioma"><option value="es">Español</option><option value="en">Inglés</option><option value="pt">Portugués</option></select></label>
+      <label>Tu cara <select id="cara"><option value="">— sin cara —</option></select></label>
+    </div>
+    <p><button class="principal" onclick="preguntarGenerar()">🎨 Generar</button> <span class="aviso" id="costo"></span></p>
+    <p class="aviso" id="gastos"></p>
+  </section>
+  <section>
+    <h2>5 · Resultados</h2>
+    <p class="aviso">Cada una se revisa sola (ortografía, tildes, letras deformes). En rojo = tiene errores. «⭐ Usar» la deja como miniatura en Publicar → YouTube.</p>
+    <div class="grilla" id="resultados"></div>
+  </section>
+</main>
+<dialog id="confirmar">
+  <h2>¿Generar?</h2>
+  <p id="confTexto"></p>
+  <p class="aviso">Gasta créditos de tu cuenta de OpenAI (gpt-image-2.5-flare, calidad alta).</p>
+  <p><button class="principal" onclick="generar()">Sí, generar</button> <button onclick="$('#confirmar').close()">Cancelar</button></p>
+</dialog>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+let E = null;
+
+async function api(url, datos, crudo) {
+  const op = datos === undefined ? {} : {method: 'POST', headers: crudo ? {} : {'Content-Type': 'application/json'}, body: crudo ? datos : JSON.stringify(datos)};
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'p=' + encodeURIComponent(P), op);
+  const j = await r.json();
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'falló');
+  return j;
+}
+const img = f => `/api/miniref/imagen?p=${encodeURIComponent(P)}&f=${encodeURIComponent(f)}&t=${Date.now()}`;
+const aviso = (t, cls) => $('#msg').innerHTML = `<span class="${cls || ''}">${esc(t)}</span>`;
+
+function pintar(e) {
+  E = e;
+  $('#refs').innerHTML = e.referencias.map(n => `<div class="tarjeta"><img src="${img('referencias/' + n)}"><div class="fila">${esc(n)}
+    <button onclick="borrar('${esc(n)}')">🗑</button></div></div>`).join('') || '<p class="aviso">Todavía no subiste referencias.</p>';
+  const r = e.receta;
+  $('#receta').innerHTML = r ? `<p><b>Resumen</b></p><textarea id="resumen">${esc(r.resumen)}</textarea>
+    <p><b>Fórmula del conjunto</b> <span class="aviso">(JSON, editable)</span></p><textarea id="conjunto" style="min-height:140px">${esc(JSON.stringify(r.conjunto, null, 1))}</textarea>
+    <p><button onclick="guardarReceta()">💾 Guardar receta</button> <span class="aviso">${esc(r.fecha || '')}${r.editada ? ' · editada ' + esc(r.editada) : ''}</span></p>
+    <details><summary class="aviso">Ver el análisis de cada referencia</summary>${(r.referencias || []).map(x => `<p class="aviso"><b>${esc(x.archivo)}</b>: cara ${esc(x.cara)} · ${esc(x.emocion)} · ${esc(x.palabras)} palabras · ${esc(x.letras)} · ${esc(x.objeto)} · ${esc(x.fondo)} · ${esc(x.por_que_clic)}</p>`).join('')}</details>`
+    : '<p class="aviso">Sin analizar.</p>';
+  $('#ideas').innerHTML = e.ideas.length ? e.ideas.map((x, i) => `<div class="idea"><input type="checkbox" class="elige" value="${i + 1}" ${i < 2 ? 'checked' : ''} onchange="costo()">
+    <div><input type="text" class="txt" data-i="${i}" value="${esc(x.texto)}"> ${x.largo_ok === false ? '<span class="rojo">más de 4 palabras</span>' : ''}
+    <div class="aviso">EN: <input type="text" class="txtEn" data-i="${i}" value="${esc(x.en)}" style="width:40%"> · PT: <input type="text" class="txtPt" data-i="${i}" value="${esc(x.pt)}" style="width:40%"></div>
+    <div class="aviso">${esc(x.concepto)} — ${esc(x.por_que)}</div></div></div>`).join('') + '<p><button onclick="guardarIdeas()">💾 Guardar textos</button></p>'
+    : '<p class="aviso">Sin ideas todavía.</p>';
+  $('#cara').innerHTML = '<option value="">— sin cara —</option>' + e.caras.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#resultados').innerHTML = [...e.generadas].reverse().map(g => {
+    const rv = g.revision || {}, mal = rv.ok === false;
+    return `<div class="tarjeta ${mal ? 'mal' : ''} ${g.archivo === ('generadas/' + (e.elegida || '').replace('miniatura_ref_', '')) || g.elegida ? 'elegida' : ''}">
+      <img src="${img(g.archivo)}"><div><b>${esc(g.texto)}</b> · idea ${g.idea} v${g.variante} · ${esc(g.idioma)} · ${esc(g.formato)}</div>
+      <div class="${mal ? 'rojo' : rv.ok ? 'verde' : 'aviso'}">${mal ? '⚠ ' + esc((rv.errores || []).join(' · ')) + (rv.texto_leido ? ' (se lee «' + esc(rv.texto_leido) + '»)' : '') : rv.ok ? '✔ texto bien escrito' : 'sin revisar'}</div>
+      <div class="fila"><button onclick="usar('${esc(g.archivo)}')">⭐ Usar como miniatura</button><button onclick="revisar('${esc(g.archivo)}')">🔎 Revisar</button>
+      <a href="${img(g.archivo)}" target="_blank" class="aviso">abrir</a></div></div>`; }).join('') || '<p class="aviso">Todavía no hay resultados.</p>';
+  const total = (e.gastos || []).filter(x => !x.simulado).reduce((a, x) => a + x.costo_usd, 0);
+  $('#gastos').textContent = total ? `Gastado en este proyecto: USD ${total.toFixed(2)} (${(e.gastos || []).filter(x => !x.simulado).reduce((a, x) => a + x.imagenes, 0)} imágenes).` : '';
+  costo();
+}
+function elegidas() { return [...document.querySelectorAll('.elige:checked')].map(x => +x.value); }
+function costo() {
+  if (!E) return;
+  const n = elegidas().length * Math.max(1, +$('#variantes').value || 1);
+  $('#costo').textContent = n ? `${n} imágenes ≈ USD ${(n * E.por_imagen_usd).toFixed(2)}` : 'Marca al menos una idea.';
+}
+$('#variantes').oninput = costo;
+
+async function cargar() { try { pintar(await api('/api/miniref/estado')); } catch (e) { aviso(e.message, 'err'); } }
+async function subirArchivos(fs) {
+  for (const f of fs) {
+    aviso('Subiendo ' + f.name + '…');
+    try { await api('/api/miniref/subir?nombre=' + encodeURIComponent(f.name), f, true); } catch (e) { aviso(f.name + ': ' + e.message, 'err'); return; }
+  }
+  aviso('Listo.', 'ok'); cargar();
+}
+$('#archivos').onchange = e => subirArchivos([...e.target.files]);
+const zona = $('#soltar');
+zona.ondragover = e => { e.preventDefault(); zona.classList.add('encima'); };
+zona.ondragleave = () => zona.classList.remove('encima');
+zona.ondrop = e => { e.preventDefault(); zona.classList.remove('encima'); subirArchivos([...e.dataTransfer.files].filter(f => /\.(jpe?g|png|webp)$/i.test(f.name))); };
+async function borrar(n) { if (confirm('¿Quitar ' + n + '?')) { await api('/api/miniref/borrar', {nombre: n}); cargar(); } }
+async function analizar() {
+  $('#bAnalizar').disabled = true; aviso('Analizando las referencias (puede tardar 1-2 min)…');
+  try { await api('/api/miniref/analizar', {}); aviso('Receta lista.', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); }
+  $('#bAnalizar').disabled = false;
+}
+async function guardarReceta() {
+  let conjunto;
+  try { conjunto = JSON.parse($('#conjunto').value); } catch (e) { return aviso('La fórmula no es un JSON válido.', 'err'); }
+  await api('/api/miniref/receta', {receta: {resumen: $('#resumen').value, conjunto}}); aviso('Receta guardada.', 'ok'); cargar();
+}
+async function pedirIdeas() {
+  $('#bIdeas').disabled = true; aviso('Pensando ideas…');
+  try { await api('/api/miniref/ideas', {}); aviso('Ideas listas.', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); }
+  $('#bIdeas').disabled = false;
+}
+async function guardarIdeas() {
+  const ideas = E.ideas.map((x, i) => ({...x, texto: document.querySelector(`.txt[data-i="${i}"]`).value.trim().toUpperCase(),
+    en: document.querySelector(`.txtEn[data-i="${i}"]`).value.trim().toUpperCase(), pt: document.querySelector(`.txtPt[data-i="${i}"]`).value.trim().toUpperCase()}))
+    .map(x => ({...x, largo_ok: x.texto.split(/\s+/).length <= 4}));
+  await api('/api/miniref/ideas_editadas', {ideas}); aviso('Textos guardados.', 'ok'); cargar();
+}
+function preguntarGenerar() {
+  const ids = elegidas(), v = Math.max(1, +$('#variantes').value || 1);
+  if (!ids.length) return aviso('Marca al menos una idea.', 'err');
+  const n = ids.length * v;
+  $('#confTexto').textContent = `${ids.length} idea(s) × ${v} variante(s) = ${n} imágenes (${$('#formato').value}, ${$('#idioma').value}${$('#cara').value ? ', con tu cara' : ''}). Costo estimado: USD ${(n * E.por_imagen_usd).toFixed(2)}.`;
+  $('#confirmar').showModal();
+}
+async function generar() {
+  $('#confirmar').close();
+  aviso('Generando… (≈1 min por imagen; no cierres la pestaña)');
+  try {
+    const r = await api('/api/miniref/generar', {confirmo: true, ideas: elegidas(), variantes: +$('#variantes').value || 2,
+      formato: $('#formato').value, idioma: $('#idioma').value, cara: $('#cara').value});
+    aviso(`Listo: ${r.generadas.length} imágenes, costo ≈ USD ${r.costo_usd.toFixed(2)}.`, 'ok'); cargar();
+  } catch (e) { aviso(e.message, 'err'); cargar(); }
+}
+async function revisar(f) { aviso('Revisando el texto…'); try { await api('/api/miniref/revisar', {archivo: f}); aviso('Revisada.', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); } }
+async function usar(f) { try { const r = await api('/api/miniref/usar', {archivo: f}); aviso('Elegida como miniatura: ' + r.nombre + ' (Publicar → YouTube y subir_youtube/).', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); } }
+cargar();
+</script>
+</body>
+</html>

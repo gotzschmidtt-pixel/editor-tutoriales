@@ -4,7 +4,7 @@ Le das links de YouTube o MP4 de tus videos (o de un canal que te guste) y un pe
 tienes uno. Con el link de un CANAL (youtube.com/@tucanal) o de una lista, toma todos sus videos: de cada uno lee los
 subtítulos completos y baja solo los primeros 3 minutos (para medir el tráiler y los cortes sin bajar horas de video).
 Deja también catalogo.json con todos los títulos, para que la IA pueda recomendar tus otros videos en el guion. Por cada video: lo baja (YouTube, con yt-dlp), lo transcribe (subtítulos de YouTube si hay;
-si no, Scribe o Whisper) y mide sin IA:
+si no, Whisper en tu PC, sin gastar créditos) y mide sin IA:
   - ritmo: palabras por minuto, largo de las frases, preguntas por minuto
   - estructura: cómo abre (primeros 20 s) y cómo cierra (últimos 40 s)
   - edición: cortes por minuto y si arranca con un tráiler (muchos cortes seguidos al inicio): cuánto
@@ -146,8 +146,8 @@ def leer_vtt(f):
 def transcribir(video):
     import transcribir as tr
     mp3 = tr.audio(video)
-    try:
-        pal = tr.scribe(mp3, 'es') if tr.CLAVE else tr.whisper(mp3, 'es', 'small')
+    try:  # Whisper en tu PC, gratis: para aprender el estilo basta, y un video entero con Scribe gastaba ElevenLabs sin preguntar
+        pal = tr.whisper(mp3, 'es', 'small')
     except SystemExit as err:
         raise RuntimeError(f'no pude transcribir: {err}')
     return [(i, t) for i, _, t in tr.frases(pal)]

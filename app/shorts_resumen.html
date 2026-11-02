@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📱 3 Shorts resumen</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #111; color: #eee; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .nota { color: #aaa; font-size: 13px; margin-bottom: 12px; }
+  button { background: #2b6; color: #fff; border: 0; border-radius: 6px; padding: 8px 12px; margin: 4px 6px 4px 0; cursor: pointer; font-size: 14px; }
+  button.gasta { background: #c63; }
+  button:disabled { opacity: .5; cursor: default; }
+  .short { border: 1px solid #333; border-radius: 8px; padding: 10px; margin: 12px 0; }
+  .short h2 { font-size: 16px; margin: 0 0 6px; }
+  .frase { display: grid; grid-template-columns: 1fr 160px; gap: 6px; margin: 4px 0; }
+  textarea, input { width: 100%; box-sizing: border-box; background: #1c1c1c; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 6px; font-size: 13px; }
+  textarea { min-height: 44px; }
+  .avisos { color: #f96; font-size: 13px; }
+  .estado { margin: 8px 0; font-size: 14px; }
+  a { color: #6cf; }
+</style>
+</head>
+<body>
+<h1>📱 3 Shorts resumen</h1>
+<div class="nota">3 Shorts de ~1 minuto, cada uno con el proceso COMPLETO y un gancho distinto: antes y después · en 1 minuto · ¿ya probaste todo?
+La IA escribe los guiones con la toma de cada frase; tú los corriges. La voz (ElevenLabs) solo se hace cuando confirmas.</div>
+<button id="bProponer" onclick="proponer()">✨ Escribir los 3 guiones (IA de Ajustes)</button>
+<button onclick="guardar()">💾 Guardar mis cambios</button>
+<button id="bVoz" class="gasta" onclick="hacerVoz()">🎙 Hacer la voz</button>
+<button id="bArmar" onclick="armar()">🎬 Armar los 3 Shorts (gratis)</button>
+<div class="estado" id="estado"></div>
+<div class="avisos" id="avisos"></div>
+<div id="guiones"></div>
+<div id="hechos"></div>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const q = encodeURIComponent;
+let G = null;
+
+async function api(ruta, datos) {
+  const r = await fetch(`/api/shorts_resumen/${ruta}?p=${q(P)}`, datos === undefined ? {} : {method: 'POST', body: JSON.stringify(datos)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || 'Error');
+  return j;
+}
+
+function pintar() {
+  const cont = document.getElementById('guiones');
+  cont.innerHTML = '';
+  if (!G || !G.shorts) { cont.textContent = 'Todavía no hay guiones: pulsa «✨ Escribir los 3 guiones».'; return; }
+  const nombres = {antes_despues: 'Antes y después', un_minuto: 'En 1 minuto', ya_probaste: '¿Ya probaste todo?'};
+  G.shorts.forEach((s, n) => {
+    const div = document.createElement('div');
+    div.className = 'short';
+    div.innerHTML = `<h2>Short ${n + 1} · ${nombres[s.gancho] || s.gancho || ''}</h2>`;
+    s.frases.forEach((f, k) => {
+      const fila = document.createElement('div');
+      fila.className = 'frase';
+      const t = document.createElement('textarea');
+      t.value = f.texto; t.oninput = () => { f.texto = t.value; };
+      const tm = document.createElement('input');
+      tm.value = (f.tomas || []).map(x => x.join('-')).join(', ');
+      tm.title = 'Segundos del grabado (desde-hasta), separados por coma';
+      tm.oninput = () => { f.tomas = tm.value.split(',').map(x => x.trim().split('-').map(Number)).filter(x => x.length === 2 && !x.some(isNaN)); };
+      fila.append(t, tm);
+      div.append(fila);
+    });
+    const tit = document.createElement('div');
+    tit.className = 'nota';
+    tit.textContent = 'Título: ' + ((s.titulos || {}).es || '');
+    div.append(tit);
+    cont.append(div);
+  });
+  const c = G.costo || {};
+  document.getElementById('bVoz').textContent = `🎙 Hacer la voz (gasta ~${c.creditos || 0} créditos de ElevenLabs)`;
+  document.getElementById('avisos').innerHTML = (G.avisos || []).map(a => '⚠ ' + a).join('<br>');
+}
+
+async function estado() {
+  const e = await api('estado');
+  if (!G) { G = e.guion && e.guion.shorts ? e.guion : null; pintar(); }
+  const t = e.trabajo || {};
+  document.getElementById('estado').textContent = t.estado ? `Trabajo: ${t.estado} ${t.estado === 'error' ? '— ' + t.msg : ''}` : '';
+  document.getElementById('hechos').innerHTML = (e.hechos || []).map(f =>
+    `<div>🎬 <a target="_blank" href="/ver?ruta=${q('mis_proyectos/' + P + '/' + f)}">${f}</a></div>`).join('');
+  if (t.estado === 'voz' || t.estado === 'armando') setTimeout(estado, 3000);
+}
+
+async function proponer() {
+  const b = document.getElementById('bProponer');
+  b.disabled = true; b.textContent = '✨ Escribiendo… (1-2 min)';
+  try { G = await api('proponer', {}); pintar(); } catch (e) { alert(e.message); }
+  b.disabled = false; b.textContent = '✨ Escribir los 3 guiones (IA de Ajustes)';
+}
+
+async function guardar() {
+  try { G = await api('guardar', {guion: G}); pintar(); } catch (e) { alert(e.message); }
+}
+
+async function hacerVoz() {
+  if (!G) return alert('Primero escribe los guiones.');
+  await guardar();
+  const c = (G.costo || {}).creditos || 0;
+  const r = prompt(`⚠ La voz gasta ~${c} créditos de ElevenLabs (voz Mauricio).\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+  if ((r || '').trim().toUpperCase() !== 'SI') return;
+  try { await api('voz', {confirmo: true}); estado(); } catch (e) { alert(e.message); }
+}
+
+async function armar() {
+  try { await api('armar', {}); estado(); } catch (e) { alert(e.message); }
+}
+
+estado();
+</script>
+</body>
+</html>

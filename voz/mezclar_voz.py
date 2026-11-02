@@ -6,14 +6,14 @@ import json, os, subprocess, sys
 
 video, guion, voz, salida = sys.argv[1:5]
 desfase = float(sys.argv[5]) if len(sys.argv) > 5 else 0.3
-d = json.load(open(guion))
+d = json.load(open(guion, encoding='utf-8'))
 total = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video],
                              capture_output=True, text=True).stdout)
 
 
 def ts(x):
-    h, m, s = int(x // 3600), int(x % 3600 // 60), x % 60
-    return f"{h:02d}:{m:02d}:{int(s):02d},{int(round((s - int(s)) * 1000)):03d}"
+    ms = int(round(x * 1000))  # redondeado una sola vez: 61,9996 s da 00:01:02,000 y no «,1000»
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
 
 
 ins, flt, labs, srt = ['-i', video], [], [], []
@@ -25,12 +25,16 @@ for b, sig in zip(bl, bl[1:]):  # una voz que se mete en el bloque siguiente
     real = b.get('voz_real_s')
     if real and b['inicio_min'] + desfase + real > sig['inicio_min'] + desfase - 0.05:
         print(f"AVISO: la voz de {b['id']} se pisa con la de {sig['id']}. Vuelve a «Generar voz» para que se ajuste el guion.", flush=True)
-for k, b in enumerate(d['bloques'], 1):
+k = 0
+for b in d['bloques']:
+    if not str(b.get('texto') or '').strip():
+        continue  # tramo sin voz
+    k += 1
     st = b['inicio_min'] + desfase
     ins += ['-i', f"{voz}/{b['id']}.mp3"]
     flt.append(f"[{k}:a]aresample=44100,adelay={int(st * 1000)}:all=1[a{k}]")
     labs.append(f"[a{k}]")
-    al = json.load(open(f"{voz}/{b['id']}.align.json"))
+    al = json.load(open(f"{voz}/{b['id']}.align.json", encoding='utf-8'))
     ch, s0, e0 = al['characters'], al['character_start_times_seconds'], al['character_end_times_seconds']
     i, L = 0, len(ch)
     while i < L:  # frases de ~45 caracteres, cortando en espacios o puntuación
@@ -50,8 +54,19 @@ for k, b in enumerate(d['bloques'], 1):
         i = corte
         while i < L and ch[i] == ' ':
             i += 1
-flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:TP=-1.5,apad[aout]")
+carpeta = os.path.dirname(os.path.abspath(guion))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'sonidos'))
+import sonidos  # noqa: E402  «🔊 Efectos de sonido»: clic en los botones, whoosh en los cortes (si los activaste)
+if sonidos.activo(carpeta):
+    ev = [e for e in sonidos.plan(carpeta) if e['t'] < total]
+    e_in, e_fl, e_lab = sonidos.filtros(ev, k + 1, sonidos.ajustes(carpeta)['volumen'])
+    if e_lab:
+        ins += e_in
+        flt += e_fl
+        labs.append(e_lab)
+        print(f'· {len(ev)} efectos de sonido', flush=True)
+flt.append(''.join(labs) + f"amix=inputs={len(labs)}:normalize=0,loudnorm=I=-16:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,apad[aout]")
 subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins +
                ['-filter_complex', ';'.join(flt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',
                 '-c:a', 'aac', '-b:a', '160k', '-t', str(total), salida], check=True)
-open(salida.rsplit('.', 1)[0] + '.srt', 'w').write('\n'.join(srt))
+open(salida.rsplit('.', 1)[0] + '.srt', 'w', encoding='utf-8').write('\n'.join(srt))

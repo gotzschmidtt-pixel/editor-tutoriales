@@ -17,7 +17,11 @@ Uso:
 testimonios.json: {"TESTIMONIOS": [{"archivo": "x.mp4", "momento": "auto", "desde": "0:05", "hasta": "0:40", "texto": "Mira esta reseña de un cliente..."}]}
 Deja también 8_testimonios.srt con los subtítulos corridos (para el tráiler y el video final).
 """
-import argparse, base64, json, os, re, subprocess, time, urllib.error, urllib.request
+import argparse, base64, json, os, re, subprocess, sys, time, urllib.error, urllib.request
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'codificar'))
+import codificar  # noqa: E402  con la tarjeta NVIDIA si la hay, si no con el procesador
 
 DISPARA = r'testimon|client|opini|confian|rese[ñn]a|satisfech|contentos'
 CIERRE = r'eso fue todo|gracias por (acompa|ver)|nos vemos|hasta (la|el) pr[oó]xim'
@@ -109,11 +113,13 @@ def dur_mp3(f):
     return float(r.stdout or 0)
 
 
-def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
+def narrar(carpeta, bid, texto, voz, modelo, estabilidad, idioma='es'):
     """Genera (y reutiliza) la voz principal que narra un testimonio. Devuelve (mp3, duración).
     Solo vuelve a pedirla a ElevenLabs si cambió el texto, la voz, el modelo o la estabilidad; si no, no gasta créditos."""
     mp3 = os.path.join(carpeta, f'narr_{bid}.mp3')
     firma = {'texto': texto, 'voz': voz, 'modelo': modelo, 'estabilidad': estabilidad}
+    if idioma != 'es':
+        firma['idioma'] = idioma
     meta = os.path.join(carpeta, f'narr_{bid}.json')
     if os.path.exists(mp3) and os.path.exists(meta):
         try:
@@ -125,8 +131,10 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
     if not clave:
         raise SystemExit('ERROR: para narrar los testimonios con tu voz principal falta la clave de ElevenLabs. '
                          'Pulsa «🔑 Clave ElevenLabs» arriba a la derecha, pégala y guarda.')
-    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': 'es',
-                       'voice_settings': {'stability': estabilidad}}).encode()
+    sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+    import pronunciacion  # FRP, DFU… dichos como en el resto del video
+    body = json.dumps({'text': texto, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': estabilidad},
+                       **pronunciacion.para_pedido(texto, {'xi-api-key': clave})}).encode()
     req = urllib.request.Request(f'https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128',
                                  data=body, headers={'Content-Type': 'application/json', 'xi-api-key': clave})
     datos = None
@@ -150,7 +158,7 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad):
 def mover_srt(subs, cortes, destino):
     """Los subtítulos después de cada testimonio se corren lo que dura el testimonio."""
     def hms(t):
-        return f'{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}'
+        return f'{int(round(t * 1000)) // 3600000:02d}:{int(round(t * 1000)) // 60000 % 60:02d}:{int(round(t * 1000)) // 1000 % 60:02d},{int(round(t * 1000)) % 1000:03d}'
     with open(destino, 'w', encoding='utf-8') as f:
         for k, (a, b, x) in enumerate(subs, 1):
             corre = sum(d for t, d in cortes if a >= t - 0.01)
@@ -163,7 +171,8 @@ def main():
     ap.add_argument('--testimonios', required=True)
     ap.add_argument('--srt', default='3_voz.srt')
     ap.add_argument('--salida', required=True)
-    ap.add_argument('--voz', default='94zOad0g7T7K4oa7zhDq', help='misma voz que la narración principal (voz.py)')
+    ap.add_argument('--voz', default=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq', help='misma voz que la narración principal (voz.py)')
+    ap.add_argument('--idioma', default=os.environ.get('VOZ_IDIOMA') or 'es', help='el de la versión del video (es, en…)')
     ap.add_argument('--modelo', default='eleven_v4')
     ap.add_argument('--estabilidad', type=float, default=0.5)
     a = ap.parse_args()
@@ -190,7 +199,7 @@ def main():
         narr, dur = None, clip_dur
         if texto:  # el narrador (tu voz principal) cuenta el testimonio y el audio del cliente se silencia
             bid = re.sub(r'\W+', '', os.path.splitext(os.path.basename(f))[0]) or f'testi{len(cortes) + 1}'
-            narr, ndur = narrar(carpeta, bid, texto, a.voz, a.modelo, a.estabilidad)
+            narr, ndur = narrar(carpeta, bid, texto, a.voz, a.modelo, a.estabilidad, a.idioma)
             dur = max(clip_dur, ndur + 0.6)  # el segmento dura lo que la narración, con un respiro al final
         cortes.append({'en': en, 'f': f, 'desde': desde, 'clip_dur': clip_dur, 'dur': dur, 'audio': info['audio'], 'narr': narr})
         print(f"testimonio {os.path.basename(f)} ({dur:.0f} s{', narrado' if narr else ''}) entra en {int(en // 60)}:{int(en % 60):02d}")
@@ -230,7 +239,7 @@ def main():
                    f"[0:a]atrim={previo},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a{n}]")
         partes.append(n)
     fil.append(''.join(f'[v{n}][a{n}]' for n in partes) + f'concat=n={len(partes)}:v=1:a=1[v][a]')
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y'] + ins +
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y'] + ins +
                    ['-filter_complex', ';'.join(fil), '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium',
                     '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', a.salida], check=True)
     if subs:

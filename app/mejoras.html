@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎛 Audio e imagen</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  h2 { font-size: 16px; margin: 0 0 6px; }
+  h3 { font-size: 14px; margin: 14px 0 6px; color: var(--suave); }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 13px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  main { padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; }
+  section.ancho { grid-column: 1 / -1; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .msg { font-size: 13px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 3px 4px; vertical-align: top; } td input { width: 100%; box-sizing: border-box; }
+  .lista p { margin: 4px 0; font-size: 14px; }
+  .alta { color: var(--rojo); } .media { color: var(--amarillo); } .baja { color: var(--suave); }
+  .tira { display: flex; gap: 10px; flex-wrap: wrap; }
+  .tira img { width: 260px; border-radius: 8px; border: 1px solid var(--borde); }
+  .tira video { width: 150px; aspect-ratio: 9/16; background: #000; border-radius: 10px; }
+  .emo td:first-child { white-space: nowrap; color: var(--suave); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" onclick="return volverInicio()" title="Volver a la pantalla principal del Estudio (con este proyecto abierto)"
+     style="flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #26304f;
+            background:#1d2440; color:#e8ecff; text-decoration:none; font:700 14px system-ui, sans-serif; white-space:nowrap">🏠 Inicio</a>
+  <script>
+  function volverInicio() {  // pedido de fabian (30/10/2026): un botón para volver a la app desde cada pantalla
+    const p = new URLSearchParams(location.search).get('p');
+    const url = '/' + (p ? '?p=' + encodeURIComponent(p) : '');
+    let principal = null;  // si la abrió la ventana principal, cierro esta pestaña y queda la principal (sin abrir otra igual)
+    try { if (window.opener && !window.opener.closed && window.opener.location.pathname === '/') principal = window.opener; } catch (e) {}
+    if (!principal) { location.href = url; return false; }
+    try { principal.focus(); } catch (e) {}
+    window.close();
+    setTimeout(() => { if (!window.closed && document.visibilityState === 'visible') location.href = url; }, 600);
+    return false;
+  }
+  </script>
+  <h1>🎛 Audio e imagen · <span id="nombre"></span></h1>
+  <span class="msg" id="estadoTrabajo"></span>
+</header>
+<main>
+  <section>
+    <h2>🗣 Pronunciación</h2>
+    <p class="aviso">Cómo dice la voz tus siglas y marcas, igual en todos tus videos. El guion y los subtítulos siguen diciendo
+    «FRP»: solo cambia lo que se escucha. Se sube a ElevenLabs como diccionario (no gasta créditos) y lo usan la voz del video,
+    el Short, el tráiler, los testimonios y los nuevos modelos.</p>
+    <table id="pronTabla"></table>
+    <div class="fila"><button onclick="pronAgregar()">+ Palabra</button><button class="principal" onclick="pronGuardar()">💾 Guardar</button><span class="msg" id="pronMsg"></span></div>
+    <div id="pronAfectados"></div>
+  </section>
+
+  <section>
+    <h2>😀 Voz con emoción</h2>
+    <p class="aviso">La IA del guion marca algunos bloques con una emoción (más energía en el resultado, calma en los pasos
+    delicados). ElevenLabs la entiende como etiqueta y no la lee en voz alta ni sale en los subtítulos. Cambiar la emoción de
+    un bloque rehace solo su voz (lo ves en el costo antes de gastar).</p>
+    <label><input type="checkbox" id="emoOn" onchange="edicion({emocion_voz: this.checked})"> Usar la emoción de cada bloque</label>
+    <details style="margin-top:8px"><summary class="aviso">Ver y cambiar la emoción de cada bloque</summary>
+      <datalist id="emociones"><option value="emocionado"><option value="calmado"><option value="susurra"><option value="intrigado">
+        <option value="alegre"><option value="serio"><option value="sorprendido"><option value="seguro">
+        <option value="entusiasmado"><option value="orgulloso"><option value="pícaro"><option value="aliviado"><option value="confiado">
+        <option value="ríe"><option value="se ríe bajito"><option value="ríe, alegre"><option value="suspira"><option value="sorprendido, ríe"></datalist>
+      <table class="emo" id="emoTabla"></table>
+      <div class="fila"><button class="principal" onclick="emoGuardar()">💾 Guardar emociones</button><span class="msg" id="emoMsg"></span></div>
+    </details>
+  </section>
+
+  <section>
+    <h2>🔊 Efectos de sonido</h2>
+    <p class="aviso">Un clic suave cuando tocas un botón (los eventos de pantalla del guion), un «whoosh» en los cortes que saltan
+    a otra parte, un sonido cuando se ve el resultado y un golpe en los sellos del tráiler. Se mezclan en «Poner la voz» y en el
+    tráiler: vuelve a hacer el video desde «Poner la voz» para oírlos.</p>
+    <label><input type="checkbox" id="sonOn" onchange="edicion({sonidos: this.checked})"> Poner efectos de sonido en este proyecto</label>
+    <div class="fila" id="sonTipos"></div>
+    <div class="fila"><label>Volumen <input type="range" id="sonVol" min="0" max="2" step="0.1" onchange="edicion({sonidos_volumen: +this.value})"></label></div>
+    <h3>Tus sonidos (los mismos para todos los videos)</h3>
+    <div id="sonBiblio" class="lista"></div>
+    <p class="aviso" id="sonPlan"></p>
+    <span class="msg" id="sonMsg"></span>
+  </section>
+
+  <section>
+    <h2>🎙 Limpiar la voz grabada</h2>
+    <p class="aviso">Quita el ventilador, el zumbido y el eco de la habitación del audio grabado (tu voz o el celular). Sirve para
+    transcribir mejor y para los testimonios. Solo cambia el audio; el de antes queda guardado y se puede volver.</p>
+    <div class="fila">
+      <select id="limArchivo"><option value="original.mp4">Tu grabación (original.mp4)</option><option value="material.mp4">Material extra (material.mp4)</option>
+        <option value="testimonios">Todos los testimonios</option></select>
+      <select id="limMotor"><option value="pc">Gratis en tu PC (DeepFilterNet, recomendado)</option><option value="ffmpeg">Gratis y rápido (filtro de ffmpeg)</option>
+        <option value="eleven">ElevenLabs (~1000 créditos por minuto)</option></select>
+    </div>
+    <div class="fila"><button class="principal" onclick="limpiar()">🎙 Limpiar</button><button onclick="limpiar(true)">↩ Volver al audio de antes</button><span class="msg" id="limMsg"></span></div>
+  </section>
+
+  <section>
+    <h2>🖱 Zoom automático en la PC</h2>
+    <p class="aviso">En una grabación de pantalla, la imagen se acerca sola donde haces clic (sigue tu puntero amarillo) y vuelve a
+    la vista completa con suavidad; cuando bajas la página no acerca. Las ventanas del programa se leen sin pegarse a la pantalla.</p>
+    <div class="fila">
+      <select id="zoomArchivo"><option value="material.mp4">Material extra (material.mp4)</option><option value="original.mp4">Tu grabación (si es de la PC)</option></select>
+      <label>Hasta ×<input type="number" id="zoomMax" min="1.2" max="3" step="0.1" value="2.2" style="width:4.5em"></label>
+    </div>
+    <div class="fila"><button class="principal" onclick="zoom()">🖱 Hacer zoom</button><button onclick="zoom(true)">↩ Sin zoom</button><span class="msg" id="zoomMsg"></span></div>
+    <div id="zoomVer" class="aviso"></div>
+  </section>
+
+  <section>
+    <h2>🎨 Color parejo y tomas oscuras</h2>
+    <p class="aviso">Todas las tomas del mismo tono y brillo (la luz de ventana cambia), y las tomas oscuras más claras sin quemar
+    la pantalla del celular. Se hace sobre tu grabación antes del montaje; los tiempos no cambian, el guion sirve igual.</p>
+    <div class="fila"><label>Fuerza <input type="range" id="colFuerza" min="0.2" max="1" step="0.1" value="0.7"></label></div>
+    <div class="fila"><button class="principal" onclick="color()">🎨 Emparejar color</button><button onclick="color(true)">↩ Volver al original</button><span class="msg" id="colMsg"></span></div>
+  </section>
+
+  <section>
+    <h2>✨ Mejorar imagen (Real-ESRGAN)</h2>
+    <p class="aviso">Agranda y limpia con tu tarjeta (NVIDIA, AMD o Intel) los cuadros quietos: las pausas con cuadro fijo y la
+    miniatura. Quita el ruido de poca luz y el borroso. Se baja una sola vez (45 MB, gratis, sin PyTorch).</p>
+    <label><input type="checkbox" id="esrOn" onchange="edicion({mejorar_imagen: this.checked})"> Mejorar los cuadros quietos de este proyecto</label>
+    <div class="fila"><button onclick="correr('m_esrgan', {}, '#esrMsg', 'Bajando Real-ESRGAN…')">⬇ Bajar y probar</button><span class="msg" id="esrMsg"></span></div>
+  </section>
+
+  <section>
+    <h2>📱 Pantalla del celular derecha</h2>
+    <p class="aviso">Busca la pantalla del celular en tu grabación con cámara y la endereza, como una captura. En los pasos para
+    leer (la key, un código, una opción) donde la pantalla se ve chica o torcida, pone un inserto con la pantalla derecha.</p>
+    <label><input type="checkbox" id="endInsertos" checked> Agregar los insertos en los pasos para leer</label>
+    <div class="fila"><button class="principal" onclick="correr('m_enderezar', {insertos: $('#endInsertos').checked}, '#endMsg', 'Buscando la pantalla (unos minutos)…')">📱 Enderezar</button><span class="msg" id="endMsg"></span></div>
+    <div id="endVer"></div>
+  </section>
+
+  <section>
+    <h2>📲 Pantalla grabada (scrcpy / QuickTime)</h2>
+    <p class="aviso">Si grabas la pantalla del celular a la vez que la cámara (scrcpy en Android; QuickTime o la grabación de
+    pantalla en iPhone), súbela aquí. La app sincroniza las dos por el audio (o por la imagen) y pone la pantalla nítida en los
+    pasos para leer.</p>
+    <div class="fila"><input type="file" id="scrArchivo" accept="video/*"><button onclick="scrSubir()">⬆ Subir</button><span class="msg" id="scrSubMsg"></span></div>
+    <div class="fila"><label title="Si la sincronización automática no acierta: el segundo de tu grabación donde empieza la de pantalla">Empieza en el segundo
+      <input type="number" id="scrDesfase" step="0.1" placeholder="auto" style="width:6em"></label>
+      <button class="principal" onclick="scrPoner()">📲 Sincronizar y poner</button><span class="msg" id="scrMsg"></span></div>
+    <div id="scrVer" class="aviso"></div>
+  </section>
+
+  <section class="ancho">
+    <h2>🔎 Revisar el video terminado</h2>
+    <p class="aviso">Antes de subirlo: la PC busca silencios largos, tramos en negro e imagen congelada, y la IA de «⚙ Ajustes IA»
+    mira el video (hojas de cuadros con los subtítulos) como un espectador: una etiqueta que tapa el botón, una voz que habla de
+    DFU mientras se ve otra cosa, datos privados a la vista. No cambia el video. Con IA cuesta unos centavos.</p>
+    <div class="fila"><label><input type="checkbox" id="revIa" checked> Con la IA (si no, solo los controles gratis de la PC)</label>
+      <button class="principal" onclick="correr('m_revisar', {ia: $('#revIa').checked}, '#revMsg', 'Revisando (unos minutos)…')">🔎 Revisar</button><span class="msg" id="revMsg"></span></div>
+    <div id="revVer" class="lista"></div>
+  </section>
+
+  <section class="ancho">
+    <h2>📱 Varios Shorts por video</h2>
+    <p class="aviso">Del mismo video, de 2 a 5 Shorts con pasos distintos (ninguno repite tomas), cada uno con un título sugerido y
+    el día para publicarlo, para llevar gente al video largo. Usa las voces que ya están hechas: no gasta créditos.</p>
+    <div class="fila"><label>Cuántos <select id="shCant"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+      <label>Duración <select id="shDur"><option value="30">30 s</option><option value="45" selected>45 s</option><option value="60">60 s</option><option value="90">90 s</option></select></label>
+      <label>Primero el <input type="date" id="shDesde"></label>
+      <button class="principal" onclick="correr('m_shorts', {cantidad: +$('#shCant').value, duracion: +$('#shDur').value, desde: $('#shDesde').value}, '#shMsg', 'Armando los Shorts (unos minutos cada uno)…')">📱 Hacer los Shorts</button>
+      <span class="msg" id="shMsg"></span></div>
+    <div id="shVer" class="tira"></div>
+  </section>
+
+  <section class="ancho">
+    <h2>🖼 Miniatura automática</h2>
+    <p class="aviso">Tres opciones para la prueba A/B de miniaturas de YouTube: el cuadro más nítido del problema, del resultado y
+    contigo; el teléfono recortado con borde blanco, texto grande con tus colores y una flecha. Gratis.</p>
+    <div class="fila"><input type="text" id="minTexto" placeholder="Texto (opcional): MOTOROLA|SIN CUENTA GOOGLE — la | parte en dos líneas" style="flex:1; min-width:18em">
+      <label class="aviso" title="Además de las 3 gratis, la IA de imágenes (gpt-image-2.5-flare, con tu clave de GPT) hace una miniatura con tus cuadros de referencia, en español, inglés y portugués. Gasta 3 imágenes en calidad alta"><input type="checkbox" id="minGpt"> ✨ También con GPT (3 idiomas, gasta)</label>
+      <label class="aviso" title="La portada vertical (9:16) del Short con el estilo de tus Shorts, hecha por gpt-image-2.5-flare en español, inglés y portugués. Gasta 3 imágenes en calidad alta"><input type="checkbox" id="minShort"> 📱 Portada del Short (3 idiomas, gasta)</label>
+      <label class="aviso" title="Con «También con GPT»: en vez de una, hace una miniatura por cada ANTES que encuentre en tu video (la pantalla bloqueada, el fastboot y «Bienvenido»), en español, para que elijas la mejor. Gasta una imagen por cada una"><input type="checkbox" id="minVariantes"> 🔀 Varias opciones de ANTES</label>
+      <label class="aviso" title="Con «También con GPT»: la misma miniatura dos veces, una con tu escritorio real de fondo y otra con un fondo hecho por GPT (azul con neón), en español, para comparar. Gasta 2 imágenes"><input type="checkbox" id="minFondos"> 🖼 Dos fondos (escritorio y GPT)</label>
+      <label class="aviso" title="Con «También con GPT»: GPT pinta solo la escena (fondo, manos, teléfonos, flecha, mascota) sin ningún texto, y la app pone encima los textos, el sello, las píldoras y el logo oficial guardado. Nunca salen letras mal escritas ni logos inventados, y una escena sirve para los 3 idiomas: gasta 1 imagen en vez de 3"><input type="checkbox" id="minMixta"> 🧩 Mixta: GPT la escena, la app los textos</label>
+      <button class="principal" onclick="miniaturas()">🖼 Hacer miniaturas</button><span class="msg" id="minMsg"></span></div>
+    <div id="minVer" class="tira"></div>
+  </section>
+
+  <section class="ancho">
+    <h2>⚖ Avisos de cuidado</h2>
+    <p class="aviso">En videos de quitar cuentas (FRP, iCloud, MDM), bypass, abrir el equipo o soldar, conviene una frase como
+    «hazlo solo en un equipo tuyo» o «esto puede dañar la placa»: ayuda a que YouTube no limite el video. La IA del guion ya la
+    escribe en la voz; si falta, aquí se agrega como etiqueta en pantalla (no gasta créditos).</p>
+    <div id="legVer" class="lista"></div>
+    <div class="fila"><button class="principal" onclick="correr('m_avisos', {}, '#legMsg', 'Revisando…')">⚖ Agregar la etiqueta que falta</button><span class="msg" id="legMsg"></span></div>
+  </section>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const q = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let E = {}, PRON = [];
+$('#nombre').textContent = P;
+document.title = '🎛 Audio e imagen · ' + P;
+
+async function api(url, op) {
+  const r = await fetch(url, op);
+  const t = r.headers.get('content-type') || '';
+  const d = t.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(d.error || d || r.statusText);
+  return d;
+}
+const aviso = (sel, t, c = '') => { const m = $(sel); m.className = 'msg ' + c; m.textContent = t; };
+const arch = (f, v) => `/archivo?p=${q(P)}&f=${q(f)}&v=${v || Date.now()}`;
+
+async function correr(paso, datos, sel, texto) {  // corre un paso de la app y espera a que termine
+  aviso(sel, texto || 'Trabajando…');
+  try {
+    await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(datos || {})});
+    for (let k = 0; k < 5400; k++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const e = await api(`/api/estado?p=${q(P)}`);
+      if (e.trabajo && e.trabajo.proyecto) { if (e.trabajo.linea) aviso(sel, '… ' + e.trabajo.linea.slice(0, 140)); continue; }
+      if (e.fallo) throw new Error(e.fallo.msg || 'falló: mira el registro');
+      break;
+    }
+    aviso(sel, '✓ Listo.', 'ok');
+  } catch (e) { aviso(sel, e.message, 'err'); }
+  await cargar();
+}
+async function edicion(cambios) {
+  try { await api(`/api/mejoras/edicion?p=${q(P)}`, {method: 'POST', body: JSON.stringify(cambios)}); await cargar(); }
+  catch (e) { alert(e.message); }
+}
+
+async function cargar() {
+  E = await api(`/api/mejoras/estado?p=${q(P)}`);
+  const ed = E.edicion || {};
+  // pronunciación
+  PRON = E.pronunciacion.map(r => ({...r}));
+  pronPintar();
+  $('#pronAfectados').innerHTML = E.afectados.length ? `<p class="aviso">${E.afectados.length} bloque(s) con voz hecha antes de esta pronunciación
+    (${E.afectados.map(x => `${x.id}: ${x.palabras.join(', ')}`).join(' · ')}).
+    <button onclick="pronRehacer()">Rehacerlos con «Generar voz» (~${E.afectados.reduce((n, x) => n + x.letras, 0)} créditos)</button></p>` : '';
+  // emoción
+  $('#emoOn').checked = ed.emocion_voz !== false;
+  $('#emoTabla').innerHTML = E.bloques.map(b => `<tr><td>${esc(b.id)}</td><td><input list="emociones" data-id="${esc(b.id)}" value="${esc(b.emocion)}" placeholder="como siempre" style="width:9em"></td>
+    <td class="aviso">${esc(b.texto)}</td></tr>`).join('') || '<tr><td class="aviso">Todavía no hay guion.</td></tr>';
+  // sonidos
+  $('#sonOn').checked = !!ed.sonidos;
+  const tipos = ed.sonidos_tipos || ['clic', 'whoosh', 'exito'];
+  $('#sonTipos').innerHTML = ['clic', 'whoosh', 'exito'].map(t => `<label><input type="checkbox" ${tipos.includes(t) ? 'checked' : ''} onchange="sonTipos()" value="${t}"> ${t}</label>`).join('');
+  $('#sonVol').value = ed.sonidos_volumen ?? 1;
+  $('#sonBiblio').innerHTML = Object.entries(E.sonidos).map(([n, s]) => `<p><b>${n}</b> · ${esc(s.para)} · ${s.hay ? esc(s.de) : 'se hace en tu PC la primera vez'}
+    ${s.hay ? `<audio controls preload="none" style="height:28px; vertical-align:middle" src="/api/mejoras/sonido?p=${q(P)}&n=${n}&v=${Date.now()}"></audio>` : ''}
+    <button onclick="sonCrear('${n}')" title="Lo crea ElevenLabs Sound Effects una sola vez (unos 100 créditos)">✨ Con ElevenLabs</button>
+    ${s.de === 'ElevenLabs o tuyo' ? `<button onclick="sonQuitar('${n}')">↩ El de la PC</button>` : ''}</p>`).join('');
+  $('#sonPlan').textContent = E.plan_sonidos.length ? `En este video: ${E.plan_sonidos.length} sonidos (${['clic', 'whoosh', 'exito'].map(t => `${E.plan_sonidos.filter(x => x.tipo === t).length} ${t}`).join(', ')}).` : '';
+  // mejorar
+  $('#esrOn').checked = !!ed.mejorar_imagen;
+  const a = E.archivos;
+  // zoom
+  $('#zoomVer').textContent = E.zoom ? `Último zoom: ${E.zoom.tramos.length} acercamientos en ${E.zoom.fuente}.` : '';
+  // pantalla derecha
+  $('#endVer').innerHTML = a['pantalla_enderezada.mp4'] ? `<video controls preload="metadata" style="width:100%; border-radius:8px" src="${arch('pantalla_enderezada.mp4', a['pantalla_enderezada.mp4'])}"></video>` : '';
+  $('#scrVer').textContent = (a['pantalla_grabada.mp4'] ? '✓ Grabación de pantalla subida. ' : '') + (E.pantalla ? `Sincronizada: empieza en el segundo ${E.pantalla.desfase}.` : '');
+  // revisión
+  const r = E.revision;
+  $('#revVer').innerHTML = r ? `<p><b>${esc(r.video)}</b>${r.ia ? ' · revisado con ' + esc(r.ia) : ' · solo controles de la PC'}. ${esc(r.resumen)}</p>` +
+    (r.avisos.length ? r.avisos.map(x => `<p><b class="${x.gravedad}">${mmss(x.t)} · ${x.gravedad}</b> ${esc(x.que)} → <span class="aviso">${esc(x.sugerencia)}</span></p>`).join('')
+      : '<p class="ok">Sin avisos: listo para subir.</p>') : '';
+  // shorts
+  const sh = (E.shorts || {}).shorts || [];
+  $('#shVer').innerHTML = sh.map(s => `<div><video controls preload="metadata" src="${arch(s.archivo, a[s.archivo])}"></video>
+    <p><b>${esc(s.titulo)}</b><br><span class="aviso">${Math.round(s.duracion)} s · publicar el ${esc(s.publicar)}</span><br>
+    <a href="/archivo?p=${q(P)}&f=${q(s.archivo)}&nombre=${q(P + '_' + s.archivo)}" download><button>⬇ Bajar</button></a></p></div>`).join('');
+  // miniaturas
+  const mi = (E.miniaturas || {}).miniaturas || [];
+  $('#minVer').innerHTML = mi.map(x => `<div><img src="${arch(x.archivo, a[x.archivo])}"><p class="aviso">${esc(x.de)} · ${mmss(x.segundo)}
+    <a href="/archivo?p=${q(P)}&f=${q(x.archivo)}&nombre=${q(P + '_' + x.archivo)}" download><button>⬇</button></a></p></div>`).join('');
+  // avisos legales
+  $('#legVer').innerHTML = E.legales.length ? E.legales.map(x => x.puesta ? `<p class="ok">✓ ${esc(x.bloque)}: etiqueta «${esc(x.frase)}» lista en etiquetas.json (sale con «Etiquetas animadas»)</p>`
+      : `<p class="media">${esc(x.bloque)}: la voz no dice ninguna frase de cuidado → falta la etiqueta «${esc(x.frase)}»</p>`).join('')
+    : '<p class="ok">La voz ya dice una frase de cuidado (o el tema no la necesita).</p>';
+}
+
+function pronPintar() {
+  $('#pronTabla').innerHTML = '<tr><td class="aviso">Se escribe</td><td class="aviso">Se dice</td><td></td></tr>' + PRON.map((r, k) =>
+    `<tr><td><input value="${esc(r.palabra)}" oninput="PRON[${k}].palabra = this.value"></td><td><input value="${esc(r.decir)}" oninput="PRON[${k}].decir = this.value"></td>
+      <td><button onclick="PRON.splice(${k}, 1); pronPintar()" title="Quitar">✕</button></td></tr>`).join('');
+}
+function pronAgregar() { PRON.push({palabra: '', decir: ''}); pronPintar(); $('#pronTabla').querySelector('tr:last-child input').focus(); }
+async function pronGuardar() {
+  try { await api(`/api/mejoras/pronunciacion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({reglas: PRON})}); aviso('#pronMsg', '✓ Guardado. Se usa desde la próxima voz.', 'ok'); await cargar(); }
+  catch (e) { aviso('#pronMsg', e.message, 'err'); }
+}
+async function pronRehacer() {
+  if (!confirm('Esos bloques quedan para rehacer: la próxima vez que pulses «Generar voz» (o «▶ Hacer todo») se vuelven a generar con la pronunciación nueva. ¿Seguir?')) return;
+  try { const r = await api(`/api/mejoras/rehacer_pronunciacion?p=${q(P)}`, {method: 'POST', body: '{}'}); aviso('#pronMsg', `✓ ${r.bloques} bloque(s) quedan para rehacer con «Generar voz».`, 'ok'); await cargar(); }
+  catch (e) { aviso('#pronMsg', e.message, 'err'); }
+}
+async function emoGuardar() {
+  const emociones = {};
+  document.querySelectorAll('#emoTabla input[data-id]').forEach(i => emociones[i.dataset.id] = i.value.trim());
+  try { await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})}); aviso('#emoMsg', '✓ Guardado. Solo los bloques que cambiaste se rehacen al pulsar «Generar voz» (el costo se ve antes).', 'ok'); }
+  catch (e) { aviso('#emoMsg', e.message, 'err'); }
+}
+function sonTipos() { edicion({sonidos_tipos: [...document.querySelectorAll('#sonTipos input:checked')].map(i => i.value)}); }
+function sonCrear(n) {
+  if (!confirm(`ElevenLabs crea el sonido «${n}» una sola vez (unos 100 créditos) y queda para todos tus videos. ¿Seguir?`)) return;
+  correr('m_sonidos', {motor: 'eleven', solo: n}, '#sonMsg', 'Creando el sonido con ElevenLabs…');
+}
+async function sonQuitar(n) { await api(`/api/mejoras/sonido_quitar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nombre: n})}); await cargar(); }
+function limpiar(deshacer) {
+  const motor = $('#limMotor').value;
+  if (!deshacer && motor === 'eleven' && !confirm('El aislador de voz de ElevenLabs gasta unos 1000 créditos por minuto de audio. ¿Seguir?')) return;
+  correr('m_limpiar', {archivo: $('#limArchivo').value, motor, deshacer: !!deshacer}, '#limMsg', deshacer ? 'Volviendo al audio de antes…' : 'Limpiando la voz…');
+}
+function miniaturas() {  // con GPT gasta: hay que escribir SI (como antes de gastar ElevenLabs)
+  const gpt = $('#minGpt').checked, short = $('#minShort').checked;
+  if (gpt || short) {
+    const variantes = gpt && $('#minVariantes').checked;
+    const mixta = gpt && $('#minMixta').checked, fondos = gpt && $('#minFondos').checked;
+    const n = (gpt ? (mixta ? (fondos ? 2 : 1) : 3) : 0) + (short ? 3 : 0);
+    const r = prompt(`⚠ Esto gasta ${n} imágenes de gpt-image-2.5-flare en calidad alta (${[gpt ? 'la miniatura' : '', short ? 'la portada del Short' : ''].filter(Boolean).join(' y ')}, en español, inglés y portugués).\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+    if (r === null) return;
+    if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
+  }
+  correr('m_miniatura', {texto: $('#minTexto').value, gpt, short, variantes: gpt && $('#minVariantes').checked, fondos: gpt && $('#minFondos').checked, mixta: gpt && $('#minMixta').checked, confirmo: gpt || short ? 'SI' : ''}, '#minMsg', gpt || short ? 'Buscando los mejores cuadros y haciendo las de GPT (unos minutos)…' : 'Buscando los mejores cuadros…');
+}
+function zoom(deshacer) { correr('m_zoom', {archivo: $('#zoomArchivo').value, max: +$('#zoomMax').value, deshacer: !!deshacer}, '#zoomMsg', deshacer ? 'Volviendo…' : 'Buscando los clics y armando el zoom…'); }
+function color(deshacer) { correr('m_color', {fuerza: +$('#colFuerza').value, deshacer: !!deshacer}, '#colMsg', deshacer ? 'Volviendo…' : 'Midiendo y corrigiendo el color (unos minutos)…'); }
+async function scrSubir() {
+  const f = $('#scrArchivo').files[0];
+  if (!f) return alert('Elige el video de la pantalla del celular.');
+  aviso('#scrSubMsg', 'Subiendo…');
+  try { await api(`/api/mejoras/subir?p=${q(P)}&tipo=pantalla`, {method: 'POST', body: f}); aviso('#scrSubMsg', '✓ Subida.', 'ok'); await cargar(); }
+  catch (e) { aviso('#scrSubMsg', e.message, 'err'); }
+}
+function scrPoner() { correr('m_scrcpy', {desfase: $('#scrDesfase').value}, '#scrMsg', 'Sincronizando las dos grabaciones (unos minutos)…'); }
+
+setInterval(async () => {  // qué está haciendo la app (si otra pestaña corre un paso)
+  try { const e = await api(`/api/estado?p=${q(P)}`); $('#estadoTrabajo').textContent = e.trabajo && e.trabajo.proyecto ? `Trabajando: ${e.trabajo.paso || ''}` : ''; } catch (e) {}
+}, 4000);
+cargar().catch(e => alert(e.message));
+</script>
+</body>
+</html>

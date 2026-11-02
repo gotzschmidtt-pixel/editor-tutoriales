@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🧑 Avatar (ahorro)</title>
+<style>
+  :root { --fondo: #0b0e1a; --panel: #141a2e; --borde: #26304f; --texto: #e8ecff; --suave: #9aa3c7; --rosa: #ff2bd6; --rojo: #ff2d55; --verde: #38f28a; --amarillo: #ffd23f; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px;
+    background: #10142a; border-bottom: 1px solid var(--borde); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button { background: #1d2440; color: var(--texto); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 13px; cursor: pointer; font: inherit; }
+  button.principal { background: var(--rosa); border-color: var(--rosa); color: white; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { padding: 18px 20px; display: grid; gap: 16px; max-width: 1100px; }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; }
+  .aviso { color: var(--suave); font-size: 13px; }
+  .cifras { display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; } .cifras b { font-size: 22px; display: block; }
+  .barra { display: flex; height: 26px; border-radius: 8px; overflow: hidden; border: 1px solid var(--borde); margin: 10px 0 4px; }
+  .barra div { height: 100%; } .av { background: var(--rosa); } .vo { background: #2a3460; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { padding: 5px 6px; vertical-align: top; text-align: left; border-top: 1px solid var(--borde); }
+  .msg { font-size: 13px; } .ok { color: var(--verde); } .err { color: var(--rojo); }
+  .ajustes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px 18px; margin: 10px 0; font-size: 14px; }
+  .ajustes input { width: 64px; background: #0f1426; color: var(--texto); border: 1px solid var(--borde); border-radius: 8px; padding: 4px 6px; font: inherit; }
+  .toma { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--borde); font-size: 14px; }
+  .toma code { color: var(--amarillo); min-width: 90px; } .toma span { flex: 1; }
+  .tipo-avatar { color: var(--rosa); font-weight: 700; } .tipo-voz { color: var(--suave); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧑 Avatar (ahorro)</h1>
+  <label><input type="radio" name="modo" value="ahorro" onchange="modo(this.value)"> 💰 Ahorro: gancho sin cara y 2-4 tramos de avatar (presentación, momentos fuertes y cierre)</label>
+  <label><input type="radio" name="modo" value="todo" onchange="modo(this.value)"> 🧑 Todo con avatar</label>
+</header>
+<main>
+  <section>
+    <div class="cifras" id="cifras"></div>
+    <div class="barra" id="barra"></div>
+    <p class="aviso">Rosa = con avatar (HeyGen) · azul = voz en off sobre gráficas, memes y capturas. HeyGen cobra por minuto: el ahorro es
+      la parte del video que ya no hace HeyGen. Nada de esta página gasta créditos.</p>
+    <p>
+      <button class="principal" onclick="exportar()">🎧 Preparar audios para HeyGen</button>
+      <button onclick="montar()" id="bMontar">🎬 Montar con los videos de HeyGen</button>
+      <span class="msg" id="msg"></span>
+    </p>
+    <p class="aviso" id="donde"></p>
+  </section>
+  <section>
+    <b>Ritmo</b> <span class="aviso">— como las referencias (Olga y Danskyx): gancho sin cara, cortes rápidos al inicio, pocos tramos de avatar largos</span>
+    <div class="ajustes">
+      <label>Gancho sin avatar <input type="number" id="a_gancho_s" min="0" max="90" step="5"> s <span class="aviso">(30-60; 0 = abre el avatar)</span></label>
+      <label>Cambio de imagen en el 1.er minuto cada <input type="number" id="a_rotar_inicio" min="1" max="6" step="0.5"> s</label>
+      <label>… y después cada <input type="number" id="a_rotar" min="2" max="10" step="0.5"> s</label>
+      <label>Tramos con avatar <input type="number" id="a_tramos_avatar" min="0" max="8" step="1"> <span class="aviso">(0 = la app decide, 2-4)</span></label>
+      <label>Largo de cada tramo <input type="number" id="a_tramo_lo" min="5" max="58" step="5"> a <input type="number" id="a_tramo_hi" min="5" max="58" step="5"> s</label>
+      <label>Tope de avatar <input type="number" id="a_max_avatar_pct" min="5" max="100" step="5"> %</label>
+      <label>Plano abierto / acercado cada <input type="number" id="a_plano_s" min="5" max="60" step="1"> s</label>
+      <label>Pantalla final desenfocada <input type="number" id="a_final_s" min="0" max="20" step="1"> s</label>
+    </div>
+    <p><button onclick="guardarAjustes()">💾 Aplicar</button> <button onclick="restablecer()">↺ Volver a los de siempre</button></p>
+  </section>
+  <section>
+    <b>Tramos</b> <span class="aviso">— lo que va con avatar y por qué</span>
+    <table id="tabla"></table>
+  </section>
+  <section>
+    <b>🎥 Tomas de apoyo para generar (Higgsfield)</b> <span class="aviso" id="tomasAj"></span>
+    <p class="aviso">Cada «📋 Copiar prompt» copia la toma + el estilo común. Guarda cada clip en la carpeta <b>apoyo/</b> del proyecto con su
+      nombre (por ejemplo antena_01.mp4): la voz en off los usa sola. Generarlas gasta créditos de Higgsfield, no de esta app.</p>
+    <div id="tomas"></div>
+  </section>
+  <section>
+    <b>Bloques del guion</b> <span class="aviso">— «Auto» decide la app; «Sí» todo el bloque con avatar; «No» nunca con avatar.</span>
+    <table id="bloques"></table>
+  </section>
+</main>
+<script>
+const P = new URLSearchParams(location.search).get('p') || '';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const mm = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let plan = null;
+
+async function api(url, datos) {
+  const op = datos === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)};
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'p=' + encodeURIComponent(P), op);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'falló');
+  return j;
+}
+
+function pintar(p) {
+  plan = p;
+  document.querySelectorAll('input[name=modo]').forEach(x => x.checked = x.value === p.modo);
+  const r = p.resumen;
+  const a = p.ajustes || {};
+  for (const k of ['gancho_s', 'rotar_inicio', 'rotar', 'tramos_avatar', 'max_avatar_pct', 'plano_s', 'final_s']) $('#a_' + k).value = a[k];
+  $('#a_tramo_lo').value = (a.tramo_s || [])[0]; $('#a_tramo_hi').value = (a.tramo_s || [])[1];
+  $('#cifras').innerHTML = `<div><b>${mm(r.avatar_s)}</b>con avatar (${r.tramos_avatar} tramos · ${r.avatar_pct} %)</div>
+    <div><b>${mm(r.voz_s)}</b>voz en off</div><div><b>${mm(r.total_s)}</b>en total</div>
+    <div><b style="color:var(--verde)">~${r.ahorro_pct} %</b>menos minutos de HeyGen que todo con avatar</div>
+    <div><b>+${r.final_s} s</b>pantalla final desenfocada</div>`;
+  $('#barra').innerHTML = p.tramos.map(t => `<div class="${t.tipo === 'avatar' ? 'av' : 'vo'}" style="width:${100 * (t.e - t.s) / r.total_s}%"
+    title="${mm(t.s)}–${mm(t.e)} ${t.tipo === 'avatar' ? 'avatar' : 'voz en off'}"></div>`).join('');
+  $('#tabla').innerHTML = '<tr><th>Tiempo</th><th>Tipo</th><th>Por qué</th><th>Texto</th></tr>' + p.tramos.map((t, k) =>
+    `<tr><td>${mm(t.s)}–${mm(t.e)}<br><span class="aviso">${(t.e - t.s).toFixed(1)} s</span></td>
+     <td class="tipo-${t.tipo}">${t.tipo === 'avatar' ? '🧑 Avatar' : '🎙 Voz en off'}</td>
+     <td class="aviso">${esc(t.motivo || '')}</td><td>${esc(t.texto.slice(0, 260))}${t.texto.length > 260 ? '…' : ''}</td></tr>`).join('');
+  $('#bloques').innerHTML = (p.bloques || []).map(b => `<tr><td>${esc(b.id)}<br><span class="aviso">${mm(b.s)}</span></td>
+    <td><select onchange="marcar('${esc(b.id)}', this.value)">${[['auto', 'Auto'], ['si', 'Sí'], ['no', 'No']].map(([v, n]) =>
+      `<option value="${v}" ${(b.avatar === true ? 'si' : b.avatar === false ? 'no' : 'auto') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+    <td>${esc(b.texto.slice(0, 200))}${b.texto.length > 200 ? '…' : ''}</td></tr>`).join('');
+  $('#donde').textContent = p.exportado ? `Audios listos en ${p.carpeta} (ORDEN_AVATAR.txt dice el orden y el look). Videos de HeyGen puestos: ${p.heygen_listos.length} de ${r.tramos_avatar} (en la carpeta heygen/, como avatar_01.mp4…).` : '';
+  $('#bMontar').disabled = !p.exportado || p.heygen_listos.length < r.tramos_avatar;
+}
+
+async function cargar() { try { pintar(await api('/api/avatar/plan')); } catch (e) { $('#msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; } }
+async function marcar(id, v) { pintar(await api('/api/avatar/bloque', {id, avatar: v === 'si' ? true : v === 'no' ? false : null})); }
+async function guardarAjustes() {
+  const n = id => parseFloat($('#a_' + id).value);
+  const aj = {gancho_s: n('gancho_s'), rotar_inicio: n('rotar_inicio'), rotar: n('rotar'), tramos_avatar: n('tramos_avatar'),
+    tramo_s: [n('tramo_lo'), n('tramo_hi')], max_avatar_pct: n('max_avatar_pct'), plano_s: n('plano_s'), final_s: n('final_s')};
+  try { pintar(await api('/api/avatar/ajustes', {ajustes: aj})); $('#msg').innerHTML = '<span class="ok">Ajustes aplicados.</span>'; }
+  catch (e) { $('#msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function restablecer() { pintar(await api('/api/avatar/ajustes', {restablecer: true})); }
+async function modo(m) { pintar(await api('/api/avatar/modo', {modo: m})); }
+async function exportar() {
+  $('#msg').textContent = 'Preparando los audios…';
+  try { await api('/api/avatar/exportar', {}); await cargar(); $('#msg').innerHTML = '<span class="ok">Listo: sube los avatar_NN.mp3 a HeyGen en el orden de ORDEN_AVATAR.txt.</span>'; }
+  catch (e) { $('#msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function montar() {
+  $('#msg').textContent = 'Montando (unos minutos)…';
+  try { const r = await api('/api/avatar/montar', {}); $('#msg').innerHTML = `<span class="ok">Listo: ${esc(r.video)}</span>`; await cargar(); }
+  catch (e) { $('#msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+let TOMAS = null;
+async function cargarTomas() {
+  try {
+    TOMAS = await api('/api/avatar/tomas');
+    $('#tomasAj').textContent = TOMAS.ajustes ? '— ' + TOMAS.ajustes.replace(/^Ajustes:\s*/, '') : '';
+    $('#tomas').innerHTML = TOMAS.grupos.length ? TOMAS.grupos.map((g, i) => `<p><b>${esc(g.titulo)}</b></p>` + g.tomas.map((t, j) =>
+      `<div class="toma"><code>${esc(t.nombre)}</code><span>${esc(t.prompt)}</span><button onclick="copiarToma(${i}, ${j}, this)">📋 Copiar prompt</button></div>`).join('')).join('')
+      : `<p class="aviso">Todavía no hay lista (${esc(TOMAS.archivo)}).</p>`;
+  } catch (e) { $('#tomas').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function copiarToma(i, j, b) {
+  const t = TOMAS.grupos[i].tomas[j];
+  const texto = t.prompt + (TOMAS.estilo ? ', ' + TOMAS.estilo : '');
+  try { await navigator.clipboard.writeText(texto); }
+  catch (e) { const a = document.createElement('textarea'); a.value = texto; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+  b.textContent = '✅ Copiado'; setTimeout(() => b.textContent = '📋 Copiar prompt', 1500);
+}
+cargar();
+cargarTomas();
+</script>
+</body>
+</html>
