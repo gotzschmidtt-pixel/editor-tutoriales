@@ -294,7 +294,7 @@ async function poner() {
   let c = null, si = '';
   try { c = await api(`/api/costo_extras?p=${q(P)}&solo=etiquetas,senales&vista=1`); } catch (e) {}
   if (!c || c.gasta.length) {
-    const r = prompt(`⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la voz que falte de los testimonios narrados o de «Nuevos modelos» (no pude calcular cuánta)'}.`
+    const r = prompt(`⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la voz que falte de los testimonios narrados, de «Nuevos modelos» o del tráiler (no pude calcular cuánta)'}.`
       + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
     if (r === null || !/^\s*s[ií]\s*$/i.test(r)) { if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.'); return; }
     si = 'SI';

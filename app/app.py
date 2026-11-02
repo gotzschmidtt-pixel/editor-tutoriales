@@ -2046,10 +2046,10 @@ def frases_guion(d):
 
 
 def voces_extras(d, pasos):
-    """La voz de ElevenLabs que gastarían los testimonios narrados y «📱 Nuevos modelos» si corren ahora (no llama a
-    ElevenLabs). La que ya está guardada con el mismo texto y la misma voz no se vuelve a pagar: no cuenta.
-    Devuelve {'gasta': [lo que se pagaría, en palabras], 'letras': N}. Repite lo que miran testimonios.py (narrar) y
-    nuevos_modelos.py (voz) antes de pedir la voz."""
+    """La voz de ElevenLabs que gastarían los testimonios narrados, «📱 Nuevos modelos» y la frase del tráiler si corren
+    ahora (no llama a ElevenLabs). La que ya está guardada con el mismo texto y la misma voz no se vuelve a pagar: no cuenta.
+    Devuelve {'gasta': [lo que se pagaría, en palabras], 'letras': N}. Repite lo que miran testimonios.py (narrar),
+    nuevos_modelos.py (voz) y trailer.py antes de pedir la voz."""
     env = {**os.environ, **voz_env(d)}  # lo mismo que reciben esos pasos al correr
     voz_id, idioma, modelo = env.get('VOZ_ID') or VOCES_DEFECTO['es'], env.get('VOZ_IDIOMA') or 'es', 'eleven_v4'
     gasta, letras = [], 0
@@ -2107,7 +2107,39 @@ def voces_extras(d, pasos):
             if not all(existe(d, os.path.join('trabajo_modelos', f'voz_{clave}{e}')) for e in ('.mp3', '.align.json')):
                 letras += len(frase)
                 gasta.append(f'la frase de «Nuevos modelos» (unos {len(frase)} créditos)')
+    if 'trailer' in pasos or 'trailer_solo' in pasos:  # la frase de voz del tráiler (trailer.py, junto a trailer.mp4)
+        if not existe(d, 'trailer.json') and 'trailer_ia' in pasos:  # el tráiler lo arma la IA: su frase todavía no está
+            letras += 120
+            gasta.append('la frase de voz del tráiler que escribe la IA (unos 120 créditos como mucho)')
+        else:
+            frase = frase_trailer_por_pagar(d, 'trailer.json', 'trailer.mp4')
+            if frase:
+                letras += len(frase)
+                gasta.append(f'la frase de voz del tráiler (unos {len(frase)} créditos)')
     return {'gasta': gasta, 'letras': letras}
+
+
+def frase_trailer_por_pagar(d, plan, salida):
+    """La frase de voz que trailer.py le pediría a ElevenLabs al armar `salida` con `plan` (no llama a ElevenLabs); '' si
+    no hay frase o ya está hecha con el mismo texto y la misma voz. Repite lo que mira trailer.py antes de pedirla."""
+    try:
+        with open(os.path.join(d, plan), encoding='utf-8') as fh:
+            frase = json.load(fh).get('voz') or ''
+    except (OSError, ValueError, AttributeError):
+        return ''
+    if not frase:
+        return ''
+    env = {**os.environ, **voz_env(d)}  # lo mismo que recibe trailer.py al correr
+    idioma = env.get('VOZ_IDIOMA', '')
+    firma = f'{frase}' + (f"|{env.get('VOZ_ID') or VOCES_DEFECTO['es']}|{idioma}" if idioma else '')
+    vf = os.path.splitext(salida)[0] + '.voz.mp3'
+    try:  # la misma frase ya hecha no se vuelve a pagar (trailer.py la guarda junto al tráiler, con su texto al lado)
+        with open(os.path.join(d, vf + '.txt'), encoding='utf-8') as fh:
+            if fh.read() == firma and existe(d, vf):
+                return ''
+    except OSError:
+        pass
+    return str(frase)
 
 
 def gasto_sin_confirmar(d, paso, pasos, datos):
@@ -2128,19 +2160,11 @@ def gasto_sin_confirmar(d, paso, pasos, datos):
         gasta.append('una música nueva (unos 2.950 créditos)')
     if paso == 'trailer_version' and not datos.get('sin_voz'):  # «▶ Ver con voz» / «💾 Guardar y rehacer» de una IA del tráiler
         v = re.sub(r'[^a-z]', '', str(datos.get('v') or ''))
-        try:
-            with open(os.path.join(d, f'trailer_{v}.json'), encoding='utf-8') as fh:
-                frase = str(json.load(fh).get('voz') or '').strip()
-        except (OSError, ValueError, AttributeError):
-            frase = ''
-        try:  # la misma frase ya hecha no se vuelve a pagar (trailer.py la guarda junto al tráiler)
-            with open(os.path.join(d, f'trailer_{v}.voz.mp3.txt'), encoding='utf-8') as fh:
-                hecha = fh.read() == frase and existe(d, f'trailer_{v}.voz.mp3')
-        except OSError:
-            hecha = False
-        if v and frase and not hecha:
+        frase = frase_trailer_por_pagar(d, f'trailer_{v}.json', f'trailer_{v}.mp4') if v else ''
+        if frase:
             gasta.append(f'la frase de voz del tráiler (unos {len(frase)} créditos)')
-    if 'testimonios' in pasos or 'nuevos_modelos' in pasos:  # «✨ Agregar extras»: solo la voz que todavía no está guardada
+    if any(x in pasos for x in ('testimonios', 'nuevos_modelos', 'trailer', 'trailer_solo')):
+        # «✨ Agregar extras», «Insertar», el tráiler…: solo la voz que todavía no está guardada
         gasta += voces_extras(d, pasos)['gasta']
     if not gasta:
         return None
@@ -2739,7 +2763,7 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             if ruta == '/api/costo_voz':  # antes de gastar: qué bloques generarían voz y cuántos caracteres (no llama a ElevenLabs)
                 return self.responder(costo_voz(carpeta(q['p']), q.get('desde'), q.get('hasta')))
-            if ruta == '/api/costo_extras':  # antes de «✨ Agregar extras»: la voz que falta de testimonios narrados y nuevos modelos
+            if ruta == '/api/costo_extras':  # antes de «✨ Agregar extras»: la voz que falta de testimonios narrados, nuevos modelos y tráiler
                 d = carpeta(q['p'])
                 solo = [x for x in str(q.get('solo') or '').split(',') if x]
                 if q.get('vista'):  # «▶ Ponerlas en el video»: también vuelven los extras que el video ya llevaba
@@ -2750,6 +2774,9 @@ class Manejador(BaseHTTPRequestHandler):
                         pend = {}
                     if isinstance(pend, dict) and isinstance(pend.get('solo'), list):
                         solo += [str(x) for x in pend['solo']]
+                aj = leer_ajustes()
+                if 'trailer' in solo and not existe(d, 'trailer.json') and aj.get('modelo') and aj.get('url'):
+                    solo.append('trailer_ia')  # sin plan propio, la IA arma el tráiler con su frase (como en /api/ejecutar)
                 return self.responder(voces_extras(d, solo))
             if ruta == '/api/frases':  # «🎞 Frase por frase»: cuándo dice la voz real cada frase de cada bloque
                 return self.responder(frases_guion(carpeta(q['p'])))

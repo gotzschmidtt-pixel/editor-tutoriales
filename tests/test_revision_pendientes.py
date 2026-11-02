@@ -259,6 +259,93 @@ function soltarVideo() {} function refrescar() {} function confirm() { return tr
                    f'{nombre}: sin gasto no pregunta nada y funciona igual: {gratis}')
                 ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
 
+    # P2b) la frase de voz del tráiler (trailer.py la pide a ElevenLabs si cambió o nunca se hizo): tampoco sin SI
+    d = os.path.join(app.PROYECTOS, 'travoz')
+    crear(d, ['original.mp4', '3_voz.mp4', '4_musica.mp4'])
+    frase_t = 'Así se quita la cuenta de Google en dos minutos'
+    json.dump({'voz': frase_t, 'clips': []}, open(os.path.join(d, 'trailer.json'), 'w', encoding='utf-8'))
+    costo_t = lambda solo='trailer': json.loads(pedir('GET', f'/api/costo_extras?p=travoz&solo={solo}')[1])
+    ok(costo_t().get('letras') == len(frase_t) and len(costo_t().get('gasta', [])) == 1, f'la frase del tráiler sin hacer cuesta su largo: {costo_t()}')
+    LANZADOS.clear()
+    for paso, datos in (('trailer', {}), ('trailer_solo', {}), ('extras', {'solo': ['trailer']}), ('extras', {'solo': ['tarjetas', 'trailer']})):
+        st, b = pedir('POST', f'/api/ejecutar?p=travoz&paso={paso}', json.dumps(datos).encode())
+        ok(st != 200 and 'tráiler' in b.decode('utf-8') and lanzado(0.3) is None,
+           f'«{paso}» {datos} sin SI no debe arrancar (la frase del tráiler gasta ElevenLabs): {st} {b[:200]!r}')
+    st, b = pedir('POST', '/api/ejecutar?p=travoz&paso=extras', json.dumps({'solo': ['trailer'], 'confirmo': 'SI'}).encode())
+    r = lanzado()
+    ok(st == 200 and r and 'trailer' in r[0], f'con SI el tráiler arranca: {st} {b[:200]!r} {r}')
+    # ya hecha con la misma frase (como la deja trailer.py junto a trailer.mp4): no se vuelve a pagar ni se pregunta
+    open(os.path.join(d, 'trailer.voz.mp3'), 'wb').write(b'mp3')
+    open(os.path.join(d, 'trailer.voz.mp3.txt'), 'w', encoding='utf-8').write(frase_t)
+    ok(costo_t() == {'gasta': [], 'letras': 0}, f'la frase ya hecha no se vuelve a pagar: {costo_t()}')
+    st, b = pedir('POST', '/api/ejecutar?p=travoz&paso=trailer', b'{}')
+    r = lanzado()
+    ok(st == 200 and r and r[0] == ['trailer'], f'sin gasto, el tráiler arranca sin pedir SI: {st} {b[:200]!r} {r}')
+    # la cambias en «🎬 Tráiler» y guardas sin armarlo: «Insertar» y la tarjeta «Tráiler» vuelven a pedir SI
+    json.dump({'voz': frase_t + ' y gratis', 'clips': []}, open(os.path.join(d, 'trailer.json'), 'w', encoding='utf-8'))
+    st, b = pedir('POST', '/api/ejecutar?p=travoz&paso=trailer', b'{}')
+    ok(st != 200 and lanzado(0.3) is None, f'la frase cambiada se vuelve a pagar: pide SI: {st} {b[:200]!r}')
+    # en otro idioma la firma lleva la voz y el idioma (como trailer.py): la frase en español guardada no sirve
+    json.dump({'voz': frase_t, 'clips': []}, open(os.path.join(d, 'trailer.json'), 'w', encoding='utf-8'))
+    json.dump({'idioma': 'en'}, open(os.path.join(d, 'idioma_video.json'), 'w', encoding='utf-8'))
+    ok(costo_t().get('letras') == len(frase_t), f'en inglés la frase en español no sirve: {costo_t()}')
+    open(os.path.join(d, 'trailer.voz.mp3.txt'), 'w', encoding='utf-8').write(f"{frase_t}|{app.VOCES_DEFECTO['en']}|en")
+    ok(costo_t() == {'gasta': [], 'letras': 0}, f'en inglés, con su voz ya hecha, no se paga: {costo_t()}')
+    os.remove(os.path.join(d, 'idioma_video.json'))
+    # sin plan propio y con IA, «Agregar extras» arma el tráiler con la IA y su frase: también cuenta
+    os.remove(os.path.join(d, 'trailer.json'))
+    json.dump({'modelo': 'm', 'url': 'http://127.0.0.1:9'}, open(app.AJUSTES, 'w'))
+    ok(costo_t().get('letras') == 120, f'la frase que escribirá la IA cuenta (como mucho): {costo_t()}')
+    ok(app.gasto_sin_confirmar(d, 'todo', ['trailer_ia', 'trailer'], {}), 'el tráiler que arma la IA con su frase debe pedir SI')
+    json.dump({}, open(app.AJUSTES, 'w'))
+    # «🎬 Tráiler» (trailer.html): «▶ Armar y unir al video» y «🎬 Ver solo el tráiler» piden SI antes de mandar el pedido
+    html_t = open(os.path.join(RAIZ, 'app', 'trailer.html'), encoding='utf-8').read()
+    fun_t = lambda n: (re.search(r'\n(async function ' + n + r'\(.*?\n\})', html_t, re.S) or [None, ''])[1]
+    ok(fun_t('siVozTrailer') and fun_t('armar') and fun_t('armarSolo'), 'faltan las funciones del tráiler en trailer.html')
+    if shutil.which('node') and fun_t('siVozTrailer'):
+        js = r"""
+const P = 'p', q = encodeURIComponent, salida = [];
+let COSTO = null, RESP = 'SI', preguntas = 0, mandados = [];
+const T = {voz: 'frase', clips: [{}]}, DONDE = 'inicio', sucio = false;
+async function api(url, op) {
+  if (url.startsWith('/api/costo_extras')) { if (COSTO === 'error') throw new Error('sin conexión'); return COSTO; }
+  if (url.startsWith('/api/ejecutar')) mandados.push({paso: url.split('paso=')[1], ...JSON.parse(op.body)});
+  return {};
+}
+function prompt() { preguntas++; return RESP; }
+function confirm() { return true; } function alert() {} async function esperar() {} async function cargar() {} async function guardar() { return true; }
+const caja = {className: '', textContent: ''}, $ = () => caja;
+""" + fun_t('siVozTrailer') + '\n' + fun_t('armar') + '\n' + fun_t('armarSolo') + r"""
+(async () => {
+  for (const f of [armar, armarSolo]) {
+    for (const [costo, resp] of [[{gasta: ['la frase de voz del tráiler (unos 40 créditos)'], letras: 40}, null],
+                                 [{gasta: ['la frase de voz del tráiler (unos 40 créditos)'], letras: 40}, 'si'],
+                                 [{gasta: [], letras: 0}, null], ['error', 'no']]) {
+      COSTO = costo; RESP = resp; preguntas = 0; mandados = [];
+      await f();
+      salida.push({f: f.name, preguntas, mandados});
+    }
+  }
+  console.log(JSON.stringify(salida));
+})();
+"""
+        f = os.path.join(tmp, 'trailer.js')
+        open(f, 'w', encoding='utf-8').write(js)
+        r = subprocess.run(['node', f], capture_output=True, text=True, encoding='utf-8')
+        try:
+            res = json.loads(r.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            res = None
+        ok(res is not None, f'no pude probar trailer.html con node: {r.stdout[-300:]} {r.stderr[-600:]}')
+        for nombre in ('armar', 'armarSolo') if res else ():
+            cancela, con_si, gratis, error = [x for x in res if x['f'] == nombre]
+            ok(cancela['preguntas'] == 1 and not cancela['mandados'], f'{nombre}: sin SI no debe mandar el pedido: {cancela}')
+            ok(con_si['preguntas'] == 1 and len(con_si['mandados']) == 1 and con_si['mandados'][0].get('confirmo') == 'SI',
+               f'{nombre}: con SI manda el pedido con el SI: {con_si}')
+            ok(gratis['preguntas'] == 0 and len(gratis['mandados']) == 1 and not gratis['mandados'][0].get('confirmo'),
+               f'{nombre}: sin gasto no pregunta nada: {gratis}')
+            ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
+
     # P3) guardar una lista vieja (otra pestaña o el celular) no borra los archivos que no están en ella
     d = os.path.join(app.PROYECTOS, 'cruce')
     t = os.path.join(d, 'testimonios')

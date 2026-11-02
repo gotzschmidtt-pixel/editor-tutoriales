@@ -525,7 +525,8 @@ async function guardar() {
 }
 let PENDIENTE_REHACER = false;
 // segunda confirmación antes de gastar ElevenLabs, igual que «▶ Hacer todo»: hay que escribir SI. Con `rehacer`, la voz del
-// guion y la música; en `extras`, la narración de los testimonios y la frase de nuevos modelos que todavía no estén guardadas.
+// guion y la música; en `extras`, la narración de los testimonios y la frase de nuevos modelos o del tráiler que todavía no
+// estén guardadas.
 // Devuelve 'SI' (lo escribiste), '' (no gasta nada: no se pregunta) o null (no seguir)
 async function pedirSiGasto(extras, rehacer) {
   let c = null, e = null, v = null;
@@ -533,7 +534,7 @@ async function pedirSiGasto(extras, rehacer) {
     try { c = await api(`/api/costo_voz?p=${q(P)}`); } catch (x) {}
     try { e = await api(`/api/estado?p=${q(P)}`); } catch (x) {}
   }
-  const voces = extras.includes('testimonios') || extras.includes('nuevos_modelos');
+  const voces = ['testimonios', 'nuevos_modelos', 'trailer'].some(x => extras.includes(x));
   if (voces) try { v = await api(`/api/costo_extras?p=${q(P)}&solo=${q(extras.join(','))}`); } catch (x) {}
   const gasta = [];
   if (rehacer) {
@@ -541,7 +542,7 @@ async function pedirSiGasto(extras, rehacer) {
     else if (c.caracteres) gasta.push(`unos ${c.caracteres.toLocaleString('es')} créditos de voz (${c.bloques.join(', ')})`);
     if (!e || !(e.musica_fija || e.archivos['musica.mp3'])) gasta.push('una música nueva (unos 2.950 créditos)');
   }
-  if (voces) gasta.push(...(v ? v.gasta : ['la voz que falte de los testimonios narrados o de «Nuevos modelos» (no pude calcular cuánta)']));
+  if (voces) gasta.push(...(v ? v.gasta : ['la voz que falte de los testimonios narrados, de «Nuevos modelos» o del tráiler (no pude calcular cuánta)']));
   if (!gasta.length) return '';
   const r = prompt(`⚠ Esto gasta ElevenLabs: ${gasta.join(' y ')}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
   if (r !== null && /^\s*s[ií]\s*$/i.test(r)) return 'SI';

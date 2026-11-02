@@ -425,14 +425,28 @@ async function elegirTrailer(id) {
   try { await api(`/api/elegir_version_trailer?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); sucio = false; await cargar(); }
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
 }
+// la frase de voz del tráiler se hace con ElevenLabs si todavía no está hecha con ese mismo texto: antes hay que escribir SI
+// (pedido de fabian). Se mira después de guardar, con la frase que va de verdad. Devuelve 'SI', '' (no gasta) o null (no seguir)
+async function siVozTrailer() {
+  let c = null;
+  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=trailer`); } catch (e) {}
+  if (c && !c.gasta.length) return '';
+  const r = prompt(`⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la frase de voz del tráiler (no pude calcular cuánto)'}.`
+    + ' Si ya la armaste con esta misma frase, no se vuelve a pagar.\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
+  if (r !== null && /^\s*s[ií]\s*$/i.test(r)) return 'SI';
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'No armé nada: no se gastó nada.';
+  if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.');
+  return null;
+}
 async function armarSolo() {
   const v = (T && T.voz || '').trim();
   if (!confirm('Armo solo el tráiler (trailer.mp4) para que lo veas; tu video no se toca.\n\n' +
     (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos, una sola vez (al unirlo después no se vuelve a pagar mientras no cambies la frase).` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
   if (sucio && !await guardar()) return;
+  const si = await siVozTrailer(); if (si === null) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({confirmo: si})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Tráiler listo: míralo arriba. Cuando el video esté terminado, «▶ Armar y unir al video».';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
@@ -457,9 +471,10 @@ async function armar() {
   if (!confirm(`Armo el tráiler y lo uno ${DONDE === 'final' ? 'al final' : 'al inicio'} de tu video (queda en FINAL.mp4 y aparte en trailer.mp4).\n\n` +
     (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos.` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
   if (sucio && !await guardar()) return;
+  const si = await siVozTrailer(); if (si === null) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({confirmo: si})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Tráiler armado y unido a tu video (FINAL.mp4). Míralo arriba.';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
