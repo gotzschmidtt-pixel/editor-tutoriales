@@ -374,8 +374,8 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
                   '(9) abajo una franja inclinada amarilla y celeste a todo el ancho con el texto GRANDE en mayúsculas, tipografía muy '
                   f'gruesa condensada e itálica, blanco con borde negro y sombra, perfectamente escrito, en {nombre}: {texto}'
                   + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  '. Colores saturados, mucho contraste, nada oscuro ni de ciencia ficción. Ningún otro texto, ningún logo ni persona '
-                  'inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
+                  '. Colores saturados, mucho contraste, nada oscuro ni de ciencia ficción. Ningún otro texto (nada de páginas web ni '
+                  'direcciones .com o .co), ningún logo ni persona inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
         b = uuid.uuid4().hex
         cuerpo = b''
         for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x864', 'quality': 'high', 'output_format': 'png'}.items():

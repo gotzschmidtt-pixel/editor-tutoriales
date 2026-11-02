@@ -127,6 +127,8 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - **Caras en fotos y miniaturas**: expresión natural, ni exagerada (sin gritos), ni demasiado seria, ni pícara (ojos
   entrecerrados, cabeza ladeada). Si sale fabian, GPT pone un hombre latino ficticio (el mismo en todas) con buzo blanco liso,
   sin logos (fabian, 02/11/2026).
+- **Miniaturas SIN las páginas del autor**: nunca poner gsmprime.co, xiaomiunlock.com ni otra web en las miniaturas
+  (fabian, 02/11/2026). Las webs van en el video (etiqueta «web»), en la descripción y en las cards/plantillas PSD.
 - HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
   los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el

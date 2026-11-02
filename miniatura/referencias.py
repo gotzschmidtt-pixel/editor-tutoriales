@@ -255,7 +255,8 @@ def prompt_imagen(receta, idea, idioma='es', formato='16x9', con_cara=False):
             f'Big headline text, perfectly spelled exactly as given, with correct accents: «{texto}». ' +
             ('Headline in the upper-center third, nothing important in the bottom 20 %. ' if vertical else 'Text readable at small size. ') +
             'If a phone appears it is shown from the BACK only, never a readable screen. One main object. No extra text, no watermark, '
-            'no QR, no WhatsApp, nothing about unlocking phones, no YouTube duration badge.')
+            'no QR, no WhatsApp, no website names or URLs (nothing like .com or .co), nothing about unlocking phones, '
+            'no YouTube duration badge.')
 
 
 def salida_final(img, formato):
