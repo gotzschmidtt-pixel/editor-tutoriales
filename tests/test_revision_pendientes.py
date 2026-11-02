@@ -657,7 +657,7 @@ const caja = {className: '', textContent: ''}, $ = () => caja;
     r = lanzado()
     ok(sigue == 'cola_igual' and r and r[1].get('confirmo') == 'SI' and not LANZADOS,
        f'de noche solo arranca el que no cambió desde tu SI: {sigue} {r} {LANZADOS}')
-    for p, aviso in (('cola_viejo', 'SI'), ('cola_sin', 'SI'), ('cola_mas', 'Cambió lo que se paga')):
+    for p, aviso in (('cola_viejo', 'SI'), ('cola_sin', 'SI'), ('cola_mas', 'cambió lo que se paga desde que escribiste SI')):
         ok(item(p).get('estado') == 'fallo' and aviso in item(p).get('msg', ''),
            f'«{p}» no debe gastar sin tu SI (queda como fallado, con el motivo): {item(p)}')
     app.flujo.cambiar_cola(app.PROYECTOS, lambda c: c.update(andando=False, items=[]))

@@ -3355,8 +3355,9 @@ class Manejador(BaseHTTPRequestHandler):
                     # noche» lo trae (aprobado) y no arranca si desde entonces hay algo más que pagar (cambiaste el guion)
                     ahora = gastos_sin_si(carpeta(q['p']), q['paso'], pasos, {**datos, 'confirmo': ''})
                     if 'aprobado' in datos and not aprobado_cubre(ahora, datos.pop('aprobado')):
-                        return self.error('Cambió lo que se paga desde que escribiste SI: ahora ' + ' y '.join(ahora)
-                                          + '. No lo arranqué: vuelve a ponerlo y escribe SI otra vez.')
+                        # el motivo primero: la cola guarda solo los primeros 300 caracteres (una lista larga de bloques lo cortaba)
+                        return self.error('No lo arranqué: cambió lo que se paga desde que escribiste SI (vuelve a ponerlo y '
+                                          'escribe SI otra vez). Ahora gasta ElevenLabs: ' + ' y '.join(ahora) + '.')
                     datos['_aprobado'] = ahora
                 falta_si = gasto_sin_confirmar(carpeta(q['p']), q['paso'], pasos, datos)
                 if falta_si:
