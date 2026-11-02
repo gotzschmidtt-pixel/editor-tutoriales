@@ -33,7 +33,9 @@ REGLAS = ('Reglas fijas del canal: cara con emoción clara; UN objeto principal;
           'aparece un teléfono, va de ESPALDAS (nunca su pantalla legible); texto de 4 palabras como mucho, en MAYÚSCULAS, '
           'con tildes correctas; nada de desbloqueo, WhatsApp ni QR en videos de noticias; los logos reales de marcas los pone '
           'la app encima si la IA los deforma. Es una fórmula, no un calco: no copies caras de otras personas, logos de otros '
-          'canales ni sus textos.')
+          'canales ni sus textos. Gustos de fabian (02/11/2026): expresión natural (ni exagerada, ni seria, ni pícara); buzo o '
+          'camiseta blanco liso sin logos; el fondo original de la foto, nunca uno inventado; un solo título; textos grandes que '
+          'se lean en el celular; solo dos manos; la cámara real del modelo a la vista; las etiquetas las dibuja la IA de imágenes.')
 
 
 def carpeta(d, *partes):
@@ -190,7 +192,11 @@ def ideas(d, llamar=None, n=4):
     if not receta:
         raise ValueError('Primero «🔍 Analizar» las referencias.')
     titulo, guion = titulo_video(d)
-    guia = open(GUIA, encoding='utf-8').read()[:3500] if os.path.exists(GUIA) else ''
+    guia = ''
+    if os.path.exists(GUIA):  # el principio de la guía y, siempre, la sección de gustos confirmados (está al final)
+        t = open(GUIA, encoding='utf-8').read()
+        i = t.find('## Gustos confirmados')
+        guia = t[:3000] + ('\n...\n' + t[i:i + 4000] if i >= 0 else '')
     prompt = (f'Propón {n} ideas de miniatura para este video de YouTube del canal Xiaomiunlock (fabian).\nTítulo: {titulo}\n'
               f'Inicio del guion: {guion}\n\nReceta sacada de las miniaturas de referencia que le gustan:\n'
               f'{json.dumps(receta.get("conjunto"), ensure_ascii=False)}\n{receta.get("resumen", "")}\n\nGuía de estilo de fabian:\n{guia}\n\n'
