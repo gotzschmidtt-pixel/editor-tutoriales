@@ -197,6 +197,9 @@ def main():
         previo = open(vf + '.txt', encoding='utf-8').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
         firma = plan['voz'] + (f'|{VOZ_ID}|{IDIOMA}' if IDIOMA else '')  # en otro idioma, también si cambió la voz
         if previo != firma:
+            if os.environ.get('SIN_SI') == '1':  # la app arrancó sin tu SI porque esta frase ya estaba hecha (app.py, correr)
+                raise SystemExit(f"ERROR: la frase de voz del tráiler cambió mientras la app trabajaba y gasta ElevenLabs (unos "
+                                 f"{len(plan['voz'])} créditos). No la hice porque no escribiste SI: vuelve a pulsar el botón y te lo pide.")
             voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(firma)
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")

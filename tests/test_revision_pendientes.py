@@ -234,6 +234,62 @@ try:
     finally:
         sys.argv = viejo_argv
 
+    # «↻ Reintentar» vuelve a usar las opciones de la vuelta que falló: si ahora hay voz que pagar (cambiaste el texto del
+    # testimonio después de la falla), sin SI no arranca
+    LANZADOS.clear()
+    app.RESULTADO['voces'] = {'repetir': {'pasos': ['testimonios', 'final_sin_trailer'], 'opciones': {'solo': ['testimonios']}}}
+    st, b = pedir('POST', '/api/reintentar?p=voces')
+    ok(st != 200 and json.loads(b).get('gasta') and lanzado(0.3) is None, f'«Reintentar» sin SI no debe narrar el testimonio cambiado: {st} {b[:200]!r}')
+    st, b = pedir('POST', '/api/reintentar?p=voces', json.dumps({'confirmo': 'SI'}).encode())
+    r = lanzado()
+    ok(st == 200 and r and r[0] == ['testimonios', 'final_sin_trailer'] and r[1].get('confirmo') == 'SI' and r[1].get('_reanudar'),
+       f'«Reintentar» con SI arranca desde el paso que falló: {st} {b[:200]!r} {r}')
+    app.RESULTADO['voces']['repetir']['opciones']['confirmo'] = 'SI'  # la vuelta que falló ya traía tu SI: sigue sin preguntar
+    st, b = pedir('POST', '/api/reintentar?p=voces')
+    ok(st == 200 and lanzado(), f'«Reintentar» de una vuelta que ya traía tu SI no vuelve a preguntar: {st} {b[:200]!r}')
+    app.RESULTADO.pop('voces', None)
+    # y si el texto cambia mientras el trabajo ya corre (arrancó sin SI porque no había nada que pagar), el paso se frena en
+    # vez de pedirle la voz a ElevenLabs: la app marca esas vueltas con SIN_SI
+    vistos = {}
+    viejos = (app.comandos, app.asegurar_librerias, app.asegurar_node)
+    app.comandos = lambda paso, d_, op: [[sys.executable, '-c', 'import os; open("sin_si.txt", "w").write(os.environ.get("SIN_SI", ""))']]
+    app.asegurar_librerias, app.asegurar_node = (lambda *a: None), (lambda *a: None)
+    try:
+        for datos in ({}, {'confirmo': 'SI'}):
+            app.TRABAJO.update(proyecto='voces')
+            app.correr('voces', ['final_sin_trailer'], dict(datos))
+            app.TRABAJO.update(proyecto=None)
+            vistos[str(datos)] = open(os.path.join(d, 'sin_si.txt')).read()
+    finally:
+        app.comandos, app.asegurar_librerias, app.asegurar_node = viejos
+    ok(vistos == {'{}': '1', "{'confirmo': 'SI'}": ''}, f'la vuelta sin SI debe ir marcada (y la que trae SI, no): {vistos}')
+    viejo = urllib.request.urlopen
+    try:
+        urllib.request.urlopen, pedidos = falsa_eleven(b'mp3 falso')
+        os.environ['SIN_SI'] = '1'
+        os.environ['ELEVENLABS_API_KEY'] = 'sk-prueba'
+        for nombre, hacer in (('testimonios', lambda: te.narrar(os.path.join(d, 'testimonios'), 't1', 'un texto que cambió recién',
+                                                               '94zOad0g7T7K4oa7zhDq', 'eleven_v4', 0.5, 'es')),
+                              ('nuevos modelos', lambda: nm.voz('una frase que cambió recién', os.path.join(d, 'trabajo_modelos')))):
+            try:
+                hacer()
+                frenado = ''
+            except SystemExit as e:
+                frenado = str(e)
+            except Exception as e:  # (sin el arreglo, la respuesta simulada de ElevenLabs no es un audio de verdad)
+                frenado = f'{type(e).__name__}: {e}'
+            ok('SI' in frenado and not pedidos, f'{nombre}: en una vuelta sin SI, la voz nueva no se pide a ElevenLabs: {frenado!r} {pedidos}')
+        ok(te.narrar(os.path.join(d, 'testimonios'), 't1', texto, '94zOad0g7T7K4oa7zhDq', 'eleven_v4', 0.5, 'es')[0].endswith('narr_t1.mp3')
+           and nm.voz(frase, os.path.join(d, 'trabajo_modelos'))[0].endswith('.mp3') and not pedidos,
+           'la voz ya guardada se sigue usando en una vuelta sin SI')
+    finally:
+        urllib.request.urlopen = viejo
+        os.environ.pop('SIN_SI', None)
+        os.environ.pop('ELEVENLABS_API_KEY', None)
+    trailer_py = open(os.path.join(RAIZ, 'trailer', 'trailer.py'), encoding='utf-8').read()
+    ok(re.search(r"if previo != firma:\s*\n\s*if os\.environ\.get\('SIN_SI'\) == '1':", trailer_py),
+       'trailer.py debe frenarse antes de pedir una frase nueva en una vuelta sin SI')
+
     # la página: «✨ Agregar extras» e «Insertar» preguntan SI antes de mandar el pedido, y sin gasto no preguntan nada
     html = open(os.path.join(RAIZ, 'app', 'index.html'), encoding='utf-8').read()
     fun = lambda n: (re.search(r'\n(async function ' + n + r'\(.*?\n\})', html, re.S) or [None, ''])[1]
@@ -284,6 +340,41 @@ function soltarVideo() {} function refrescar() {} function confirm() { return tr
                 ok(gratis['preguntas'] == 0 and len(gratis['mandados']) == 1 and not gratis['mandados'][0].get('confirmo'),
                    f'{nombre}: sin gasto no pregunta nada y funciona igual: {gratis}')
                 ok(error['preguntas'] == 1 and not error['mandados'], f'{nombre}: si no puede revisar el costo, pregunta: {error}')
+    # «↻ Reintentar» en la página: si el servidor dice que ahora hay voz que pagar, pide SI y recién ahí reintenta con SI
+    ok(fun('reintentar'), 'falta reintentar() en index.html')
+    if shutil.which('node') and fun('reintentar'):
+        js = r"""
+const P = 'p', q = encodeURIComponent, salida = [];
+let SI = true, preguntas = 0, mandados = [], GASTA = true;
+async function fetch(url, op) {
+  const b = JSON.parse(op.body); mandados.push(b);
+  const ok = !GASTA || b.confirmo === 'SI';
+  return {ok, json: async () => ok ? {ok: true} : {error: 'Reintentar gasta ElevenLabs', gasta: ['la narración de 1 testimonio (unos 69 créditos)']}};
+}
+function pedirSi(t) { preguntas++; return SI; }
+const caja = {textContent: ''}, $ = () => caja, dlgDiag = {close() { salida.push('cerrado'); }};
+function refrescar() {}
+""" + fun('reintentar') + r"""
+(async () => {
+  const res = [];
+  for (const [gasta, si] of [[true, false], [true, true], [false, true]]) {
+    GASTA = gasta; SI = si; preguntas = 0; mandados = []; salida.length = 0;
+    await reintentar();
+    res.push({preguntas, mandados: mandados.map(m => m.confirmo), cerrado: salida.length});
+  }
+  console.log(JSON.stringify(res));
+})();
+"""
+        f = os.path.join(tmp, 'reintentar.js')
+        open(f, 'w', encoding='utf-8').write(js)
+        r = subprocess.run(['node', f], capture_output=True, text=True, encoding='utf-8')
+        try:
+            res = json.loads(r.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            res = None
+        ok(res == [{'preguntas': 1, 'mandados': [''], 'cerrado': 0}, {'preguntas': 1, 'mandados': ['', 'SI'], 'cerrado': 1},
+                   {'preguntas': 0, 'mandados': [''], 'cerrado': 1}],
+           f'«↻ Reintentar» debe pedir SI solo si hay algo que pagar: {res} {r.stderr[-600:]}')
 
     # P2c) «✨ Agregar extras» con etiquetas que la IA va a proponer: esa vuelta se para en la propuesta y no paga voces. No se
     # pregunta SI por nada, y los testimonios elegidos quedan anotados para «▶ Ponerlas en el video», que sí pregunta

@@ -127,6 +127,9 @@ def narrar(carpeta, bid, texto, voz, modelo, estabilidad, idioma='es'):
                 return mp3, dur_mp3(mp3)
         except ValueError:
             pass
+    if os.environ.get('SIN_SI') == '1':  # la app arrancó sin tu SI porque esta narración ya estaba guardada (app.py, correr)
+        raise SystemExit(f'ERROR: el texto del testimonio «{bid}» cambió mientras la app trabajaba y su narración gasta ElevenLabs '
+                         f'(unos {len(texto)} créditos). No la hice porque no escribiste SI: vuelve a pulsar el botón y te lo pide.')
     clave = _clave_eleven()
     if not clave:
         raise SystemExit('ERROR: para narrar los testimonios con tu voz principal falta la clave de ElevenLabs. '

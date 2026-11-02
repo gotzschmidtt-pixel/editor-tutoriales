@@ -120,6 +120,9 @@ def voz(frase, carpeta, voz_id=os.environ.get('VOZ_ID') or '94zOad0g7T7K4oa7zhDq
     mp3, al = os.path.join(carpeta, f'voz_{clave}.mp3'), os.path.join(carpeta, f'voz_{clave}.align.json')
     if os.path.exists(mp3) and os.path.exists(al):
         return mp3, json.load(open(al, encoding='utf-8'))
+    if os.environ.get('SIN_SI') == '1':  # la app arrancó sin tu SI porque esta voz ya estaba guardada (app.py, correr)
+        raise SystemExit(f'ERROR: la frase de «Nuevos modelos» cambió mientras la app trabajaba y su voz gasta ElevenLabs (unos '
+                         f'{len(frase)} créditos). No la hice porque no escribiste SI: vuelve a pulsar el botón y te lo pide.')
     import pronunciacion  # FRP, DFU… dichos como en el resto del video
     body = json.dumps({'text': frase, 'model_id': modelo, 'language_code': idioma, 'voice_settings': {'stability': 0.5},
                        **pronunciacion.para_pedido(frase, vz.CLAVE)}).encode()

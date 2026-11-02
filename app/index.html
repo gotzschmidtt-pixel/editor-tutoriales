@@ -2909,8 +2909,13 @@ async function verDiagnostico() {
   catch (e) { $('#diagTexto').textContent = 'No pude abrir el informe: ' + e.message; }
   $('#diagTexto').style.display = '';
 }
-async function reintentar() {
-  try { await api(`/api/reintentar?p=${q(P)}`, {method: 'POST'}); dlgDiag.close(); } catch (e) { $('#msgDiag').textContent = e.message; }
+async function reintentar(si = '') {
+  // si ahora hay voz que pagar (cambiaste el texto de un testimonio después de la falla…), el servidor dice cuánto y se pide SI
+  let r = null, j = {};
+  try { r = await fetch(`/api/reintentar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({confirmo: si})}); j = await r.json(); } catch (e) {}
+  if (r && r.ok) dlgDiag.close();
+  else if (j.gasta && !si) { if (pedirSi(`Reintentar gasta ElevenLabs: ${j.gasta.join(' y ')}.`)) return reintentar('SI'); $('#msgDiag').textContent = 'No reintenté: no se gastó nada.'; }
+  else $('#msgDiag').textContent = j.error || 'No pude reintentar: revisa que la app siga abierta.';
   refrescar();
 }
 

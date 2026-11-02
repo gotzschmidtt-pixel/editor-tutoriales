@@ -1449,6 +1449,11 @@ def correr(proyecto, pasos, opciones):
         if clave_eleven():
             env['ELEVENLABS_API_KEY'] = clave_eleven()
         env.update(voz_env(d))  # versión en otro idioma: el tráiler, los testimonios, nuevos modelos y el Short hablan en ese idioma
+        # arrancó sin tu SI porque no había voz que pagar: si mientras trabaja cambias el texto de un testimonio, la frase de
+        # nuevos modelos o la del tráiler, esos pasos se frenan en vez de pedirle la voz nueva a ElevenLabs
+        env.pop('SIN_SI', None)
+        if not con_si(opciones):
+            env['SIN_SI'] = '1'
     except Exception as e:
         log.close()
         FALLOS[proyecto] = {'paso': pasos[0], 'msg': f'No pude leer tus ajustes (app/ajustes.json): {e}. Vuelve a guardar «⚙ Ajustes IA».'}
@@ -2153,12 +2158,26 @@ def frase_trailer_por_pagar(d, plan, salida):
     return str(frase)
 
 
+def con_si(datos):
+    """Si el pedido trae el «SI» que escribiste."""
+    return str(datos.get('confirmo') or '').strip().upper() in ('SI', 'SÍ')
+
+
 def gasto_sin_confirmar(d, paso, pasos, datos):
     """Si el trabajo gastaría créditos de ElevenLabs (la voz del video o una música nueva) y no viene con «SI» escrito,
     el motivo para no arrancarlo; None si puede arrancar. Pedido de fabian (29/10/2026): un «▶ Hacer todo» generó la voz
     entera de HONOR 8 LITE (unos 12.000 créditos) sin que él lo hubiera ordenado; desde ahí hay que escribir SI."""
-    if str(datos.get('confirmo') or '').strip().upper() in ('SI', 'SÍ'):
+    gasta = gastos_sin_si(d, paso, pasos, datos)
+    if not gasta:
         return None
+    return ('Esto gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo arranqué porque falta escribir SI. Recarga la página '
+            '(F5) y vuelve a tocar el botón: ahora te pide escribir SI antes de gastar.')
+
+
+def gastos_sin_si(d, paso, pasos, datos):
+    """Lo que el trabajo pagaría en ElevenLabs sin que el pedido traiga tu «SI», en palabras ([] si nada o si trae SI)."""
+    if con_si(datos):
+        return []
     gasta = []
     if 'voz' in pasos or paso == 'prueba':
         c = costo_voz(d, datos.get('desde'), datos.get('hasta')) if paso == 'prueba' else costo_voz(d)
@@ -2177,10 +2196,7 @@ def gasto_sin_confirmar(d, paso, pasos, datos):
     if any(x in pasos for x in ('testimonios', 'nuevos_modelos', 'trailer', 'trailer_solo')):
         # «✨ Agregar extras», «Insertar», el tráiler…: solo la voz que todavía no está guardada
         gasta += voces_extras(d, pasos)['gasta']
-    if not gasta:
-        return None
-    return ('Esto gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo arranqué porque falta escribir SI. Recarga la página '
-            '(F5) y vuelve a tocar el botón: ahora te pide escribir SI antes de gastar.')
+    return gasta
 
 
 def estado(proyecto):
@@ -3444,11 +3460,19 @@ class Manejador(BaseHTTPRequestHandler):
                 rep = (RESULTADO.get(q['p']) or {}).get('repetir')
                 if not rep or not rep.get('pasos'):
                     return self.error('Este fallo no se reintenta solo: hay que corregir antes lo que dice el diagnóstico.')
+                opciones = {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}
+                if con_si(json.loads(self.rfile.read(largo) or b'{}') if largo else {}):
+                    opciones['confirmo'] = 'SI'
+                # lo que se paga ahora (cambiaste el texto de un testimonio después de la falla…): sin tu SI no se reintenta
+                gasta = gastos_sin_si(carpeta(q['p']), rep['pasos'][0], rep['pasos'], opciones)
+                if gasta:
+                    return self.responder({'error': 'Reintentar gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo reintenté porque '
+                                           'falta escribir SI: vuelve a pulsar «↻ Reintentar» y escríbelo.', 'gasta': gasta}, codigo=400)
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error(f"ya está corriendo «{TRABAJO['paso']}» en {TRABAJO['proyecto']}")
                     TRABAJO.update(proyecto=q['p'], paso=rep['pasos'][0], inicio=time.time())
-                threading.Thread(target=correr_despierto, args=(q['p'], list(rep['pasos']), {**rep['opciones'], '_reanudar': True, '_limpiar_extras': False}), daemon=True).start()
+                threading.Thread(target=correr_despierto, args=(q['p'], list(rep['pasos']), opciones), daemon=True).start()
                 return self.responder({'ok': True})
             if ruta == '/api/ajustes':
                 nuevo = json.loads(self.rfile.read(largo))
