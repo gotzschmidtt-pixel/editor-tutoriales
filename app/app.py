@@ -1803,6 +1803,17 @@ def ocupado():
         return bool(TRABAJO['proyecto'])
 
 
+def trabajo_aparte():
+    """Lo que corre fuera de los pasos y se corta si la app se cierra o se reinicia (subida a YouTube, compresión).
+    Devuelve el motivo para esperar, o '' si se puede cerrar."""
+    subiendo = [p for p, e in list(YT.items()) if (e or {}).get('estado') in ('subiendo', 'detalles')]
+    if subiendo:
+        return f'Se está subiendo «{subiendo[0]}» a YouTube. Espera a que termine (si cierro la app ahora, la subida se corta).'
+    if comprimir.ESTADO.get('activo'):
+        return 'Se está comprimiendo un video. Espera a que termine o cancélalo.'
+    return ''
+
+
 def al_terminar(proyecto):
     """Después de cada trabajo: aviso al celular y, si la «🌙 Cola» está andando, el próximo proyecto."""
     try:
@@ -2791,6 +2802,8 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error('Hay un paso trabajando. Espera a que termine o detenlo.')
+                if trabajo_aparte():
+                    return self.error(trabajo_aparte())
                 env = dict(os.environ, SIN_NAVEGADOR='1')
                 subprocess.Popen([PY, os.path.abspath(__file__)], cwd=RAIZ, env=env,
                                  **({'creationflags': subprocess.CREATE_NEW_CONSOLE} if sys.platform == 'win32' else {}))
@@ -2807,6 +2820,8 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error('Hay un paso trabajando. Espera a que termine o detenlo antes de actualizar.')
+                if trabajo_aparte():
+                    return self.error(trabajo_aparte())
                 try:
                     r = actualizar_app()
                 except (RuntimeError, OSError, ValueError) as e:
@@ -2820,6 +2835,8 @@ class Manejador(BaseHTTPRequestHandler):
                 with CANDADO:
                     if TRABAJO['proyecto']:
                         return self.error('Hay un paso trabajando. Detenlo o espera a que termine antes de salir.')
+                if trabajo_aparte():
+                    return self.error(trabajo_aparte())
                 threading.Timer(0.3, lambda: os._exit(0)).start()
                 return self.responder({'ok': True})
             if ruta == '/api/proyecto':
@@ -3668,6 +3685,9 @@ class Manejador(BaseHTTPRequestHandler):
                         if not entro:
                             return self.responder({**conocimiento.resumen(), 'msg': 'Esa nota ya estaba.'})
                     elif que == 'marca_guardar':
+                        if datos.get('nuevo') and os.path.exists(conocimiento._ruta_marca(datos.get('marca'))):
+                            # «+ Marca» con el nombre de una que ya existe: se abre tal cual (antes quedaba vacía y se perdía todo lo suyo)
+                            return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''), 'msg': 'Esa marca ya existía: te la abrí.'})
                         conocimiento.guardar_marca(datos.get('marca'), datos.get('texto'))
                         return self.responder({**self._marca(datos.get('marca'), q.get('p') or ''), 'msg': 'Guardado.'})
                     elif que == 'marca_anotar':
@@ -3754,7 +3774,8 @@ class Manejador(BaseHTTPRequestHandler):
                      'idioma_video.json'} | \
                     {'short_extras', 'short_extras.json', 'miniatura_subida.jpg', 'miniatura_subida.png',  # lo que subiste o ya pagaste
                      'avatar_ahorro', 'apoyo', 'memes', 'capturas', 'graficos', 'miniatura', 'youtube',  # (HeyGen, miniaturas, tomas)
-                     'inicio_fijo.json', 'difuminar_datos.json'}  # sin esto el próximo FINAL saldría sin difuminar tus datos
+                     'inicio_fijo.json', 'difuminar_datos.json',  # sin esto el próximo FINAL saldría sin difuminar tus datos
+                     'FINAL_EN.mp4'}  # la versión en inglés se hace por fuera: la app no la vuelve a hacer sola
                 try:  # el video del inicio fijo y las imágenes de lo que se difumina también quedan
                     with open(os.path.join(d, 'inicio_fijo.json'), encoding='utf-8') as fh:
                         quedan.add(str(json.load(fh).get('video') or '').replace('\\', '/').split('/')[0])
@@ -3766,15 +3787,24 @@ class Manejador(BaseHTTPRequestHandler):
                             quedan.add(str(x.get('imagen') or '').replace('\\', '/').split('/')[0])
                 except (OSError, ValueError, AttributeError):
                     pass
-                borrados = 0
+                borrados, quedaron = 0, []
                 for f in os.listdir(d):
                     if f in quedan or f.startswith('FINAL_antes_'):  # las copias de «🔁 Rehacer video» y tus arreglos a mano
                         continue
                     r = os.path.join(d, f)
-                    shutil.rmtree(r) if os.path.isdir(r) else os.remove(r)
-                    borrados += 1
+                    # en Windows un archivo abierto (el reproductor, el Explorador) no se deja borrar: antes se cortaba a
+                    # medias con «WinError 32»; ahora se sigue con los demás y se avisa cuáles quedaron
+                    if os.path.isdir(r):
+                        shutil.rmtree(r, ignore_errors=True)
+                        listo = not os.path.exists(r)
+                    else:
+                        listo = borrar_seguro(r)
+                    if listo:
+                        borrados += 1
+                    else:
+                        quedaron.append(f)
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
-                return self.responder({'ok': True, 'borrados': borrados})
+                return self.responder({'ok': True, 'borrados': borrados, 'quedaron': quedaron})
             if ruta in ('/api/guardar_proyecto', '/api/volver_a_guardado', '/api/guardar_como', '/api/abrir_guardado'):
                 d = carpeta(q['p'])
                 datos = json.loads(self.rfile.read(largo) or b'{}')

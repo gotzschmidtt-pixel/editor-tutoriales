@@ -701,7 +701,7 @@
         <button onclick="conoAprender(true)">🧠 Aprender de todos</button>
         <a href="/api/conocimiento/bajar" download="CONOCIMIENTO.md"><button title="Todo en un solo archivo, para subirlo al chat de Claude, DeepSeek o ChatGPT">⬇ Bajar para otra IA</button></a>
         <button onclick="conoAbrir()">📂 Abrir carpeta</button>
-        <button onclick="$('#conoMsg').textContent = 'Sincronizando…'; conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
+        <button onclick="conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
         <span class="msg" id="conoMsg"></span>
       </div>
       <details style="margin-top:8px"><summary class="aviso" id="conoAprSum">Aprendido de los proyectos</summary>
@@ -1001,12 +1001,18 @@ async function cargarProyectos(sel) {
     try { sel = (await api('/api/ultimo_proyecto')).nombre; } catch (e) {}
   }
   P = sel || lista[0];
-  if (!lista.includes(P)) P = lista[0];
+  // «honor 8 lite» y «HONOR 8 LITE» son la misma carpeta en Windows: se abre esa, no el primero de la lista
+  if (!lista.includes(P)) P = lista.find(x => x.toUpperCase() === String(P).toUpperCase()) || lista[0];
   $('#proyecto').value = P;
   ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar(); setTimeout(MODULO ? abrirModuloAqui : irLink, 800);
 }
 async function nuevo() {
+  if (editado && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
+  // mismo nombre que ya existe (aunque cambien las mayúsculas o los símbolos): se avisa y se abre ese, no se crea otro
+  const limpio = n.replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().toUpperCase();
+  const ya = [...$('#proyecto').options].map(o => o.value).find(x => x.toUpperCase() === limpio);
+  if (ya) { alert(`Ya existe el proyecto «${ya}»: lo abro.`); return cargarProyectos(ya); }
   const r = await api('/api/proyecto', {method: 'POST', body: JSON.stringify({nombre: n})});
   await cargarProyectos(r.nombre);
 }
@@ -1016,7 +1022,11 @@ document.querySelectorAll('details.menu').forEach(m => {
   m.querySelector('.lista').addEventListener('click', e => { if (e.target.closest('button')) m.open = false; });
 });
 document.addEventListener('click', e => { if (!e.target.closest('details.menu')) document.querySelectorAll('details.menu[open]').forEach(o => o.open = false); });
-$('#proyecto').onchange = e => cargarProyectos(e.target.value);
+$('#proyecto').onchange = e => {
+  // lo escrito en «4 · Guion y extras» sin guardar no se pierde sin preguntar
+  if (editado && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) { e.target.value = P; return; }
+  cargarProyectos(e.target.value);
+};
 // «↻ Actualizar» = F5 (pedido de fabian, 02/11/2026): recarga la página con el mismo proyecto abierto (la pestaña ya se guarda
 // sola). Un paso que esté trabajando sigue en el servidor: recargar no lo detiene.
 function recargar() {
@@ -1136,6 +1146,17 @@ async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del p
     + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
     + 'Queda guardada en el proyecto y no se vuelve a pagar.');
 }
+// sin guion, «▶ Hacer todo» primero se lo pide a la IA (desde tu video): es un pedido que gasta saldo si la IA es de pago
+async function confirmarGuionIA() {
+  let e, aj;
+  try { e = await api(`/api/estado?p=${q(P)}`); aj = (await api('/api/ajustes')).ajustes; } catch (x) { e = null; }
+  if (!e) return pedirSi('No pude revisar si ya hay guion. Si falta, la IA lo escribe desde tu video (gasta su saldo si es de pago).');
+  if (e.archivos['guion.json'] || !e.archivos['original.mp4'] || !(aj.modelo && aj.url)) return true;  // el servidor avisa lo que falte
+  return pedirSi(`Todavía no hay guion: la IA (${aj.modelo}) lo escribe desde tu video`
+    + (e.archivos['transcripcion.srt'] ? '' : ' (antes se transcribe con Whisper en tu PC, gratis)')
+    + '. Es un pedido a la IA: gasta su saldo si es de pago (GPT, Claude, Gemini, DeepSeek…).\n\n'
+    + 'Se para con el guion listo para que lo revises antes de hacer la voz.');
+}
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
   $('#msgGuardados').textContent = ''; $('#notaGuardado').value = '';
@@ -1177,6 +1198,7 @@ async function volverAGuardado(nombre) {
   catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function ejecutar(paso) {
+  if (paso === 'todo' && !(await confirmarGuionIA())) return;
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
   if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
@@ -1247,8 +1269,11 @@ function pintarSalidas(arch) {
       $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
       $('#calidades').querySelectorAll('input').forEach(i => i.checked = marcadas.has(i.value));
     }
-    for (const h of [...PEND_DESCARGA]) if (h === 'mp3' ? mp3Listo : lista(h)) {  // terminó de prepararse: se descarga solo
-      PEND_DESCARGA.delete(h);
+    for (const k of [...PEND_DESCARGA]) {  // terminó de prepararse: se descarga solo (solo lo pedido en ESTE proyecto)
+      if (!k.startsWith(P + '|')) continue;
+      const h = k.slice(P.length + 1);
+      if (!(h === 'mp3' ? mp3Listo : lista(h))) continue;
+      PEND_DESCARGA.delete(k);
       const f = h === 'mp3' ? 'FINAL.mp3' : `FINAL_${h}p.mp4`;
       const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=${f}&nombre=${q(bajada(f))}`; a.download = bajada(f); a.click();
     }
@@ -1276,8 +1301,8 @@ async function exportar() {
   if (!alturas.length && !mp3) return alert('Marca al menos una calidad o «Solo audio (MP3)» (lo que ya está listo se descarga con su botón).');
   if (!seguirConVozVieja()) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas, mp3})}); } catch (e) { alert(e.message); return; }
-  alturas.forEach(h => PEND_DESCARGA.add(h));
-  if (mp3) PEND_DESCARGA.add('mp3');
+  alturas.forEach(h => PEND_DESCARGA.add(`${P}|${h}`));  // con el proyecto: si abres otro, no se baja su video
+  if (mp3) PEND_DESCARGA.add(`${P}|mp3`);
   refrescar();
 }
 function ver(f, seguir, tocar) {
@@ -1484,7 +1509,7 @@ async function abrirPromptCapturas() {
 }
 async function paqueteClaude() {
   if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero con Whisper en tu PC, gratis).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete'})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete', motor: 'whisper'})}); }
   catch (e) { return alert(e.message); }
   esperaIA = {tarea: 'guion', modo: 'paquete', archivo: 'guion.json'};
 }
@@ -1501,7 +1526,10 @@ async function finIA() {
     const caps = await api(`/api/capturas?p=${q(P)}`);
     $('#caps').innerHTML = caps.map(c => `<a href="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" download><img src="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" title="${c}"></a>`).join('');
     $('#msgCopia').textContent = ''; dlgPrompt.querySelector('h3').textContent = 'Prompt para tu IA'; dlgPrompt.showModal();
-  } else { editado = false; await abrir(f); }
+  } else {
+    if (archivo === f) editado = false;  // en otra pestaña (por ejemplo «idea») abrir() pregunta antes de descartar lo no guardado
+    await abrir(f);
+  }
 }
 async function pegar() {
   const tarea = TAREA[archivo];
@@ -1511,7 +1539,12 @@ async function pegar() {
   } catch (e) { return alert(e.message); }  // antes fallaba callado (por ejemplo con otro paso corriendo)
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
-function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
+function copiar() {
+  // en el celular (http por Wi‑Fi o Tailscale) el navegador no da navigator.clipboard: se copia seleccionando el texto
+  const plan = () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; };
+  if (!navigator.clipboard?.writeText) return plan();
+  navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', plan);
+}
 const FASES = {ANTES: 'Cómo empieza: el equipo o la pieza antes de tocarlo, el problema. Ej.: «cuando muestro la placa sin soldar».',
   DURANTE: 'El proceso: las tomas más vistosas mientras trabajas. Ej.: una captura del cautín en los pines.',
   DESPUES: 'El resultado: funcionando, la pantalla final. Ej.: «cuando aparece el bypass listo».'};
@@ -2000,9 +2033,9 @@ async function cargarGuionesIA() {
         <a href="${g.ver_json}" target="_blank" class="aviso">JSON</a></div>`).join('')}</details>`).join('');
 }
 // «🏷 Por marca»: mis_conocimientos/marcas/MOTOROLA.md, APPLE.md… (preguntas o dudas, ideas o mejoras, textos y .txt)
-let MARCA = '';
+let MARCA = '', MARCAS_LISTA = [];
 function pintarMarca(r, msg) {
-  MARCA = r.marca;
+  MARCA = r.marca; MARCAS_LISTA = r.marcas || [];
   $('#marcasChips').innerHTML = r.marcas.map(m => `<button class="${m === r.marca ? 'principal' : ''}" onclick="marcaVer('${esc(m)}')">${esc(m)}${m === r.detectada ? ' · este proyecto' : ''}</button>`).join('')
     + '<button onclick="marcaNueva()">+ Marca</button>';
   $('#marcaRuta').innerHTML = `📄 <b>${esc(r.ruta)}</b>`;
@@ -2022,18 +2055,30 @@ async function marcaPost(que, datos) {
   catch (e) { $('#marcaMsg').className = 'msg err'; $('#marcaMsg').textContent = e.message; }
 }
 function marcaNueva() {
-  const m = (prompt('Nombre de la marca nueva (por ejemplo OPPO, VIVO, LG):') || '').trim();
-  if (m) marcaPost('marca_guardar', {marca: m.toUpperCase(), texto: ''}).then(() => marcaVer(m.toUpperCase()));
+  // el mismo nombre que arma el servidor (_nombre_marca): sin símbolos y en mayúsculas
+  const m = (prompt('Nombre de la marca nueva (por ejemplo OPPO, VIVO, LG):') || '').replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().toUpperCase().slice(0, 40);
+  if (!m) return;
+  if (MARCAS_LISTA.includes(m)) return marcaVer(m);  // ya existe (MOTOROLA o «motorola»): solo se abre, no se vacía su archivo
+  if ($('#marcaMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en esta marca. ¿Cambiar igual?')) return;
+  marcaPost('marca_guardar', {marca: m, texto: '', nuevo: true}).then(() => marcaVer(m));
+}
+// los botones de la marca repintan su texto con lo del disco: lo editado y no guardado se perdía sin aviso
+async function marcaGuardarAntes() {
+  if ($('#marcaMsg').textContent !== 'Sin guardar') return true;
+  if (!confirm('Tienes cambios sin guardar en el texto de esta marca. ¿Los guardo antes de seguir?')) return false;
+  return !!(await marcaGuardar());
 }
 async function marcaAnotar() {
   const texto = $('#marcaNota').value.trim();
   if (!texto) return $('#marcaNota').focus();
+  if (!(await marcaGuardarAntes())) return;
   if (await marcaPost('marca_anotar', {tipo: $('#marcaTipo').value, texto})) $('#marcaNota').value = '';
 }
 function marcaGuardar() { return marcaPost('marca_guardar', {texto: $('#marcaTexto').value}); }
 async function marcaUrl_() {  // YouTube (título, descripción y subtítulos) o blog/web (texto de la página)
   const urls = $('#marcaUrl').value.split(/\s+/).filter(u => /^https?:\/\//.test(u));
   if (!urls.length) return $('#marcaUrl').focus();
+  if (!(await marcaGuardarAntes())) return;
   for (const url of urls) {
     $('#marcaMsg').className = 'msg'; $('#marcaMsg').textContent = `Leyendo ${url}…`;
     if (!(await marcaPost('marca_url', {url}))) return;
@@ -2041,10 +2086,19 @@ async function marcaUrl_() {  // YouTube (título, descripción y subtítulos) o
   $('#marcaUrl').value = '';
 }
 $('#marcaTxt').onchange = async () => {  // cada .txt entra entero como «Texto para alimentar», con su nombre de archivo
+  if (!(await marcaGuardarAntes())) { $('#marcaTxt').value = ''; return; }
   for (const f of [...$('#marcaTxt').files]) await marcaPost('marca_anotar', {tipo: 'texto', texto: await f.text(), archivo: f.name});
   $('#marcaTxt').value = '';
 };
+// los botones de aquí repintan el texto grande con lo del disco: lo editado y no guardado se perdía sin aviso
+async function conoGuardarAntes() {
+  if ($('#conoMsg').textContent !== 'Sin guardar') return true;
+  if (!confirm('Tienes cambios sin guardar en el texto. ¿Los guardo antes de seguir?')) return false;
+  return !!(await conoGuardar());
+}
 async function conoPost(que, datos, ok) {
+  if (que !== 'guardar' && !(await conoGuardarAntes())) return;
+  if (que === 'sincronizar') $('#conoMsg').textContent = 'Sincronizando…';
   try { const r = await api('/api/conocimiento/' + que, {method: 'POST', body: JSON.stringify(datos || {})}); pintarConocimiento(r, r.msg || ok || ''); return r; }
   catch (e) { $('#conoMsg').className = 'msg err'; $('#conoMsg').textContent = e.message; }
 }
@@ -2052,12 +2106,15 @@ function conoGuardar() { return conoPost('guardar', {texto: $('#conoTexto').valu
 async function conoAnotar() {
   const texto = $('#conoNota').value.trim();
   if (!texto) return $('#conoNota').focus();
-  if ($('#conoMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en el texto. ¿Los guardo antes de anotar?')) return;
-  if ($('#conoMsg').textContent === 'Sin guardar') await conoGuardar();
+  if (!(await conoGuardarAntes())) return;
   if (await conoPost('anotar', {tipo: $('#conoTipo').value, texto}, '✓ Anotado')) $('#conoNota').value = '';
 }
 function conoAprender(todos) { return conoPost('aprender' + (todos ? '' : `?p=${q(P)}`), {todos}); }
-function conoUsar() { return conoPost('usar', {usar: $('#conoUsar').checked}, $('#conoUsar').checked ? '✓ La IA lo va a leer' : 'La IA ya no lo lee'); }
+async function conoUsar() {
+  const r = await conoPost('usar', {usar: $('#conoUsar').checked}, $('#conoUsar').checked ? '✓ La IA lo va a leer' : 'La IA ya no lo lee');
+  if (!r) $('#conoUsar').checked = !$('#conoUsar').checked;  // no se cambió: la casilla vuelve a como estaba
+  return r;
+}
 function conoAbrir() { return conoPost('abrir', {}, ''); }
 async function verPerfil() {
   const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
@@ -3081,9 +3138,10 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
   solo.push('logos');  // tus logos fijos van siempre: si la voz no nombra ninguno, no se pone nada
   if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
   if (MODS.MODELOS.length) solo.push('nuevos_modelos');
-  const aj = (await api('/api/ajustes')).ajustes;
-  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede || (aj.modelo && aj.url)) solo.push('trailer');  // sin plan propio, lo arma la IA
-  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o configura una IA para el tráiler.');
+  // solo el tráiler que ya armaste en «🎬 Tráiler» (trailer.json). Sin él, la IA lo armaba y le hacía voz con ElevenLabs
+  // sin preguntar, y quedaba pegado al video sin que lo aprobaras
+  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede) solo.push('trailer');
+  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o arma el tráiler en «🎬 Tráiler».');
   const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', logos: 'logos (Android, MagicOS…)', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
   if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
   soltarVideo();
@@ -3124,7 +3182,7 @@ async function ponerExtrasAsi() {
   refrescar();
 }
 async function seguirTodo() {
-  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
+  if (!(await confirmarGuionIA()) || !(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar
   soltarVideo();
   try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: 'SI'})}); } catch (e) { alert(e.message); }
   refrescar();
@@ -3157,8 +3215,13 @@ async function actualizarProyecto() {  // «🔁 Rehacer video»: reutiliza tran
   refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔁 Rehacer video»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
-  try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔁 Rehacer video»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas. También quedan los videos de HeyGen (avatar), tus tomas de apoyo, las miniaturas y el Short, el inicio fijo y los datos que se difuminan, la versión en inglés (FINAL_EN.mp4) y los respaldos FINAL_antes_….mp4.\n\nNo se puede deshacer.`)) return;
+  soltarVideo();  // Windows no deja borrar el video que el reproductor tiene abierto (quedaba a medio borrar)
+  try {
+    const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'});
+    alert(`Listo: borré ${r.borrados} archivos.` + ((r.quedaron || []).length ? `\n\n⚠ No pude borrar (están abiertos en otro programa): ${r.quedaron.join(', ')}. `
+      + 'Ciérralos y vuelve a pulsar «🗑 Borrar todo».' : ' Pulsa «▶ Hacer todo» para empezar.'));
+  }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
 }
@@ -3194,7 +3257,9 @@ async function actualizarApp() {
   refrescar();
 }
 // «📲 Celular»: solo se ve y se cambia desde la app del PC
-if (!['localhost', '127.0.0.1'].includes(location.hostname)) $('#btnCelular').hidden = true;
+// (también en http://estudio.localhost, la dirección con la que se abre la app: cualquier «algo.localhost» es este PC)
+const HOST_PC = location.hostname;
+if (!(['localhost', '127.0.0.1', '[::1]'].includes(HOST_PC) || HOST_PC.endsWith('.localhost'))) $('#btnCelular').hidden = true;
 async function abrirCelular() {
   const c = await api('/api/celular');
   $('#celActivo').checked = c.activo; $('#celWindows').checked = c.con_windows; $('#celPin').value = '';
@@ -3242,7 +3307,7 @@ async function abrirCola() {
 }
 async function colaAgregar() {
   if (!P) return alert('Abre primero un proyecto.');
-  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
+  if (!(await confirmarGuionIA()) || !(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
   try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: 'SI'})})); }
   catch (e) { alert(e.message); }
 }
@@ -3258,9 +3323,10 @@ async function guardarCelular() {
   } catch (e) { alert(e.message); }
 }
 
-async function reiniciarApp() {
+async function reiniciarApp(sola) {
   if (reiniciando) return; reiniciando = true;
-  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
+  // la app no se reinicia mientras sube a YouTube o comprime: la sola lo vuelve a intentar callada, la pedida avisa por qué
+  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; if (!sola) alert(e.message); return; }
   const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
   b.innerHTML = '<div class="arriba"><span class="que">🔄 Actualizando la app a la versión nueva…</span></div>';
   setTimeout(() => location.reload(), 5000);
@@ -3269,7 +3335,8 @@ async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarMusicaFija(e); pintarVozVieja(e.voz_vieja); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
-  if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
+  // hay archivos nuevos: se reinicia sola (no con cambios sin guardar ni con una ventana abierta, como el guion)
+  if (e.actualizada && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) reiniciarApp(true);
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
   if (PAGINA === null) PAGINA = e.pagina;
   else if (e.pagina !== PAGINA && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) location.reload();
