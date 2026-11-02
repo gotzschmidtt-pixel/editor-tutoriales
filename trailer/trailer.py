@@ -162,6 +162,7 @@ def main():
     ap.add_argument('--final')
     ap.add_argument('--srt')
     ap.add_argument('--donde', choices=['inicio', 'final'], default='inicio', help='el tráiler abre el video o lo cierra')
+    ap.add_argument('--difuminar', action='store_true', help='difumina los datos personales del tráiler (difuminar_datos.json) antes de unirlo')
     a = ap.parse_args()
     plan = json.load(open(a.plan, encoding='utf-8'))
     shutil.rmtree(PUB, ignore_errors=True); os.makedirs(PUB)
@@ -258,6 +259,10 @@ def main():
     subprocess.run([shutil.which('npx') or 'npx', 'remotion', 'render', 'src/index.ts', 'Trailer', os.path.abspath(a.salida),
                     '--props', f_props, '--crf', '18', '--enforce-audio-track'], cwd=REMOTION, env=env, check=True)
     shutil.rmtree(tmp_node, ignore_errors=True)
+
+    if a.difuminar:  # el tráiler sale de tu grabación: el correo, el teléfono o el saldo no pueden leerse (el video es público)
+        subprocess.run([sys.executable, os.path.join(RAIZ, 'privacidad', 'difuminar_datos.py'), '--entrada', os.path.abspath(a.salida),
+                        '--salida', os.path.abspath(a.salida), '--todo'], cwd=d_proy, check=True)
 
     if a.unir and a.final:
         n = duracion(a.salida)

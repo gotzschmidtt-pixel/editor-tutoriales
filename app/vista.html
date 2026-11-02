@@ -188,6 +188,7 @@ async function cargar() {
   avisosInicio();
   try { const r = await api(`/archivo?p=${q(P)}&sub=vista_extras&f=lista.json&v=${Date.now()}`); LISTA = typeof r === 'string' ? JSON.parse(r) : r; }
   catch (e) { LISTA = []; }
+  LISTA.forEach(x => { x._huella = huella(x); });  // cómo era cada marca al dibujarla: los botones no tocan otra
   pintar();
   if (!LISTA.length) msg('Todavía no hay vista previa: pulsa «🔄 Generar / actualizar».');
 }
@@ -221,12 +222,15 @@ function pintar() {
       </div></div></div>`}`).join('');
   eRefrescar();
 }
+const huella = e => JSON.stringify(['bloque', 'frase', 'texto', 'titulo'].map(c => String(e[c] ?? '')));
 async function cambiar(k, fn) {  // cambia la marca en etiquetas.json o senales.json (lo mismo que lee el armado)
   const x = LISTA[k], f = ARCH[x.clase];
-  const datos = await leerJson(f);
-  if (!datos[x.idx]) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
-  fn(datos, datos[x.idx]);
+  const datos = await leerJson(f), e = datos[x.idx];
+  // en ese lugar del archivo tiene que estar la misma marca de la diapositiva: si no, se cambiaría o borraría otra
+  if (!e || (x._huella && huella(e) !== x._huella)) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
+  fn(datos, e);
   await guardarJson(f, datos);
+  x._huella = huella(e);
 }
 async function aprobar(k) {
   try { const v = !LISTA[k].aprobado; await cambiar(k, (d, e) => { e.aprobado = v; }); LISTA[k].aprobado = v; pintar(); }
@@ -243,7 +247,15 @@ async function guardarTexto(k) {
 }
 async function quitar(k) {
   if (!confirm('¿Quitar esta del video? (Se puede volver a agregar a mano en el editor por pistas.)')) return;
-  try { const x = LISTA[k]; await cambiar(k, d => d.splice(x.idx, 1)); await generar(); }  // cambian los números: se rehace todo
+  try {
+    const x = LISTA[k]; await cambiar(k, d => d.splice(x.idx, 1));
+    // cambian los números: la lista de aquí se corrige ya (si el redibujo falla, los botones siguen apuntando a la marca correcta)
+    LISTA.splice(k, 1);
+    LISTA.forEach(y => { if (y.clase === x.clase && y.idx > x.idx) y.idx--; });
+    if (ED.sel && ED.sel.startsWith(x.clase + ':')) ED.sel = null;
+    pintar();
+    await generar();  // y se rehace todo
+  }
   catch (e) { msg(e.message, 'err'); }
 }
 async function mover(ev, k) {

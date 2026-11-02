@@ -298,7 +298,21 @@ def exportar(d, modo=None):
                    f"   Texto: {t['texto'][:220]}", '']
     open(os.path.join(c, 'ORDEN_AVATAR.txt'), 'w', encoding='utf-8').write('\n'.join(lineas))
     json.dump(p, open(os.path.join(c, 'plan.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    # los tramos de estos audios quedan aparte: plan.json cambia con el Ritmo, pero los videos de HeyGen hablan de estos tramos
+    json.dump(p, open(os.path.join(c, 'plan_exportado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return p
+
+
+def _exportado(c):
+    """El plan con el que se prepararon los audios de HeyGen (None si se prepararon antes de guardarlo)."""
+    try:
+        return json.load(open(os.path.join(c, 'plan_exportado.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+
+
+def _tramos_avatar(p):
+    return [(round(t['s'], 2), round(t['e'], 2)) for t in p.get('tramos', []) if t.get('tipo') == 'avatar']
 
 
 # ---------------------------------------------------------------- montaje: avatar en sus tramos, apoyo en el resto
@@ -395,6 +409,9 @@ def montar(tramos, voz, clips_avatar, apoyo, salida, aj=None, frases_s=(), semil
 def montar_proyecto(d):
     c = carpeta_ahorro(d)
     p = json.load(open(os.path.join(c, 'plan.json'), encoding='utf-8'))
+    ex = _exportado(c)
+    if ex:  # cambiaste el Ritmo después de preparar los audios: se monta con los tramos de HeyGen (la boca va con la voz)
+        p = {**p, 'tramos': ex['tramos'], 'frases_s': ex.get('frases_s', [])}
     vc = os.path.join(c, 'voz_completa.mp3')
     if not os.path.exists(vc):
         raise SystemExit('Primero «Preparar audios para HeyGen» (hace voz_completa.mp3).')
@@ -446,8 +463,11 @@ def get(h, ruta, q, d):
         except FileNotFoundError:
             return h.error('Este proyecto todavía no tiene guion con voz (voz/L01.mp3…).')
         c = os.path.join(d, 'avatar_ahorro')
-        n_av = p['resumen']['tramos_avatar']
+        ex = _exportado(c)
+        n_av = len(_tramos_avatar(ex)) if ex else p['resumen']['tramos_avatar']  # los videos de HeyGen son los de los audios preparados
         p['heygen_listos'] = [n for n in range(1, n_av + 1) if os.path.exists(os.path.join(c, 'heygen', f'avatar_{n:02d}.mp4'))]
+        p['heygen_total'] = n_av
+        p['tramos_cambiaron'] = bool(ex) and _tramos_avatar(ex) != _tramos_avatar(p)
         p['exportado'] = os.path.exists(os.path.join(c, 'ORDEN_AVATAR.txt'))
         p['montado'] = os.path.exists(os.path.join(c, 'AVATAR_AHORRO.mp4'))
         p['carpeta'] = c

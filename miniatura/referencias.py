@@ -412,7 +412,9 @@ def post(h, ruta, q, largo, d):
     if ruta == '/api/miniref/generar':  # GASTA: la pestaña ya mostró el costo y fabian confirmó
         if not datos.get('confirmo'):
             return h.error('Falta confirmar el costo antes de generar.')
-        args = ['generar', '--ideas', ','.join(str(int(x)) for x in datos.get('ideas') or []), '--variantes', str(int(datos.get('variantes') or 2)),
+        vari = datos.get('variantes')  # de 1 a 4, lo mismo que la pestaña mostró en el costo (vacío = 2, como antes)
+        vari = min(4, max(1, int(vari) if vari not in (None, '') else 2))
+        args = ['generar', '--ideas', ','.join(str(int(x)) for x in datos.get('ideas') or []), '--variantes', str(vari),
                 '--formato', '9x16' if datos.get('formato') == '9x16' else '16x9', '--idioma', datos.get('idioma') if datos.get('idioma') in ('es', 'en', 'pt') else 'es']
         if datos.get('cara'):
             cara = os.path.abspath(os.path.join(d, datos['cara']))

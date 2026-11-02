@@ -648,8 +648,21 @@ def comandos(paso, d, op):
     if paso == 'trailer':
         unir = ultimo_video(d, None)  # testimonios y nuevos modelos corren los subtítulos: se usan los suyos
         srt = srt_de(d, unir)
-        return [[PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
-                 '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]]
+        c = []
+        if existe(d, 'inicio_fijo.json') or existe(d, 'difuminar_datos.json'):
+            # con tráiler también van el inicio fijo y los datos difuminados (antes el FINAL salía sin ellos): se ponen sobre
+            # el video sin tráiler, igual que en «Video final sin tráiler», así los tramos siguen contados sin el tráiler
+            base = 'FINAL_sin_trailer.mp4'
+            c.append(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', unir, '-c', 'copy', base])
+            if existe(d, 'inicio_fijo.json'):
+                c.append([PY, m('inicio', 'inicio_fijo.py'), '--entrada', base, '--salida', base])
+            if existe(d, 'difuminar_datos.json'):
+                c.append([PY, m('privacidad', 'difuminar_datos.py'), '--entrada', base, '--salida', base])
+            unir = base
+        c.append([PY, m('trailer', 'trailer.py'), '--video', 'original.mp4', '--plan', 'trailer.json', '--salida', 'trailer.mp4',
+                  '--unir', unir, '--final', 'FINAL.mp4', '--srt', srt, '--donde', edicion(d).get('trailer_donde', 'inicio')]
+                 + (['--difuminar'] if existe(d, 'difuminar_datos.json') else []))  # el tráiler también, entero
+        return c
     if paso == 'trailer_version':  # «▶ Ver» de cada IA: su tráiler armado aparte (sin voz = gratis), para compararlos
         v = re.sub(r'[^a-z]', '', str(op.get('v') or ''))
         plan = f'trailer_{v}.json'
@@ -1313,7 +1326,7 @@ def informe_paso(d, proyecto, paso, info, ejec, estado, log):
 
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', 'capas_hechas.json',
-                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4',
+                    '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'FINAL_sin_trailer.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4',
                     'prueba_montaje.mp4', 'prueba_bloques.mp4', 'prueba_bloques.srt']
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
@@ -1421,6 +1434,10 @@ def correr(proyecto, pasos, opciones):
         asegurar_librerias(log, env)
         if len(pasos) > 1 and 'montaje' in pasos:
             # se rehace toda la cadena: los videos de una tanda anterior no deben colarse si un extra falla
+            if existe(d, 'FINAL.mp4'):  # antes de borrar, el final (con lo que se le puso por fuera) queda copiado, como en «🔁 Rehacer video»
+                copias = respaldo.respaldar(d)
+                if copias:
+                    log.write(f"· copia del video final antes de rehacerlo: {', '.join(copias)}\n"); log.flush()
             for viejo in VIDEOS_GENERADOS:
                 if existe(d, viejo) and not borrar_seguro(os.path.join(d, viejo)):
                     log.write(f'· {viejo} está abierto en otro programa y no se pudo borrar; se reemplaza cuando toque.\n'); log.flush()
@@ -1980,6 +1997,20 @@ def gasto_sin_confirmar(d, paso, pasos, datos):
             gasta.append(f"unos {n} créditos de voz ({len(c['bloques'])} bloque{'' if len(c['bloques']) == 1 else 's'}: {', '.join(c['bloques'])})")
     if 'musica' in pasos and not os.path.exists(MUSICA_FIJA) and not existe(d, 'musica.mp3'):
         gasta.append('una música nueva (unos 2.950 créditos)')
+    if paso == 'trailer_version' and not datos.get('sin_voz'):  # «▶ Ver con voz» / «💾 Guardar y rehacer» de una IA del tráiler
+        v = re.sub(r'[^a-z]', '', str(datos.get('v') or ''))
+        try:
+            with open(os.path.join(d, f'trailer_{v}.json'), encoding='utf-8') as fh:
+                frase = str(json.load(fh).get('voz') or '').strip()
+        except (OSError, ValueError, AttributeError):
+            frase = ''
+        try:  # la misma frase ya hecha no se vuelve a pagar (trailer.py la guarda junto al tráiler)
+            with open(os.path.join(d, f'trailer_{v}.voz.mp3.txt'), encoding='utf-8') as fh:
+                hecha = fh.read() == frase and existe(d, f'trailer_{v}.voz.mp3')
+        except OSError:
+            hecha = False
+        if v and frase and not hecha:
+            gasta.append(f'la frase de voz del tráiler (unos {len(frase)} créditos)')
     if not gasta:
         return None
     return ('Esto gasta ElevenLabs: ' + ' y '.join(gasta) + '. No lo arranqué porque falta escribir SI. Recarga la página '

@@ -250,6 +250,9 @@ async function responder(soloGuardar) {
   try {
     if (sucio) {  // tus cambios sin guardar van primero, también los bloques que quitaste (como «Guardar en la app»)
       await api(`/api/json?p=${q(P)}&f=guion_quitados.json`, {method: 'POST', body: JSON.stringify(QUITADOS, null, 1)});
+      // las emociones que cambiaste, como en «💾 Guardar»: así la voz ya hecha de ese bloque se rehace con la nueva
+      const emociones = Object.fromEntries(G.bloques.filter(b => b.id in EMO_ORIGINAL && (b.emocion || '') !== EMO_ORIGINAL[b.id]).map(b => [b.id, b.emocion || '']));
+      if (Object.keys(emociones).length) { await api(`/api/mejoras/emocion?p=${q(P)}`, {method: 'POST', body: JSON.stringify({emociones})}); Object.assign(EMO_ORIGINAL, emociones); }
       await api(`/api/json?p=${q(P)}&f=guion.json`, {method: 'POST', body: JSON.stringify(G, null, 1)}); VERSION = await versionGuion();
     }
     await api(`/api/json?p=${q(P)}&f=preguntas_guion.json`, {method: 'POST', body: JSON.stringify(PREGUNTAS, null, 1)});

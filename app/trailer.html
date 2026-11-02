@@ -365,7 +365,7 @@ async function guardarTextos(id, rehacer) {  // título, subtítulo y voz de esa
   try {
     await api(`/api/trailer_version_texto?p=${q(P)}&v=${q(id)}`, {method: 'POST', body: JSON.stringify(datos)});
     TEXTOS_ABIERTO = id;
-    if (rehacer) return verTrailerIA(id, false);
+    if (rehacer) return verTrailerIA(id, false, datos.voz || '');
     await cargar(); msg.className = 'msg ok'; msg.textContent = '✓ Textos guardados. «▶ Ver con voz» para verlos en el tráiler.';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
@@ -403,10 +403,19 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
              : '<p class="msg">Todavía no está armado: «▶ Ver con voz».</p>'}</div></div>`
       : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
 }
-async function verTrailerIA(id, sinVoz) {  // el tráiler de esa IA armado aparte (trailer_<ia>.mp4), sin tocar el elegido
-  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
+async function verTrailerIA(id, sinVoz, frase) {  // el tráiler de esa IA armado aparte (trailer_<ia>.mp4), sin tocar el elegido
+  const msg = $('#msg');
+  if (!sinVoz) {  // con voz gasta ElevenLabs: se pregunta antes, como en «🎬 Ver solo el tráiler»
+    const v = String(frase ?? (TEXTOS[id] ? TEXTOS[id].voz || '' : '')).trim();
+    if (!confirm('Armo el tráiler de esta IA con su frase de voz, para compararlo; tu video no se toca.\n\n' +
+      (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos (si ya la armaste con esta misma frase, no se vuelve a pagar).`
+         : TEXTOS[id] || frase != null ? 'Sin frase de voz: no gasta ElevenLabs.' : 'La frase de voz se hace con ElevenLabs y gasta sus créditos.') + '\n\n¿Seguir?')) {
+      msg.className = 'msg'; msg.textContent = 'No armé nada: no se gastó nada.'; return;
+    }
+  }
+  msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz, confirmo: sinVoz ? '' : 'SI'})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Listo: lo ves debajo de su propuesta, en «Tráileres de cada IA».';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }

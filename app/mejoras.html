@@ -329,7 +329,8 @@ function miniaturas() {  // con GPT gasta: hay que escribir SI (como antes de ga
   if (gpt || short) {
     const variantes = gpt && $('#minVariantes').checked;
     const mixta = gpt && $('#minMixta').checked, fondos = gpt && $('#minFondos').checked;
-    const n = (gpt ? (mixta ? (fondos ? 2 : 1) : 3) : 0) + (short ? 3 : 0);
+    // «Varias opciones de ANTES» manda sobre «Mixta» y «Dos fondos»: una imagen por cada ANTES (hasta 3)
+    const n = (gpt ? (variantes ? 3 : mixta ? (fondos ? 2 : 1) : 3) : 0) + (short ? 3 : 0);
     const r = prompt(`⚠ Esto gasta ${n} imágenes de gpt-image-2.5-flare en calidad alta (${[gpt ? 'la miniatura' : '', short ? 'la portada del Short' : ''].filter(Boolean).join(' y ')}, en español, inglés y portugués).\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
     if (r === null) return;
     if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');

@@ -123,9 +123,11 @@ function pintar(e) {
   costo();
 }
 function elegidas() { return [...document.querySelectorAll('.elige:checked')].map(x => +x.value); }
+// las variantes por idea, de 1 a 4: la misma cuenta para el costo, la pregunta y lo que se manda (vacío o 0 = 1)
+const vari = () => Math.min(4, Math.max(1, Math.round(+$('#variantes').value) || 1));
 function costo() {
   if (!E) return;
-  const n = elegidas().length * Math.max(1, +$('#variantes').value || 1);
+  const n = elegidas().length * vari();
   $('#costo').textContent = n ? `${n} imágenes ≈ USD ${(n * E.por_imagen_usd).toFixed(2)}` : 'Marca al menos una idea.';
 }
 $('#variantes').oninput = costo;
@@ -149,24 +151,37 @@ async function analizar() {
   try { await api('/api/miniref/analizar', {}); aviso('Receta lista.', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); }
   $('#bAnalizar').disabled = false;
 }
-async function guardarReceta() {
+async function guardarReceta(callado) {  // callado: la guarda «🎨 Generar» antes de gastar, sin volver a pintar la página
   let conjunto;
-  try { conjunto = JSON.parse($('#conjunto').value); } catch (e) { return aviso('La fórmula no es un JSON válido.', 'err'); }
-  await api('/api/miniref/receta', {receta: {resumen: $('#resumen').value, conjunto}}); aviso('Receta guardada.', 'ok'); cargar();
+  try { conjunto = JSON.parse($('#conjunto').value); } catch (e) {
+    if (callado) throw new Error('La fórmula de la receta no es un JSON válido: corrígela. No generé nada y no se gastó nada.');
+    return aviso('La fórmula no es un JSON válido.', 'err');
+  }
+  await api('/api/miniref/receta', {receta: {resumen: $('#resumen').value, conjunto}});
+  if (callado) return;
+  aviso('Receta guardada.', 'ok'); cargar();
+}
+function recetaCambiada() {  // la receta que ves no es la guardada
+  if (!E || !E.receta || !$('#resumen')) return false;
+  const r = E.receta, txt = $('#conjunto').value;
+  if ($('#resumen').value !== String(r.resumen ?? '')) return true;
+  try { return JSON.stringify(JSON.parse(txt)) !== JSON.stringify(r.conjunto); } catch (e) { return txt.trim() !== ''; }
 }
 async function pedirIdeas() {
   $('#bIdeas').disabled = true; aviso('Pensando ideas…');
   try { await api('/api/miniref/ideas', {}); aviso('Ideas listas.', 'ok'); cargar(); } catch (e) { aviso(e.message, 'err'); }
   $('#bIdeas').disabled = false;
 }
-async function guardarIdeas() {
-  const ideas = E.ideas.map((x, i) => ({...x, texto: document.querySelector(`.txt[data-i="${i}"]`).value.trim().toUpperCase(),
+function ideasEnPantalla() {
+  return E.ideas.map((x, i) => ({...x, texto: document.querySelector(`.txt[data-i="${i}"]`).value.trim().toUpperCase(),
     en: document.querySelector(`.txtEn[data-i="${i}"]`).value.trim().toUpperCase(), pt: document.querySelector(`.txtPt[data-i="${i}"]`).value.trim().toUpperCase()}))
     .map(x => ({...x, largo_ok: x.texto.split(/\s+/).length <= 4}));
-  await api('/api/miniref/ideas_editadas', {ideas}); aviso('Textos guardados.', 'ok'); cargar();
+}
+async function guardarIdeas() {
+  await api('/api/miniref/ideas_editadas', {ideas: ideasEnPantalla()}); aviso('Textos guardados.', 'ok'); cargar();
 }
 function preguntarGenerar() {
-  const ids = elegidas(), v = Math.max(1, +$('#variantes').value || 1);
+  const ids = elegidas(), v = vari();
   if (!ids.length) return aviso('Marca al menos una idea.', 'err');
   const n = ids.length * v;
   $('#confTexto').textContent = `${ids.length} idea(s) × ${v} variante(s) = ${n} imágenes (${$('#formato').value}, ${$('#idioma').value}${$('#cara').value ? ', con tu cara' : ''}). Costo estimado: USD ${(n * E.por_imagen_usd).toFixed(2)}.`;
@@ -174,9 +189,19 @@ function preguntarGenerar() {
 }
 async function generar() {
   $('#confirmar').close();
+  const ids = elegidas(), v = vari();
+  try {
+    // se genera con lo que ves en pantalla: los textos y la receta que cambiaste se guardan antes (aunque no pulsaras «💾»)
+    if (E && E.ideas.length && document.querySelector('.txt')) {
+      const ideas = ideasEnPantalla();
+      if (ideas.some((x, i) => ['texto', 'en', 'pt'].some(c => x[c] !== String(E.ideas[i][c] ?? ''))))
+        await api('/api/miniref/ideas_editadas', {ideas});
+    }
+    if (recetaCambiada()) await guardarReceta(true);
+  } catch (e) { return aviso(e.message, 'err'); }  // no se gastó nada y lo que escribiste sigue en pantalla
   aviso('Generando… (≈1 min por imagen; no cierres la pestaña)');
   try {
-    const r = await api('/api/miniref/generar', {confirmo: true, ideas: elegidas(), variantes: +$('#variantes').value || 2,
+    const r = await api('/api/miniref/generar', {confirmo: true, ideas: ids, variantes: v,
       formato: $('#formato').value, idioma: $('#idioma').value, cara: $('#cara').value});
     aviso(`Listo: ${r.generadas.length} imágenes, costo ≈ USD ${r.costo_usd.toFixed(2)}.`, 'ok'); cargar();
   } catch (e) { aviso(e.message, 'err'); cargar(); }

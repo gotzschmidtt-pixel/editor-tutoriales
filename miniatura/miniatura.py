@@ -14,7 +14,7 @@ cuadros de referencia (el problema y el resultado), en español, inglés y portu
 
 Uso: python miniatura.py --proyecto . [--texto "MOTOROLA|SIN CUENTA"] [--gpt] (la | parte en dos líneas; sin texto, lo arma solo)
 """
-import argparse, json, os, re, sys
+import argparse, hashlib, json, os, re, sys
 import cv2
 import numpy as np
 
@@ -850,7 +850,9 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
             f = f'{salida_base}_{estilo}_{idioma}.jpg' if len(estilos) > 1 else f'{salida_base}_{idioma}.jpg'
             png = None
             if titulo_por_gpt:  # el título lo dibuja GPT 2.5 con tu estilo (1 imagen por estilo e idioma)
-                png = f'{salida_base}_titulo_{estilo}_{idioma}.png'
+                # con una huella del texto: si cambias el título se dibuja el nuevo (antes salía el viejo guardado)
+                huella = hashlib.md5('|'.join(str(x) for x in tr.get(idioma, lineas)).encode('utf-8')).hexdigest()[:8]
+                png = f'{salida_base}_titulo_{estilo}_{idioma}_{huella}.png'
                 if not os.path.exists(png):
                     print(f'· GPT dibuja el título «{" ".join(tr.get(idioma, lineas))}» ({estilo})…', flush=True)
                     titulo_gpt(tr.get(idioma, lineas), estilo, png)

@@ -242,7 +242,7 @@ $('#linea1').oninput = $('#linea2').oninput = pintarSugeridos;
 function imagenes() {
   const mixta = $('#modo').value === 'mixta', fondos = $('#fondo').value === 'ambos' ? 2 : 1;
   const titulos = mixta && $('#tituloGpt').checked ? ({todos: 3, placas: 4}[$('#titulo').value] || 1) * 3 : 0;
-  return (mixta ? 1 : 3) * fondos + titulos;
+  return (mixta ? 1 : 3) * fondos + titulos * fondos;  // con «Los dos» fondos, cada fondo dibuja sus títulos
 }
 function pintarCosto() {
   $('#titulo').parentElement.style.display = $('#tituloGpt').parentElement.style.display = $('#modo').value === 'mixta' ? '' : 'none';  // con «Todo GPT» el título lo dibuja GPT
