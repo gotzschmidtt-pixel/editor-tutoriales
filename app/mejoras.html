@@ -318,7 +318,9 @@ function sonCrear(n) {
   if (!confirm(`ElevenLabs crea el sonido «${n}» una sola vez (unos 100 créditos) y queda para todos tus videos. ¿Seguir?`)) return;
   correr('m_sonidos', {motor: 'eleven', solo: n}, '#sonMsg', 'Creando el sonido con ElevenLabs…');
 }
-async function sonQuitar(n) { await api(`/api/mejoras/sonido_quitar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nombre: n})}); await cargar(); }
+async function sonQuitar(n) {
+  if (!confirm(`Vuelve al sonido «${n}» hecho en tu PC. El de ElevenLabs o el tuyo no se borra: queda guardado en mis_sonidos como ${n}.mp3.eleven. ¿Seguir?`)) return;
+  await api(`/api/mejoras/sonido_quitar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({nombre: n})}); await cargar(); }
 function limpiar(deshacer) {
   const motor = $('#limMotor').value;
   if (!deshacer && motor === 'eleven' && !confirm('El aislador de voz de ElevenLabs gasta unos 1000 créditos por minuto de audio. ¿Seguir?')) return;

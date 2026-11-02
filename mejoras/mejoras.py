@@ -322,7 +322,9 @@ def post(h, ruta, q, largo, d):
             return h.error('sonido no válido')
         for ext in ('.mp3', '.wav'):
             f = os.path.join(sonidos.BIBLIOTECA, n + ext)
-            if os.path.exists(f):
+            if os.path.exists(f) and ext == '.mp3':  # el de ElevenLabs (pagado) o el tuyo no se borra: queda de lado
+                os.replace(f, f + '.eleven')
+            elif os.path.exists(f):
                 os.remove(f)
         return h.responder({'ok': True})
     return h.error('no conozco esa ruta', 404)

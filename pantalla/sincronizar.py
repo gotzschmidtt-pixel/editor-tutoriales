@@ -127,7 +127,7 @@ def elegir_insertos(d, desfase, dp):
         if not 0 <= t - desfase <= dp:
             continue  # la grabación de pantalla no cubre este paso
         nuevos.append({'nota': 'pantalla grabada', 'origen': 'scrcpy', 'material': SALIDA, 'src_t': round(t, 2), 'bloque': b['id'],
-                       'frase': enderezar.comienzo(b['texto']), 'dur': round(min(5.0, max(2.5, float(b.get('voz_real_s') or 4) * 0.6)), 1),
+                       'frase': enderezar.frase_voz(b['texto']), 'dur': round(min(5.0, max(2.5, float(b.get('voz_real_s') or 4) * 0.6)), 1),
                        'claves': [{'t': 0, 'cx': 0.5, 'cy': 0.5, 'w': 0.98}, {'t': 3, 'cx': 0.5, 'cy': 0.5, 'w': 0.9}]})
     return nuevos
 

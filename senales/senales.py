@@ -275,6 +275,12 @@ def main():
         json.dump([{k: v for k, v in c.items() if k != 'archivo'} for c in colocadas], open(tiempos, 'w', encoding='utf-8'),
                   ensure_ascii=False, indent=1)
         return
+    if not colocadas:  # no quedó ninguna (bloques cambiados o las quitaste todas): el video sigue igual, sin un error de ffmpeg
+        print('AVISO: no quedó ninguna flecha ni círculo para poner; el video sigue sin señales.', flush=True)
+        shutil.copyfile(a.video, a.salida)
+        shutil.rmtree(tmp)
+        json.dump([], open(tiempos, 'w', encoding='utf-8'))
+        return
 
     ins, filtros, ultimo = ['-i', a.video], [], '0:v'
     for k, c in enumerate(colocadas, 1):

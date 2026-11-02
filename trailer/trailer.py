@@ -270,8 +270,13 @@ def main():
         r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=avg_frame_rate',
                             '-of', 'csv=p=0', a.unir], capture_output=True, text=True).stdout.strip() or '25'
         fps = r if re.fullmatch(r'\d+(/\d+)?', r) and r not in ('0', '0/0') else '25'  # los del video (30 si grabaste a 60)
+        # el tráiler sale a 1920x1080 y el video puede ser una «Prueba rápida» (720p, 480p, 360p): concat pide el mismo tamaño
+        tam = re.search(r'(\d+)x(\d+)', subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                        'stream=width,height', '-of', 'csv=p=0:s=x', a.unir], capture_output=True, text=True).stdout)
+        vw, vh = tam.groups() if tam else ('1920', '1080')
+        esc = f'scale={vw}:{vh}:force_original_aspect_ratio=decrease,pad={vw}:{vh}:(ow-iw)/2:(oh-ih)/2,'
         ff(['-i', primero, '-i', segundo, '-filter_complex',
-            f'[0:v]framerate=fps={fps},format=yuv420p,setsar=1[v0];[1:v]fps={fps},format=yuv420p,setsar=1[v1];'
+            f'[0:v]{esc}framerate=fps={fps},format=yuv420p,setsar=1[v0];[1:v]{esc}fps={fps},format=yuv420p,setsar=1[v1];'
             '[0:a]aresample=48000[a0];[1:a]aresample=48000[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]',
             '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
             '-c:a', 'aac', '-b:a', '192k', a.final])

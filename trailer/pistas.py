@@ -133,8 +133,9 @@ def parecidos(d, imagen, top=3, separacion=8):
 
 # ---------- audio y texto: buscar lo que se dice en la transcripción ----------
 
-def transcribir_audio(d, archivo, carpeta=CARPETA, scribe=True):
-    """Texto de un audio de pista (en caché junto al archivo). Scribe si hay clave (y scribe=True), si no Whisper (gratis)."""
+def transcribir_audio(d, archivo, carpeta=CARPETA, scribe=False):
+    """Texto de un audio de pista (en caché junto al archivo). Whisper (gratis, en la PC); Scribe (gasta créditos de
+    ElevenLabs) solo si quien llama pasa scribe=True después de que el autor lo confirmó con «SI»."""
     f = os.path.join(d, carpeta, archivo)
     cache = f + '.txt'
     if os.path.exists(cache) and os.path.getmtime(cache) >= os.path.getmtime(f):
