@@ -517,7 +517,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           "nombres correctos y cómo se explica bien; NO copies sus frases ni metas datos que no se vean o "
                           "digan en ESTA grabación:\n" + '\n\n'.join(f"[{k}] {u}" + (f" (el autor dice: {n})" if n else '') + f"\n{t}"
                                                                    for k, (u, n, t) in enumerate(refs, 1)))
-        objetivo = (idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)) or acortar_plan(d).get('objetivo_s')
+        objetivo = minutos_pedidos(idea) or acortar_plan(d).get('objetivo_s')
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
         partes += [ESTILO, f"""ANTES DE ESCRIBIR EL GUION (pedido fijo del autor):
 1. Haz una lista con el segundo exacto de cada evento de pantalla: cada botón que presiono, cada cambio de modo (Recovery,
@@ -1164,11 +1164,18 @@ def leer_idea(d):
     return open(f, encoding='utf-8').read() if os.path.exists(f) else ''
 
 
+def minutos_pedidos(idea):
+    """«que dure unos N minutos» en la idea. Solo en lo que escribió el autor, antes de «Datos confirmados por el autor:»:
+    una respuesta como «tarda unos 3 minutos en reiniciar» no es la duración del video."""
+    idea_autor = (idea or '').split('Datos confirmados por el autor:')[0]
+    return re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:utos?)?\b', idea_autor)
+
+
 def meta_guion(d, dur, idea=None):
     """Cuánto debe durar el video (s) y el rango aceptable. Por defecto, parecido a la grabación;
     si la idea dice «que dure unos N minutos», eso manda. Puede pasarse un poco (guion extra del autor)."""
     idea = leer_idea(d) if idea is None else idea
-    m = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+    m = minutos_pedidos(idea)
     meta = int(m.group(1)) * 60 if m else (acortar_plan(d).get('objetivo_s') or dur)  # o lo pedido en «Acortar»
     return meta, meta * 0.9, meta * 1.15
 
@@ -1327,11 +1334,30 @@ def revisar(d, tarea, datos):
             vistos[clave] = b.get('id', k)
             unicos.append(b)
         bloques[:] = unicos
+        # dos bloques con el mismo id: la voz del segundo pisaría la del primero y se rehacían (y pagaban) en cada «Generar voz»
+        todos, usados = {str(b.get('id') or '').strip() for b in bloques}, set()
+        for k, b in enumerate(bloques, 1):
+            bid = str(b.get('id') or '').strip()
+            if bid and bid not in usados:
+                usados.add(bid)
+                continue
+            base = bid or f'L{k:02d}'
+            nuevo, n = base, 0
+            while nuevo in todos or nuevo in usados:
+                n += 1
+                nuevo = f'{base}{chr(97 + n)}' if n < 26 else f'{base}_{n}'
+            b['id'] = nuevo
+            usados.add(nuevo)
+            if bid:
+                avisos.append(f"{nuevo}: tenía el mismo id que otro bloque ({bid}), lo renombré")
         # guardado desde el editor (pedido de fabian, 30/10/2026: cambió 2 bloques y se rearmaron 13, y se deshizo un tramo que
         # se había corregido a mano): los bloques que no tocaste y ya tienen su voz quedan exactamente como estaban
         fijos = {} if VARIAR else bloques_con_su_voz(d, bloques)
         if VARIAR:  # lo que escribió una IA; lo que escribiste tú en el editor solo se avisa (en problemas)
             avisos += variar_muletillas(bloques)
+        for b in bloques:  # los fijos vuelven a su montaje al final: la revisión del orden no los mueve ni avisa «lo moví»
+            if b.get('id') in fijos:
+                b['montaje']['visto'] = True
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
         imp = importantes.leer(d)  # «⭐ Cortes importantes»: esos bloques van a ×1 y no se recortan
         frenados = importantes.marcar(bloques, imp)
@@ -2089,7 +2115,8 @@ def marcas_autor(d):
         if tipo == 'captura' and p.get('archivo'):
             capturas_.append(p)
         elif tipo == 'audio' and p.get('archivo'):
-            txt = pistas.transcribir_audio(d, os.path.basename(p['archivo']), MARCAS_DIR)
+            # con Whisper en tu PC (gratis): Scribe gastaría créditos de ElevenLabs sin que lo pidas
+            txt = pistas.transcribir_audio(d, os.path.basename(p['archivo']), MARCAS_DIR, scribe=False)
             if txt or nota:
                 pedidos.append(' '.join(x for x in (txt, nota) if x))
         elif nota:
@@ -2641,6 +2668,9 @@ def mapa_video(d, ajustes=None):
     vision = bool(ajustes) and ajustes.get('imagenes', True)
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
+        if viejo.get('todo_ia') and str(viejo.get('firma', '')).startswith(f'{os.path.getsize(orig)}:ia:'):
+            # el mapa de «Todo con IA» de este mismo video (pagado): se usa tal cual y no se pisa con uno de tu PC
+            return viejo['cuadros']
         if viejo.get('firma') == firma and (viejo.get('vision') or not vision):
             if lo_que_se_ve(d, viejo['cuadros']):  # un mapa de antes del detector: se completa y se guarda
                 json.dump(viejo, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -2890,10 +2920,12 @@ def control_bloque(d, b, ocr):
 def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     """La segunda mirada que hice a mano: cada bloque con el comienzo y el final de SU tramo (y en los pasos clave, el
     detalle con el texto leído con zoom), y la IA dice si lo que se narra es lo que se ve. Si no, el tramo (con su mismo
-    largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
+    largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos, o None si no pudo revisar ningún bloque."""
     bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen']
-    if not bloques or not ajustes.get('imagenes', True):
+    if not bloques:
         return []
+    if not ajustes.get('imagenes', True):  # sin imágenes no se revisó nada: nunca decir «todos coinciden»
+        return None
     avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
@@ -2917,7 +2949,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
             print(f"· {b['id']}: no pude preparar sus imágenes de control ({str(e)[:160]}); no lo reviso", flush=True)
     bloques = [b for b in bloques if b['id'] in control]
     if not bloques:
-        return []
+        return None
     tramo(70, 98)
     palabras = pistas.palabras_video(d)  # lo que dice el autor en cada tramo: delata una voz atrasada o inventada
 
@@ -2953,7 +2985,10 @@ el autor ahí (si la voz narra un paso que el autor hace antes o después, o alg
 
     tanda = tanda or (4 if es_local(ajustes) else 12)
     por_id = {b['id']: b for b in bloques}
-    for a, grupo, r in por_tandas(ajustes, bloques, tanda, pedir, 'revisando bloques contra su imagen'):
+    hechas = por_tandas(ajustes, bloques, tanda, pedir, 'revisando bloques contra su imagen')
+    if not hechas:  # la IA no contestó ninguna tanda
+        return None
+    for a, grupo, r in hechas:
         for x in (r.get('revision', []) if isinstance(r, dict) else r):
             if not isinstance(x, dict):
                 continue
@@ -3197,6 +3232,10 @@ def guion_varias(d, ajustes, ias, texto, caps, todo_ia, previas=None):
         x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
         v['segundos'] = x.get('segundos')
         if 'datos' in x:
+            if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción (como con una sola IA)
+                for b in (x['datos']['bloques'] if isinstance(x['datos'], dict) else x['datos']):
+                    if isinstance(b.get('montaje'), dict):
+                        b['montaje']['visto'] = True
             datos, av = revisar(d, 'guion', x['datos'])
             x['datos'], x['avisos'] = datos, x['avisos'] + av
             bloques = datos['bloques'] if isinstance(datos, dict) else datos
@@ -3283,8 +3322,8 @@ def combinar_versiones(d, ajustes):
              'cada versión: elige para cada parte del video el bloque más claro y fiel a lo que se ve, o une frases de varias. '
              'Reglas: no inventes datos que ninguna versión tenga; cada bloque conserva los tiempos de montaje (montaje, '
              'src_inicio, src_fin) de la versión de la que lo tomas y los bloques siguen el orden del video sin solaparse; '
-             'el humor sigue la regla del encargo; misma voz en todo el guion. Devuelve el MISMO formato JSON que las versiones '
-             '({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
+             'el humor sigue la regla del encargo; misma voz en todo el guion; cada bloque con su id único y en orden (L01, L02…). '
+             'Devuelve el MISMO formato JSON que las versiones ({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
              + '\n\n'.join(partes) + ('\n\n=== ENCARGO ORIGINAL (reglas) ===\n' + reglas if reglas else ''))
     print(f"Combino {len(versiones)} versiones ({', '.join(v['nombre'] for v in versiones)}) con {ajustes['modelo']}…", flush=True)
     tramo(5, 80)
@@ -3361,7 +3400,8 @@ def corregir_con_respuestas(d, ajustes, datos):
     y quedan en idea.txt como datos confirmados, para los próximos guiones de este video."""
     f = os.path.join(d, 'preguntas_guion.json')
     preguntas = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else []
-    contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip()]
+    # solo las nuevas: las ya aplicadas («hecha») no se mandan otra vez (la IA repetiría la frase y cambiaría ese bloque)
+    contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip() and not x.get('hecha')]
     if not contestadas:
         raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
     qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'} ({'idea para mejorar' if x.get('tipo') == 'mejora' else 'dato'}): "
@@ -3391,8 +3431,9 @@ Responde SOLO con el objeto JSON {{"bloques": [{{"id": "L03", "texto": "..."}}, 
     print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
     fi = os.path.join(d, 'idea.txt')
     previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
-    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas
-               if x.get('tipo') != 'mejora' and x['respuesta'].strip() not in previa]
+    # se compara la línea entera: una respuesta corta («Sí», «15») casi siempre ya aparece suelta en la idea
+    agregar = [linea for linea in (f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas if x.get('tipo') != 'mejora')
+               if linea not in previa]
     if agregar:
         open(fi, 'w', encoding='utf-8').write(previa.rstrip() + ('\n\n' if previa.strip() else '') +
                                             'Datos confirmados por el autor:\n' + '\n'.join(agregar) + '\n')
@@ -3551,13 +3592,19 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
     if not mapa and forzar:  # guion pegado o de DeepSeek: el mapa (texto leído en cada cambio de pantalla) se hace en tu PC
         mapa = mapa_video(d)
     avisos = []
-    if mapa:
-        vistos = revisar_con_imagen(d, json.load(open(ajustes_f, encoding='utf-8')), datos, mapa, con_ocr=modo != 'ia')
-        if vistos:  # se movieron tramos: se vuelven a medir los largos
-            datos, despues = revisar(d, 'guion', datos)
-            avisos = vistos + [x for x in despues if x not in vistos]
-        else:
-            avisos = ['revisé cada bloque contra su imagen: todos coinciden']
+    aj = json.load(open(ajustes_f, encoding='utf-8'))
+    vistos = revisar_con_imagen(d, aj, datos, mapa, con_ocr=modo != 'ia') if mapa else None
+    if vistos is None:  # no se revisó nada: se avisa y la revisión queda pendiente
+        porque = ('falta el mapa del video' if not mapa else
+                  'tu IA no ve imágenes: elige una con visión en «⚙ Ajustes IA»' if not aj.get('imagenes', True) else
+                  'no salieron las imágenes de control o la IA no contestó')
+        avisos = [f'OJO: no pude revisar el guion contra las imágenes ({porque}); ningún bloque quedó comprobado']
+        datos['revision_imagen_pendiente'] = modo
+    elif vistos:  # se movieron tramos: se vuelven a medir los largos
+        datos, despues = revisar(d, 'guion', datos)
+        avisos = vistos + [x for x in despues if x not in vistos]
+    else:
+        avisos = ['revisé cada bloque contra su imagen: todos coinciden']
     tmp = destino + '.tmp'
     json.dump(datos, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     os.replace(tmp, destino)
@@ -3565,7 +3612,8 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
         print('·', x, flush=True)
     with open(os.path.join(d, 'mejoras_guion.txt'), 'a', encoding='utf-8') as f:
         f.write(''.join(x + '\n' for x in avisos))
-    print('Guardado guion.json revisado contra sus imágenes', flush=True)
+    print('Guardado guion.json ' + ('(quedó sin revisar contra sus imágenes)' if vistos is None else 'revisado contra sus imágenes'),
+          flush=True)
     tramo(0, 100)
     progreso(100, 'Listo')
 
@@ -3604,7 +3652,9 @@ def main():
     a = ap.parse_args()
     global AJUSTES_F, VARIAR
     AJUSTES_F = a.ajustes
-    VARIAR = not a.sin_variar
+    # corregir con tus respuestas o ajustar el humor parten del guion actual (quizá escrito por ti en el editor y ya con su voz):
+    # las muletillas de los bloques que nadie tocó no se cambian, si no su voz ya no coincide y se vuelve a pagar
+    VARIAR = not (a.sin_variar or a.respuestas or a.ajustar_humor)
     try:
         configurar_humor(nivel_humor(json.load(open(a.ajustes, encoding='utf-8'))))
     except (OSError, ValueError):
@@ -3680,7 +3730,15 @@ def main():
             guardar_preguntas(d, datos['preguntas'], a.tarea)  # las preguntas de una IA de chat se contestan en la revisión
         if a.tarea == 'guion' and isinstance(datos, dict) and isinstance(datos.get('eventos'), list):
             # regla 1 del autor: la lista de eventos de pantalla queda a mano para comprobar los cortes
-            filas = [f"{mmss(float(e.get('s', 0)))} {e.get('evento', '')}" for e in datos['eventos'] if isinstance(e, dict)]
+            filas = []
+            for e in datos['eventos']:
+                if not isinstance(e, dict):
+                    continue
+                s = pistas.segundos(e.get('s', 0))  # acepta «140», «140.5» y «2:20»
+                if s is None:  # un segundo que no se entiende no frena la revisión del guion
+                    print(f"· no entendí el segundo «{e.get('s')}» del evento «{e.get('evento', '')}»; lo salto", flush=True)
+                    continue
+                filas.append(f"{mmss(s)} {e.get('evento', '')}")
             open(os.path.join(d, 'eventos_pantalla.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in filas))
     else:
         try:
@@ -3808,10 +3866,6 @@ def main():
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
         else:
-            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
-                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
-            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
-                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
             tramo(35, 65)
             progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
             try:
@@ -3861,6 +3915,11 @@ def main():
                     for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                         if isinstance(b.get('montaje'), dict):
                             b['montaje']['visto'] = True
+            # recién ahora, con el guion (o el tráiler) nuevo ya en la mano: si la IA fallaba, las versiones de antes seguían sirviendo
+            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
+                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
+            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
+                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
     tramo(94, 100)
     progreso(0, 'Reviso tiempos y orden de los bloques…')
     datos, avisos = revisar(d, a.tarea, datos)
