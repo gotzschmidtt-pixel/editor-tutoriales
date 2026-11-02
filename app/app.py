@@ -16,7 +16,7 @@ carpeta dentro de mis_proyectos/ con nombres fijos de archivo, así cada paso sa
 Uso: python app/app.py   (en Windows: doble clic en iniciar.bat)
 """
 import traceback
-import glob, hashlib, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
+import glob, hashlib, html, json, mimetypes, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, urllib.error, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -813,6 +813,9 @@ CANDADO = threading.Lock()
 # «📤 Prestar mis claves a otra PC»: se abre desde este PC por 5 minutos, para un solo pedido con el PIN de «📱 Celular»
 PRESTAMO = {'hasta': 0.0, 'fallos': 0}
 CLAVES = ('proveedor', 'url', 'modelo', 'clave', 'imagenes', 'tipo', 'json', 'elevenlabs', 'ias_guion')
+# «3 IAs a la vez»: la dirección fija de cada una (igual que TRES_IAS en index.html). Su clave guardada solo se manda ahí.
+URL_IAS = {'gpt': 'https://api.openai.com/v1', 'claude': 'https://api.anthropic.com',
+           'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai', 'deepseek': 'https://api.deepseek.com'}
 
 
 def leer_ajustes():
@@ -1237,6 +1240,13 @@ def actualizar_git(rama):
     tocados = git('status', '--porcelain', '--untracked-files=no')
     if not cambian and not tocados:
         return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+    # archivos nuevos hechos solo en esta PC con el mismo nombre que uno de la versión nueva: git no los pisa y el
+    # cambio se cortaba a medias (con tus cambios escondidos en el stash). Se avisa antes de tocar nada.
+    chocan = sorted(set(git('ls-files', '-o', '--exclude-standard').splitlines()) & set(cambian))
+    if chocan:
+        raise RuntimeError('No actualicé nada: estos archivos nuevos de esta PC se llaman igual que otros de la versión nueva: '
+                           + ', '.join(chocan[:10]) + ('…' if len(chocan) > 10 else '')
+                           + '. Muévelos a otra carpeta (o bórralos si no los necesitas) y vuelve a pulsar «⬇ Actualizar la app».')
     marca = 'respaldo_app_' + time.strftime('%Y%m%d_%H%M%S')
     avisos = []
     if git('rev-list', '--count', f'{remota}..HEAD') != '0':  # commits hechos solo en esta PC
@@ -1245,7 +1255,16 @@ def actualizar_git(rama):
     if tocados:
         git('-c', 'user.name=Estudio', '-c', 'user.email=estudio@localhost', 'stash', 'push', '-m', marca)
         avisos.append(f'los archivos que habías cambiado quedaron guardados en «git stash» ({marca})')
-    git('checkout', '-q', '-B', rama, remota)
+    try:
+        git('checkout', '-q', '-B', rama, remota)
+    except RuntimeError as e:
+        if tocados:  # no se actualizó: tus cambios vuelven a su lugar (no quedan escondidos en el stash)
+            try:
+                git('stash', 'pop')
+            except RuntimeError as e2:
+                raise RuntimeError(f'No pude actualizar ({e}). Tus cambios quedaron en «git stash» ({marca}): '
+                                   f'recupéralos con «git stash pop». {e2}')
+        raise RuntimeError(f'No pude actualizar; la app quedó como estaba. {e}')
     return {'ok': True, 'cambiados': len(cambian),
             'mensaje': f'Actualicé {len(cambian)} archivo(s) desde GitHub. Tus proyectos y claves siguen igual.'
                        + (' Ojo: ' + '; '.join(avisos) + '.' if avisos else '')}
@@ -2060,7 +2079,10 @@ class Manejador(BaseHTTPRequestHandler):
 
     def mismo_origen(self):
         """Otra página abierta en el navegador no puede borrar, detener ni cambiar tus claves."""
-        origen = urllib.parse.urlparse(self.headers.get('Origin') or '').hostname
+        crudo = self.headers.get('Origin')
+        origen = urllib.parse.urlparse(crudo).hostname if crudo is not None else None
+        if crudo is not None and not origen:  # «Origin: null» (o raro) lo manda una página escondida o de archivo: no es la app
+            return False
         host = (self.headers.get('Host') or '').split(':')[0]
         if celular.es_local(self.client_address[0]):  # *.localhost (estudio.localhost) siempre es este mismo PC
             propio = lambda h: h in ('localhost', '127.0.0.1', '[::1]', '::1', '') or str(h).endswith('.localhost')
@@ -2304,7 +2326,7 @@ class Manejador(BaseHTTPRequestHandler):
                     msg = '✅ YouTube quedó conectado. Ya puedes cerrar esta pestaña y volver a la app.'
                 except youtube.ErrorYT as e:
                     yt_guardar(c)
-                    msg = '❌ ' + str(e)
+                    msg = '❌ ' + html.escape(str(e))  # el «error» viene en la dirección: otra página no puede meter código aquí
                 return self.responder(f'<!doctype html><meta charset="utf-8"><body style="background:#06070c;color:#fff;font:20px system-ui;'
                                       f'display:grid;place-items:center;height:90vh"><p>{msg}</p><script>try{{opener&&opener.postMessage("youtube","*")}}catch(e){{}}</script>'.encode(),
                                       'text/html; charset=utf-8')
@@ -2871,6 +2893,17 @@ class Manejador(BaseHTTPRequestHandler):
                 if extras:  # «✨ Agregar extras» sobre el video ya hecho: se arma igual que «Hacer todo» y se dejan solo los elegidos
                     if not existe(carpeta(q['p']), '4_musica.mp4'):
                         return self.error('Primero haz el video con «▶ Hacer todo». Después le agregas los extras.')
+                    if datos.get('revisado') and datos.get('sin_ia'):  # «▶ Ponerlas en el video» de la vista previa
+                        try:  # los extras que ya iban en el video armado (tarjetas, testimonios, tráiler…) se vuelven a poner
+                            with open(os.path.join(carpeta(q['p']), 'vista_pendiente.json'), encoding='utf-8') as fh:
+                                pend = json.load(fh)
+                        except (OSError, ValueError):
+                            pend = {}
+                        if isinstance(pend, dict) and isinstance(pend.get('solo'), list):
+                            base = list(datos.get('solo') or EXTRAS)
+                            datos['solo'] = base + [x for x in pend['solo'] if x not in base]
+                            if pend.get('calidad') and not datos.get('calidad'):
+                                datos['calidad'] = pend['calidad']
                     elegidos = [x for x in (datos.get('solo') or EXTRAS) if x in EXTRAS]
                     if not elegidos:
                         return self.error('Elige al menos un extra.')
@@ -2954,12 +2987,12 @@ class Manejador(BaseHTTPRequestHandler):
                     previos = ['guion_ia']
                     if not existe(carpeta(q['p']), 'transcripcion.srt'):
                         previos.insert(0, 'transcribir')
-                        datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                        datos.setdefault('motor', 'whisper')  # gratis en tu PC: Scribe gasta ElevenLabs y aquí nadie dijo SI
                     pasos = previos  # se para con el guion listo, para que lo revises antes de seguir
                     datos['_pausa'] = 'guion'
                 if q['paso'] == 'ia' and datos.get('modo') == 'paquete' and not existe(carpeta(q['p']), 'transcripcion.srt'):
                     pasos = ['transcribir', 'ia']  # el paquete lleva tu transcripción
-                    datos.setdefault('motor', 'scribe' if clave_eleven() else 'whisper')
+                    datos.setdefault('motor', 'whisper')  # gratis en tu PC (el ZIP dice «No gasta saldo»)
                 if q['paso'] == 'prueba' and not TRABAJO['proyecto']:  # con otro trabajo en curso no se pisa su copia
                     if not existe(carpeta(q['p']), 'guion.json'):
                         return self.error('Todavía no hay guion: pulsa «▶ Hacer todo» sin marcar «Solo los bloques».')
@@ -2971,14 +3004,17 @@ class Manejador(BaseHTTPRequestHandler):
                     # pedido de fabian (31/10/2026): nada de etiquetas ni flechas en el video sin pasar antes por «👀 Vista previa».
                     # Se arma todo lo demás (sin ellas), se dibujan las diapositivas y se para: «▶ Ponerlas en el video» las pone
                     # (llama con revisado). En la cola de noche el video queda armado y las etiquetas quedan pendientes de aprobar.
+                    # los otros extras que este video ya lleva: al aprobar se vuelven a poner junto con ellas (si no, se perdían)
+                    otros = [x for x in EXTRAS if x in pasos and x not in ('etiquetas', 'senales')]
                     pasos = [x for x in pasos if x not in ('etiquetas', 'senales')]
                     ia_ = [i for i, x in enumerate(pasos) if x in ('etiquetas_ia', 'senales_ia')]
                     pasos.insert(ia_[-1] + 1 if ia_ else len(pasos), 'vista_previa')
                     datos['_pausa'] = 'vista'
                     datos.pop('_seguir', None)
                     try:
-                        json.dump({'desde': time.strftime('%Y-%m-%d %H:%M'), 'paso': q['paso']},
-                                  open(os.path.join(carpeta(q['p']), 'vista_pendiente.json'), 'w', encoding='utf-8'))
+                        with open(os.path.join(carpeta(q['p']), 'vista_pendiente.json'), 'w', encoding='utf-8') as fh:
+                            json.dump({'desde': time.strftime('%Y-%m-%d %H:%M'), 'paso': q['paso'], 'solo': otros,
+                                       'calidad': datos.get('calidad')}, fh)
                     except OSError:
                         pass
                 elif datos.get('revisado') and any(x in pasos for x in ('etiquetas', 'senales')):
@@ -3236,6 +3272,8 @@ class Manejador(BaseHTTPRequestHandler):
                 if not datos.get('clave') or str(datos.get('clave')).startswith('••••'):
                     aj = leer_ajustes()
                     guardada = ((aj.get('ias_guion') or {}).get(datos.get('ia')) or {}).get('clave') if datos.get('ia') else ''
+                    if URL_IAS.get(str(datos.get('ia'))) != (datos.get('url') or '').strip().rstrip('/'):
+                        guardada = ''  # la clave de esa IA no viaja a otra dirección (otra página podía pedirla para robarla)
                     # la clave principal solo sirve para el mismo proveedor (la de OpenAI no abre Gemini): si cambiaste de
                     # proveedor y todavía no pegaste su clave, la guardada no se le manda al otro
                     mismo = (aj.get('url') or '').strip().rstrip('/') == (datos.get('url') or '').strip().rstrip('/')
@@ -3713,10 +3751,24 @@ class Manejador(BaseHTTPRequestHandler):
                 quedan = set(SUBIBLES.values()) | {'idea.txt', 'referencias.json', 'referencias', 'original.nitidez.npz', 'original.miniaturas.npz', GUARDADOS} | \
                     {sub for sub, *_ in GRUPOS.values()} | \
                     {'cortes_importantes.json', 'edicion.json', 'subtitulos.json', 'etiquetas_idiomas.json',  # lo que marcaste o elegiste tú
-                     'idioma_video.json'}  # una versión en inglés sigue siendo en inglés (si no, la voz volvía a Mauricio)
+                     'idioma_video.json'} | \
+                    {'short_extras', 'short_extras.json', 'miniatura_subida.jpg', 'miniatura_subida.png',  # lo que subiste o ya pagaste
+                     'avatar_ahorro', 'apoyo', 'memes', 'capturas', 'graficos', 'miniatura', 'youtube',  # (HeyGen, miniaturas, tomas)
+                     'inicio_fijo.json', 'difuminar_datos.json'}  # sin esto el próximo FINAL saldría sin difuminar tus datos
+                try:  # el video del inicio fijo y las imágenes de lo que se difumina también quedan
+                    with open(os.path.join(d, 'inicio_fijo.json'), encoding='utf-8') as fh:
+                        quedan.add(str(json.load(fh).get('video') or '').replace('\\', '/').split('/')[0])
+                except (OSError, ValueError, AttributeError):
+                    pass
+                try:
+                    with open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8') as fh:
+                        for x in json.load(fh).get('referencias') or []:
+                            quedan.add(str(x.get('imagen') or '').replace('\\', '/').split('/')[0])
+                except (OSError, ValueError, AttributeError):
+                    pass
                 borrados = 0
                 for f in os.listdir(d):
-                    if f in quedan:
+                    if f in quedan or f.startswith('FINAL_antes_'):  # las copias de «🔁 Rehacer video» y tus arreglos a mano
                         continue
                     r = os.path.join(d, f)
                     shutil.rmtree(r) if os.path.isdir(r) else os.remove(r)

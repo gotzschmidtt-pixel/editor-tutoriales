@@ -1483,7 +1483,7 @@ async function abrirPromptCapturas() {
   catch (err) { alert(err.message + '\n\nAbre primero el proyecto; el prompt y las capturas aparecen después de «Escribir con IA» o «Prompt para copiar».'); }
 }
 async function paqueteClaude() {
-  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
+  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero con Whisper en tu PC, gratis).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete'})}); }
   catch (e) { return alert(e.message); }
   esperaIA = {tarea: 'guion', modo: 'paquete', archivo: 'guion.json'};
