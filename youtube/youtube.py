@@ -26,21 +26,23 @@ class ErrorYT(Exception):
 
 
 def con_contacto(desc, idioma='es'):
-    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, después
-    del primer párrafo (lo que se ve sin «Mostrar más»). Si ya está, no se repite. Los videos de noticias no lo llevan:
-    eso lo decide quien llama."""
+    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, LO
+    PRIMERO de todo (regla de fabian: va en la primera línea, antes de cualquier otro texto). Si ya estaba en otro lugar,
+    se mueve arriba; nunca se repite. Los videos de noticias no lo llevan: eso lo decide quien llama."""
     try:
         bloques = json.load(open(CONTACTO, encoding='utf-8'))
     except (OSError, ValueError):
         return desc
     bloque = (bloques.get(idioma) or bloques.get('es') or '').strip()
     desc = (desc or '').strip()
-    if not bloque or 'wa.me/573186888787' in desc:
+    if not bloque:
         return desc
-    if '\n\n' not in desc:
-        return (desc + '\n\n' + bloque).strip()
-    primero, resto = desc.split('\n\n', 1)
-    return f'{primero}\n\n{bloque}\n\n{resto}'
+    for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo arriba
+        b = b.strip() if isinstance(b, str) else ''
+        if b.startswith('🌐') and b in desc:
+            desc = desc.replace(b, '')
+    desc = re.sub(r'\n{3,}', '\n\n', desc).strip()
+    return (bloque + '\n\n' + desc).strip()
 
 
 def config(aj):
