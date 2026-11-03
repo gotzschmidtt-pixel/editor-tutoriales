@@ -419,11 +419,14 @@ def main():
             pass
         antes, cod_antes = len(partes), set(codificar.USADOS)
         codificar.USADOS.clear()
-        if m['modo'].startswith('lento'):
+        # el tramo va justo hasta el cuadro donde termina (o el bloque, si no tiene pausa), contando los que ya hay. Sin sitio
+        # (un bloque de menos de un cuadro, o el de antes ya llegó hasta ahí) no se pone nada: antes iba 1 cuadro igual y,
+        # con el bloque de antes a un cuadro de su lugar, el siguiente quedaba 2 cuadros tarde y salía el aviso rojo aunque
+        # volvieras a montar (revisión 3 de la mejora 1)
+        n_a = (fin_tramo if pausa else meta[kb + 1]) - sum(cuadros)
+        if m['modo'].startswith('lento') and n_a >= 1:
             f = os.path.join(tmp, f'{i}_a.mp4')
             entrada = ['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an']
-            # justo hasta el cuadro donde termina el tramo (o el bloque, si no tiene pausa), contando los que ya hay
-            n_a = max(1, (fin_tramo if pausa else meta[kb + 1]) - sum(cuadros))
             if (i, 'a') in plan:  # la misma toma hace rato: cambia de encuadre
                 hechos = con_encuadres(entrada, f"setpts=PTS/{m.get('velocidad') or 1},{out}", plan[(i, 'a')], FPS, res,
                                        f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_a'), n_a)
@@ -510,10 +513,10 @@ def main():
                     hechos = [f]
             partes += hechos
             cuadros += [cuadros_de(f) for f in hechos]
-        if m['modo'] == 'imagen':
+        n_img = meta[kb + 1] - sum(cuadros)  # la imagen también, justo hasta el bloque siguiente (sin sitio, nada)
+        if m['modo'] == 'imagen' and n_img >= 1:
             img = m.get('imagen') or a.imagen
             f = os.path.join(tmp, f'{i}_b.mp4')
-            n_img = max(1, meta[kb + 1] - sum(cuadros))  # también justo hasta el bloque siguiente
             run(['-loop', '1', '-t', f'{n_img / FPS + 1:.3f}', '-i', img, '-filter_complex',
                  f"[0]split[a][b];[a]scale={res[0]}:{res[1]},boxblur=20[bg];[b]scale=-1:{res[1] - 20}[fg];[bg][fg]overlay=(W-w)/2:10,fps={FPS},format=yuv420p{lab}",
                  '-frames:v', str(n_img)] + enc + [f])
