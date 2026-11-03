@@ -306,7 +306,7 @@ def armar(d, cuales=(1, 2, 3)):
     import cv2
     import short
     import codificar
-    r = poner_extras(leer(d))
+    r = leer(d)
     orig = os.path.join(d, 'original.mp4')
     try:
         encuadres = json.load(open(os.path.join(d, 'short_encuadres.json'), encoding='utf-8'))
@@ -317,6 +317,7 @@ def armar(d, cuales=(1, 2, 3)):
         for k, f in enumerate(r['shorts'][n - 1]['frases'], 1):
             if not f.get('tomas'):
                 raise ValueError(f'Short {n}, frase {k}: no tiene tomas (escríbelas como 18-22)')
+    poner_extras(r)  # después de revisar: el número de frase del aviso es el que fabian ve en la pestaña
     senales_src = short.senales_grabado(d)  # las flechas y círculos del video largo, en segundos de la grabación
     for n in cuales:
         s = r['shorts'][n - 1]
