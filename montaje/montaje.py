@@ -97,7 +97,14 @@ EN_CURSO = 'montaje_en_curso.mp4'  # lo que va del montaje, para verlo en la app
 PARTES = '.montaje_partes'  # tramos ya hechos: si el montaje se corta, o cambias un solo bloque, no se rehacen los demás
 AVISOS_MONTAJE = 'avisos_montaje.json'  # la imagen no cae donde dice el guion: la vista previa lo muestra en rojo
 TOLERANCIA_GUION = 0.1  # s: ia.py redondea inicio_min a 0,1 s; más que eso es un guion con los tiempos de antes
-RELLENO_CUADROS = 'tpad=stop_mode=clone:stop_duration=2'  # si un tramo sale corto, repite su último cuadro: nunca falta uno
+
+
+def relleno(n, fps):
+    """Si un pedazo sale corto, repite su último cuadro hasta los n que tiene que tener (-frames:v corta ahí): nunca falta
+    uno. Sin un tope fijo: con 2 s, un tramo que pasaba 5 s del final de la grabación (o una grabación de pantalla del
+    teléfono, que no guarda cuadros mientras la pantalla está quieta) dejaba los bloques siguientes 3 s antes de su voz
+    (revisión 2 de la mejora 1)."""
+    return f'tpad=stop_mode=clone:stop_duration={n / fps + 1:.3f}'
 
 
 def largo_tramo(m):
@@ -113,7 +120,9 @@ def tiempos_bloques(bloques):
     for b in bloques:
         ini = b.get('inicio_min')
         if isinstance(ini, (int, float)) and not isinstance(ini, bool):
-            if abs(ini - t) <= TOLERANCIA_GUION:
+            # + 1e-6: con el redondeo de ia.py la diferencia llega justo a 0,1 s y los decimales de la PC la pasaban por
+            # poco (0,1 + 0,2 = 0,30000000000000004): un guion bien hecho salía como «tiempos viejos» (revisión, 03/11/2026)
+            if abs(ini - t) <= TOLERANCIA_GUION + 1e-6:
                 t = float(ini)
             elif viejo is None:
                 viejo = b['id']
@@ -233,7 +242,7 @@ def con_encuadres(entrada, previa, segs, fps, res, despues, enc, base, total=Non
         if fin is not None:
             fin = max(fin, ini + 1)  # nunca un pedazo vacío (desarma los tiempos al unir)
         # con tope de cuadros, el relleno asegura que el último encuadre llegue justo a su fin (mejora 1, 03/11/2026)
-        tr = f"trim=start_frame={ini}" + (f":end_frame={fin},setpts=PTS-STARTPTS,{RELLENO_CUADROS}" if fin is not None else ',setpts=PTS-STARTPTS')
+        tr = f"trim=start_frame={ini}" + (f":end_frame={fin},setpts=PTS-STARTPTS,{relleno(fin - ini, fps)}" if fin is not None else ',setpts=PTS-STARTPTS')
         f = f'{base}_{k}.mp4'
         run(entrada + ['-vf', f"{previa},{tr},{encuadres.filtro(z, cx, cy)}scale={res[0]}:{res[1]},setsar=1,{despues}"]
             + (['-frames:v', str(fin - ini)] if fin is not None else []) + enc + [f])
@@ -349,7 +358,11 @@ def main():
         if abs(sum(cuadros) - meta[kb]) > 1:
             corridos.append((i, sum(cuadros) - meta[kb]))
         fin_tramo = round((inicios[kb] + largo_tramo(m)) * FPS)  # cuadro donde termina el tramo y empieza la pausa
-        pausa = m['modo'].endswith('congelar') and meta[kb + 1] - fin_tramo >= 1
+        # una pausa de 0 s (así deja «Alinear» los tramos que corre: "congelar_s": 0) no se arma aunque el redondeo de los
+        # tiempos deje un cuadro entre el tramo y el bloque siguiente: ese cuadro lo pone el tramo. Antes salía una
+        # «pausa» de 1 cuadro con todo su trabajo (buscar caras, la escena de ida y vuelta, «✨ Mejorar imagen») (revisión 2)
+        pausa = (m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1
+                 and meta[kb + 1] - fin_tramo >= 1)
         lab = rotulo(f"{i}  {b.get('ancla', '')}")
         enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf]
         cara, ventana, tocada = False, None, False
@@ -383,13 +396,16 @@ def main():
                                         + (['rota', rota[i]] if i in rota else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
+        guardar = True  # los tramos que se hacen pasan a la carpeta de tramos hechos
         try:
             info = json.load(open(hecho, encoding='utf-8'))
             guardadas = [os.path.join(cache, x) for x in info['partes']]
             if all(os.path.getsize(x) > 0 for x in guardadas) and len(info['cuadros']) == len(guardadas):
                 # si cambiaste un bloque de antes, este puede quedar a un cuadro de su lugar (se acepta); a más, se rehace.
-                # En «Probar solo unos bloques» van tal cual: rehacerlos ahí pisaría los tramos del video entero
-                if not completo or abs(sum(cuadros) + sum(info['cuadros']) - meta[kb + 1]) <= 1:
+                # En «Probar solo unos bloques» también (antes iban tal cual y sus cuadros de más se sumaban: la prueba
+                # avisaba «la imagen empieza 2 cuadros antes» y volver a montar no lo arreglaba), pero lo rehecho queda solo
+                # en la carpeta temporal: no pisa los tramos del video entero (revisión 2)
+                if abs(sum(cuadros) + sum(info['cuadros']) - meta[kb + 1]) <= 1:
                     partes += guardadas
                     cuadros += info['cuadros']
                     codificar.USADOS.update(info.get('codificadores', []))
@@ -398,6 +414,7 @@ def main():
                     avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
                     continue
                 print(i, '· lo ya hecho no cae en su cuadro (cambió un bloque de antes): se rehace', flush=True)
+                guardar = completo
         except (OSError, ValueError, KeyError, TypeError):
             pass
         antes, cod_antes = len(partes), set(codificar.USADOS)
@@ -411,7 +428,7 @@ def main():
                 hechos = con_encuadres(entrada, f"setpts=PTS/{m.get('velocidad') or 1},{out}", plan[(i, 'a')], FPS, res,
                                        f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_a'), n_a)
             else:
-                run(entrada + ['-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out},{RELLENO_CUADROS}{lab}", '-frames:v', str(n_a)] + enc + [f])
+                run(entrada + ['-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out},{relleno(n_a, FPS)}{lab}", '-frames:v', str(n_a)] + enc + [f])
                 hechos = [f]
             for f in hechos:
                 if a.estabilizar:
@@ -432,7 +449,7 @@ def main():
                 trozos_r[-1] = (trozos_r[-1][0], max(1, trozos_r[-1][1] + nfr - sum(n for _, n in trozos_r)))
                 for k, (s_k, n_k) in enumerate(trozos_r):
                     f_k = os.path.join(tmp, f'{i}_r{k}.mp4')
-                    run(['-ss', f'{s_k:.2f}', '-t', f'{n_k / FPS + 1:.2f}', '-i', a.original, '-an', '-vf', f"{out},tpad=stop_mode=clone:stop_duration=2{lab}",
+                    run(['-ss', f'{s_k:.2f}', '-t', f'{n_k / FPS + 1:.2f}', '-i', a.original, '-an', '-vf', f"{out},{relleno(n_k, FPS)}{lab}",
                          '-frames:v', str(n_k)] + enc + [f_k])
                     hechos.append(f_k)
             elif quieto:  # cuadro fijo con zoom lento (como antes)
@@ -503,15 +520,16 @@ def main():
             partes.append(f)
             cuadros.append(cuadros_de(f))
         # los tramos de este bloque pasan a la carpeta de tramos hechos; el .json se escribe al final, así un corte a
-        # mitad de bloque nunca deja un tramo a medias marcado como hecho
+        # mitad de bloque nunca deja un tramo a medias marcado como hecho (lo rehecho solo para una prueba queda en la temporal)
         nombres = []
-        for k in range(antes, len(partes)):
+        for k in range(antes, len(partes)) if guardar else []:
             nombre = f'{i}_{clave}_{k - antes}.mp4'
             os.replace(partes[k], os.path.join(cache, nombre))
             partes[k] = os.path.join(cache, nombre)
             nombres.append(nombre)
-        json.dump({'partes': nombres, 'cuadros': cuadros[antes:], 'codificadores': sorted(codificar.USADOS)}, open(hecho, 'w', encoding='utf-8'))
-        usadas.update([os.path.basename(hecho)] + nombres)
+        if guardar:
+            json.dump({'partes': nombres, 'cuadros': cuadros[antes:], 'codificadores': sorted(codificar.USADOS)}, open(hecho, 'w', encoding='utf-8'))
+            usadas.update([os.path.basename(hecho)] + nombres)
         codificar.USADOS.update(cod_antes)
         mp3 = os.path.join(carpeta_voz, f'{i}.mp3')
         if not (b.get('texto') or '').strip():
@@ -538,9 +556,11 @@ def main():
     real, aviso = revisar_cuadros(a.salida, meta[-1], FPS)
     avisos = []
     if desde_viejo:
+        # sin decir «no gasta»: en un bloque que todavía no tiene voz, «Generar voz» sí la pide a ElevenLabs (revisión, 03/11/2026)
         avisos.append({'bloque': desde_viejo, 'aviso': f'{desde_viejo}: los tiempos del guion no coinciden con el largo de los bloques '
                        'de antes (¿cambiaste un tramo o una pausa después de la voz?): desde aquí la voz no cae sobre su imagen. '
-                       'Pasa otra vez por «Generar voz» (recalcula los tiempos; no gasta si el texto no cambió) y vuelve a montar.'})
+                       'Pasa otra vez por «Generar voz» (recalcula los tiempos; solo pide a ElevenLabs la voz de los bloques que '
+                       'todavía no la tienen o que cambiaste) y vuelve a montar.'})
     if corridos:
         c_id, c_n = corridos[0]
         avisos.append({'bloque': c_id, 'aviso': f'{c_id}: la imagen empieza {abs(c_n)} cuadros {"tarde" if c_n > 0 else "antes"} '
