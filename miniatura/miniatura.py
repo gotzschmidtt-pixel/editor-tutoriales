@@ -9,8 +9,10 @@ Gratis, en tu PC:
   3. Pone el texto grande con tus colores (remotion/src/estilo.ts) y una flecha hacia el teléfono.
 Deja miniatura_1.jpg, miniatura_2.jpg, miniatura_3.jpg y miniatura.json (de dónde sale cada una).
 
-Con --gpt (gasta: 3 imágenes de gpt-image-2.5-flare en calidad alta), además, la miniatura hecha por la IA de imágenes con tus
-cuadros de referencia (el problema y el resultado), en español, inglés y portugués: miniatura_gpt_es/en/pt.jpg.
+Con --gpt (gasta: 3 imágenes de gpt-image-2.5-flare, en calidad baja de borrador si no pides --calidad media o alta), además,
+la miniatura hecha por la IA de imágenes con tus cuadros de referencia (el problema y el resultado), en español, inglés y
+portugués: miniatura_gpt_es/en/pt.jpg. GPT escribe todo con la fórmula de tu canal y copia el estilo de tus miniaturas
+recientes (canal_referencia.py, fabian 03/11/2026).
 
 Uso: python miniatura.py --proyecto . [--texto "MOTOROLA|SIN CUENTA"] [--gpt] (la | parte en dos líneas; sin texto, lo arma solo)
 """
@@ -333,6 +335,31 @@ def pedir_imagen(req, intentos=4):
             time.sleep(espera)
 
 
+# el modelo y la calidad de las miniaturas (fabian, 03/11/2026): los borradores en BAJA (~0,02 USD), la final aprobada en
+# MEDIA (~0,07 USD) y alta solo si la pide. El modelo: gpt-image-2.5-flare, o uno más nuevo de la familia 2.5 que pongas en
+# app/ajustes.json como "modelo_imagen" (otro que no sea de esa familia no se usa)
+MODELO_IMAGEN = 'gpt-image-2.5-flare'
+CALIDADES = {'baja': 'low', 'media': 'medium', 'alta': 'high'}
+COSTO_CALIDAD = {'baja': 0.02, 'media': 0.07, 'alta': 0.28}  # USD por imagen 16:9
+
+
+def ajustes():
+    try:
+        return json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def modelo_imagen(aj=None):
+    m = str((aj if aj is not None else ajustes()).get('modelo_imagen') or '').strip()
+    return m if re.fullmatch(r'gpt-image-(2\.[5-9]|[3-9])([.\-][\w.\-]*)?', m) else MODELO_IMAGEN
+
+
+def clave_openai():
+    """La clave de OpenAI: la de GPT en «🤖 Ajustes IA»."""
+    return str(((ajustes().get('ias_guion') or {}).get('gpt') or {}).get('clave') or '')
+
+
 FONDOS_MINI = {  # pedido de fabian (30/10/2026): probar los dos y quedarse con el que más le guste
     'escritorio': '(1) fondo = SU escritorio real, el que se ve alrededor del teléfono en las fotos de su video, tal cual, claro y apenas desenfocado: la laptop, el cartel '
                   'negro «Frp» y la G de Google grande de 4 colores (no inventes otro fondo); ',
@@ -342,53 +369,158 @@ FONDOS_MINI = {  # pedido de fabian (30/10/2026): probar los dos y quedarse con 
 }
 
 
-def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='escritorio', extras=()):
-    """La miniatura hecha por gpt-image-2.5-flare con tus cuadros de referencia, una por idioma. Devuelve los archivos."""
-    import base64, urllib.request, uuid
-    k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
-    if not k:
-        raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
+# la fórmula de las miniaturas de fabian (analizada el 02/11/2026 en las de su canal que más rinden; pedido del 03/11/2026:
+# «las que estás haciendo no se parecen nada a las mías»). TODO lo escribe GPT: la app no dibuja nada encima
+FONDOS_CANAL = {
+    'gpt': 'azul marino oscuro con neón azul y cian, rayos de luz y destellos, como en sus miniaturas',
+    'foto': 'el fondo REAL de sus fotos (su estudio), oscurecido y con contraste, con un toque de neón azul y cian',
+    'escritorio': 'SU escritorio real, el que se ve alrededor del teléfono en sus fotos, oscurecido y con contraste, con un toque '
+                  'de neón azul y cian',
+}
+WEB = re.compile(r'\.(com|co|net|org|io)\b|gsmprime|xiaomiunlock|www\.', re.I)  # «XIAOMIUNLOCK» solo también es su página
+
+
+def revisar_textos(textos, marca):
+    """Antes de gastar: nada de páginas web (fabian, 02/11/2026) ni «SIN PC» en las marcas que usan PC (Honor)."""
+    for t in textos:
+        if WEB.search(t):
+            raise SystemExit(f'ERROR: «{t}» lleva una página web y las miniaturas van sin webs (fabian, 02/11/2026). Quítala. '
+                             'No se gastó nada.')
+        if re.search(r'\b(SIN|NO|SEM) PC\b', t, re.I) and necesita_pc(marca):
+            raise SystemExit(f'ERROR: «{t}»: este proceso usa PC, nunca «SIN PC» («PC BÁSICA ✓» sí). No se gastó nada.')
+
+
+def logos_miniatura(marca, texto, n=2):
+    """[(nombre, archivo)]: logos oficiales de tu biblioteca (mis_conocimientos/logos) para la miniatura. Primero el que va
+    ENTRE las palabras del título (Google en FRP, iOS en iPhone, o el que nombre el título) y después el de la marca. Nunca
+    tarjetas ni webs."""
+    import unicodedata
+    norma = lambda t: ''.join(c for c in unicodedata.normalize('NFKD', str(t or '').lower()) if not unicodedata.combining(c))
+    simple = lambda t: re.sub(r'[^a-z0-9]+', ' ', norma(t)).strip()
+    try:
+        lib = json.load(open(os.path.join(LOGOS_DIR, 'logos.json'), encoding='utf-8')).get('logos') or []
+    except (OSError, ValueError, AttributeError):
+        lib = []
+    cands = [(str(l.get('nombre') or os.path.splitext(l['archivo'])[0]), os.path.join(LOGOS_DIR, l['archivo'])) for l in lib
+             if isinstance(l, dict) and l.get('archivo') and not l.get('tarjeta') and not l.get('solo_short')]
+    try:
+        cands += [(os.path.splitext(f)[0].replace('_', ' '), os.path.join(LOGOS_DIR, f)) for f in sorted(os.listdir(LOGOS_DIR))
+                  if f.lower().endswith('.png')]
+    except OSError:
+        pass
+    cands = [(nm, f) for nm, f in cands if os.path.isfile(f) and not re.search(
+        r'whats|wasap|soporte|tarjeta|contacto|play|web|gsmprime|xiaomiunlock|\.com|\.co\b', norma(nm + ' ' + os.path.basename(f)))]
+    t = f' {simple(texto)} '
+    out = []
+
+    def poner(cumple):
+        for nm, f in cands:
+            if len(out) < n and f not in [x[1] for x in out] and cumple(simple(nm)):
+                out.append((nm, f))
+                return
+    if re.search(r' (frp|google) ', t):
+        poner(lambda nm: re.search(r'\bgoogle\b', nm))
+    elif re.search(r' (iphone|icloud|ios) ', t):
+        poner(lambda nm: re.search(r'\bios\b', nm))
+    poner(lambda nm: len(nm) > 2 and f' {nm} ' in t and nm != simple(marca))  # el que nombra el título («iOS 27», «Android 15»)
+    if marca and marca != 'TU CELULAR':
+        poner(lambda nm: nm == simple(marca))
+    return out
+
+
+def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fondo='gpt', antes_desc=None,
+                 esquinas=('PASO A PASO', ''), cara=False, marca='TU CELULAR'):
+    """El pedido a GPT para que la miniatura salga como las del canal de fabian: su fórmula, con el texto en el idioma pedido."""
+    nombre = {'es': 'español', 'en': 'inglés', 'pt': 'portugués'}[idioma]
+    textos = [traducir(x.strip(), idioma) for x in lineas if x and x.strip()] or [('PASO A PASO', False)]
+    izq, der = [traducir(x.strip(), idioma) if x and x.strip() else ('', False) for x in (list(esquinas) + ['', ''])[:2]]
+    traduce = any(t for _, t in textos + [izq, der])
+    lin = lambda x: ' / '.join(p.strip() for p in x.split('|') if p.strip())  # «NUEVA UPDATE|EXPLICADO PASO A PASO»: 2 líneas
+    i = n_fotos + n_extras
+    p = ['Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian (técnico que desbloquea celulares), hecha IGUAL que las '
+         'miniaturas recientes de SU canal: la misma fórmula, las mismas letras, los mismos efectos y el mismo tipo de fondo.',
+         f'Imagen 1: SU foto real del teléfono de este video ANTES ({antes_desc or "bloqueado"}).'
+         + (' Imagen 2: el mismo teléfono ya libre, en su pantalla de inicio (DESPUÉS).' if n_fotos > 1 else '')
+         + (f' Imágenes {n_fotos + 1} a {i}: más fotos reales del mismo teléfono.' if n_extras > 1 else
+            f' Imagen {i}: otra foto real del mismo teléfono.' if n_extras else '')
+         + ' Parte SIEMPRE de SUS fotos: el teléfono, su pantalla y lo que se lee en ella salen de ahí, tal cual (no inventes otro '
+           'modelo, otra cámara ni otra pantalla).']
+    for k, (nm, _) in enumerate(logos):
+        p.append(f'Imagen {i + k + 1}: el logo oficial de {nm}: cópialo exacto, sin redibujarlo ni cambiarle los colores.')
+    i += len(logos)
+    if n_estilo:
+        p.append(f'Imágenes {i + 1} a {i + n_estilo}: miniaturas de SU canal, SOLO como referencia de ESTILO (reparto, tipo de '
+                 'letra, borde, sombra, degradados, neón, brillo y fondo): NO copies sus textos, ni sus teléfonos, ni sus '
+                 'pantallas, ni sus logos, ni la duración de YouTube.')
+    # (revisión, 03/11/2026) entre las palabras va el logo del SERVICIO (la G en FRP, iOS en iPhone), como en «ELIM. CUENTA [G]
+    # HONOR»; si ese logo no está guardado, GPT lo dibuja (antes iba el de la marca, que ya está escrita en la frase)
+    unido = ' '.join(lineas)
+    servicio = 'Google' if re.search(r'frp|google', unido, re.I) else 'iOS' if re.search(r'iphone|icloud|\bios\b', unido, re.I) else ''
+    suyo = next((nm for nm, _ in logos if servicio and re.search(rf'\b{servicio}\b', nm, re.I)), '')
+    entre = (f'de {suyo}' if suyo else f'de {servicio}' if servicio else f'de {logos[0][0]}' if logos else
+             f'de {marca.title()}' if marca != 'TU CELULAR' else 'de la marca')
+    if len(textos) > 1:
+        frase = (f'«{textos[0][0]}» en blanco, el logo {entre} y «{" ".join(x for x, _ in textos[1:])}» en amarillo-naranja con '
+                 'degradado')
+    else:
+        frase = f'«{textos[0][0]}»: las primeras palabras en blanco, el logo {entre} y la última en amarillo-naranja con degradado'
+    p.append('FÓRMULA OBLIGATORIA, todo junto:')
+    p.append(f'(1) ABAJO, la frase principal en UNA sola línea a todo el ancho, en {nombre}: {frase}. El logo va ENTRE las '
+             'palabras (como «ELIM. CUENTA [G] HONOR» o «BYPASS iOS [27] SIN ERRORES»). Letra muy gruesa, condensada y en '
+             'cursiva, con borde negro grueso y sombra; si hace falta contraste, sobre una placa negra con borde de neón celeste. '
+             'La frase termina ANTES de la esquina de abajo a la derecha: deja libre ese rincón (ahí YouTube pone la duración).')
+    p.append('(2) ARRIBA, en las dos esquinas, etiquetas inclinadas unos 5° (una hacia cada lado), de 1 o 2 líneas: '
+             + (f'arriba a la izquierda «{lin(izq[0])}» GRANDE en amarillo con degradado (o en una cinta); ' if izq[0] else
+                'arriba a la izquierda nada de texto; ')
+             + (f'arriba a la derecha «{lin(der[0])}» en 2 o 3 líneas blancas dentro de un recuadro redondeado negro con borde de '
+                'neón azul.' if der[0] else 'arriba a la derecha un recuadro redondeado negro con borde de neón azul, solo con el '
+                'logo de la marca (sin texto).'))
+    p.append('(3) AL CENTRO el teléfono real GRANDE, con la pantalla legible, con un filo de luz blanco-celeste en el contorno y '
+             'resplandor cian; sostenido con guante negro o azul. Si sirve, los 2 teléfonos: ANTES y DESPUÉS. Máximo 2 manos en '
+             'toda la imagen. '
+             + ('A un costado, un hombre latino ficticio (no es nadie real, siempre el mismo), de expresión natural (ni exagerada, '
+                'ni seria, ni pícara), con buzo blanco liso sin logos.' if cara else 'Sin personas: solo las manos con guante.'))
+    p.append(f'(4) FONDO: {FONDOS_CANAL.get(fondo, FONDOS_CANAL["gpt"])}. NUNCA un fondo claro ni blanco.')
+    p.append('(5) TODO el texto lo escribes tú, perfectamente escrito, con tildes, en MAYÚSCULAS y grande: que se lea en el '
+             'celular a 320×180. Un solo título del modelo. Ningún otro texto: nada de páginas web ni direcciones (.com, .co, '
+             'gsmprime, xiaomiunlock), nada de marcas de agua. Nada de letras 3D doradas o metálicas ni sellos dorados.'
+             + (' Este proceso usa PC: nunca escribas «SIN PC» (si hace falta, «PC BÁSICA ✓»).' if necesita_pc(marca) else ''))
+    if traduce:
+        p.append(f'Los textos entre « » van en {nombre}: tradúcelos cortos y naturales (marcas, modelos y versiones quedan igual).')
+    p.append('Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
+    return ' '.join(p)
+
+
+def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='gpt',
+                   extras=(), calidad='baja', esquinas=('PASO A PASO', ''), cara=False, refs_canal=None, info=None):
+    """La miniatura hecha TODA por GPT (textos incluidos) con la fórmula del canal de fabian, una por idioma: tus fotos, los
+    logos oficiales de tu biblioteca y 2-3 miniaturas de tu canal como referencia de ESTILO (canal_referencia.py; sin ellas,
+    las de mis_conocimientos/miniaturas/referencias). Borrador en baja; la final, en media. Devuelve los archivos.
+    refs_canal: los ids de las miniaturas del canal de un borrador, para que su final salga con el mismo estilo."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import canal_referencia
+    lineas = [x.strip() for x in lineas if x and x.strip()]
+    revisar_textos(lineas + [x for x in esquinas if x], marca)
+    texto = ' '.join(lineas)
+    logos = logos_miniatura(marca, texto)
+    # las del borrador; si ya no están, se eligen otra vez con la misma cuenta que «🖼 Miniatura» (las marcadas con ✓): antes
+    # la marca salía de otro lado (el guion) y a GPT podían ir otras (revisión, 03/11/2026)
+    canal = ((canal_referencia.por_ids(refs_canal) if refs_canal else []) or
+             canal_referencia.elegir(*canal_referencia.contexto(d, texto)))
+    estilo = [v['ruta'] for v in canal] or referencias_estilo(marca, 3)
+    fotos = list(refs)
+    imagenes = fotos + list(extras) + [f for _, f in logos] + estilo
+    if canal:
+        print('· estilo de tu canal: ' + ' | '.join(str(v.get('titulo') or v['id'])[:45] for v in canal), flush=True)
+    if info is not None:
+        info.update(modelo=modelo_imagen(), calidad=calidad, refs_canal=[v['id'] for v in canal], logos=[nm for nm, _ in logos],
+                    costo_usd=COSTO_CALIDAD.get(calidad, COSTO_CALIDAD['alta']))
     hechas = []
-    marca_logo = marca.title() if marca != 'TU CELULAR' else 'la marca del teléfono'
-    # 1 y 2: tus cuadros; 3: tu mascota; después, 3 miniaturas tuyas (las de la misma marca primero)
-    refs = list(refs) + ([MASCOTA] if os.path.exists(MASCOTA) else []) + list(extras) + referencias_estilo(marca, 3)
     for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
-        partes = [traducir(x, idioma) for x in lineas if x]
-        texto = ' / '.join(f'«{x}»' for x, _ in partes)
-        traduce = any(t for _, t in partes)
-        prompt = ('Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian, técnico de celulares, IDÉNTICA a SU ESTILO. '
-                  f'Imagen 1: el teléfono REAL de este video ANTES: {antes_desc or "bloqueado"}; muéstralo tal cual. Imagen 2: el mismo '
-                  'teléfono ya libre, en SU pantalla de inicio con las apps, igual que en la foto (DESPUÉS). Imagen 3: SU MASCOTA (el conejo Mi con casco de soldar que dice «XIAOMIUNLOCK» y '
-                  'el androide verde con herramientas): va abajo a la izquierda, chica, siempre. '
-                  + (f'Imágenes 4 a {3 + len(extras)}: más fotos HD reales del mismo teléfono, para copiarlo fiel. ' if extras else '') +
-                  'Las demás imágenes son miniaturas '
-                  'suyas: cópiales el estilo (no su texto, ni su teléfono, ni el reloj de duración de YouTube). OBLIGATORIO, todo junto: '
-                  + FONDOS_MINI.get(fondo, FONDOS_MINI['escritorio']) +
-                  '(2) los dos teléfonos reales grandes, de frente, sostenidos con guante negro, la pantalla bien legible; '
-                  f'(3) etiqueta inclinada roja «{ANTES_DESPUES[idioma][0]}» arriba del bloqueado y verde «{ANTES_DESPUES[idioma][1]}» '
-                  'arriba del libre, letra gruesa blanca con borde; (4) flecha gruesa curva amarilla del bloqueado al libre; '
-                  '(5) candado abierto con la G de Google entre los dos; '
-                  f'(6) arriba a la derecha el logo de {marca_logo} en un cuadrado blanco redondeado; arriba a la izquierda una cinta '
-                  'roja inclinada «NEW 2026»; (7) un sello redondo dorado «MÉTODO GARANTIZADO 2026» a la derecha; '
-                  f'(8) dos píldoras blancas con ícono al costado: {(PILDORAS_PC if necesita_pc(marca) else PILDORAS)[idioma]}; '
-                  '(9) abajo una franja inclinada amarilla y celeste a todo el ancho con el texto GRANDE en mayúsculas, tipografía muy '
-                  f'gruesa condensada e itálica, blanco con borde negro y sombra, perfectamente escrito, en {nombre}: {texto}'
-                  + (f' (tradúcelo al {nombre}, corto y natural)' if traduce else '') +
-                  '. Colores saturados, mucho contraste, nada oscuro ni de ciencia ficción. Ningún otro texto (nada de páginas web ni '
-                  'direcciones .com o .co), ningún logo ni persona inventados. Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
-        b = uuid.uuid4().hex
-        cuerpo = b''
-        for campo, v in {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': '1536x864', 'quality': 'high', 'output_format': 'png'}.items():
-            cuerpo += f'--{b}\r\nContent-Disposition: form-data; name="{campo}"\r\n\r\n{v}\r\n'.encode()
-        for i, r in enumerate(refs):
-            cuerpo += (f'--{b}\r\nContent-Disposition: form-data; name="image[]"; filename="ref{i}{os.path.splitext(r)[1]}"\r\nContent-Type: {'image/jpeg' if r.lower().endswith('.jpg') else 'image/png'}\r\n\r\n'.encode()
-                       + open(r, 'rb').read() + b'\r\n')
-        cuerpo += f'--{b}--\r\n'.encode()
-        req = urllib.request.Request('https://api.openai.com/v1/images/edits', data=cuerpo,
-                                     headers={'Authorization': 'Bearer ' + k, 'Content-Type': f'multipart/form-data; boundary={b}'})
-        print(f'· la IA de imágenes hace la miniatura en {nombre}…', flush=True)
-        r = pedir_imagen(req)
-        img = cv2.imdecode(np.frombuffer(base64.b64decode(r['data'][0]['b64_json']), np.uint8), cv2.IMREAD_COLOR)
+        prompt = prompt_canal(lineas, idioma, n_fotos=len(fotos), n_extras=len(extras), logos=logos, n_estilo=len(estilo),
+                              fondo=fondo, antes_desc=antes_desc, esquinas=esquinas, cara=cara, marca=marca)
+        print(f'· la IA de imágenes hace la miniatura en {nombre} (calidad {calidad})…', flush=True)
+        img = imagen_gpt(prompt, imagenes, size='1536x864', calidad=calidad)
         h, w = img.shape[:2]
         alto = min(h, int(w * 9 / 16))  # ya viene en 16:9 (1536x864): no se corta nada
         img = cv2.resize(img[(h - alto) // 2:(h - alto) // 2 + alto], (W, H), interpolation=cv2.INTER_AREA)
@@ -412,15 +544,16 @@ PILDORAS_MIXTA = {True: {'es': (('TODOS LOS', 'MODELOS', 'tel'), ('EN', 'MINUTOS
 LOGOS_DIR = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
 
 
-def imagen_gpt(prompt, refs, size='1536x864', transparente=False):
-    """Un pedido a gpt-image-2.5-flare con imágenes de referencia; devuelve la imagen (BGR, o BGRA si es transparente)."""
+def imagen_gpt(prompt, refs, size='1536x864', transparente=False, calidad='alta'):
+    """Un pedido a gpt-image-2.5-flare (o el modelo 2.5 de ajustes.json, modelo_imagen()) con imágenes de referencia;
+    devuelve la imagen (BGR, o BGRA si es transparente). calidad: baja (borrador), media (final) o alta."""
     import base64, urllib.request, uuid
-    k = json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')).get('ias_guion', {}).get('gpt', {}).get('clave', '')
+    k = clave_openai()
     if not k:
         raise SystemExit('ERROR: falta la clave de OpenAI (la de GPT en «🤖 Ajustes IA») para la miniatura con GPT.')
     b = uuid.uuid4().hex
     cuerpo = b''
-    campos = {'model': 'gpt-image-2.5-flare', 'prompt': prompt, 'size': size, 'quality': 'high', 'output_format': 'png'}
+    campos = {'model': modelo_imagen(), 'prompt': prompt, 'size': size, 'quality': CALIDADES.get(calidad, 'high'), 'output_format': 'png'}
     if transparente:
         campos['background'] = 'transparent'
     for campo, v in campos.items():
@@ -1044,8 +1177,8 @@ def momentos_miniatura(d):
 
 
 def con_fotos(d, a):
-    """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video; GPT y la app
-    ponen fondo, textos, sello, píldoras y logo."""
+    """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video. Desde el
+    03/11/2026 GPT hace todo (textos incluidos) con la fórmula de su canal; con --mixta, como antes, la app pone los textos."""
     fotos = {k: os.path.join(d, f'foto_miniatura_{k}.jpg') for k in FOTOS if os.path.exists(os.path.join(d, f'foto_miniatura_{k}.jpg'))}
     if not a.gpt:
         raise SystemExit('ERROR: la miniatura con tus fotos la hace GPT: escribe SI para confirmar el gasto.')
@@ -1072,20 +1205,44 @@ def con_fotos(d, a):
     extras = [fotos[k] for k in FOTOS[2:] if k in fotos]
     marca = next((x.strip().upper() for x in lineas if x.strip().upper() in MARCAS), textos(d)[0][0])  # para el logo oficial
     hechas = []
+    import time
+    calidad = getattr(a, 'calidad', None) or 'baja'
+    idiomas = tuple(x for x in str(getattr(a, 'idiomas', None) or 'es,en,pt').split(',') if x in ('es', 'en', 'pt')) or ('es', 'en', 'pt')
     try:
         for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
+            if not a.mixta:  # (fabian, 03/11/2026) todo GPT con la fórmula de su canal: borrador en baja y la final en media
+                info = {}
+                # con la fecha: solo con la hora, un borrador de otro día a la misma hora pisaba al de antes (revisión, 03/11/2026)
+                base = os.path.join(d, f"miniatura_canal_{fondo}_{calidad}_{time.strftime('%m%d%H%M%S')}")
+                for f in miniaturas_gpt(d, [fotos['antes'], fotos['despues']], lineas, base, marca, idiomas=idiomas,
+                                        antes_desc='tal como está en la foto HD', fondo=fondo, extras=extras, calidad=calidad,
+                                        esquinas=(a.esquina_izq, a.esquina_der), cara=bool(getattr(a, 'cara', False)),
+                                        refs_canal=[x for x in str(getattr(a, 'refs_canal', None) or '').split(',') if x], info=info):
+                    hechas.append({'archivo': f, 'de': f"tus fotos · como tu canal · {'borrador' if calidad == 'baja' else 'final'} en "
+                                                        f"calidad {calidad} · fondo {'de tus fotos' if fondo == 'foto' else 'azul con neón'}",
+                                   'texto': [x for x in lineas if x], 'idioma': f.rsplit('_', 1)[1][:2], 'fondo': fondo,
+                                   'calidad': calidad, 'esquinas': [a.esquina_izq, a.esquina_der], 'cara': bool(getattr(a, 'cara', False)),
+                                   'modelo': info.get('modelo'), 'refs_canal': info.get('refs_canal'), 'costo_usd': info.get('costo_usd')})
+                continue
             hacer = (lambda *x, **k: miniaturas_mixtas(*x, estilos=estilos_titulo(a), titulo_por_gpt=a.titulo_gpt,
                                                       esquinas=(a.esquina_izq, a.esquina_der),
-                                                      base_titulo=os.path.join(d, 'miniatura_fotos_mixta'), **k)) if a.mixta else miniaturas_gpt
-            base = os.path.join(d, f"miniatura_fotos_{'mixta' if a.mixta else 'gpt'}_{fondo}")
+                                                      base_titulo=os.path.join(d, 'miniatura_fotos_mixta'), **k))
+            base = os.path.join(d, f"miniatura_fotos_mixta_{fondo}")
             for f in hacer(d, [fotos['antes'], fotos['despues']], lineas, base, marca, antes_desc='tal como está en la foto HD',
                            fondo=fondo, extras=extras):
-                hechas.append({'archivo': f, 'de': f"tus fotos · {'mixta' if a.mixta else 'todo GPT'} · fondo {'de tus fotos' if fondo == 'foto' else 'de GPT'}",
+                hechas.append({'archivo': f, 'de': f"tus fotos · mixta · fondo {'de tus fotos' if fondo == 'foto' else 'de GPT'}",
                                'texto': [x for x in lineas if x]})
     finally:
         for f in temporales:
             os.remove(f)
-    json.dump({'miniaturas': hechas}, open(os.path.join(d, 'miniatura_fotos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    try:  # los borradores de antes no se pierden al hacer la final (fabian los compara)
+        antes = json.load(open(os.path.join(d, 'miniatura_fotos.json'), encoding='utf-8')).get('miniaturas') or []
+    except (OSError, ValueError, AttributeError):
+        antes = []
+    nuevas = {h['archivo'] for h in hechas}
+    todas = hechas + [h for h in antes if isinstance(h, dict) and h.get('archivo') not in nuevas
+                      and os.path.isfile(os.path.join(d, str(h.get('archivo'))))]
+    json.dump({'miniaturas': todas[:60]}, open(os.path.join(d, 'miniatura_fotos.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'Listo: {len(hechas)} miniaturas con tus fotos.', flush=True)
 
 
@@ -1105,6 +1262,11 @@ def main():
     ap.add_argument('--fondos', action='store_true', help='con --gpt: dos miniaturas en español, una con tu escritorio real de fondo y otra con fondo de GPT')
     ap.add_argument('--variantes', action='store_true', help='con --gpt: una miniatura por cada ANTES (bloqueada, fastboot, Bienvenido), en español')
     ap.add_argument('--short', action='store_true', help='además, la portada vertical del Short con gpt-image-2.5-flare en 3 idiomas (gasta)')
+    # (fabian, 03/11/2026) la miniatura de GPT con la fórmula de su canal: borrador en baja y la final aprobada en media
+    ap.add_argument('--calidad', choices=tuple(CALIDADES), default='baja', help='baja = borrador (~0,02 USD), media = final (~0,07 USD), alta solo si la pides')
+    ap.add_argument('--idiomas', default='es,en,pt', help='con --fotos sin --mixta: los idiomas, separados por coma')
+    ap.add_argument('--cara', action='store_true', help='con --fotos sin --mixta: un hombre latino ficticio a un costado, buzo blanco liso')
+    ap.add_argument('--refs-canal', default='', help='con --fotos sin --mixta: los ids de las miniaturas del canal de un borrador (su final)')
     a = ap.parse_args()
     d = os.path.abspath(a.proyecto)
     if a.momentos:
@@ -1168,7 +1330,7 @@ def main():
             if a.gpt and a.variantes:  # una por cada ANTES, en español, para elegir la mejor
                 for k in antes:
                     for f in miniaturas_gpt(d, [ref[k], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_{k}'), marca,
-                                            idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k)):
+                                            idiomas=('es',), antes_desc=NOMBRE_ANTES.get(k), calidad=a.calidad):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · ANTES: {k}', 'segundo': round(clave[k], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt and a.mixta:  # GPT hace la escena y la app escribe encima (con --fondos, las dos escenas)
                 for fondo in (('escritorio', 'gpt') if a.fondos else ('escritorio',)):
@@ -1180,11 +1342,11 @@ def main():
             elif a.gpt and a.fondos:  # la misma miniatura con los dos fondos, para comparar
                 for fondo in ('escritorio', 'gpt'):
                     for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, f'miniatura_gpt_fondo_{fondo}'),
-                                            marca, idiomas=('es',), antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo):
+                                            marca, idiomas=('es',), antes_desc=NOMBRE_ANTES.get(antes[0]), fondo=fondo, calidad=a.calidad):
                         hechas.append({'archivo': f, 'de': f'gpt-image-2.5-flare · fondo {fondo}', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             elif a.gpt:
                 for f in miniaturas_gpt(d, [ref[antes[0]], ref['inicio']], list(lineas[0]), os.path.join(d, 'miniatura_gpt'), marca,
-                                        antes_desc=NOMBRE_ANTES.get(antes[0])):
+                                        antes_desc=NOMBRE_ANTES.get(antes[0]), calidad=a.calidad):
                     hechas.append({'archivo': f, 'de': 'gpt-image-2.5-flare', 'segundo': round(clave[antes[0]], 1), 'texto': [x for x in lineas[0] if x]})
             if a.short:  # la portada del Short: vertical, con el estilo de sus Shorts
                 for f in portadas_short(d, [ref[antes[0]]], list(lineas[0]), os.path.join(d, 'portada_short'), marca):

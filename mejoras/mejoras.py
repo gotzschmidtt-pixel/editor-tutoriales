@@ -103,11 +103,23 @@ def comandos(paso, d, op, py, ajustes):
             raise ValueError('La miniatura con tus fotos usa GPT y gasta: escribe SI para confirmar.')
         texto = str(op.get('texto') or '').strip()[:80]
         fondo = op.get('fondo') if op.get('fondo') in ('foto', 'gpt', 'ambos') else 'foto'
-        return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo]
-                + (['--mixta', '--titulo', op.get('titulo') if op.get('titulo') in ('placa', 'placa_negra', 'placa_roja', 'placa_violeta', 'pincel', 'metal', 'placas') else 'todos'] if op.get('modo', 'mixta') == 'mixta' else [])
-                + (['--titulo-gpt'] if op.get('titulo_gpt') and op.get('modo', 'mixta') == 'mixta' else [])
-                + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else 'NEW 2026').strip()[:22],
-                   '--esquina-der', str(op.get('esq_der') or '').strip()[:22]]
+        # (fabian, 03/11/2026) por defecto todo lo hace GPT con la fórmula de su canal («canal»); la mixta (la app escribe
+        # encima) queda solo si se pide con modo «mixta»
+        mixta = op.get('modo') == 'mixta'
+        largo = 22 if mixta else 40  # en la fórmula del canal, la esquina derecha lleva 2-3 líneas
+        if mixta:
+            extra = (['--mixta', '--titulo', op.get('titulo') if op.get('titulo') in ('placa', 'placa_negra', 'placa_roja', 'placa_violeta', 'pincel', 'metal', 'placas') else 'todos']
+                     + (['--titulo-gpt'] if op.get('titulo_gpt') else []))
+        else:
+            idiomas = [x for x in (op.get('idiomas') or ['es', 'en', 'pt']) if x in ('es', 'en', 'pt')] or ['es', 'en', 'pt']
+            extra = ['--calidad', op.get('calidad') if op.get('calidad') in ('baja', 'media', 'alta') else 'baja', '--idiomas', ','.join(idiomas)]
+            extra += ['--cara'] if op.get('cara') else []
+            refs = [x for x in (op.get('refs_canal') or []) if re.fullmatch(r'[\w-]{11}', str(x))]
+            # con «=»: un id de YouTube puede empezar con «-» y, separado, argparse lo toma por otra opción (revisión, 03/11/2026)
+            extra += ['--refs-canal=' + ','.join(refs)] if refs else []
+        return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo] + extra
+                + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else ('NEW 2026' if mixta else 'PASO A PASO')).strip()[:largo],
+                   '--esquina-der', str(op.get('esq_der') or '').strip()[:largo]]
                 + (['--texto', texto] if texto else [])]
     if paso == 'm_avisos':
         return [[py, m('avisos', 'avisos_legales.py'), '--proyecto', '.']]
@@ -209,9 +221,24 @@ def estado(d):
     }
 
 
+def _canal_ref():
+    """miniatura/canal_referencia.py: las miniaturas de tu canal como referencia de estilo (fabian, 03/11/2026)."""
+    if m('miniatura') not in sys.path:  # una sola vez: la página lo pide a cada rato mientras escribes el título
+        sys.path.insert(0, m('miniatura'))
+    import canal_referencia
+    return canal_referencia
+
+
 def get(h, ruta, q, d):
     if ruta == '/api/mejoras/estado':
         return h.responder(estado(d))
+    if ruta == '/api/mejoras/canal_ref':  # «🖼 Miniatura»: tus miniaturas del canal guardadas y cuáles irían a GPT (gratis)
+        return h.responder(_canal_ref().estado(d, q.get('texto', '')))
+    if ruta == '/api/mejoras/canal_ref_img':
+        cr = _canal_ref()
+        if not cr.ID.fullmatch(q.get('id', '')):
+            return h.error('miniatura no válida', 404)
+        return h.servir(os.path.join(cr.CARPETA, q['id'] + '.jpg'))
     if ruta == '/api/mejoras/sonido':  # para escuchar cada sonido de la biblioteca
         f = sonidos.archivo(q.get('n', '')) if q.get('n') in sonidos.SONIDOS else None
         return h.servir(f) if f else h.error('todavía no está hecho', 404)
@@ -257,6 +284,22 @@ def post(h, ruta, q, largo, d):
             return h.responder(json.loads(r.stdout.strip().splitlines()[-1]))
         except (ValueError, IndexError):
             return h.error('La IA no pudo sugerir títulos: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
+    if ruta == '/api/mejoras/canal_ref_bajar':  # «⬇ Traer mis miniaturas del canal»: gratis (i.ytimg.com es público)
+        import subprocess
+        r = subprocess.run([sys.executable, m('miniatura', 'canal_referencia.py'), '--bajar'], capture_output=True, text=True,
+                           encoding='utf-8', timeout=900, cwd=d, env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8'))
+        try:
+            out = json.loads(r.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return h.error('No pude traer tus miniaturas: ' + ((r.stderr or r.stdout).strip().splitlines() or ['sin respuesta'])[-1][:300])
+        return h.responder(out) if out.get('ok') else h.error(out.get('error') or 'falló')
+    if ruta == '/api/mejoras/canal_ref_marcar':  # 📌 fijar o 🚫 quitar una miniatura del canal como referencia
+        cr = _canal_ref()
+        try:
+            cr.marcar(datos.get('id'), fijada=datos.get('fijada'), quitada=datos.get('quitada'))
+        except ValueError as e:
+            return h.error(str(e))
+        return h.responder(dict(cr.estado(d, str(datos.get('texto') or '')), ok=True))
     if ruta == '/api/mejoras/momentos_miniatura':  # los mejores cuadros de tu video para el ANTES y el DESPUÉS (gratis)
         import subprocess
         r = subprocess.run([sys.executable, m('miniatura', 'miniatura.py'), '--proyecto', d, '--momentos'], capture_output=True,
