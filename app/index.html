@@ -931,6 +931,8 @@
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajRevExtras"> 👀 Pasar siempre por la vista previa: antes de poner etiquetas, flechas, círculos o recuadros en el video, la app dibuja las diapositivas y se para hasta que pulses «▶ Ponerlas en el video». En la cola de noche el video queda armado sin ellas y quedan pendientes de aprobar</label>
   <label class="aviso"><input type="checkbox" id="ajRevImg"> 🔎 Revisar el guion contra las imágenes antes de la voz: al empezar «▶ Hacer todo», la IA mira el comienzo, el medio y el final del tramo de cada bloque (y el texto de la pantalla en los pasos clave) y, si la voz habla de algo que se ve en otro momento, mueve el tramo. Se hace una sola vez por guion, antes de pagar la voz. Tarda unos 15 a 30 min y hace algunos pedidos a la IA con imágenes. Sin tildar, «Hacer todo» va directo a la voz (puedes hacerla igual cuando quieras con «🔎 Revisar con imágenes»)</label>
+  <label class="aviso"><input type="checkbox" id="ajAlinear"> 📐 Alinear cada frase con su pantalla (gratis): en «▶ Hacer todo» y en «Solo los bloques», con la voz ya hecha y antes del montaje, la app lee el texto de la pantalla en tu PC (sin IA, no gasta) y corre un poco el tramo para que cada frase caiga sobre lo que nombra. Nunca pasa tus topes (×1 con tu cara o en un ⭐, ×1,5 en los pasos clave, ×2 en los de configuración) ni pisa el bloque de al lado, y no toca el gancho. Lo que no puede arreglar lo deja en alineacion.txt y se frena antes del montaje. La primera vez tarda unos minutos (lee todo el video); el guion de antes queda en guion.json.antes_alinear</label>
+  <label class="aviso">En los primeros <input type="number" id="ajAlinearAvisar" min="0" max="20" step="1" style="width:4em"> videos «Alinear» solo avisa: no toca el guion y deja en alineacion.txt lo que haría, para que lo compares con lo que corriges a mano (0 = que corrija solo desde ya). <span id="ajAlinearVan"></span></label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con varias IAs a la vez</b> (GPT, Claude, Gemini y DeepSeek): las que tengan clave y modelo escriben el guion
     al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
@@ -2681,6 +2683,10 @@ async function ajustesIA() {
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajRevImg').checked = a.revisar_imagen !== false; $('#ajRevExtras').checked = a.revisar_extras !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
   $('#ajTres').checked = !!a.tres_ia; $('#ajAprVarias').checked = !!a.aprender_varias;
+  // «Alinear» en «Hacer todo» (03/11/2026): marcado si nunca lo tocaste; la cuenta de los videos que solo avisan, a la vista
+  const van = Array.isArray(a.alinear_avisados) ? a.alinear_avisados : [];
+  $('#ajAlinear').checked = a.alinear !== false; $('#ajAlinearAvisar').value = a.alinear_solo_avisar ?? 2;
+  $('#ajAlinearVan').textContent = van.length ? `Van ${van.length}: ${van.join(', ')}.` : 'Todavía ningún video.';
   const ias = a.ias_guion || {};
   $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
     <b>${nombre}</b>
@@ -2749,6 +2755,7 @@ async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
     tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, revisar_imagen: $('#ajRevImg').checked, revisar_extras: $('#ajRevExtras').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
+    alinear: $('#ajAlinear').checked, alinear_solo_avisar: (n => isNaN(n) ? 2 : Math.max(0, Math.min(20, n)))(parseInt($('#ajAlinearAvisar').value)),
     tres_ia: $('#ajTres').checked, aprender_varias: $('#ajAprVarias').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
   const ke = $('#ajEleven').value.trim();
   if (ke) { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: ke})}); verEleven(); }
@@ -2852,6 +2859,18 @@ function pintarBarra(t, r, arch) {
       <span class="cuanto">corrígelos antes de pagar la voz; al volver a tocar «▶ Hacer todo» la revisión no se repite</span>
       <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
       <button onclick="seguirTodo()" title="Sigue con la voz sin corregir: gasta ElevenLabs y te pide escribir SI">▶ Seguir igual</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>
+      ${av.length ? `<pre class="detalle" style="white-space:pre-wrap; margin:4px 0; max-height:12em; overflow:auto">${esc(av.join('\n'))}</pre>` : ''}`;
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
+    return;
+  }
+  if (r.ok && r.pausa === 'alineacion') {  // «Hacer todo» se frenó antes del montaje: «Alinear» dejó frases fuera de su pantalla (03/11/2026)
+    const av = r.avisos || [];
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">⏸ Me frené antes del montaje: ${av.length} frase${av.length === 1 ? ' no cae' : 's no caen'} sobre la pantalla que nombra${av.length === 1 ? '' : 'n'}</span>
+      <span class="cuanto">la voz ya está hecha (no se vuelve a pagar); el detalle está en alineacion.txt. Al volver a tocar «▶ Hacer todo» no me freno por las mismas</span>
+      <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
+      <button onclick="seguirTodo()" title="Sigue con el montaje sin corregirlas (la voz ya está: no gasta)">▶ Seguir igual</button>${cerrar}</span></div>
       <div class="riel"><div class="lleno" style="width:100%"></div></div>
       ${av.length ? `<pre class="detalle" style="white-space:pre-wrap; margin:4px 0; max-height:12em; overflow:auto">${esc(av.join('\n'))}</pre>` : ''}`;
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }

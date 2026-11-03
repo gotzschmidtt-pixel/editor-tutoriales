@@ -53,7 +53,9 @@ def avisar_resultado(aj, proyecto, r, url=''):
     minutos = max(1, round((r.get('segundos') or 0) / 60))
     if r.get('ok'):
         pausa = (' Espera que revises el guion.' if r.get('pausa') == 'guion' else
-                 ' Se frenó antes de la voz: hay bloques donde la voz no va con la imagen.' if r.get('pausa') == 'revision' else '')
+                 ' Se frenó antes de la voz: hay bloques donde la voz no va con la imagen.' if r.get('pausa') == 'revision' else
+                 ' Se frenó antes del montaje: hay frases que no caen sobre su pantalla (alineacion.txt).'
+                 if r.get('pausa') == 'alineacion' else '')
         avisar(aj, f'✅ {proyecto}: listo', f"Terminó en {minutos} min ({r.get('total', 0)} pasos).{pausa}", url)
     elif r.get('msg') != 'detenido por ti':
         avisar(aj, f'❌ {proyecto}: falló en «{r.get("paso") or "un paso"}»', r.get('msg') or 'Mira el diagnóstico en la app.',
