@@ -148,10 +148,16 @@ def run(cmd, **kw):
         print('· la tarjeta NVIDIA no pudo codificar este tramo; lo repito con el procesador', flush=True)
     qs = con_qsv(cmd) if not nv and hay_qsv() else None
     if qs:
-        r = subprocess.run(qs, **dict(kw, check=False))
-        if r.returncode == 0:
-            USADOS.add('intel')
-            return r
+        # con ffmpeg 9 la gráfica Intel falla al azar más o menos 1 de cada 15 a 110 tramos («Invalid data found», aunque el
+        # comando sea simple: laptop de fabian, 03/11/2026). Se repite una vez con Intel antes de pasar al procesador: así
+        # todo el video sale con el mismo codificador y no hay que recodificarlo entero al final
+        for intento in (1, 2):
+            r = subprocess.run(qs, **dict(kw, check=False))
+            if r.returncode == 0:
+                USADOS.add('intel')
+                return r
+            if intento == 1:
+                print('· la gráfica Intel falló en este tramo; lo intento otra vez', flush=True)
         _qsv = False
         print('· la gráfica Intel no pudo codificar este tramo; lo repito con el procesador', flush=True)
     if 'libx264' in [str(x) for x in cmd]:
