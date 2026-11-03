@@ -38,6 +38,12 @@
   .sug:hover, .sug.elegida { border-color: var(--rosa); }
   .sug .b { color: #fff; font-weight: 800; } .sug .a { color: var(--amarillo); font-weight: 800; }
   .sug small { display: block; color: var(--suave); font-size: 11px; margin-top: 2px; }
+  .canal { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .canal figure { margin: 0; border: 2px solid var(--borde); border-radius: 10px; padding: 5px; font-size: 11px; color: var(--suave); }
+  .canal figure.usar { border-color: var(--verde); } .canal figure.quitada { opacity: .4; }
+  .canal img { width: 100%; border-radius: 6px; display: block; }
+  .canal .fila { margin: 4px 0 0; gap: 4px; } .canal button { padding: 2px 7px; font-size: 12px; }
+  .canal button.activo { border-color: var(--amarillo); color: var(--amarillo); }
 </style>
 </head>
 <body>
@@ -73,44 +79,51 @@
   </section>
 
   <section>
-    <h2>2 · Cómo la quieres</h2>
-    <p class="aviso">El título va abajo, en una fila: la primera parte en blanco (la marca o el modelo) y la segunda en amarillo
-      (la palabra clave). Escríbelo tú o pide ideas a la IA y toca una. Se traduce solo al inglés y al portugués.</p>
+    <h2>2 · El estilo de tu canal</h2>
+    <p class="aviso">Tus miniaturas recientes y las más vistas del canal, guardadas en tu PC (gratis). GPT copia de ellas SOLO el estilo
+      (reparto, letras, neón, fondo), nunca sus textos ni sus teléfonos. Para este video se eligen solas 2 o 3, las más parecidas
+      (misma marca o servicio): las marcadas con ✓. Toca <b>📌</b> para usar una siempre o <b>🚫</b> para no usarla nunca.</p>
+    <div class="fila"><button onclick="traerCanal()" title="Baja tus miniaturas de YouTube (i.ytimg.com, público). No gasta nada">⬇ Traer mis miniaturas del canal</button>
+      <span class="msg" id="canalMsg"></span></div>
+    <div class="canal" id="canal"></div>
+  </section>
+
+  <section>
+    <h2>3 · Cómo la quieres</h2>
+    <p class="aviso">Como en tus miniaturas: la frase va abajo en una línea, la primera parte en blanco (la marca o el modelo), el logo
+      en medio y la segunda en amarillo-naranja (la palabra clave). Arriba, una etiqueta en cada esquina. TODO lo escribe GPT.
+      Escríbelo tú o pide ideas a la IA y toca una. Se traduce solo al inglés y al portugués.</p>
     <div class="fila">
       <input type="text" id="linea1" placeholder="Parte blanca: HONOR" style="flex:1; min-width:10em; text-transform:uppercase">
       <input type="text" id="linea2" placeholder="Parte amarilla: SIN CUENTA GOOGLE" style="flex:2; min-width:14em; text-transform:uppercase">
       <button onclick="sugerir()" title="Tu IA (⚙ Ajustes IA) lee el guion y lo que funciona en tu canal y propone 8 títulos con su traducción. Es un pedido corto de texto (centavos)">💡 Sugerir con IA</button>
     </div>
     <div class="sugeridos" id="sugeridos"></div>
-    <div class="fila" title="Textos cortos (hasta 22 letras) en las esquinas de arriba, en una cinta inclinada. Vacío = no se pone. También se traducen">
-      <label>↖ Arriba izquierda <input type="text" id="esqIzq" value="NEW 2026" maxlength="22" style="width:11em; text-transform:uppercase"></label>
-      <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: 100% REAL" maxlength="22" style="width:11em; text-transform:uppercase"></label>
-      <span class="aviso">(con texto a la derecha, el logo baja un poco)</span>
+    <div class="fila" title="Textos cortos en las esquinas de arriba, inclinados. Con | partes en líneas (NUEVA UPDATE|EXPLICADO PASO A PASO). También se traducen">
+      <label>↖ Arriba izquierda <input type="text" id="esqIzq" value="PASO A PASO" maxlength="40" style="width:11em; text-transform:uppercase"></label>
+      <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: NUEVA UPDATE|EXPLICADO PASO A PASO" maxlength="40" style="width:17em; text-transform:uppercase"></label>
+      <span class="aviso">(izquierda: grande en amarillo · derecha: 2-3 líneas blancas en recuadro con neón azul; vacía = solo el logo)</span>
     </div>
     <div class="sugeridos" id="sugEsquinas"></div>
     <div class="barra" id="sugBarra" hidden><div></div><span></span></div>
     <p class="msg" id="sugMsg"></p>
     <div class="fila">
+      <!-- (fabian, 03/11/2026) todo lo escribe GPT con la fórmula de tu canal: ya no hay «mixta» con textos de la app encima -->
       <label>Fondo <select id="fondo">
-        <option value="foto">El de tus fotos</option>
-        <option value="gpt">Uno hecho por GPT (azul con neón)</option>
+        <option value="gpt">Azul marino con neón (como tu canal)</option>
+        <option value="foto">Tu estudio real de las fotos (oscurecido)</option>
         <option value="ambos">Los dos, para comparar</option>
       </select></label>
-      <label>Cómo <select id="modo">
-        <option value="mixta">🧩 Mixta: GPT la escena, la app los textos y el logo (recomendada)</option>
-        <option value="gpt">✨ Todo GPT (textos incluidos)</option>
+      <label title="Borrador en baja para ver la idea; cuando te guste uno, «✅ Hacer la final» la repite en media con tus mismas fotos">Calidad <select id="calidad">
+        <option value="baja">Borrador · baja (~0,02 USD c/u)</option>
+        <option value="media">Final · media (~0,07 USD c/u)</option>
+        <option value="alta">Alta (~0,28 USD c/u, solo si la quieres)</option>
       </select></label>
-      <label title="Tus estilos de título (los que te gustan): con la mixta, los 3 salen gratis de la misma escena">Título <select id="titulo">
-        <option value="todos">Tus 3 favoritos: placa negra, placa azul y 3D dorado</option>
-        <option value="placas">Las 4 placas para comparar (azul, negra, roja, violeta)</option>
-        <option value="placa">Placa azul brillante</option>
-        <option value="placa_negra">Placa negra con neón</option>
-        <option value="placa_roja">Placa roja</option>
-        <option value="placa_violeta">Placa violeta</option>
-                <option value="metal">Letras 3D doradas</option>
-        <option value="pincel">Pincelada verde y azul</option>
+      <label>Idiomas <select id="idiomas">
+        <option value="es">Solo español</option>
+        <option value="es,en,pt">Español, inglés y portugués</option>
       </select></label>
-      <label title="El título lo dibuja GPT 2.5 copiando tus estilos (se ve menos genérico que el de la app). Gasta 1 imagen por estilo y por idioma"><input type="checkbox" id="tituloGpt" checked> ✨ Título y etiquetas dibujados por GPT 2.5</label>
+      <label title="A un costado, un hombre latino ficticio (siempre el mismo), expresión natural y buzo blanco liso sin logos"><input type="checkbox" id="cara"> 🙂 Con cara</label>
     </div>
     <p class="aviso" id="costo"></p>
     <div class="fila"><button class="principal" onclick="hacer()">🖼 Hacer la miniatura</button><span class="msg" id="msg"></span></div>
@@ -118,8 +131,9 @@
   </section>
 
   <section>
-    <h2>3 · Resultado</h2>
-    <p class="aviso">Español, inglés y portugués. Toca una para verla en grande.</p>
+    <h2>4 · Resultado</h2>
+    <p class="aviso">Toca una para verla en grande. Cuando un borrador te guste, <b>✅ Hacer la final</b> la repite en calidad media con
+      tus mismas fotos, el mismo texto y las mismas miniaturas de estilo (no retoca la imagen de GPT).</p>
     <div class="tira" id="ver"></div>
   </section>
 </main>
@@ -221,7 +235,7 @@ function pintarEsquinas() {
     <button onclick="esquina('#esqDer', ${i})" title="Ponerlo arriba a la derecha">↗</button></span>`).join('') : '';
 }
 function esquina(campo, i) { $(campo).value = E.esquinas_ia[i].es; }
-function usar(i) { const x = E.titulos_ia[i]; $('#linea1').value = x.es[0] || ''; $('#linea2').value = x.es[1] || ''; pintarSugeridos(); }
+function usar(i) { const x = E.titulos_ia[i]; $('#linea1').value = x.es[0] || ''; $('#linea2').value = x.es[1] || ''; pintarSugeridos(); cargarCanal(); }
 function barra(sel, seg) {  // barra aproximada: la IA no dice cuánto le falta, así que avanza según lo que suele tardar
   const b = $(sel), t0 = Date.now();
   const pintar = p => { b.firstElementChild.style.width = p + '%';
@@ -238,30 +252,28 @@ async function sugerir() {
   try { await api(`/api/mejoras/titulos_ia?p=${q(P)}`, {method: 'POST', body: '{}'}); fin(true); aviso('#sugMsg', '✓ Toca uno para usarlo (puedes editarlo después).', 'ok'); await cargar(); }
   catch (e) { fin(false); aviso('#sugMsg', e.message, 'err'); }
 }
-$('#linea1').oninput = $('#linea2').oninput = pintarSugeridos;
-function imagenes() {
-  const mixta = $('#modo').value === 'mixta', fondos = $('#fondo').value === 'ambos' ? 2 : 1;
-  const titulos = mixta && $('#tituloGpt').checked ? ({todos: 3, placas: 4}[$('#titulo').value] || 1) * 3 : 0;
-  return (mixta ? 1 : 3) * fondos + titulos;  // con «Los dos» fondos los títulos son los mismos: se dibujan una sola vez
-}
-function pintarCosto() {
-  $('#titulo').parentElement.style.display = $('#tituloGpt').parentElement.style.display = $('#modo').value === 'mixta' ? '' : 'none';  // con «Todo GPT» el título lo dibuja GPT
-  const n = imagenes();
-  $('#costo').textContent = `Gasta ${n} imagen${n > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad alta` +
-    ($('#modo').value === 'mixta' ? ' (una escena sirve para los 3 idiomas' + ($('#tituloGpt').checked ? '; el título, una por estilo e idioma; cada etiqueta nueva de arriba, una sola vez y queda guardada).' : ').') : ' (una por idioma).');
-}
-$('#fondo').onchange = $('#modo').onchange = $('#titulo').onchange = $('#tituloGpt').onchange = pintarCosto;
+$('#linea1').oninput = $('#linea2').oninput = () => { pintarSugeridos(); clearTimeout(CANAL_T); CANAL_T = setTimeout(cargarCanal, 600); };
+// (fabian, 03/11/2026) borrador en baja, la final en media y alta solo si la pides; todo lo escribe GPT (una imagen por idioma)
+const COSTO = {baja: 0.02, media: 0.07, alta: 0.28}, CALIDAD = {baja: 'baja (borrador)', media: 'media (final)', alta: 'alta'};
+const pedido = () => ({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'),
+  fondo: $('#fondo').value, calidad: $('#calidad').value, idiomas: $('#idiomas').value.split(','), cara: $('#cara').checked,
+  esq_izq: $('#esqIzq').value.trim().toUpperCase(), esq_der: $('#esqDer').value.trim().toUpperCase()});
+const imagenes = op => (op.fondo === 'ambos' ? 2 : 1) * op.idiomas.length;
+const gasto = op => `${imagenes(op)} imagen${imagenes(op) > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad ${CALIDAD[op.calidad]} ≈ USD ${(imagenes(op) * COSTO[op.calidad]).toFixed(2)}`;
+function pintarCosto() { $('#costo').textContent = `Gasta ${gasto(pedido())} (una por idioma y fondo).`; }
+$('#fondo').onchange = $('#calidad').onchange = $('#idiomas').onchange = pintarCosto;
 
-async function hacer() {
+async function hacer(final) {  // final: un borrador de la lista que se repite en calidad media
   if (!(E.fotos_miniatura || {}).antes && !(E.archivos || {})['original.mp4']) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
-  const r = prompt(`⚠ Esto gasta ${imagenes()} imagen(es) de gpt-image-2.5-flare en calidad alta.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
+  const op = final ? {texto: (final.texto || []).join('|'), fondo: final.fondo || 'gpt', calidad: 'media', idiomas: $('#idiomas').value.split(','),
+    cara: !!final.cara, esq_izq: (final.esquinas || [])[0] || '', esq_der: (final.esquinas || [])[1] || '', refs_canal: final.refs_canal || []} : pedido();
+  const r = prompt(`⚠ Esto gasta ${gasto(op)}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
   if (r === null) return;
   if (!/^\s*s[ií]\s*$/i.test(r)) return alert('No escribiste SI: no hice nada y no se gastó nada.');
   aviso('#msg', 'GPT está haciendo la miniatura (1 o 2 minutos por imagen)…');
-  const fin = barra('#barra', 70 * imagenes());
+  const fin = barra('#barra', 70 * imagenes(op));
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST',
-      body: JSON.stringify({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'), fondo: $('#fondo').value, modo: $('#modo').value, titulo: $('#titulo').value, titulo_gpt: $('#tituloGpt').checked, esq_izq: $('#esqIzq').value.trim().toUpperCase(), esq_der: $('#esqDer').value.trim().toUpperCase(), confirmo: 'SI'})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=m_miniatura_fotos`, {method: 'POST', body: JSON.stringify({...op, modo: 'canal', confirmo: 'SI'})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);
@@ -282,8 +294,40 @@ async function cargar() {
   pintarSugeridos();
   pintarEsquinas();
   const m = (E.miniaturas_fotos || {}).miniaturas || [];
-  $('#ver').innerHTML = m.length ? m.map(x => `<figure><a href="${arch(x.archivo)}" target="_blank"><img src="${arch(x.archivo)}" alt=""></a>
-    <figcaption>${esc(x.archivo)} · ${esc(x.de)}</figcaption></figure>`).join('') : '<p class="aviso">Todavía no hiciste ninguna con tus fotos.</p>';
+  $('#ver').innerHTML = m.length ? m.map((x, i) => `<figure><a href="${arch(x.archivo)}" target="_blank"><img src="${arch(x.archivo)}" alt=""></a>
+    <figcaption>${esc(x.archivo)} · ${esc(x.de)}</figcaption>
+    ${x.calidad === 'baja' ? `<button onclick="hacer(((E.miniaturas_fotos || {}).miniaturas || [])[${i}])" title="La misma, en calidad media (~0,07 USD por idioma), con tus fotos originales">✅ Hacer la final (media)</button>` : ''}</figure>`).join('')
+    : '<p class="aviso">Todavía no hiciste ninguna con tus fotos.</p>';
+}
+
+// las miniaturas de tu canal como referencia de estilo (fabian, 03/11/2026)
+let CANAL = {}, CANAL_T = null;
+const textoTitulo = () => [$('#linea1').value, $('#linea2').value].join(' ').trim();
+async function cargarCanal() {
+  try { CANAL = await api(`/api/mejoras/canal_ref?p=${q(P)}&texto=${q(textoTitulo())}`); } catch (e) { return aviso('#canalMsg', e.message, 'err'); }
+  pintarCanal();
+}
+function pintarCanal() {
+  const vs = CANAL.videos || [];
+  $('#canal').innerHTML = vs.length ? vs.map(v => `<figure class="${v.usar ? 'usar' : ''} ${v.quitada ? 'quitada' : ''}" title="${esc(v.titulo)}">
+    <a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank"><img src="/api/mejoras/canal_ref_img?p=${q(P)}&id=${q(v.id)}" alt="" loading="lazy"></a>
+    <div>${v.usar ? '✓ ' : ''}${esc((v.titulo || '').slice(0, 48))}</div><div>${(v.vistas || 0).toLocaleString('es')} vistas${v.reciente ? ' · reciente' : ''}${v.mas_vista ? ' · de las más vistas' : ''}</div>
+    <div class="fila"><button class="${v.fijada ? 'activo' : ''}" onclick="marcarCanal('${esc(v.id)}', {fijada: ${!v.fijada}})" title="Usarla siempre">📌</button>
+      <button class="${v.quitada ? 'activo' : ''}" onclick="marcarCanal('${esc(v.id)}', {quitada: ${!v.quitada}})" title="No usarla nunca">🚫</button></div></figure>`).join('')
+    : '<p class="aviso">Todavía no hay miniaturas de tu canal guardadas: toca «⬇ Traer mis miniaturas del canal». Mientras tanto se usan las de mis_conocimientos/miniaturas/referencias.</p>';
+  if (vs.length) aviso('#canalMsg', `${vs.length} guardadas (${CANAL.fecha || ''}, de ${CANAL.fuente || ''}). Para este video se usan ${(CANAL.usar || []).length}.`);
+}
+async function marcarCanal(id, cambio) {
+  try { CANAL = await api(`/api/mejoras/canal_ref_marcar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({id, texto: textoTitulo(), ...cambio})}); pintarCanal(); }
+  catch (e) { aviso('#canalMsg', e.message, 'err'); }
+}
+async function traerCanal() {
+  aviso('#canalMsg', 'Bajando tus miniaturas de YouTube (gratis, unos segundos)…');
+  try {
+    const r = await api(`/api/mejoras/canal_ref_bajar?p=${q(P)}`, {method: 'POST', body: '{}'});
+    aviso('#canalMsg', `✓ ${r.total} miniaturas guardadas (de ${r.fuente}).`, 'ok');
+    await cargarCanal();
+  } catch (e) { aviso('#canalMsg', e.message, 'err'); }
 }
 
 setInterval(async () => {  // qué está haciendo la app (si otra pestaña corre un paso)
@@ -302,6 +346,7 @@ setInterval(async () => {  // qué está haciendo la app (si otra pestaña corre
 }, 2000);
 pintarCosto();
 cargar().catch(e => alert(e.message));
+cargarCanal();
 </script>
 </body>
 </html>
