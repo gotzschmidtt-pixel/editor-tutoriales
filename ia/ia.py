@@ -1369,6 +1369,8 @@ def revisar(d, tarea, datos):
                           f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
         avisos += marcar_caras(d, bloques)  # con tu cara en pantalla nunca se acelera
         desde = len(avisos)
+        sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+        import voz as vz  # frenar_tramo: la misma regla de «frenar antes de congelar» que usa voz.py con la voz real
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1434,7 +1436,8 @@ def revisar(d, tarea, datos):
                 avisos.append(f"{b['id']}: acorté la pausa de {mo['congelar_s']:g} s a {voz + 0.5:g} s (lo que dura la voz)")
                 mo['congelar_s'] = round(voz + 0.5, 1)
             largo = ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
-            if voz > largo:  # la voz no cabe: se agrega una pausa congelada al final (no tapa nada)
+            no_cabia = voz > largo
+            if no_cabia:  # la voz no cabe: se agrega una pausa congelada al final (no tapa nada)
                 extra = round(voz - largo + 0.5, 1)
                 if mo['modo'] == 'lento':
                     mo['modo'] = 'lento+congelar'; mo['congelar_s'] = extra
@@ -1442,6 +1445,15 @@ def revisar(d, tarea, datos):
                     mo['congelar_s'] = round((mo.get('congelar_s') or 0) + extra, 1)
                 largo += extra
                 avisos.append(f"{b['id']}: la voz no cabía, agregué {extra} s de pausa")
+            # frenar antes de congelar (03/11/2026): la misma regla que voz.py aplica con la voz real, para que el editor
+            # muestre lo mismo: si el tramo va acelerado y termina en pausa, va más despacio y la pausa queda solo si a ×1 falta
+            frenado = vz.frenar_tramo(b)
+            if frenado:
+                largo = largo_bloque(mo)
+                if no_cabia:
+                    avisos[-1] = f"{b['id']}: la voz no cabía: {frenado}"
+                else:
+                    avisos.append(f"{b['id']}: {frenado}")
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
         if fijos:  # vuelven a su montaje de antes (con su voz real ya medida) y sin avisos de retoques que no se hicieron
