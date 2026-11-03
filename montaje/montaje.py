@@ -108,6 +108,14 @@ def relleno(n, fps):
     return f'tpad=stop_mode=clone:stop_duration={n / fps + 1:.3f}'
 
 
+def sin_mezclar(m, v):
+    """(revisión, 03/11/2026) Va sin «framerate» (repite cuadros en vez de mezclarlos) lo que está un poquito más lento que lo
+    grabado: el dato a ×0,9 o un paso clave a ×0,9-0,99, donde la key no puede salir doble. Algo mucho más lento sin datos
+    (un detalle a ×0,6) sigue mezclando cuadros como antes: repitiendo, a ×0,6 se vería a saltos."""
+    v = float(v or 1)
+    return v < 1 and (v >= pasos_clave.VEL_DATO - 1e-6 or bool(pasos_clave.ventanas(m)) or bool(m.get('critico')))
+
+
 def cadena_tramo(m, out, out_lento):
     """El filtro que pone el tramo «lento» a su velocidad. Más lento que lo grabado (menos de ×1) va con «out_lento»
     (solo «fps»): «framerate» mezcla cuadros vecinos y lo que se escribe (la key, el PIN) se vería doble, como las manos
@@ -116,12 +124,12 @@ def cadena_tramo(m, out, out_lento):
     v = m.get('velocidad') or 1
     ps = pasos_clave.piezas(m) if m.get('datos') else [(m['src_inicio'], m['src_fin'], v)]
     if len(ps) == 1:
-        return f"setpts=PTS/{v},{out if float(v) >= 1 else out_lento}"
+        return f"setpts=PTS/{v},{out_lento if sin_mezclar(m, v) else out}"
     a, n = float(m['src_inicio']), len(ps)
     g = [f"split={n}" + ''.join(f'[d{k}]' for k in range(n))]
     for k, (x0, x1, vk) in enumerate(ps):
         corte = (f"trim=start={x0 - a:.4f}" if k else 'trim=start=0') + (f":end={x1 - a:.4f}" if k < n - 1 else '')
-        g.append(f"[d{k}]{corte},setpts=(PTS-STARTPTS)/{vk:.5f},{out if vk >= 1 else out_lento}[p{k}]")
+        g.append(f"[d{k}]{corte},setpts=(PTS-STARTPTS)/{vk:.5f},{out_lento if sin_mezclar(m, vk) else out}[p{k}]")
     g.append(''.join(f'[p{k}]' for k in range(n)) + f'concat=n={n}:v=1:a=0')
     return ';'.join(g)
 
@@ -444,7 +452,7 @@ def main():
         clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else [])
                                         + ([plan.get((i, 'a')), plan.get((i, 'b')), 'otro_momento'] if (i, 'a') in plan or (i, 'b') in plan else [])
                                         + (['rota', rota[i]] if i in rota else [])
-                                        + (['lento_nitido'] if m['modo'].startswith('lento') and float(m.get('velocidad') or 1) < 1 else []),
+                                        + (['lento_nitido'] if m['modo'].startswith('lento') and sin_mezclar(m, m.get('velocidad') or 1) else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         guardar = True  # los tramos que se hacen pasan a la carpeta de tramos hechos

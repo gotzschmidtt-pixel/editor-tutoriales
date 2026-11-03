@@ -418,7 +418,7 @@ function frasesEstimadas(txt) {  // sin voz de este texto: 2,6 palabras por segu
 const VEL_DATO = 0.9;
 function ventanasDato(m) {
   const a = +m.src_inicio, z = +m.src_fin, out = [];
-  if (!(z > a) || !(m.modo || '').startsWith('lento')) return out;
+  if (!(z > a) || !(m.modo || '').startsWith('lento') || m.sin_voz) return out;  // sin voz: los datos viejos no cuentan (como pasos_clave.ventanas)
   for (const x of m.datos || []) {
     let x0 = Math.max(a, +x[0]), x1 = Math.min(z, +x[1]);
     if (x0 - a < 0.6) x0 = a;

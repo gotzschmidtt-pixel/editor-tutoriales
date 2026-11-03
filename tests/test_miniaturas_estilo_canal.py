@@ -54,7 +54,7 @@ def imagen(f, color=(60, 25, 10), w=320, h=180, centro=None):
 OSCURO, CLARO = (60, 25, 10), (225, 230, 235)
 
 with tempfile.TemporaryDirectory() as tmp:
-    mini.necesita_pc = lambda marca: marca.upper() != 'XIAOMI'
+    mini.necesita_pc = lambda marca, texto='': marca.upper() != 'XIAOMI'  # (marca, texto) como reglas_titulo.necesita_pc
     guia_md = os.path.join(tmp, 'ESTILO_MINIATURAS.md')
     open(guia_md, 'w', encoding='utf-8').write(
         '# Estilo\n\nintro\n\n## Estilo del canal para GPT (fabian, 03/11/2026)\n\nfabian dijo cosas.\n\n'

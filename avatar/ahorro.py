@@ -3,8 +3,7 @@ apoyo (pedido de fabian, 01/11/2026: «los créditos en HeyGen están algo costo
 como para variar»). Gratis: no llama a HeyGen, ElevenLabs ni a ninguna IA.
 
 Modo «ahorro» (por defecto), con el ritmo de las referencias (Olga Rendón y Danskyx, 01/11/2026):
-- GANCHO SIN AVATAR: los primeros 30-40 s (fabian, 03/11/2026; antes 30-60) son voz en off con cortes cada ~2 s; el avatar
-  entra después a presentarse.
+- GANCHO SIN AVATAR: los primeros 30-60 s son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
 - DOS VELOCIDADES: la voz en off cambia de imagen cada ~2 s en el primer minuto y cada ~5 s después, y cada corte cae en el
   fin de una frase cuando hay una cerca (va con lo que dice la voz). Nunca el mismo trozo dos veces seguidas.
 - POCOS TRAMOS DE AVATAR Y LARGOS: 2 a 4 de 30-55 s (la presentación, los momentos con más peso y el cierre), como mucho
@@ -25,9 +24,8 @@ import argparse, glob, json, os, random, re, subprocess, tempfile
 PAUSA = 0.4             # silencio entre bloques de voz (como al armar los bloques para HeyGen)
 MAX_TRAMO = 58.0        # HeyGen: cada audio por debajo de 1 min
 SEPARACION = 60.0       # entre dos tramos de avatar (para repartirlos por el video)
-GANCHO_MAX = 40.0       # el gancho sin avatar no pasa de 40 s si se puede (fabian, 03/11/2026: gancho de 30-40 s; antes 60)
 AJUSTES = {             # lo que se puede cambiar en la pestaña «🧑 Avatar (ahorro)»
-    'gancho_s': 35,         # gancho sin avatar al inicio (30-40 s, fabian 03/11/2026; antes 45; 0 = el avatar abre el video)
+    'gancho_s': 45,         # gancho sin avatar al inicio (30-60 s; 0 = el avatar abre el video)
     'rotar_inicio': 2.0,    # cada cuántos segundos cambia la imagen en el primer minuto
     'rotar': 5.0,           # … y después
     'tramos_avatar': 0,     # cuántos tramos con avatar (0 = la app decide: 2 a 4 según el largo)
@@ -138,12 +136,11 @@ def elegir(fr, modo='ahorro', aj=None):
         lo, hi = aj['tramo_s']
         lo = max(6.0, min(lo, presupuesto / n_tr))   # en videos cortos los tramos se achican para no pasar el tope
         hi = max(lo, min(hi, presupuesto / n_tr * 1.4))
-        # el gancho va sin avatar: hasta la frase que pasa de gancho_s (sin llegar a GANCHO_MAX s si se puede; si pusiste más
-        # en «Ritmo», hasta unos 5 s más de lo que pusiste)
+        # el gancho va sin avatar: hasta la frase que pasa de gancho_s (sin llegar a 60 s si se puede)
         i_g = -1
         if aj['gancho_s'] > 0:
             i_g = next((k for k in range(n) if fr[k]['e'] >= aj['gancho_s']), n - 1)
-            if fr[i_g]['e'] > max(GANCHO_MAX, aj['gancho_s'] + 5) and i_g > 0:
+            if fr[i_g]['e'] > 60 and i_g > 0:
                 i_g -= 1
         usados, ocupados = 0.0, []
 

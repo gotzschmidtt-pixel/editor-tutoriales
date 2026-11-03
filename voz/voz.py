@@ -232,8 +232,12 @@ def con_datos(g, guion):
         v, tope = float(mo.get('velocidad') or 1), tope_velocidad(clave)
         if v > tope + 1e-9:
             mo['velocidad'] = tope
-            avisos.append(f"{b['id']}: {'el dato' if mo.get('datos') else 'el paso clave'} no puede ir acelerado: "
-                          f"el tramo pasa de ×{v:g} a ×{tope:g}")
+            if v <= 1 + 1e-9:  # (revisión, 03/11/2026) no iba acelerado: el dato solo va un poquito más lento (×0,9)
+                avisos.append(f"{b['id']}: {'el dato' if mo.get('datos') else 'el paso clave'} va un poquito más lento (×0,9): "
+                              f"el bloque pasa de ×{v:g} a ×{tope:g}")
+            else:
+                avisos.append(f"{b['id']}: {'el dato' if mo.get('datos') else 'el paso clave'} no puede ir acelerado: "
+                              f"el tramo pasa de ×{v:g} a ×{tope:g}")
     return avisos
 
 

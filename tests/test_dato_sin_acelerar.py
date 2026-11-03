@@ -57,6 +57,16 @@ try:
     m = pc.momentos(d)
     ok(len(m) == 3, f'debería encontrar 3 momentos (la key, volumen + power y la key nombrada, no el «no toques ningún botón»): {m}')
     ok([x[2] for x in m] == [True, True, False], f'pegar la key y apretar botones es lo que haces; nombrar la key, no: {m}')
+    # (revisión, 03/11/2026) lo que suena a hacer y no lo es, y los botones que sí («le damos a siguiente», «tocamos aceptar»)
+    dfrase = os.path.join(tmp, 'frases')
+    os.makedirs(dfrase)
+    for frase, hace in (('Escríbenos al WhatsApp.', False), ('Si se queda pegado, reinicia.', False),
+                        ('Haz una copia de seguridad.', False), ('Puedes ingresar a nuestra página.', False),
+                        ('El botón de encendido está a la derecha.', False), ('Tocamos aceptar.', True),
+                        ('Le damos a siguiente.', True), ('Apretamos aceptar.', True), ('Ahora sí pegamos la clave.', True),
+                        ('Oprime volumen menos.', True)):
+        json.dump(palabras((5.0, frase)), open(os.path.join(dfrase, 'transcripcion.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+        ok(any(x[2] for x in pc.momentos(dfrase)) == hace, f'«{frase}»: ¿lo está haciendo? debería ser {hace}: {pc.momentos(dfrase)}')
     if len(m) == 3:
         # «pegamos» se dice en 10,35 s y «key» termina en 11,35 s: desde 1 s antes hasta 2 s después, en uno solo
         ok(cerca(m[0][0], 9.35, 0.01) and cerca(m[0][1], 13.35, 0.01), f'la key: desde 1 s antes hasta 2 s después: {m[0]}')
@@ -199,6 +209,18 @@ try:
        'más lento que lo grabado, sin «framerate» (no mezcla cuadros)')
     etq = open(os.path.join(RAIZ, 'etiquetas', 'etiquetas.py'), encoding='utf-8').read()
     ok('pasos_clave.en_bloque(mo, s)' in etq, 'las etiquetas de tus capturas tienen que contar el tiempo como el montaje')
+    # (revisión, 03/11/2026) el «clic» de los botones (sonidos.py) también cae donde se ve, con las mismas piezas
+    sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
+    import sonidos  # noqa: E402
+    for t in (0.5, 4.0, 6.0, 9.5):
+        s = pc.en_grabacion(mo, t)
+        ok(cerca(sonidos.a_video(bloque_s, s), round(4.0 + t, 2), 0.011), f'el clic no cae donde se ve en {t}: {sonidos.a_video(bloque_s, s)}')
+    # un detalle a ×0,6 sin datos sigue mezclando cuadros (repitiendo, se vería a saltos); el dato y un paso clave a ×0,9, no
+    ok(montaje.cadena_tramo({'modo': 'lento', 'src_inicio': 1, 'src_fin': 2, 'velocidad': 0.6}, 'OUT', 'LENTO') == 'setpts=PTS/0.6,OUT',
+       'un detalle a ×0,6 sin datos va con «framerate» como antes')
+    # sin voz (lo quitaste en el editor): los datos viejos no cuentan, el tramo va parejo
+    ok(pc.ventanas(dict(mo, sin_voz=True)) == [] and pc.piezas(dict(mo, sin_voz=True)) == [(mo['src_inicio'], mo['src_fin'], mo['velocidad'])],
+       'un tramo sin voz no va en piezas por datos viejos')
     if shutil.which('node'):  # el editor de guion («Frase por frase») hace las mismas cuentas
         html = open(os.path.join(RAIZ, 'app', 'guion.html'), encoding='utf-8').read()
         js = '\n'.join(re.search(r'(?ms)^' + re.escape(x) + r'.*?^}\n', html).group(0) for x in

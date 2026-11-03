@@ -31,7 +31,7 @@ fr = frases(fuertes=(40, 75))
 t = ahorro.elegir(fr)
 r = ahorro.resumen(t)
 av = [x for x in t if x['tipo'] == 'avatar']
-ok(t[0]['tipo'] == 'voz' and 30 <= t[0]['e'] <= 40, f'el gancho (30-40 s, fabian 03/11/2026) debería ir sin avatar: {t[0]}')
+ok(t[0]['tipo'] == 'voz' and 30 <= t[0]['e'] <= 60, f'el gancho (30-60 s) debería ir sin avatar: {t[0]}')
 ok(av and av[0]['s'] == t[0]['e'], 'el avatar debería entrar justo después del gancho')
 ok(2 <= len(av) <= 4, f'esperaba 2 a 4 tramos con avatar, hay {len(av)}')
 ok(all(25 <= x['e'] - x['s'] < 60 for x in av), f'cada tramo con avatar debería durar 30-55 s: {[round(x["e"] - x["s"]) for x in av]}')

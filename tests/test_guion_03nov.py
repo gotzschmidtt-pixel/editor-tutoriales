@@ -1,7 +1,7 @@
 """Prueba rápida de lo que contestó fabian el 03/11/2026 sobre el guion del tutorial largo, sin videos tuyos, sin red y sin
 gastar nada (no se llama a ninguna IA; los videos son sintéticos de ffmpeg):
 - el gancho dura de 30 a 40 s (antes unos 45, con aviso recién a los 60): el encargo lo pide, la revisión del guion y la
-  del montaje avisan si pasa de 40 s, y el modo avatar ahorro deja el gancho sin cara en ~35 s;
+  del montaje avisan si pasa de 40 s (el modo avatar ahorro no cambia: es de los videos con avatar);
 - en los procesos con PC (Honor, Motorola, Xiaomi cuenta Google…) el guion aclara al principio que basta una PC sencilla,
   o un café internet, o una prestada de un amigo o familiar; nunca en los dos procesos sin PC (cuenta Mi de Xiaomi y
   liberación de bandas de iPhone) ni en una noticia; la revisión avisa si falta, si está de más o si dice «sin PC»;
@@ -121,6 +121,43 @@ try:
     ok(ia.falta_pc_sencilla(noticia, sin) == [], 'una noticia no lleva avisos de la PC')
     ok(any('al principio' in x for x in ia.verificar_orden(honor, sin)), 'la revisión del guion debería incluir el aviso de la PC')
 
+    # 3b. (revisión, 03/11/2026) el proceso sale del nombre aunque lleve guion bajo y no haya idea.txt, con o sin
+    # reglas_titulo (procesos_pc.json); «de la compañía» es liberación de bandas; la grabación no le gana a idea.txt
+    sin_idea = [(proyecto('XIAOMI_MI_ACCOUNT_2'), 'el unlock code o el IMEI'), (proyecto('REDMI_NOTE_13_CUENTA_MI'), 'el unlock code o el IMEI'),
+                (proyecto('IPHONE_13_BANDAS_2'), 'el IMEI y el número de serie'),
+                (proyecto('IPHONE_12_LIBERAR', 'Liberar iPhone 12 de la compañía con IMEI y serial'), 'el IMEI y el número de serie')]
+    mi_t = proyecto('REDMI_CUENTA_MI_T', 'Eliminar cuenta Mi Redmi')
+    open(os.path.join(mi_t, 'transcripcion.txt'), 'w', encoding='utf-8').write(
+        'después pones tu cuenta de Google, la cuenta de Google queda, otra cuenta de Google y el FRP')
+    sin_idea.append((mi_t, 'el unlock code o el IMEI'))
+    for con_reglas in (True, False):
+        guardado = sys.modules.get('reglas_titulo')
+        if not con_reglas:
+            sys.modules['reglas_titulo'] = None  # «import reglas_titulo» falla: va la lista de ia.py
+        try:
+            for d, basta in sin_idea:
+                usa = ia.proceso_pc(d)
+                ok(usa[0] is False and (usa[1] == basta or con_reglas),
+                   f'{os.path.basename(d)} ({"con" if con_reglas else "sin"} reglas_titulo) va sin PC: {usa}')
+            ok(ia.proceso_pc(honor)[0] is True and ia.proceso_pc(google_mi)[0] is True, 'Honor y Xiaomi cuenta Google usan PC')
+        finally:
+            if guardado is None:
+                sys.modules.pop('reglas_titulo', None)
+            else:
+                sys.modules['reglas_titulo'] = guardado
+    # «es muy sencillo» y «presten atención» no son la frase de la PC sencilla
+    flojo = [bloque('L01', 'Es muy sencillo y rápido. Presten mucha atención.', gancho=True)] + PASOS
+    ok(any(x.startswith('al principio') for x in ia.falta_pc_sencilla(honor, flojo)),
+       f'«es sencillo» + «presten atención» sin hablar de la PC debería avisar en Honor: {ia.falta_pc_sencilla(honor, flojo)}')
+    atento = [bloque('L01', 'Presten atención. Les prestamos el servicio desde nuestra página.', gancho=True)] + PASOS
+    ok(ia.falta_pc_sencilla(mi, atento) == [], f'en la cuenta Mi, «presten atención» no es la PC prestada: {ia.falta_pc_sencilla(mi, atento)}')
+    ok(ia.falta_pc_sencilla(honor, [bloque('L01', 'Basta una computadora básica o la de un amigo que te la preste.', gancho=True)] + PASOS) == [],
+       'otra forma de la frase de la PC sencilla también vale')
+    for frase, avisa in (('No necesitas PC para esto.', True), ('Y sin necesidad de una computadora.', True),
+                         ('No hace falta una PC avanzada.', False), ('No necesitas una computadora potente.', False)):
+        r = ia.falta_pc_sencilla(honor, con + [bloque('L08', frase)])
+        ok(any(x.startswith('L08') for x in r) == avisa, f'«{frase}» en Honor: ¿avisa «sin PC»? debería {avisa}: {r}')
+
     # 4. el gancho avisa desde los 40 s (antes recién a los 60)
     medio = [bloque(f'L0{k}', ' '.join(['palabra'] * 37) + '.', gancho=True) for k in (1, 2, 3)] + PASOS  # ~46 s
     ok(any('pasa de 30-40 s' in x and 'unos 35 s' in x for x in ia.revisar_gancho(honor, medio)),
@@ -140,15 +177,9 @@ try:
     av = json.load(open(rotar.AVISOS, encoding='utf-8')) if os.path.exists(rotar.AVISOS) else []
     ok(not any('pasa de' in x['aviso'] for x in av), f'un gancho de 38 s no debería avisar: {av}')
 
-    # 5. avatar ahorro: el gancho sin cara queda en 30-40 s
-    ok(ahorro.AJUSTES['gancho_s'] == 35, f'el gancho del modo ahorro debería ser de ~35 s: {ahorro.AJUSTES["gancho_s"]}')
-    for largo in (8.0, 11.0, 13.0):  # frases de distinto largo
-        fr = [{'s': k * largo, 'e': k * largo + largo - 0.5, 'texto': f'Frase número {k} del video.', 'bloque': f'L{k // 3:02d}'}
-              for k in range(int(900 // largo))]
-        t = ahorro.elegir(fr)
-        ok(t[0]['tipo'] == 'voz' and t[0]['e'] <= 40, f'con frases de {largo} s el gancho sin avatar no debería pasar de 40 s: {t[0]}')
-    fr = [{'s': k * 8.0, 'e': k * 8.0 + 7.5, 'texto': f'Frase {k}.', 'bloque': 'L01'} for k in range(112)]
-    ok(ahorro.elegir(fr, 'ahorro', {'gancho_s': 55})[0]['e'] >= 50, 'si fabian pone 55 s en «Ritmo», se respeta')
+    # 5. (revisión, 03/11/2026) el modo «🧑 Avatar (ahorro)» NO cambia: su ritmo (gancho sin cara de 30-60 s) lo aprobó fabian
+    # el 01/11 para los videos con avatar; el gancho de 30-40 s es del tutorial largo
+    ok(ahorro.AJUSTES['gancho_s'] == 45, f'el gancho del modo ahorro sigue en ~45 s: {ahorro.AJUSTES["gancho_s"]}')
 
     # 6. «faltan palabras» ya no pide explicar el porqué de cada paso
     corto = [bloque('L01', 'Pocas palabras.')] + [dict(bloque('L02', 'Otra.'), montaje={'modo': 'lento', 'src_inicio': 0.0,

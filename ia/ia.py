@@ -1112,38 +1112,53 @@ def falta_patron_versiones(d, bloques):
 # Si conocimiento/reglas_titulo.py (procesos_pc.json por proceso) no reconoce el proceso o no está, esta lista hace lo mismo:
 # (marca, palabras del proceso sin PC, palabras de los procesos de esa marca que sí usan PC, lo que basta).
 SIN_PC = [('XIAOMI', r'mi account|\bcuentas? mi\b|mi cloud|xiaomi cloud|unlock ?code',
-           r'cuenta (de )?google|google account|\bfrp\b|usb redirector', 'el unlock code o el IMEI'),
-          ('APPLE', r'liberacion de bandas|liberar (las )?bandas|\bbandas\b|sim ?lock|carrier unlock|network unlock',
-           r'icloud|hello|bypass|activacion|\bdfu\b|ramdisk', 'el IMEI y el número de serie')]
-# (también en inglés y portugués, por las versiones del video en otro idioma)
-PC_SENCILLA = r'sencill|basic|avanzad|cualquier (pc|computador|laptop)|simple|advanced|avancad|any (pc|computer|laptop)'
-PC_SIN_TENER = r'cafe ?internet|cibercafe|\bprest[ae]|internet cafe|cyber ?cafe|lan ?house|borrow|empresta'
-DICE_SIN_PC = (r'\b(sin|sem|without) (una |la |ninguna |um |a |any )?(pc|computador\w*|computadora|laptop|ordenador|computer)\b'
-               r'(?! (tan |muito |too )?(avanzad|avancad|advanced|potente|powerful|cara|gamer))')
+           r'cuenta (de )?google|google account|\bfrp\b|usb redirector|bootloader|mi unlock', 'el unlock code o el IMEI'),
+          # (revisión, 03/11/2026) también «Liberar iPhone 12 de la compañía», «de operador», AT&T, T-Mobile…
+          ('APPLE', r'liberacion de bandas|liberar (las )?bandas|\bbandas\b|sim ?lock|carrier unlock|network unlock|'
+                    r'\bde (la )?compania\b|\bdel? operador\b|\boperadora\b|\bat t\b|\bt mobile\b|\bverizon\b',
+           r'icloud|hello|bypass|activacion|\bdfu\b|ramdisk|\bmdm\b', 'el IMEI y el número de serie')]
+# (también en inglés y portugués, por las versiones del video en otro idioma). (revisión, 03/11/2026) la palabra PC tiene que
+# estar cerca: «es muy sencillo» o «presten atención» solos no cuentan como la frase de la PC sencilla
+_PC = r'(pc|computador\w*|computadora|laptop|ordenador|computer)'
+PC_SENCILLA = (rf'{_PC}\W+(\w+\W+){{0,3}}?(sencill|basic|simple|normal|cualquiera)|(sencill\w*|basic\w*|simple|simples)\W+{_PC}|'
+               rf'{_PC}\W+(\w+\W+){{0,2}}?(avanzad|advanced|avancad|potente)|cualquier {_PC}|any {_PC}')
+PC_SIN_TENER = (r'cafe ?internet|cibercafe|internet cafe|cyber ?cafe|lan ?house|\bprestad[ao]s?\b|borrow\w*|emprestad\w*|'
+                r'\bprest\w*\W+(\w+\W+){0,4}?(amigo|familiar|conocido|vecino)|(amigo|familiar|conocido)\w*\W+(\w+\W+){0,4}?\bprest')
+_NO_AVANZADA = r'(?! (tan |muito |muy |too )?(avanzad|avancad|advanced|potente|powerful|cara|gamer))'
+DICE_SIN_PC = (rf'(\b(sin|sem|without) (necesidad de |usar |use |using )?(una |la |ninguna |um |a |any )?'
+               rf'|\bno (necesitas|necesita|necesitan|hace falta|se necesita|ocupas|requiere|requieres|precisas|precisa|need|needs) '
+               rf'(de )?(una |la |ninguna |um |a |any )?){_PC}\b{_NO_AVANZADA}')
 INICIO_S = 90.0  # «al principio»: lo que la voz dice en los primeros ~90 s del video
 
 
 def proceso_pc(d):
-    """(usa_pc, lo_que_basta) del proceso del proyecto, por su nombre, su idea.txt y la transcripción. lo_que_basta solo en
-    los procesos sin PC («el unlock code o el IMEI»). usa_pc es None si el proyecto no es de una marca de teléfono (una
-    noticia, como Movistar→Tigo): ahí no va la regla de la PC."""
+    """(usa_pc, lo_que_basta) del proceso del proyecto, por su nombre, su idea.txt y, solo si con eso no alcanza, la
+    transcripción (revisión, 03/11/2026: «después pones tu cuenta de Google» en la grabación inclinaba una cuenta Mi hacia
+    la PC). lo_que_basta solo en los procesos sin PC («el unlock code o el IMEI»). usa_pc es None si el proyecto no es de
+    una marca de teléfono (una noticia, como Movistar→Tigo): ahí no va la regla de la PC."""
     marca = conocimiento.marca_de_proyecto(d) or ''
     if not marca:
         return None, ''
-    texto = ' '.join([os.path.basename(os.path.abspath(d)), conocimiento.leer(os.path.join(d, 'idea.txt'))[:3000],
-                      conocimiento.leer(os.path.join(d, 'transcripcion.txt'))[:8000]])
-    try:  # lo mismo que usan los títulos y las miniaturas (procesos_pc.json por proceso), si ya está en la app
-        import reglas_titulo
-        p = reglas_titulo.proceso(texto, marca)
-    except Exception:  # sin ese módulo o con el archivo roto: la lista de aquí
-        p = None
-    if p is not None:
-        usa = p.get('pc', True) is not False
-        return usa, ('' if usa else str(p.get('basta') or ''))
-    t = normal(texto)
-    for m, sin, con, basta in SIN_PC:
-        if marca.upper() == m and len(re.findall(sin, t)) > len(re.findall(con, t)):  # si empatan, usa PC
-            return False, basta
+    # (revisión, 03/11/2026) los nombres llevan guion bajo (XIAOMI_MI_ACCOUNT, IPHONE_13_BANDAS): todo lo que no es letra o
+    # número cuenta como espacio
+    base = ' '.join([os.path.basename(os.path.abspath(d)), conocimiento.leer(os.path.join(d, 'idea.txt'))[:3000]])
+    for texto in (base, base + ' ' + conocimiento.leer(os.path.join(d, 'transcripcion.txt'))[:8000]):
+        try:  # lo mismo que usan los títulos y las miniaturas (procesos_pc.json por proceso), si ya está en la app
+            import reglas_titulo
+            p = reglas_titulo.proceso(texto, marca)
+        except Exception:  # sin ese módulo o con el archivo roto: la lista de aquí
+            p = None
+        if p is not None:
+            usa = p.get('pc', True) is not False
+            return usa, ('' if usa else str(p.get('basta') or ''))
+        t = ' ' + re.sub(r'[^a-z0-9]+', ' ', normal(texto)) + ' '
+        for m, sin, con, basta in SIN_PC:
+            if marca.upper() == m:
+                n_sin, n_con = len(re.findall(sin, t)), len(re.findall(con, t))
+                if n_sin > n_con:  # si empatan, usa PC
+                    return False, basta
+                if n_con:
+                    return True, ''
     return True, ''
 
 
@@ -1619,6 +1634,10 @@ def revisar(d, tarea, datos):
                     # parte donde se hace
                     nuevo = round((voz + RELLENO) * tope, 1)
                     ws = pasos_clave.ventanas(mo)  # con el dato ubicado, se queda alrededor del dato (03/11/2026)
+                    # (revisión, 03/11/2026) si todos los datos no caben en lo que queda, se centra en el primero: con dos datos
+                    # lejanos, el medio entre los dos podía no mostrar ninguno
+                    if ws and ws[-1][1] - ws[0][0] > nuevo:
+                        ws = ws[:1]
                     centro = ((ws[0][0] + ws[-1][1]) / 2 if ws else
                               momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin']))
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)

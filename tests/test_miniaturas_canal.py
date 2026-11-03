@@ -106,6 +106,7 @@ def partes(req):
 with tempfile.TemporaryDirectory() as tmp:
     cr.CARPETA = os.path.join(tmp, 'canal_referencia')
     cr.VIDEOS_CANAL = os.path.join(tmp, 'no_hay_videos.json')
+    cr.REFERENCIAS = os.path.join(tmp, 'no_hay_referencias')  # sin tu carpeta de referencias real (bajar() también guarda esas)
     cr._de_oauth = lambda: None  # sin YouTube conectado: sale de la página pública
 
     # 1) la página pública: 7 videos, con vistas, duración y fecha

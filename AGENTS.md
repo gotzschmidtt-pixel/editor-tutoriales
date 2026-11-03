@@ -78,8 +78,8 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   ~20 %) y Danskyx «TV satelital pirata» (21:48, 1 M de vistas: 245 cortes, toma media 5,3 s, cada 2 s en el primer minuto
   y cada 5,7 s después; cara 35 % en 10 tramos largos; la cara recién en 1:32; cierre a cámara y pantalla final desenfocada;
   `danskyx_tv_pirata/ANALISIS.txt`). Reglas por defecto (se cambian en la pestaña, «Ritmo»):
-  - **Gancho sin avatar**: los primeros ~35 s (30-40; fabian, 03/11/2026) son voz en off con cortes cada ~2 s; el avatar entra
-    después a presentarse.
+  - **Gancho sin avatar**: los primeros ~45 s (30-60) son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
+    (El gancho de 30-40 s del 03/11/2026 es del tutorial largo: este modo de videos con avatar sigue con lo que fabian aprobó el 01/11.)
   - **Dos velocidades**: cada ~2 s en el primer minuto y cada ~5 s después; cada corte cae en el inicio de una frase si hay
     una cerca, nunca el mismo trozo dos veces seguidas, y las gráficas animadas entran ya armadas.
   - **Pocos tramos de avatar y largos**: 2-4 de 30-55 s (presentación, momentos con más peso y cierre), tope ~15 % del

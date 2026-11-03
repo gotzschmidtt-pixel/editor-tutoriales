@@ -37,8 +37,18 @@ MINIMO = 0.4        # lo que queda de un dato cortado por el borde del tramo, si
 
 # lo que dices cuando pones el dato o aprietas el botón (palabra por palabra de la transcripción, sin tildes): lo que haces
 # (pegar, escribir, apretar un botón)…
-HACER = re.compile(r'^(escrib\w*|tecle\w*|digit\w*|peg(a|ar|amos|as|ue|uen|o|ando|ado)|copi(a|ar|amos|o|ando|ado)|ingres\w*|'
-                   r'introduc\w*|boton(es)?|teclas?|volumen|power|presion\w*|puls(a|ar|amos|as|e|en|o|ando|ado)|clic\w*|omit\w*)$')
+HACER = re.compile(r'^(escrib\w*|tecle\w*|digit\w*|peg(a|ar|amos|as|ue|uen|o|ando)|copi(a|ar|amos|o|ando)|ingres\w*|'
+                   r'introduc\w*|volumen|power|presion\w*|puls(a|ar|amos|as|e|en|o|ando|ado)|clic\w*|omit\w*|'
+                   # (revisión, 03/11/2026) los botones que hay que tocar: «tocamos aceptar», «oprime», «apretamos»
+                   r'toc(a|ar|amos|as|o|an|ando|ue|uen|amos)|oprim\w*|apret\w*|aprieta\w*|aprieten)$')
+# (revisión, 03/11/2026) «le damos a siguiente», «dale en aceptar», «damos clic»: dar + en/a/clic es apretar un botón
+DAR = re.compile(r'^(damos|dar|dale|demos|damosle|da|dan|denle|doy)$')
+DAR_SIGUE = re.compile(r'^(en|a|al|clic\w*|click\w*|aceptar|siguiente|ok|continuar|permitir|omitir|si)$')
+# (revisión, 03/11/2026) lo que suena a hacer y no lo es: el llamado al WhatsApp («escríbenos», 185 veces en sus
+# transcripciones), «se queda pegado», «copia de seguridad», «ingresar a nuestra página»
+NO_HACER = re.compile(r'^(escrib\w*nos|escrib\w*me|escrib\w*nme)$')
+NO_SIGUE = {'copi': (('de', 'seguridad'),), 'ingres': (('a', 'nuestra'), ('a', 'nuestro'), ('al', 'canal'), ('a', 'la', 'pagina'),
+                                                        ('a', 'mi'), ('a', 'la', 'web'), ('al', 'link'), ('al', 'enlace'))}
 # …y el dato mismo. Solo con su nombre («la key la compran en la página») puede ser una explicación: cuenta en un paso
 # clave, no en una espera
 DATO = re.compile(r'^(keys?|clave|codigo|pin|contrasena\w*|password|imei|serial|token)$')
@@ -63,15 +73,23 @@ def momentos(d):
     out = []
     for k, w in enumerate(pal):
         palabra = _normal(w.get('texto', ''))
-        haces = bool(HACER.match(palabra))
+        sigue = [_normal(x.get('texto', '')) for x in pal[k + 1:k + 4]]
+        haces = bool(HACER.match(palabra)) and not NO_HACER.match(palabra)
+        if haces:
+            for raiz, frases in NO_SIGUE.items():
+                if palabra.startswith(raiz) and any(tuple(sigue[:len(fr)]) == fr for fr in frases):
+                    haces = False
+        if not haces and DAR.match(palabra) and sigue and DAR_SIGUE.match(sigue[0]):
+            haces = True
         if not (haces or DATO.match(palabra)):
             continue
         antes = []  # lo dicho antes en la misma frase (hasta 4 palabras, hasta una coma o un punto)
         for x in reversed(pal[max(0, k - 4):k]):
             if re.search(r'[.,;:!?]$', str(x.get('texto', '')).strip()):
                 break
-            antes.append(_normal(x.get('texto', '')))
-        if any(NO_ES.match(x) for x in antes):
+            # (revisión, 03/11/2026) «sí» con tilde («ahora sí pegamos la key») no es el «si» de «si sueltas el botón…»
+            antes.append('' if 'í' in str(x.get('texto', '')).lower() else _normal(x.get('texto', '')))
+        if any(NO_ES.match(x) for x in antes if x):
             continue
         a, z = w['inicio'] - ANTES, max(w['inicio'], float(w.get('fin') or w['inicio'])) + DESPUES
         if out and a <= out[-1][1] + JUNTAR:
@@ -85,6 +103,8 @@ def ventanas(mo):
     """Los datos del montaje dentro de su tramo: [(desde, hasta)] ordenados y juntos, en segundos de la grabación."""
     a, z = mo.get('src_inicio'), mo.get('src_fin')
     if not isinstance(a, (int, float)) or not isinstance(z, (int, float)) or z <= a or not str(mo.get('modo', '')).startswith('lento'):
+        return []
+    if mo.get('sin_voz'):  # (revisión, 03/11/2026) le quitaste la voz en el editor: los datos de antes ya no cuentan
         return []
     out = []
     for x in mo.get('datos') or []:
