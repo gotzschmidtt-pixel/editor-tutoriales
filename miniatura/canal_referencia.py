@@ -7,13 +7,20 @@ y servicio de cada una, y las que fijaste o quitaste. La lista de videos sale de
   1. tu canal con el permiso de YouTube de la app (▶️ YouTube → Conectar), si está conectado;
   2. si no, la página pública del canal (los ~30 videos más nuevos, con sus vistas) junto con lo último que bajó
      «📊 Aprender de todo tu canal» (mis_conocimientos/youtube_canal/videos.json), para los más viejos.
-Al pedir una miniatura, elegir() da 2-3, las más parecidas al video (misma marca o servicio); las que fijaste (📌 en
-«🖼 Miniatura») van primero y las que quitaste (🚫) nunca. GPT las usa SOLO de estilo: nunca copia sus textos ni sus teléfonos.
+Al pedir una miniatura, elegir() da 2-3, las más parecidas al video (misma marca o servicio) y, entre parecidas, las de más
+vistas por día; las que fijaste (📌 en «🖼 Miniatura») van primero y las que quitaste (🚫) nunca. Desde el 03/11/2026 (fabian:
+«mira la primera imagen, fondos negros») las de fondo claro no van a GPT, salvo que las fijes. GPT las usa SOLO de estilo:
+nunca copia sus textos ni sus teléfonos.
+
+Con el export del canal (youtube_datos/AAAA-MM-DD, sin internet), --referencias arma mis_conocimientos/miniaturas/referencias/:
+las miniaturas de tus videos largos de fondo oscuro con más vistas por día, por marca, con su indice.json (las lee
+miniatura.referencias_estilo cuando no hay miniaturas del canal guardadas).
 
 Uso: python miniatura/canal_referencia.py --bajar [--recientes 18] [--vistas 12]   (imprime una línea JSON)
      python miniatura/canal_referencia.py --elegir "HONOR|SIN CUENTA GOOGLE"
+     python miniatura/canal_referencia.py --referencias mis_conocimientos/youtube_datos/2026-11-03
 """
-import argparse, json, math, os, re, sys, time, unicodedata, urllib.error, urllib.request
+import argparse, json, math, os, re, shutil, sys, time, unicodedata, urllib.error, urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CARPETA = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'canal_referencia')
@@ -35,6 +42,13 @@ SERVICIOS = {'frp': r'\bfrp\b|cuenta (de )?google|quitar google|\bgoogle\b',
              'patron': r'patron|contrasena|formatear|hard ?reset|\bpin\b',
              'mdm': r'\bmdm\b', 'imei': r'\bimei\b|t-?mobile',
              'herramienta': r'unlock ?tool|frp ?file|raspberry|\bpico\b'}
+# (fabian, 03/11/2026: «mira la primera imagen, fondos negros») qué tan claro puede ser el FONDO de una miniatura para ir a GPT:
+# la mediana de luz (0-255) del marco de afuera. Medido en sus 185 miniaturas de videos largos: las negras/azul noche dan
+# 20-59 (Bypass Hello 23, ELIM. CUENTA HONOR 24) y las de estudio claro o fondo blanco 100-200 (Honor 8 Lite 181)
+LUZ_MAX = 60
+DIAS_MIN = 7  # vistas por día: un video de ayer cuenta como de 7 días (si no, 300 vistas en 1 día le ganan a todas)
+REFERENCIAS = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'referencias')
+PARECIDA = 15  # diferencia media (0-255) a 32×18 por debajo de la cual dos miniaturas son la misma (p. ej. en otro idioma)
 VACIAS = set('de la el en y a con sin para por tu tus un una los las del al que o mi se es como ya no lo le su todo todos '
              'metodo nuevo nueva 2024 2025 2026 2027'.split())
 
@@ -53,6 +67,58 @@ def etiquetar(titulo):
 
 def palabras(t):
     return {p for p in re.findall(r'[a-z0-9]+', normal(t)) if len(p) >= 3 and p not in VACIAS}
+
+
+def _gris(ruta, tam, modo=None):
+    """La imagen achicada a tam (en gris, o en color con modo=cv2.IMREAD_COLOR); None si no se puede leer."""
+    import cv2
+    import numpy as np
+    try:
+        img = cv2.imdecode(np.fromfile(ruta, np.uint8), cv2.IMREAD_GRAYSCALE if modo is None else modo)  # fromfile: con tildes
+    except (OSError, ValueError):
+        return None
+    return None if img is None else cv2.resize(img, tam, interpolation=cv2.INTER_AREA)
+
+
+def luz(ruta):
+    """Qué tan claro es el FONDO de una miniatura (03/11/2026): la mediana de luz (0-255) del marco de afuera, a 320×180. El
+    centro, donde va el teléfono con su pantalla clara, no cuenta. None si no se puede leer."""
+    import numpy as np
+    g = _gris(ruta, (320, 180))
+    if g is None:
+        return None
+    marco = np.ones(g.shape, bool)
+    marco[30:150, 50:270] = False
+    return round(float(np.median(g[marco])), 1)
+
+
+_LUCES = {}  # (archivo, fecha) → luz: la página pregunta cuáles van a cada rato mientras escribes el título
+
+
+def oscura(v):
+    """True si el fondo de esa miniatura es oscuro (negro o azul noche), como las que fabian pidió copiar. Las bajadas antes
+    del 03/11/2026 no traen la luz anotada: se mide una vez."""
+    l = v.get('luz')
+    if l is None:
+        f = v.get('ruta') or os.path.join(CARPETA, v.get('archivo') or f"{v.get('id')}.jpg")
+        try:
+            clave = (f, os.path.getmtime(f))
+        except OSError:
+            return False
+        if clave not in _LUCES:
+            _LUCES[clave] = luz(f)
+        l = _LUCES[clave]
+    return l is not None and float(l) <= LUZ_MAX
+
+
+def vistas_dia(v, hoy=None):
+    """Las vistas por día desde que se publicó (como mínimo DIAS_MIN días; sin fecha, se cuenta un año)."""
+    try:
+        t = time.mktime(time.strptime(str(v.get('publicado') or '')[:10], '%Y-%m-%d'))
+        dias = max(DIAS_MIN, ((hoy or time.time()) - t) / 86400)
+    except (ValueError, OverflowError):
+        dias = 365
+    return int(v.get('vistas') or 0) / dias
 
 
 # ---------------------------------------------------------------- la lista de videos del canal
@@ -261,7 +327,7 @@ def bajar(recientes=RECIENTES, vistas=MAS_VISTAS, abrir=None, listar=None, avisa
         marca, servicios = etiquetar(v.get('titulo'))
         lista.append({'id': i, 'titulo': str(v.get('titulo') or ''), 'vistas': int(v.get('vistas') or 0),
                       'publicado': str(v.get('publicado') or ''), 'archivo': f'{i}.jpg', 'marca': marca, 'servicios': servicios,
-                      'reciente': any(x['id'] == i for x in nuevos), 'mas_vista': i in ids_top})
+                      'reciente': any(x['id'] == i for x in nuevos), 'mas_vista': i in ids_top, 'luz': luz(f)})
         avisar(f'· {i}: {lista[-1]["titulo"][:60]}')
     for i in antes:  # las de antes que ya no se usan se borran (las fijadas no)
         if i not in elegidos and i not in fijadas and os.path.isfile(os.path.join(CARPETA, f'{i}.jpg')):
@@ -287,13 +353,15 @@ def contexto(d=None, texto=''):
 
 def elegir(marca='', texto='', n=USAR, indice=None):
     """Las 2-3 miniaturas de tu canal que van a GPT como referencia de ESTILO: primero las que fijaste (📌); después las más
-    parecidas a este video (misma marca, mismo servicio, palabras del título en común) y, entre parecidas, las más vistas.
-    Nunca dos casi iguales (la serie de «Bypass Hello» tiene varias). Devuelve los videos del índice con su 'ruta'."""
+    parecidas a este video (misma marca, mismo servicio, palabras del título en común) y, entre parecidas, las de más vistas
+    por día. Solo las de fondo oscuro (fabian, 03/11/2026: «fondos negros»), salvo las fijadas. Nunca dos casi iguales (la
+    serie de «Bypass Hello» tiene varias). Devuelve los videos del índice con su 'ruta'."""
     ind = indice if indice is not None else leer_indice()
     quitadas = set(ind.get('quitadas') or [])
+    fijadas = [i for i in ind.get('fijadas') or [] if i not in quitadas]
     vs = [dict(v, ruta=os.path.join(CARPETA, v.get('archivo') or f"{v.get('id')}.jpg")) for v in ind.get('videos') or []
           if isinstance(v, dict) and v.get('id') not in quitadas]
-    vs = [v for v in vs if os.path.isfile(v['ruta'])]
+    vs = [v for v in vs if os.path.isfile(v['ruta']) and (v['id'] in fijadas or oscura(v))]
     marca = 'IPHONE' if str(marca or '').upper() == 'APPLE' else str(marca or '').upper()
     marca = marca if marca in MARCAS else (etiquetar(texto)[0] or '')
     servicios, pal = set(etiquetar(texto)[1]), palabras(texto)
@@ -302,9 +370,8 @@ def elegir(marca='', texto='', n=USAR, indice=None):
         p = 4.0 if marca and v.get('marca') == marca else 0.0
         p += 2.0 * len(servicios & set(v.get('servicios') or []))
         p += min(2.0, 0.5 * len(pal & palabras(v.get('titulo'))))
-        p += 0.3 * math.log10(1 + int(v.get('vistas') or 0)) + (0.5 if v.get('reciente') else 0)
+        p += 0.6 * math.log10(1 + vistas_dia(v)) + (0.5 if v.get('reciente') else 0)  # vistas por día (03/11/2026)
         return p
-    fijadas = [i for i in ind.get('fijadas') or [] if i not in quitadas]
     orden = sorted((v for v in vs if v['id'] in fijadas), key=lambda v: fijadas.index(v['id'])) + \
         sorted((v for v in vs if v['id'] not in fijadas), key=puntaje, reverse=True)
     out = []
@@ -332,6 +399,78 @@ def por_ids(ids):
         if ID.fullmatch(str(i)) and os.path.isfile(f):
             out.append(dict(vs.get(i) or {'id': i, 'titulo': ''}, ruta=f))
     return out
+
+
+# ---------------------------------------------------------------- las de referencia, del export del canal (sin internet)
+
+def _leer_export(f):
+    """Los .json del export de YouTube traen barras invertidas sueltas (rutas de Windows en las descripciones): se leen igual."""
+    return json.loads(re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', open(f, encoding='utf-8').read()))
+
+
+def armar_referencias(export, destino=None, por_marca=4, min_vistas_dia=10, avisar=print):
+    """(fabian, 03/11/2026: «mira la primera imagen, fondos negros, tipo de fuente, estilo») De la carpeta del export del canal
+    (videos.json y thumbs/propios/), las miniaturas de TUS videos largos de fondo oscuro con más vistas por día, hasta
+    por_marca de cada marca (con min_vistas_dia o más) y sin dos iguales (el mismo video en otro idioma). Las copia a destino
+    (mis_conocimientos/miniaturas/referencias/) como <marca>_<id>.jpg y escribe indice.json, que miniatura.referencias_estilo
+    lee sin internet. Las «quitadas» del índice anterior ({id: por qué}) no vuelven. No borra nada ni gasta nada."""
+    import numpy as np
+    destino = destino or REFERENCIAS
+    videos = _leer_export(os.path.join(export, 'videos.json'))
+    fecha = re.search(r'\d{4}-\d{2}-\d{2}', os.path.basename(os.path.normpath(export)))
+    hoy = time.mktime(time.strptime(fecha.group(0), '%Y-%m-%d')) if fecha else time.time()
+    try:
+        viejo = json.load(open(os.path.join(destino, 'indice.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        viejo = {}
+    quitadas = viejo.get('quitadas') if isinstance(viejo.get('quitadas'), dict) else {}
+    cands = []
+    for v in videos if isinstance(videos, list) else []:
+        vid = str(v.get('id') or '')
+        f = os.path.join(export, 'thumbs', 'propios', vid + '.jpg')
+        try:
+            segundos = int(float(v.get('duracion_s') or 0))
+        except ValueError:
+            segundos = 0
+        if (not ID.fullmatch(vid) or vid in quitadas or str(v.get('es_short')).lower() == 'true' or segundos <= SHORT_MAX
+                or not os.path.isfile(f)):
+            continue
+        marca, servicios = etiquetar(v.get('titulo'))
+        l = luz(f)
+        if not marca or l is None or l > LUZ_MAX:  # sin marca son las de noticias (Movistar): no sirven para un tutorial
+            continue
+        x = {'id': vid, 'titulo': str(v.get('titulo') or ''), 'marca': marca, 'servicios': servicios,
+             'vistas': int(v.get('vistas') or 0), 'publicado': str(v.get('publicado') or '')[:10], 'luz': l}
+        x['vistas_dia'] = round(vistas_dia(x, hoy), 1)
+        if x['vistas_dia'] >= min_vistas_dia:
+            cands.append((x, f))
+    cands.sort(key=lambda c: -c[0]['vistas_dia'])
+    elegidas, huellas, cuantas = [], [], {}
+    os.makedirs(destino, exist_ok=True)
+    import cv2
+    for x, f in cands:
+        h = _gris(f, (32, 18), cv2.IMREAD_COLOR)  # la huella, en color: en gris se confunden dos distintas
+        if cuantas.get(x['marca'], 0) >= por_marca or h is None:
+            continue
+        if any(np.abs(h.astype(float) - o).mean() < PARECIDA for o in huellas):
+            continue
+        x['archivo'] = f"{x['marca'].lower()}_{x['id']}.jpg"
+        shutil.copyfile(f, os.path.join(destino, x['archivo']))
+        elegidas.append(x)
+        huellas.append(h.astype(float))
+        cuantas[x['marca']] = cuantas.get(x['marca'], 0) + 1
+        avisar(f"· {x['marca']}: {x['id']} ({x['vistas_dia']} vistas/día) {x['titulo'][:55]}")
+    carpeta = os.path.normpath(export)
+    ind = {'fecha': time.strftime('%Y-%m-%d', time.localtime(hoy)),
+           'fuente': os.path.basename(os.path.dirname(carpeta)) + '/' + os.path.basename(carpeta),
+           'regla': (f'fabian 03/11/2026 («fondos negros»): videos largos (más de {SHORT_MAX} s), fondo oscuro (luz del borde '
+                     f'<= {LUZ_MAX}), las de más vistas por día (desde {DIAS_MIN} días; {min_vistas_dia} o más), hasta {por_marca} por '
+                     'marca y sin dos iguales'),
+           'miniaturas': elegidas, 'quitadas': quitadas}
+    f = os.path.join(destino, 'indice.json')
+    json.dump(ind, open(f + '.nuevo', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    os.replace(f + '.nuevo', f)
+    return {'ok': True, 'total': len(elegidas), 'por_marca': cuantas, 'carpeta': destino}
 
 
 def marcar(vid, fijada=None, quitada=None):
@@ -370,14 +509,17 @@ def main():
     ap.add_argument('--recientes', type=int, default=RECIENTES)
     ap.add_argument('--vistas', type=int, default=MAS_VISTAS)
     ap.add_argument('--elegir', help='«MARCA|TEXTO»: cuáles irían a GPT para ese título')
+    ap.add_argument('--referencias', help='la carpeta del export del canal (youtube_datos/AAAA-MM-DD): arma las de referencia')
     a = ap.parse_args()
     try:
-        if a.bajar:
+        if a.referencias:
+            out = armar_referencias(a.referencias, avisar=lambda *x: print(*x, file=sys.stderr))
+        elif a.bajar:
             out = bajar(a.recientes, a.vistas)
         else:
             out = {'ok': True, 'usar': [{'id': v['id'], 'titulo': v.get('titulo')} for v in elegir(texto=(a.elegir or '').replace('|', ' '))]}
         print(json.dumps(out, ensure_ascii=False))
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False))
 
 

@@ -81,8 +81,10 @@
   <section>
     <h2>2 · El estilo de tu canal</h2>
     <p class="aviso">Tus miniaturas recientes y las más vistas del canal, guardadas en tu PC (gratis). GPT copia de ellas SOLO el estilo
-      (reparto, letras, neón, fondo), nunca sus textos ni sus teléfonos. Para este video se eligen solas 2 o 3, las más parecidas
-      (misma marca o servicio): las marcadas con ✓. Toca <b>📌</b> para usar una siempre o <b>🚫</b> para no usarla nunca.</p>
+      (fondo negro, letras, reparto), nunca sus textos ni sus teléfonos. Para este video se eligen solas 2 o 3 de fondo oscuro, las
+      más parecidas (misma marca o servicio) y con más vistas por día: las marcadas con ✓. Las de fondo claro no van, salvo que
+      toques <b>📌</b> (usarla siempre); <b>🚫</b> es no usarla nunca. Si de aquí van menos de 2, se completan con las de tu
+      carpeta de referencias (tus oscuras con más vistas por día, sin internet).</p>
     <div class="fila"><button onclick="traerCanal()" title="Baja tus miniaturas de YouTube (i.ytimg.com, público). No gasta nada">⬇ Traer mis miniaturas del canal</button>
       <span class="msg" id="canalMsg"></span></div>
     <div class="canal" id="canal"></div>
@@ -90,8 +92,9 @@
 
   <section>
     <h2>3 · Cómo la quieres</h2>
-    <p class="aviso">Como en tus miniaturas: la frase va abajo en una línea, la primera parte en blanco (la marca o el modelo), el logo
-      en medio y la segunda en amarillo-naranja (la palabra clave). Arriba, una etiqueta en cada esquina. TODO lo escribe GPT.
+    <p class="aviso">Como en tus miniaturas: la frase va abajo en una línea y es lo más grande, la primera parte en blanco (la marca o el
+      modelo), el logo en medio y la segunda en amarillo (la palabra clave), en letras planas. Arriba, una etiqueta más chica en
+      cada esquina. El teléfono va en la mano con guante, sobre fondo negro. TODO lo escribe GPT.
       Escríbelo tú o pide ideas a la IA y toca una. Se traduce solo al inglés y al portugués.</p>
     <div class="fila">
       <input type="text" id="linea1" placeholder="Parte blanca: HONOR" style="flex:1; min-width:10em; text-transform:uppercase">
@@ -102,7 +105,7 @@
     <div class="fila" title="Textos cortos en las esquinas de arriba, inclinados. Con | partes en líneas (NUEVA UPDATE|EXPLICADO PASO A PASO). También se traducen">
       <label>↖ Arriba izquierda <input type="text" id="esqIzq" value="PASO A PASO" maxlength="40" style="width:11em; text-transform:uppercase"></label>
       <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: NUEVA UPDATE|EXPLICADO PASO A PASO" maxlength="40" style="width:17em; text-transform:uppercase"></label>
-      <span class="aviso">(izquierda: grande en amarillo · derecha: 2-3 líneas blancas en recuadro con neón azul; vacía = solo el logo)</span>
+      <span class="aviso">(izquierda: en amarillo, más chica que la frase de abajo · derecha: 2-3 líneas blancas en recuadro con neón azul; vacía = solo el logo)</span>
     </div>
     <div class="sugeridos" id="sugEsquinas"></div>
     <div class="barra" id="sugBarra" hidden><div></div><span></span></div>
@@ -110,7 +113,7 @@
     <div class="fila">
       <!-- (fabian, 03/11/2026) todo lo escribe GPT con la fórmula de tu canal: ya no hay «mixta» con textos de la app encima -->
       <label>Fondo <select id="fondo">
-        <option value="gpt">Azul marino con neón (como tu canal)</option>
+        <option value="gpt">Negro con luz azul (como tu canal)</option>
         <option value="foto">Tu estudio real de las fotos (oscurecido)</option>
         <option value="ambos">Los dos, para comparar</option>
       </select></label>

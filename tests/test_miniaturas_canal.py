@@ -37,7 +37,7 @@ def sin_red(*a, **k):  # nada de esta prueba sale a internet
 urllib.request.urlopen = sin_red
 
 
-def jpg(w, h, color=(40, 60, 200)):
+def jpg(w, h, color=(60, 25, 10)):  # azul noche: desde el 03/11/2026 solo las de fondo oscuro van a GPT
     img = np.full((h, w, 3), color, np.uint8)
     return cv2.imencode('.jpg', img)[1].tobytes()
 
@@ -85,7 +85,7 @@ def abrir(req, timeout=0):  # YouTube simulado
         vid, nombre = url.split('/')[-2:]
         if vid == 'honorPAT002' and nombre in ('maxresdefault.jpg', 'hq720.jpg'):  # sin la grande: la 4:3 con franjas
             raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)
-        return Resp(jpg(640, 480) if vid == 'honorPAT002' else jpg(1280, 720, (20 + len(pedidas) % 200, 80, 160)))
+        return Resp(jpg(640, 480) if vid == 'honorPAT002' else jpg(1280, 720, (40 + len(pedidas) % 60, 30, 10)))
     raise AssertionError(f'pedido a {url}: no debería salir de YouTube')
 
 
@@ -197,9 +197,9 @@ with tempfile.TemporaryDirectory() as tmp:
            f'del canal ({len(p["image[]"])} en total)')
         pr = p.get('prompt', '')
         for regla in ('ABAJO', 'UNA sola línea', 'ENTRE las palabras', 'esquina de abajo a la derecha', 'ARRIBA', 'esquinas',
-                      'inclinadas', 'neón azul', 'azul marino oscuro', 'NUNCA un fondo claro', 'páginas web', '.com, .co',
+                      'inclinadas', 'neón azul', 'NEGRO o azul noche casi negro', 'NUNCA un fondo claro', 'páginas web', '.com, .co',
                       'SOLO como referencia de ESTILO', 'NO copies sus textos, ni sus teléfonos', 'TODO el texto lo escribes tú',
-                      '«HONOR» en blanco, el logo de Google y «SIN CUENTA GOOGLE» en amarillo-naranja', '«PASO A PASO»',
+                      '«HONOR» en blanco, el logo de Google y «SIN CUENTA GOOGLE» en amarillo', '«PASO A PASO»',
                       'NUEVA UPDATE / EXPLICADO PASO A PASO', 'nunca escribas «SIN PC»', 'Máximo 2 manos', '320×180',
                       'Nada de letras 3D doradas'):
             ok(regla in pr, f'al prompt le falta: «{regla}»')
