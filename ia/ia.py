@@ -455,6 +455,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
     if tarea == 'guion' and patron_versiones(d):
         partes.append(patron_versiones(d))
+    if tarea == 'guion':  # el primer minuto: gancho con tomas que muestran cada frase (fabian, 03/11/2026)
+        partes.append(regla_inicio(d))
     sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
@@ -700,7 +702,7 @@ def saltos_atras(bloques):
     out, previo = [], None
     for b in bloques:
         mo = b['montaje']
-        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen' or b.get('gancho'):  # el gancho salta a propósito
             continue
         ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
         if previo and ini < previo[1] - 3:
@@ -716,7 +718,7 @@ def escenas_repetidas(bloques):
     tramos, out = [], []
     for b in bloques:
         mo = b['montaje']
-        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen' or b.get('gancho'):  # el gancho adelanta tomas a propósito
             continue
         ini = mo['src_inicio']
         fin = max(mo.get('src_fin') or ini, ini + 0.5)
@@ -911,6 +913,7 @@ def desfases(d, bloques):
     palabras = pistas.palabras_video(d)
     if not palabras:
         return []
+    bloques = [b for b in bloques if not b.get('gancho')]  # el gancho cuenta el resultado antes de tiempo, a propósito
     norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
     out, tramos = [], []
     for b in bloques:
@@ -1017,7 +1020,8 @@ def acciones_desfasadas(d, bloques):
     if not momentos:
         return []
     out = []
-    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen'
+                 and not b.get('gancho')]  # el gancho nombra pasos que se ven más adelante, a propósito
 
     def tramo(b):
         mo = b['montaje']
@@ -1081,6 +1085,88 @@ def falta_patron_versiones(d, bloques):
     return out
 
 
+# Primer minuto (pedido de fabian, 03/11/2026): entre los 10 y los 30 s el canal pierde del 30 al 50 % de la gente. La IA
+# escribe el gancho (resultado → problema → versiones → herramienta y PC → «es fácil» → comentar) en bloques "gancho": true,
+# cada frase con la toma del grabado que la muestra; montaje/rotar.py las pone en la pausa del bloque, una por frase.
+def regla_inicio(d):
+    """La sección «INICIO (primer minuto)» del encargo del guion."""
+    honor = (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor'
+    versiones = ('«sirve para Android quince, dieciséis, diecisiete o superiores, y cualquier parche»'
+                 + (' (y en la frase siguiente, «también funciona con MagicOS nueve, diez u once»)' if honor else '')
+                 if patron_versiones(d) else 'a qué modelos y versiones sirve (solo las que se ven o dice el autor)')
+    return f"""INICIO (primer minuto), pedido del autor: entre los 10 y los 30 segundos se va del 30 al 50 % de la gente. Nada de una
+escena larga repetida: cada frase con el trozo que la muestra.
+- Los primeros 2 a 4 bloques son el GANCHO: llevan "gancho": true y "avatar": false (sin avatar: voz en off sobre el video).
+  Entre todos duran unos 45 s (de 30 a 60, nunca más). Frases cortas, de 12 palabras como mucho, en este orden fijo:
+  1) el resultado (el teléfono ya libre); 2) el problema del que mira (por ejemplo, bloqueado pidiendo la cuenta de Google);
+  3) las versiones: {versiones}; 4) la herramienta y la PC que se usan{' (es Honor: nunca digas «sin PC»)' if honor else ''};
+  5) «es fácil»; 6) la invitación a comentar las dudas (puede llevar el toque de humor del inicio).
+  Lo demás de la estructura de siempre (lo que NO hay que hacer, los pasos numerados, el cierre) va después, en bloques normales.
+- "tomas": [[desde, hasta], ...] en cada bloque del gancho: UNA toma por frase y en el orden de las frases, de 3 a 5 s de la
+  grabación (segundos del original), que muestre lo que dice esa frase: el resultado con el teléfono ya libre (del final del
+  grabado), el problema con la pantalla bloqueada, el programa en la PC, el proceso (Fastboot, borrar, reiniciar). Búscalas
+  en el MAPA. El ANTES y el DESPUÉS van como trozos de video reales, nunca capturas fijas. Nunca la misma toma dos veces
+  seguidas. Ninguna toma con precio ni datos personales en pantalla (correo, teléfono, saldo, IMEI o serial de pedidos): no
+  se difumina, elige otra toma. Si para una frase no hay una toma buena, pon null y la app elige un trozo.
+- "por_que": ["...", ...] en cada bloque del gancho: por cada toma, en pocas palabras qué se ve y por qué va con su frase.
+- "montaje" de cada bloque del gancho: un tramo corto EN ORDEN del comienzo de la grabación, por ejemplo
+  {{"modo": "lento", "src_inicio": 0, "src_fin": 1, "velocidad": 1}} en el primero, de 1 a 2 en el segundo, y así. La app
+  llena el resto de su voz con tus tomas, cada una en el segundo en que se dice su frase. Los bloques normales siguen desde
+  el final de esos tramos, en orden (las tomas del gancho no cuentan como salto atrás ni como escena repetida)."""
+
+
+def _rotar():
+    sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+    import rotar
+    return rotar
+
+
+def _largo_estimado(b):
+    """Lo que durará el bloque en el video (la revisión lo deja en lo que dura su voz, con poco aire)."""
+    txt = str(b.get('texto') or '').strip()
+    voz = len(txt.split()) / PALABRAS_POR_S + 1.0 if txt else 0.0
+    try:
+        img = largo_bloque(b['montaje'])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        img = 0.0
+    return max(voz, min(img, voz + RELLENO)) if txt else img
+
+
+def revisar_gancho(d, bloques, mapa=None):
+    """Lo que sí se revisa de los bloques del gancho (no se mueven ni cuentan como salto atrás): que ninguna toma muestre
+    precio ni datos personales (lo que el mapa leyó en esa pantalla, con el filtro SENSIBLE de rotar.py), que ninguna
+    se repita seguida y que el gancho no pase de 45-60 s. Devuelve los avisos."""
+    ganchos = [b for b in bloques if b.get('gancho')]
+    if not ganchos:
+        return []
+    rotar = _rotar()
+    cuadros = rotar.pantallas(mapa) if mapa is not None else rotar.leer_mapa(os.path.join(d, 'mapa_video.json'))
+    out, previa = [], None
+    for b in ganchos:
+        for k, x in enumerate(rotar.tomas_de(b), 1):
+            if x is None:  # sin toma: la app elige otro trozo, así que la siguiente ya no va seguida de la anterior
+                previa = None
+                continue
+            a, z = x
+            dato = rotar.sensible(cuadros, a, z)
+            if dato:
+                out.append(f"{b['id']}: la toma {k} ({mmss(a)}–{mmss(z)}) muestra precio o datos personales ({dato}): "
+                           f"elige otra toma (no se difumina)")
+            if previa and min(z, previa[1]) - max(a, previa[0]) > 0.5:
+                out.append(f"{b['id']}: la toma {k} ({mmss(a)}–{mmss(z)}) repite la anterior ({mmss(previa[0])}–{mmss(previa[1])}): "
+                           f"nunca el mismo trozo seguido")
+            previa = x
+    t = fin = 0.0
+    for b in bloques:
+        t += _largo_estimado(b)
+        if b.get('gancho'):
+            fin = t
+    if fin > rotar.GANCHO[1]:
+        out.append(f"el gancho ({', '.join(b['id'] for b in ganchos)}) dura unos {fin:.0f} s: pasa de {rotar.GANCHO[0]:.0f}-"
+                   f"{rotar.GANCHO[1]:.0f} s. Acórtalo a unos {rotar.GANCHO[0]:.0f} s (frases más cortas o menos bloques)")
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
@@ -1088,7 +1174,8 @@ def verificar_orden(d, bloques):
     palabras = pistas.palabras_video(d)
     if palabras:
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
-        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen']
+        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen'
+                     and not x.get('gancho')]  # el gancho no se mueve: su tramo corto va en orden y sus tomas, a propósito
         for k, b in enumerate(con_tramo):
             mo = b['montaje']
             if mo.get('visto'):
@@ -1118,6 +1205,7 @@ def verificar_orden(d, bloques):
     avisos += desfases(d, bloques)
     avisos += acciones_desfasadas(d, bloques)
     avisos += falta_patron_versiones(d, bloques)
+    avisos += revisar_gancho(d, bloques)
     if avisos:
         txt = '\n'.join(avisos) + '\n'
     elif palabras:
@@ -2922,12 +3010,16 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     """La segunda mirada que hice a mano: cada bloque con el comienzo y el final de SU tramo (y en los pasos clave, el
     detalle con el texto leído con zoom), y la IA dice si lo que se narra es lo que se ve. Si no, el tramo (con su mismo
     largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos, o None si no pudo revisar ningún bloque."""
-    bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen']
+    # el gancho no se mueve (sus tomas muestran lo que dice, a propósito fuera de orden): de él solo se revisa que ninguna
+    # toma tenga precio ni datos personales, que no se repitan seguidas y que no dure de más
+    gancho = revisar_gancho(d, datos['bloques'], mapa)
+    bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen'
+               and not b.get('gancho')]
     if not bloques:
-        return []
+        return gancho
     if not ajustes.get('imagenes', True):  # sin imágenes no se revisó nada: nunca decir «todos coinciden»
         return None
-    avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
+    avisos, dur = list(gancho), duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
     print(f'Preparo las imágenes de control de {len(bloques)} bloques (un cuadro por frase de la voz, detalle en los pasos clave)…', flush=True)

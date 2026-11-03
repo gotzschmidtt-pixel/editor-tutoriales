@@ -272,8 +272,9 @@ def main():
     # «Probar solo unos bloques» (prueba_montaje.mp4) es una prueba: no toca los tramos ya hechos del video entero ni el aviso
     # rojo del inicio (antes borraba los dos y el siguiente «Hacer todo» volvía a armar todo desde cero)
     completo = os.path.basename(a.salida) == '1_montaje.mp4'
+    # nt: prefiere los trozos nítidos y quietos (pedido de fabian, 03/11/2026: cada frase con el trozo que la muestra)
     rota = rotar.planear(d['bloques'], os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'mapa_video.json'),
-                         carpeta_voz, dur_original, FPS, guardar_avisos=completo)
+                         carpeta_voz, dur_original, FPS, guardar_avisos=completo, nt=nt)
     cache = os.path.join(os.path.dirname(os.path.abspath(a.salida)), PARTES)
     os.makedirs(cache, exist_ok=True)
     usadas = set()
