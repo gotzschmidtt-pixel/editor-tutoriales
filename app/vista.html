@@ -177,9 +177,10 @@ const guardarJson = (f, datos) => api(`/api/json?p=${q(P)}&f=${f}`, {method: 'PO
 const msg = (t, c = '') => { $('#msg').className = 'msg ' + c; $('#msg').textContent = t; };
 
 async function avisosInicio() {  // montaje/rotar.py: el inicio no tuvo material para rotar trozos distintos
+  // y montaje/montaje.py (avisos_montaje.json): la imagen no dura lo que dice el guion (no coincidiría con la voz)
   try {
-    const r = await fetch(`/archivo?p=${q(P)}&f=avisos_inicio.json&v=${Date.now()}`);
-    const a = r.ok ? await r.json() : [];
+    const leer = async f => { try { const r = await fetch(`/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`); return r.ok ? await r.json() : []; } catch (e) { return []; } };
+    const a = [...await leer('avisos_inicio.json'), ...await leer('avisos_montaje.json')];
     $('#avisosInicio').style.display = a.length ? 'block' : 'none';
     $('#avisosInicio').innerHTML = a.map(x => '⚠ ' + esc(x.aviso)).join('<br>');
   } catch (e) { $('#avisosInicio').style.display = 'none'; }

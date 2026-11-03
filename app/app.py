@@ -1407,7 +1407,8 @@ def informe_paso(d, proyecto, paso, info, ejec, estado, log):
 
 VIDEOS_GENERADOS = ['1_montaje.mp4', '2_insertos.mp4', '3_voz.mp4', '3_voz.srt', '4_musica.mp4', '5_etiquetas.mp4', '6_senales.mp4', 'capas_hechas.json',
                     '7_tarjetas.mp4', '8_testimonios.mp4', '8_testimonios.srt', '9_modelos.mp4', '9_modelos.srt', 'trailer.mp4', 'FINAL.mp4', 'FINAL_sin_trailer.mp4', 'montaje_en_curso.mp4', 'FINAL_1080p.mp4', 'FINAL_720p.mp4', 'FINAL_480p.mp4', 'FINAL_360p.mp4',
-                    'prueba_montaje.mp4', 'prueba_bloques.mp4', 'prueba_bloques.srt']
+                    'prueba_montaje.mp4', 'prueba_bloques.mp4', 'prueba_bloques.srt',
+                    'avisos_montaje.json']  # el aviso rojo del montaje (montaje.py) se va con su video: si no, «🔁 Rehacer video» lo dejaba a la vista
 LIBRERIAS = {'numpy': 'numpy', 'cv2': 'opencv-python-headless'}  # las que usan casi todos los pasos
 INICIO_APP = os.path.getmtime(__file__)  # para saber si actualizaron la app sin reiniciarla
 
