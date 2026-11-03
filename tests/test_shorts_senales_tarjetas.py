@@ -128,5 +128,48 @@ assert 85 <= len(cuadros) <= 92, len(cuadros)  # la imagen fija (-loop 1) no ala
 assert cuadros[15].max() < 30 and cuadros[75].max() > 150  # antes del cierre no está; durante, sí
 ys, xs = np.nonzero(cuadros[75].max(axis=2) > 150)
 assert xs.min() < 1080 * 0.4 and ys.max() > 1920 * 0.6  # abajo a la izquierda
+
+# 5. (03/11/2026) el ícono de play va abajo a la izquierda, junto al enlace («pos_short»); los demás, en el centro
+assert logos.posicion(dict(play, pos_short={'x': 0.24, 'y': 0.84, 'alto': 0.11}), 'short') == {'x': 0.24, 'y': 0.84, 'alto': 0.11}
+assert logos.posicion(dict(play, pos_short={'x': 0.24, 'y': 0.84, 'alto': 0.11}), 'largo') is None
+assert logos.posicion(play, 'short') is None and logos.posicion(dict(play, pos_short={'x': 2, 'y': 0.8}), 'short') is None
+assert logos.posicion(dict(play, pos_short={'y': 0.8}), 'short') == {'x': 0.5, 'y': 0.8, 'alto': None}
+lib = os.path.join(d, 'lib')
+os.makedirs(lib)
+im = Image.new('RGBA', (300, 220), (0, 0, 0, 0))
+ImageDraw.Draw(im).rounded_rectangle((0, 0, 299, 219), 40, fill=(255, 0, 0, 255))
+im.save(os.path.join(lib, 'play.png'))
+json.dump({'logos': [dict(play, pos_short={'x': 0.24, 'y': 0.84, 'alto': 0.11})]}, open(os.path.join(lib, 'logos.json'), 'w'))
+vid = os.path.join(d, 'voz2')
+os.makedirs(vid)
+txt = 'toca el play'
+json.dump({'characters': list(txt), 'character_start_times_seconds': [i * 0.05 for i in range(len(txt))],
+           'character_end_times_seconds': [i * 0.05 + 0.05 for i in range(len(txt))]}, open(os.path.join(vid, 'B1.align.json'), 'w'))
+json.dump({'bloques': [{'id': 'B1', 'texto': txt, 'inicio_min': 0.5}]}, open(os.path.join(d, 'guion_play.json'), 'w'))
+subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=1080x1920:r=30:d=4', '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p', os.path.join(d, 'negro.mp4')], check=True)
+subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', os.path.join(d, 'negro.mp4'), '--guion',
+                os.path.join(d, 'guion_play.json'), '--voz', vid, '--logos', lib, '--salida', os.path.join(d, 'con_play.mp4'),
+                '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--formato', 'short'], check=True, capture_output=True)
+cap = cv2.VideoCapture(os.path.join(d, 'con_play.mp4'))
+cap.set(cv2.CAP_PROP_POS_MSEC, 2000)
+ok, f = cap.read()
+ys, xs = np.nonzero((f[:, :, 2] > 180) & (f[:, :, 1] < 80))
+assert ok and len(ys), 'el play no salió'
+assert 1920 * 0.76 < ys.mean() < 1920 * 0.92 and 1080 * 0.12 < xs.mean() < 1080 * 0.36, (ys.mean(), xs.mean())  # abajo a la izquierda
+assert 1920 * 0.09 < ys.max() - ys.min() < 1920 * 0.13, ys.max() - ys.min()  # con su alto propio (0,11), no el 0,30 de los logos
+
+# 6. el cierre: las flechas que caerían debajo de la tarjeta de WhatsApp no se dibujan
+frases_t = [(0.1, [(0.0, 0.4, 'Paso'), (0.5, 0.9, 'uno.')]),
+            (3.1, [(0.0, 0.3, 'Escríbeme'), (0.4, 0.6, 'al'), (0.7, 1.2, 'WhatsApp'), (1.3, 1.6, 'hoy.')])]
+assert short.ventanas_tarjeta(frases_t) == [(3.8, 6.3)]  # desde «WhatsApp», mínimo 2,5 s
+assert short.ventanas_tarjeta([(0, [(0, 1, 'Hola'), (1, 6, 'wasap'), (6, 9, 'listo')])]) == [(1, 9.2)]  # hasta que termina la frase
+assert short.ventanas_tarjeta(frases_t[:1]) == []
+flechas = [{'src': 102.0, 'dur': 2.0}, {'src': 110.0, 'dur': 1.0}]
+# trozo que empieza en el segundo 3 del Short y en el 100 de la grabación: la 1.ª cae en 5-7 (tapada), la 2.ª en 13-14
+assert short.sin_tapar(flechas, 100.0, 3.0, [(3.8, 6.3)]) == [flechas[1]]
+assert short.sin_tapar(flechas, 100.0, 3.0, []) == flechas
+assert short.sin_tapar(flechas, 100.0, 10.0, [(3.8, 6.3)]) == flechas
+assert resumen.COLA_CIERRE >= 1.5  # el play y la flecha al enlace se alcanzan a ver después de la última palabra
 shutil.rmtree(d, ignore_errors=True)
-print('ok: flechas y círculos en los Shorts, tarjeta de WhatsApp por formato y cierre con play')
+print('ok: flechas y círculos en los Shorts, tarjeta de WhatsApp por formato, cierre con play abajo junto al enlace')

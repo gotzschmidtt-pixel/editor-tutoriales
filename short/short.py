@@ -293,6 +293,45 @@ def con_senales(s0, dur, dibujadas, primera):
     return ins, filtro, ult
 
 
+TARJETA_DICE = re.compile(r'whats|wasap|guasap', re.I)  # la voz nombra WhatsApp: ahí sale la tarjeta de soporte (logos.py)
+
+
+def hay_tarjeta():
+    """Si la biblioteca de logos tiene la tarjeta de soporte de WhatsApp (la que tapa el centro del Short)."""
+    sys.path.insert(0, os.path.join(RAIZ, 'logos'))
+    try:
+        import logos
+        carpeta = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
+        lib = json.load(open(os.path.join(carpeta, 'logos.json'), encoding='utf-8')).get('logos', [])
+        return any(logos.es_tarjeta(l) and os.path.isfile(os.path.join(carpeta, l.get('archivo', ''))) for l in lib)
+    except Exception:
+        return False
+
+
+def ventanas_tarjeta(frases_t, minimo=2.5):
+    """[(desde, hasta)] del Short en que la tarjeta de WhatsApp tapa el centro, como la pone logos.py (fin_tarjeta): desde
+    que la voz dice «WhatsApp» hasta que termina esa frase, mínimo 2,5 s. frases_t: [(segundo del Short en que empieza la
+    voz de la frase, [(inicio, fin, palabra)])]."""
+    out = []
+    for t0, pal in frases_t:
+        for a0, _a1, w in pal:
+            if TARJETA_DICE.search(w):
+                out.append((round(t0 + a0, 2), round(max(t0 + a0 + minimo, t0 + pal[-1][1] + 0.2), 2)))
+                break
+    return out
+
+
+def sin_tapar(dibujadas, s0, inicio, ventanas):
+    """Las flechas y círculos de un trozo (que empieza en el segundo `inicio` del Short y en el `s0` de la grabación) que NO
+    quedarían debajo de la tarjeta de WhatsApp: una flecha tapada no se ve y confunde (Short 1 y 2 del Honor, 03/11/2026)."""
+    out = []
+    for c in dibujadas:
+        a = inicio + (c['src'] - s0)
+        if not any(a < z and a + c['dur'] > y for y, z in ventanas):
+            out.append(c)
+    return out
+
+
 def flecha_al_enlace(tmp):
     """PNG de una flecha que apunta abajo a la izquierda, donde YouTube pone el enlace ▶ del «Video relacionado» en los
     Shorts (fabian, 02/11/2026: el cierre manda ahí). Usa la flecha de GPT del kit (mis_conocimientos/estilo_video) si está."""

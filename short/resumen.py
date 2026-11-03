@@ -26,6 +26,7 @@ GANCHOS = [('antes_despues', 'Antes y después: empieza diciendo que el teléfon
            ('ya_probaste', '¿Ya probaste todo?: le habla al que ya intentó TalkBack, Bluetooth y códigos sin resultado')]
 EMOCION = re.compile(r'\[[a-z ]+\]\s*')
 TROZO, AIRE, RETRASO = 4.5, 0.3, 0.1
+COLA_CIERRE = 2.0  # el cierre dura esto más: en el Short 2 del Honor «play» era la última palabra y el ícono duraba 0,6 s (03/11/2026)
 # En los Shorts los enlaces de la descripción y de los comentarios no se pueden tocar: lo que lleva al tutorial es el
 # «Video relacionado» (el enlace con ▶ que YouTube pone abajo a la izquierda; se elige al subir el Short)
 FIN = {'es': 'Tutorial completo: toca el enlace con el ícono de play que aparece abajo del Short.',
@@ -224,19 +225,34 @@ def armar(d, cuales=(1, 2, 3)):
                 bid = f'S{n}F{k}'
                 mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
                 largo = round(short.duracion(mp3) + AIRE, 2)
+                cierre = k == len(s['frases']) and bool(LLAMADA.search(f.get('texto', '')))
+                if cierre:  # que se alcance a ver el ícono de play y la flecha al enlace después de la última palabra
+                    largo = round(largo + COLA_CIERRE, 2)
                 piezas, cada = [], largo / len(f['tomas'])
                 for a, _b in f['tomas']:
                     m = max(1, math.ceil(cada / TROZO))
                     piezas += [(float(a) + j * cada / m, cada / m) for j in range(m)]
-                plan.append((k, f, bid, mp3, largo, piezas))
-            dibujadas = short.dibujar_senales(orig, senales_src, [(a, a + b) for *_, pz in plan for a, b in pz], tmp)
+                plan.append((k, f, bid, mp3, largo, piezas, cierre))
+            # cuándo tapa el centro la tarjeta de WhatsApp: las flechas que caerían debajo no se dibujan
+            ventanas, t0 = [], 0.0
+            if short.hay_tarjeta():
+                frases_t = []
+                for k, f, bid, mp3, largo, piezas, cierre in plan:
+                    frases_t.append((t0 + RETRASO, short.palabras_voz(d, bid, 'voz_short')))
+                    t0 += largo
+                ventanas = short.ventanas_tarjeta(frases_t)
+            dibujadas = short.dibujar_senales(orig, senales_src, [(a, a + b) for p_ in plan if not p_[6] for a, b in p_[5]], tmp)
             # el recorte vertical deja adentro lo que señala cada flecha o círculo (como tus marcas)
             marcas = short.marcas_autor(d) + [(c['src'] + c['dur'] / 2, c['x'], c['y']) for c in dibujadas]
             memoria = short.deteccion.Memoria(orig)
             partes, tomas = [], []
-            for k, f, bid, mp3, largo, piezas in plan:
+            inicio = 0.0  # segundo del Short en que empieza cada trozo
+            for k, f, bid, mp3, largo, piezas, cierre in plan:
                 lista = []
                 for j, (s0, dur) in enumerate(piezas):
+                    # en el cierre no van flechas ni etiquetas de la frase anterior (tapaban la flecha al enlace)
+                    sus = [] if cierre else short.sin_tapar(dibujadas, s0, inicio, ventanas)
+                    inicio += dur
                     conf = _encuadre(encuadres, s0)
                     guiado = short.seguir_ref(cap, s0, dur, conf, d) if conf else None
                     claves, zoom, _ = guiado or short.seguir(cap, s0, dur, marcas, memoria)
@@ -246,7 +262,7 @@ def armar(d, cuales=(1, 2, 3)):
                     vf = (f"crop={cw}:{ch}:x='{short.expr(cl, 1, 0, short.W - cw)}':y='{short.expr(cl, 2, 0, short.H - ch)}',"
                           f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p')
                     p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
-                    ins, filtro, ult = short.con_senales(s0, dur, dibujadas, 1)
+                    ins, filtro, ult = short.con_senales(s0, dur, sus, 1)
                     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig] + ins +
                                   ['-filter_complex', f'{filtro}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}',
                                    '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)

@@ -192,8 +192,12 @@ def revisar_logos(video, ev, alto_rel=0.30):
             if not ok:
                 continue
             h = fr.shape[0]
+            pos = lg.posicion(l, 'short')
             for esc in (1.0, 0.85, 1.15):
-                if lg.es_tarjeta(l):  # la tarjeta de WhatsApp va con su tamaño propio de Short (logos.TARJETA)
+                if pos and pos['alto'] and not lg.es_tarjeta(l):  # su lugar y tamaño propios (el play, abajo a la izquierda)
+                    alto = int(h * pos['alto'] * esc)
+                    ancho = int(alto * png.shape[1] / png.shape[0])
+                elif lg.es_tarjeta(l):  # la tarjeta de WhatsApp va con su tamaño propio de Short (logos.TARJETA)
                     ancho, alto = (int(v * esc) for v in lg.medida_tarjeta(l, 'short', fr.shape[1], h, png.shape[1] / png.shape[0]))
                 else:
                     alto = int(h * alto_rel * esc * (0.52 if png.shape[1] / png.shape[0] > 1.3 else 1))
@@ -207,7 +211,10 @@ def revisar_logos(video, ev, alto_rel=0.30):
                 plantilla = chico[:, :, :3]
                 mascara = (chico[:, :, 3] > 128).astype(np.uint8) * 255 if png.shape[2] == 4 else None
                 mascara = cv2.merge([mascara] * 3) if mascara is not None else None
-                r = cv2.matchTemplate(fr[: int(h * 0.7)], plantilla, cv2.TM_CCORR_NORMED, mask=mascara)
+                zona = fr if pos else fr[: int(h * 0.7)]  # los del centro, arriba de los subtítulos; con «pos_short», en todo el cuadro
+                if zona.shape[0] < alto or zona.shape[1] < ancho:
+                    continue
+                r = cv2.matchTemplate(zona, plantilla, cv2.TM_CCORR_NORMED, mask=mascara)
                 r = np.nan_to_num(r, nan=0, posinf=0, neginf=0)
                 if float(r.max()) > 0.93:
                     visto = True

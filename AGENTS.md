@@ -139,6 +139,9 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   resumen.CIERRES (ES/EN/PT), rotando (Short 1 → la 1…). Nunca mandar «a la descripción»: en los Shorts esos enlaces no se
   tocan; lo que lleva al tutorial es el «Video relacionado» (enlace ▶ abajo a la izquierda, se elige al subir). Apenas la
   voz dice «play» sale el ícono de play (logo con "solo_short": true y la palabra «play») y una flecha rebota hacia el enlace.
+  El play va ABAJO a la izquierda, junto al enlace ("pos_short": {"x": 0.24, "y": 0.84, "alto": 0.11} en logos.json; fabian
+  03/11: «el ícono de play está arriba»). El cierre dura 2 s más (COLA_CIERRE) y en él no van flechas ni círculos; las que
+  caerían debajo de la tarjeta de WhatsApp tampoco se dibujan.
 - HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
   los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el

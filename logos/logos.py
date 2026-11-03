@@ -179,6 +179,23 @@ def medida_tarjeta(logo, formato, W, H, ancho_rel):
     return round(alto * ancho_rel) // 2 * 2, round(alto) // 2 * 2
 
 
+def posicion(logo, formato):
+    """"pos_short": {"x": 0.24, "y": 0.84, "alto": 0.11} en logos.json: ese logo va en su lugar propio en ese formato, con su
+    centro en (x, y) y "alto" en parte del alto del video (fabian, 03/11/2026: el ícono de play del cierre de los Shorts salía
+    arriba; va abajo a la izquierda, donde YouTube pone el enlace del video). None: en el centro, como todos los logos."""
+    p = logo.get(f'pos_{formato}')
+    if not isinstance(p, dict):
+        return None
+    try:
+        x, y = float(p.get('x', 0.5)), float(p['y'])
+        alto = float(p['alto']) if p.get('alto') else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (0 <= x <= 1 and 0 <= y <= 1) or (alto is not None and not 0 < alto <= 1):
+        return None
+    return {'x': x, 'y': y, 'alto': alto}
+
+
 def del_idioma(logo, carpeta, idioma, formato='largo'):
     """El archivo del logo en el idioma del video: "idiomas": {"en": "x_en.png", "pt": "x_pt.png"}; si no hay, el de siempre."""
     otro = (logo.get('idiomas') or {}).get(idioma)
@@ -240,10 +257,17 @@ def main():
         ancho_rel = proporcion(png)
         alto = round(H * (ALTO_ANCHO * a.alto / ALTO if ancho_rel > 1.3 else a.alto)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
-        centro_y = a.centro_y
+        centro_x, centro_y = 0.5, a.centro_y
+        pos = posicion(l, a.formato)
         if tarjeta:
             ancho, alto = medida_tarjeta(l, a.formato, W, H, ancho_rel)
             centro_y = TARJETA[a.formato]['centro_y']
+        elif pos:  # su lugar propio («pos_short»): el play, abajo junto al enlace del Short
+            centro_x, centro_y = pos['x'], pos['y']
+            if pos['alto']:
+                alto = round(H * pos['alto']) // 2 * 2
+                ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
+        x = '(W-w)/2' if centro_x == 0.5 else f'W*{centro_x}-w/2'
         # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
         suave = min(ENTRA, dur * 0.15)  # los que se nombran rápido («quince, dieciséis…») casi no se desvanecen
         crece = f"min(1,0.55+0.45*(t/{POP})+0.08*sin(min(t/{POP},1)*3.1416))"
@@ -252,7 +276,7 @@ def main():
                               f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
                               f"fade=t=in:st=0:d={suave:.2f}:alpha=1,fade=t=out:st={max(0, dur - suave):.2f}:d={suave:.2f}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",
-                       'overlay': f"x='(W-w)/2':y='H*{centro_y}-h/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
+                       'overlay': f"x='{x}':y='H*{centro_y}-h/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
         n = len(piezas)
         ins += piezas[-1]['args']
         filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
