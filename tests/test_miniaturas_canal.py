@@ -163,7 +163,7 @@ with tempfile.TemporaryDirectory() as tmp:
                          {'nombre': 'gsmprime.co', 'archivo': 'web.png'}]}, open(os.path.join(logos, 'logos.json'), 'w'))
     mini.LOGOS_DIR = logos
     mini.ESTILO = os.path.join(tmp, 'sin_referencias_viejas')
-    mini.necesita_pc = lambda marca: True
+    mini.necesita_pc = lambda marca, texto='': True  # (03/11/2026) ahora también recibe el texto del proyecto
     mini.clave_openai = lambda: 'sk-prueba'
     AJ = {}
     mini.ajustes = lambda: AJ

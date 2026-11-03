@@ -20,6 +20,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import reglas_titulo  # noqa: E402  lo que va y no va en los títulos (fabian, 03/11/2026)
 ARCHIVO = 'shorts_resumen.json'
 GANCHOS = [('antes_despues', 'Antes y después: empieza diciendo que el teléfono estaba bloqueado y «mira cómo terminó»'),
            ('un_minuto', 'En 1 minuto: el proceso como pasos numerados («Paso uno… paso cuatro»)'),
@@ -88,6 +90,15 @@ def letras(texto):
     return len(EMOCION.sub('', texto or '').strip())
 
 
+def _marca(d):
+    """La marca del proyecto (por su nombre o idea.txt); '' si no se sabe."""
+    try:
+        import conocimiento
+        return conocimiento.marca_de_proyecto(d) or ''
+    except Exception:
+        return ''
+
+
 def _modelo(d):
     try:
         return (json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8')).get('modelo') or '').strip()
@@ -117,6 +128,7 @@ Reglas obligatorias de fabian:
 Para cada frase da las tomas del grabado original (segundos [desde, hasta], 3-5 s cada una) que muestran EXACTAMENTE lo que dice,
 usando los segundos del guion (src) y del mapa de pantallas.
 Además, para cada Short: título (máx. 70 letras, sin emojis, sin < > ni comillas) y una descripción de 1-2 frases, en es, en y pt.
+{reglas_titulo.para_ia(_marca(d), reglas_titulo.texto_proyecto(d))}
 GUION DEL VIDEO LARGO: {json.dumps(bloques, ensure_ascii=False)}
 MAPA DE PANTALLAS (segundo, lo que se lee): {json.dumps(mapa[:150], ensure_ascii=False)}
 Responde SOLO con JSON: {{"shorts": [{{"gancho": "antes_despues", "frases": [{{"texto": "…", "tomas": [[18, 22]]}}],
@@ -331,7 +343,10 @@ def textos(d, r=None):
     for n, s in enumerate(r.get('shorts') or [], 1):
         out.append(f'===== SHORT_RESUMEN_{n}.mp4 ({s.get("gancho", "")}) =====')
         for k in ('es', 'en', 'pt'):
-            t = youtube.limpiar_yt((s.get('titulos') or {}).get(k, ''))
+            # (03/11/2026) el título con las reglas de fabian: «Sin PC» solo al inicio y solo sin PC, Honor sin «Todos los
+            # Modelos», «Gratis» solo si es gratis, el año de hoy
+            t = reglas_titulo.revisar_titulo((s.get('titulos') or {}).get(k, ''), _marca(d), reglas_titulo.texto_proyecto(d))[0]
+            t = youtube.limpiar_yt(t)
             t = youtube.signos_es(t) if k == 'es' else t
             desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k))
             out += [f'--- {k.upper()} ---', 'TÍTULO: ' + t, 'DESCRIPCIÓN:', desc, 'COMENTARIO FIJADO:', FIJADO[k], '']

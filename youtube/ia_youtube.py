@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 import ia  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402
+import reglas_titulo  # noqa: E402  lo que va y no va en los títulos (fabian, 03/11/2026)
 
 REGLAS = """Escribe en español latinoamericano neutro, como el autor del canal. No inventes datos (modelos, versiones, precios,
 webs): usa solo lo que está en el guion, la idea del video y el conocimiento del canal. Contesta SOLO con el JSON pedido."""
@@ -45,6 +46,8 @@ PÁGINAS Y CONTACTOS DEL AUTOR (van en la descripción con su link exacto):
 
 CONOCIMIENTO DEL CANAL:
 {e.get('conocimiento', '')[:6000]}
+
+{e.get('reglas_titulo') or ''}
 
 Devuelve este JSON:
 {{"titulos": [{{"titulo": "...", "por_que": "en qué título exitoso se inspira"}}, ... 5 en total, de 100 letras o menos],
@@ -132,6 +135,11 @@ def main():
             e['conocimiento'] = (canal.texto_para_ia() + '\n\n' + e['conocimiento']).strip()
         except Exception:
             pass
+        # (03/11/2026) las reglas de fabian para los títulos, según el proceso del video: dos verbos al inicio sí, «Sin PC»
+        # solo al inicio y solo si el proceso no usa PC, Honor sin «Todos los Modelos», «Gratis» solo si es gratis, el año
+        marca = conocimiento.marca_de_proyecto(a.proyecto) or ''
+        proyecto = reglas_titulo.texto_proyecto(a.proyecto) + ' ' + str(e.get('idea') or '')
+        e['reglas_titulo'] = reglas_titulo.para_ia(marca, proyecto)
     print(f'Pido a la IA ({aj["modelo"]}): {a.tarea}…', flush=True)
     try:
         r = ia.extraer_json(ia.llamar(aj, TAREAS[a.tarea](e), []))
@@ -139,6 +147,12 @@ def main():
         sys.exit(str(x))
     if not isinstance(r, dict):
         sys.exit('ERROR: la IA no contestó con el JSON pedido.')
+    if a.tarea == 'metadatos':  # si la IA igual se saltó una regla, la app lo corrige y lo dice debajo del título
+        for t in r.get('titulos') or []:
+            if isinstance(t, dict) and t.get('titulo'):
+                t['titulo'], avisos = reglas_titulo.revisar_titulo(t['titulo'], marca, proyecto)
+                if avisos:
+                    t['por_que'] = (str(t.get('por_que') or '') + ' · La app corrigió: ' + '; '.join(avisos)).strip(' ·')
     if a.tarea == 'aprender':
         nuevas = 0
         for n in r.get('notas') or []:

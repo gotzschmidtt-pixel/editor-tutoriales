@@ -23,9 +23,11 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
 sys.path.insert(0, os.path.join(RAIZ, 'avisos'))
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import pronunciacion  # noqa: E402
 import sonidos  # noqa: E402
 import avisos_legales  # noqa: E402
+import reglas_titulo  # noqa: E402  el año de títulos y miniaturas por la fecha (fabian, 03/11/2026)
 
 PASOS = [
     {'id': 'm_limpiar', 'nombre': 'Limpiar la voz grabada', 'necesita': [], 'produce': '', 'oculto': True},
@@ -118,7 +120,7 @@ def comandos(paso, d, op, py, ajustes):
             # con «=»: un id de YouTube puede empezar con «-» y, separado, argparse lo toma por otra opción (revisión, 03/11/2026)
             extra += ['--refs-canal=' + ','.join(refs)] if refs else []
         return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo] + extra
-                + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else ('NEW 2026' if mixta else 'PASO A PASO')).strip()[:largo],
+                + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else (f'NEW {reglas_titulo.anio()}' if mixta else 'PASO A PASO')).strip()[:largo],
                    '--esquina-der', str(op.get('esq_der') or '').strip()[:largo]]
                 + (['--texto', texto] if texto else [])]
     if paso == 'm_avisos':
