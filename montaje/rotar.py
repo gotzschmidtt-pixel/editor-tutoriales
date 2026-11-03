@@ -330,7 +330,9 @@ def planear(bloques, mapa_f, carpeta_voz, dur_original, fps, guardar_avisos=True
                 usados.append(elegido[0])
                 previo = tema if elegido[1] == 'toma IA' else elegido[1]
                 ultimo = (elegido[0], elegido[0] + largo)
-                piezas.append((elegido[0], int(round(largo * fps)), elegido[1]))
+                # los cuadros se cuentan sobre el tiempo del video armado (como montaje.py desde la mejora 1): cada toma
+                # empieza en el cuadro de su frase. Antes cada trozo redondeaba por su cuenta y se corría ±1 cuadro (03/11/2026)
+                piezas.append((elegido[0], int(round(x * fps)) - int(round((x - largo) * fps)), elegido[1]))
             if piezas is None:
                 break
         if piezas:
