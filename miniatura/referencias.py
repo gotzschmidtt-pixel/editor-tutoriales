@@ -25,6 +25,8 @@ import cv2
 import numpy as np
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import reglas_titulo  # noqa: E402  «SIN PC» por proceso, el año de hoy y «GRATIS» solo si es gratis (fabian, 03/11/2026)
 GUIA = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'ESTILO_MINIATURAS.md')
 COSTO_IMAGEN = 0.28        # USD por imagen de gpt-image-2.5-flare en calidad alta (medido el 01/11/2026 con la miniatura F)
 MAX_REFS_GPT = 3           # cuántas referencias de estilo van a la IA de imágenes en cada pedido
@@ -194,6 +196,18 @@ def ideas(d, llamar=None, n=4):
     if not receta:
         raise ValueError('Primero «🔍 Analizar» las referencias.')
     titulo, guion = titulo_video(d)
+    # (revisión, 03/11/2026) las reglas de fabian para los textos de la miniatura, según el proceso de ESTE video, antes de
+    # gastar en GPT: «SIN PC» solo si el proceso no usa PC, el año de hoy y «GRATIS» solo si el método es gratis
+    try:
+        import conocimiento
+        marca = conocimiento.marca_de_proyecto(d) or ''
+    except Exception:
+        marca = ''
+    proyecto = reglas_titulo.texto_proyecto(d) + ' ' + titulo
+
+    def cumple(t):
+        nuevo, avisos = reglas_titulo.revisar_titulo(t, marca, proyecto, miniatura=True)
+        return nuevo.strip().upper(), avisos
     guia = ''
     if os.path.exists(GUIA):  # el principio (con la revisión obligatoria) y, siempre, la competencia, los gustos y los errores
         t = open(GUIA, encoding='utf-8').read()
@@ -208,18 +222,20 @@ def ideas(d, llamar=None, n=4):
     prompt = (f'Propón {n} ideas de miniatura para este video de YouTube del canal Xiaomiunlock (fabian).\nTítulo: {titulo}\n'
               f'Inicio del guion: {guion}\n\nReceta sacada de las miniaturas de referencia que le gustan:\n'
               f'{json.dumps(receta.get("conjunto"), ensure_ascii=False)}\n{receta.get("resumen", "")}\n\nGuía de estilo de fabian:\n{guia}\n\n'
-              f'{REGLAS}\nCada idea: un texto de 4 palabras como mucho (MAYÚSCULAS, tildes correctas) con su traducción al inglés y '
+              f'{REGLAS}\n{reglas_titulo.para_ia(marca, proyecto, miniatura=True)}\nCada idea: un texto de 4 palabras como mucho (MAYÚSCULAS, tildes correctas) con su traducción al inglés y '
               'al portugués de Brasil, y el concepto de la imagen en una frase. Responde SOLO con JSON: {"ideas": [{"texto": "…", '
               '"en": "…", "pt": "…", "concepto": "…", "por_que": "…"}]}')
     r = _json(llamar(prompt, []))
     lista = []
     for x in (r.get('ideas') if isinstance(r, dict) else None) or []:
-        t = str(x.get('texto') or '').strip().upper()
-        if not t:
+        t, avisos = cumple(str(x.get('texto') or ''))
+        if not t:  # si la IA se saltó una regla, se corrige; si no queda texto, la idea no va
             continue
         palabras = t.split()
-        lista.append({'texto': ' '.join(palabras[:4]), 'en': str(x.get('en') or t).strip().upper(), 'pt': str(x.get('pt') or t).strip().upper(),
-                      'concepto': str(x.get('concepto') or '')[:300], 'por_que': str(x.get('por_que') or '')[:200],
+        otros = {i: cumple(str(x.get(i) or t))[0] or t for i in ('en', 'pt')}
+        por_que = str(x.get('por_que') or '')[:200] + (' · La app corrigió: ' + '; '.join(avisos) if avisos else '')
+        lista.append({'texto': ' '.join(palabras[:4]), 'en': otros['en'], 'pt': otros['pt'],
+                      'concepto': str(x.get('concepto') or '')[:300], 'por_que': por_que.strip(' ·'),
                       'largo_ok': len(palabras) <= 4})
     if not lista:
         raise ValueError('La IA no devolvió ideas. Vuelve a intentarlo.')

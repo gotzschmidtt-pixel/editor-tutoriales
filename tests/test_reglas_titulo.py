@@ -7,12 +7,21 @@
 - títulos con dos verbos al inicio («Quitar, Eliminar…») se dejan tal cual;
 - lo mismo en los títulos de «▶️ YouTube» (ia_youtube), en «🔎 Investigar el tema», en los Shorts resumen y en las ideas de
   textos de la miniatura (titulos.py).
+Revisión (03/11/2026):
+- el año del modelo no se toca («Moto G Power 2024», «iPhone SE 2022», «MOTO G 2025», «Samsung A2025») ni frena la miniatura;
+- la voz de los 3 Shorts resumen prohíbe y marca «sin PC» solo si el proceso usa PC (la cuenta Mi sí puede decirlo);
+- «💡 Ideas» de «🖼️ Miniaturas de referencia» pasa por las mismas reglas antes de gastar en GPT;
+- «Sin Usar PC», «Sin Necesidad de PC», «No PC Needed»; «un poco» no es Xiaomi y «Mi Account» sin la marca sí;
+- «no es gratis» no es gratis, y si idea.txt dice que es gratis manda idea.txt;
+- «TODOS LOS MODELOS» de Honor solo sale de los títulos de YouTube y de los Shorts (la miniatura sigue con su píldora);
+- la mixta pone la píldora «SIN PC» según el proyecto; el sello y la esquina por defecto llevan el año de anio();
+- el procesos_pc.json real de mis_conocimientos (si está) reconoce los procesos comunes.
 Uso: python tests/test_reglas_titulo.py   (sale con 1 si algo falla)
 """
-import contextlib, datetime, io, json, os, sys, tempfile, types, urllib.request
+import atexit, contextlib, datetime, io, json, os, shutil, sys, tempfile, types, urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for sub in ('conocimiento', 'miniatura', 'youtube', 'short'):
+for sub in ('conocimiento', 'miniatura', 'youtube', 'short', 'mejoras'):
     sys.path.insert(0, os.path.join(RAIZ, sub))
 fallos = []
 
@@ -39,6 +48,8 @@ sys.modules['ia'] = ia_falsa
 import reglas_titulo as rt  # noqa: E402
 
 tmp = tempfile.mkdtemp()
+atexit.register(shutil.rmtree, tmp, ignore_errors=True)  # la carpeta de prueba no queda (revisión, 03/11/2026)
+REAL = rt.PROCESOS_PC  # el procesos_pc.json de mis_conocimientos, si está
 PROCESOS = os.path.join(tmp, 'procesos_pc.json')
 json.dump({'honor': True, 'procesos': [
     {'id': 'xiaomi_mi_account', 'pc': False, 'marcas': ['xiaomi'], 'palabras': ['mi account', 'cuenta mi', 'unlock code'],
@@ -93,6 +104,27 @@ casos = [
     ('IPHONE', 'iPhone no disponible: Eliminar Pin y iCloud Gratis - Método 2026', 'bypass icloud, el registro cuesta unos dólares',
      'iPhone no disponible: Eliminar Pin y iCloud - Método 2026'),
     ('IPHONE', 'Bypass Hello Gratis Sin Registro 2026', 'bypass hello: este método es gratis, no pagas nada', None),
+    # (revisión) el año del modelo no se toca; el de la etiqueta sí
+    ('MOTOROLA', 'Quitar Cuenta Google Moto G Power 2024 - Método 2025', 'motorola frp', 'Quitar Cuenta Google Moto G Power 2024 - Método 2026'),
+    ('MOTOROLA', 'Moto G Power 2025 FRP', 'motorola frp', None),
+    ('MOTOROLA', 'Moto G 2025 | Método 2026', 'motorola frp', None),
+    ('MOTOROLA', 'Motorola Razr+ 2024 y Moto G Stylus 5G (2024) FRP 2027', 'motorola frp', 'Motorola Razr+ 2024 y Moto G Stylus 5G (2024) FRP 2026'),
+    ('IPHONE', 'iPhone SE 2022: Quitar iCloud 2025', 'bypass icloud', 'iPhone SE 2022: Quitar iCloud 2026'),
+    ('IPHONE', 'iPhone SE 2020 Bypass Hello', 'bypass icloud', None),
+    ('SAMSUNG', 'Samsung A2025 FRP', 'samsung frp', None),
+    ('SAMSUNG', 'Galaxy Tab S6 Lite 2024 FRP 2025', 'samsung frp', 'Galaxy Tab S6 Lite 2024 FRP 2026'),
+    ('HONOR', 'Honor Pad 2025 FRP 2025', 'honor pad 2025, eliminar la cuenta de google', 'Honor Pad 2025 FRP 2026'),
+    ('HONOR', 'Nuevo Método 2025 Honor', 'nuevo método 2025 para honor', 'Nuevo Método 2026 Honor'),
+    ('XIAOMI', 'Redmi Note 13 Pro 2025 FRP', 'xiaomi frp cuenta google', 'Redmi Note 13 Pro 2026 FRP'),
+    # (revisión) más formas de «Sin PC»
+    ('HONOR', 'Eliminar Cuenta Google Honor Sin Usar PC 2026', HONOR_FRP, 'Eliminar Cuenta Google Honor 2026'),
+    ('HONOR', 'Honor Sin Necesidad de PC - Método 2026', HONOR_FRP, 'Honor - Método 2026'),
+    ('HONOR', 'Remove Google Account Honor No Computer Needed', HONOR_FRP, 'Remove Google Account Honor'),
+    ('HONOR', 'Honor FRP No PC Required 2026', HONOR_FRP, 'Honor FRP 2026'),
+    ('HONOR', 'Honor sin una PC Avanzada 2026', HONOR_FRP, None),
+    ('XIAOMI', 'Eliminar Cuenta Mi Xiaomi Sin Usar PC', MI, 'Sin Usar PC - Eliminar Cuenta Mi Xiaomi'),
+    # (revisión) «no es gratis» no es gratis
+    ('IPHONE', 'Bypass Hello Gratis 2026', 'bypass hello: este método ya no es gratis', 'Bypass Hello 2026'),
 ]
 for marca, titulo, proyecto, esperado in casos:
     nuevo, avisos = rt.revisar_titulo(titulo, marca, proyecto, hoy=NOV)
@@ -104,6 +136,43 @@ nuevo, _ = rt.revisar_titulo('HONOR|SIN PC', 'HONOR', HONOR_FRP, hoy=NOV, miniat
 ok('PC' not in nuevo, f'texto de miniatura de Honor con «SIN PC»: {nuevo}')
 ok(rt.revisar_titulo('CUENTA MI SIN PC', 'XIAOMI', MI, hoy=NOV, miniatura=True)[0] == 'CUENTA MI SIN PC',
    'en la miniatura de la cuenta Mi, «SIN PC» puede ir en cualquier lado')
+for txt in ('MOTO G 2024', 'MOTO G 2025', 'IPHONE SE 2022'):
+    ok(rt.revisar_titulo(txt, 'MOTOROLA' if 'MOTO' in txt else 'IPHONE', '', hoy=NOV, miniatura=True) == (txt, []),
+       f'el modelo «{txt}» de la miniatura queda tal cual')
+ok(rt.revisar_titulo('TODOS LOS MODELOS', 'HONOR', HONOR_FRP, hoy=NOV, miniatura=True)[0] == 'TODOS LOS MODELOS',
+   'en la miniatura de Honor sigue «TODOS LOS MODELOS» (la regla es de los títulos de YouTube)')
+
+# 3b) la marca y el proceso: «un poco» no es Xiaomi; «Mi Account» sin la marca, o en la marca, sí
+ok(rt._marca_de_texto('ten un poco de paciencia') == '' and rt._marca_de_texto('el Poco X6 Pro') == 'xiaomi',
+   '«un poco» no es Xiaomi, «Poco X6» sí')
+ok(rt.marca_normal('Xiaomi Mi Account') == 'xiaomi' and rt.marca_normal('TU CELULAR') == '', 'marca con más palabras')
+ok(rt.necesita_pc('', 'Eliminar la Mi Account del Redmi con el unlock code') is False, '«Mi Account» sin decir Xiaomi')
+ok(rt.necesita_pc('Xiaomi Mi Account', 'eliminar') is False, 'la marca «Xiaomi Mi Account» ya dice el proceso')
+ok(rt.necesita_pc('', 'Samsung: ten un poco de paciencia, el unlock code y find device') is True,
+   'un proyecto de Samsung que dice «un poco» y «unlock code» no queda sin PC')
+
+# 3c) «Gratis»: negado no vale; si idea.txt dice gratis, manda idea.txt
+ok(not rt.es_gratis('este método no es gratis') and not rt.es_gratis('it is not free anymore'), '«no es gratis» no es gratis')
+ok(rt.es_gratis(rt.SEP.join(['IPHONE HELLO', 'Bypass Hello gratis con unlocktool', 'la placa Pico cuesta 10 dólares'])),
+   'idea.txt dice gratis: manda aunque el guion nombre un precio')
+ok(not rt.es_gratis(rt.SEP.join(['IPHONE HELLO', 'Bypass Hello con unlocktool', 'es gratis, la placa Pico cuesta 10 dólares'])),
+   'sin «gratis» en idea.txt, un precio en el guion lo quita')
+
+# 3d) el procesos_pc.json real (las palabras de GUIONES-IA), si está en mis_conocimientos
+if os.path.exists(REAL):
+    rt.PROCESOS_PC = REAL
+    for marca, texto, pc in (('HONOR', 'Eliminar cuenta Google Honor 400 sin PC avanzada', True),
+                             ('SAMSUNG', 'Samsung A15 FRP cuenta google', True), ('MOTOROLA', 'Moto G Power 2024 frp', True),
+                             ('XIAOMI', 'Redmi Note 13: quitar la cuenta Mi con el unlockcode', False),
+                             ('', 'Eliminar Mi Account Redmi Note 13 por IMEI', False),
+                             ('XIAOMI', 'Xiaomi cuenta google frp con usb redirector', True),
+                             ('XIAOMI', 'Desbloquear bootloader Xiaomi con unlock code', True),
+                             ('APPLE', 'Liberación de bandas iPhone 13 con IMEI y serial', False),
+                             ('IPHONE', 'Liberar iPhone 13 AT&T por IMEI', False), ('IPHONE', 'Liberar iPhone 12 de la compañía', False),
+                             ('IPHONE', 'Liberar iPhone 11 bloqueado por iCloud con bypass', True),
+                             ('IPHONE', 'Quitar MDM iPhone de compañía', True)):
+        ok(rt.necesita_pc(marca, texto) is pc, f'procesos_pc.json real: «{marca} / {texto}»: ¿usa PC? debería ser {pc}')
+    rt.PROCESOS_PC = PROCESOS
 
 # 4) las reglas para la IA
 r = rt.para_ia('HONOR', HONOR_FRP, hoy=NOV)
@@ -111,13 +180,19 @@ for txt in ('dos verbos', '2026', 'usa PC', 'Sin PC Avanzada', 'Todos los Modelo
     ok(txt in r, f'a las reglas de Honor para la IA les falta «{txt}»')
 r = rt.para_ia('XIAOMI', MI, hoy=NOV)
 ok('SOLO al inicio' in r and 'unlock code' in r and 'Todos los Modelos' not in r, f'las reglas de la cuenta Mi: {r}')
+ok('Todos los Modelos' not in rt.para_ia('HONOR', HONOR_FRP, hoy=NOV, miniatura=True), 'la regla de «Todos los Modelos» es solo de títulos')
 
 # 5) miniatura.py: antes de gastar (sin PC por proceso, el año) y lo que la app pone sola
 import miniatura as mini  # noqa: E402
 mini.anio = lambda hoy=None: 2026  # la prueba no depende del día en que se corra
 for textos, marca, pc, frena in ((['HONOR', 'SIN PC'], 'HONOR', None, True), (['HONOR', 'SIN PC AVANZADA'], 'HONOR', None, False),
                                  (['XIAOMI', 'SIN PC'], 'XIAOMI', False, False), (['XIAOMI', 'SIN PC'], 'XIAOMI', None, True),
-                                 (['HONOR', 'NEW 2027'], 'HONOR', None, True), (['HONOR', 'MÉTODO 2026'], 'HONOR', None, False)):
+                                 (['HONOR', 'NEW 2027'], 'HONOR', None, True), (['HONOR', 'MÉTODO 2026'], 'HONOR', None, False),
+                                 # (revisión) el año del modelo no frena; el de la etiqueta sí
+                                 (['MOTO G 2025', 'SIN CUENTA GOOGLE'], 'MOTOROLA', None, False),
+                                 (['MOTO G POWER 2024', 'MÉTODO 2026'], 'MOTOROLA', None, False),
+                                 (['IPHONE SE 2022', 'ICLOUD'], 'IPHONE', None, False),
+                                 (['MOTO G 2025', 'MÉTODO 2025'], 'MOTOROLA', None, True)):
     try:
         mini.revisar_textos(textos, marca, pc)
         ok(not frena, f'{textos} ({marca}, pc={pc}) debería frenar antes de gastar')
@@ -132,6 +207,46 @@ json.dump({'bloques': [{'id': 'L01', 'texto': 'Método 2025 para quitar la cuent
           open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'))
 ok(mini.textos(d)[2][0] == 'HONOR 2026', f'la 3.ª miniatura gratis lleva el año de hoy, no el del guion: {mini.textos(d)[2]}')
 ok(mini.SELLO['es'] == ('MÉTODO', 'GARANTIZADO'), 'el año del sello se pone al dibujarlo (anio()), no queda fijo')
+
+# 5b) la mixta: el sello con el año de anio() y la píldora «SIN PC» según el PROCESO del proyecto (no solo sus textos)
+import numpy as np  # noqa: E402
+from PIL import Image  # noqa: E402
+dibujado = {}
+viejos = {k: getattr(mini, k) for k in ('sello', 'pildora', 'sticker', 'titulo_estilizado', 'logo_marca', 'traducciones_titulo', 'anio')}
+chica = lambda *a, **k: Image.new('RGBA', (40, 30))
+mini.sello = lambda r, lineas: (dibujado.setdefault('sello', lineas), chica())[1]
+mini.pildora = lambda arriba, abajo, tipo, alto=60: (dibujado.setdefault('pildoras', []).append(f'{arriba} {abajo}'), chica())[1]
+mini.sticker = mini.titulo_estilizado = chica
+mini.logo_marca = lambda marca: None
+mini.anio = lambda hoy=None: 2027
+mini.componer_mixta(np.zeros((90, 160, 3), np.uint8), ['XIAOMI', 'SIN CUENTA'], 'XIAOMI', 'es', os.path.join(tmp, 'mixta.jpg'),
+                    esquinas=('', ''), pc=False)
+ok(dibujado.get('sello') == ('MÉTODO', 'GARANTIZADO', '2027'), f"el sello lleva el año de anio(): {dibujado.get('sello')}")
+ok('SIN PC' in ' '.join(dibujado.get('pildoras', [])), f"con pc=False va la píldora «SIN PC»: {dibujado.get('pildoras')}")
+mini.anio = lambda hoy=None: 2026
+puestos = []
+mini.traducciones_titulo = lambda d_, lineas: {i: list(lineas) for i in ('es', 'en', 'pt')}
+real_componer = mini.componer_mixta
+mini.componer_mixta = lambda *a, **k: puestos.append(k.get('pc'))
+mi = os.path.join(tmp, 'REDMI NOTE 13 CUENTA MI')
+os.makedirs(mi)
+open(os.path.join(mi, 'idea.txt'), 'w', encoding='utf-8').write('Eliminar la cuenta Mi con el unlock code')
+for proyecto, marca in ((mi, 'XIAOMI'), (d, 'HONOR')):  # los textos no dicen el proceso: lo dice el proyecto (cuenta Mi sin PC, Honor con PC)
+    with contextlib.redirect_stdout(io.StringIO()):
+        mini.miniaturas_mixtas(proyecto, [], [marca, 'LIBRE YA'], os.path.join(tmp, 'mx'), marca, idiomas=('es',),
+                               escena=np.zeros((4, 4, 3), np.uint8), esquinas=('', ''))
+ok(puestos == [False, True], f'la mixta calcula la PC con el proyecto: {puestos}')
+for k, v in viejos.items():
+    setattr(mini, k, v)
+mini.componer_mixta = real_componer
+mini.anio = lambda hoy=None: 2026
+
+# 5c) la esquina por defecto de la mixta (mejoras.py) lleva el año de anio()
+import mejoras  # noqa: E402
+mejoras.reglas_titulo.anio = lambda hoy=None: 2027
+c = mejoras.comandos('m_miniatura_fotos', d, {'confirmo': 'SI', 'modo': 'mixta'}, 'py', {})[0]
+ok(c[c.index('--esquina-izq') + 1] == 'NEW 2027', f'la esquina por defecto: {c}')
+mejoras.reglas_titulo.anio = lambda hoy=None: 2026
 
 # 6) «▶️ YouTube» → «✨ Proponer con IA»: el pedido lleva las reglas y la app corrige lo que la IA se saltó
 import ia_youtube  # noqa: E402
@@ -180,6 +295,18 @@ ok('TÍTULO: Honor 400: Adiós Cuenta Google\n' in txt and txt.count('TÍTULO: H
    'los títulos de los Shorts salen con las reglas (sin «Gratis» ni «Todos los Modelos»): '
    + ' | '.join(x for x in txt.splitlines() if x.startswith('TÍTULO')))
 ok('{reglas_titulo' not in resumen.prompt(d) and 'REGLAS DEL AUTOR PARA LOS TÍTULOS' in resumen.prompt(d), 'el pedido de los Shorts lleva las reglas')
+# (revisión) la voz: «sin PC» prohibido y marcado solo si el proceso usa PC (en la cuenta Mi se puede decir)
+json.dump({'bloques': [{'id': 'L01', 'texto': 'Quitamos la cuenta Mi con el unlock code.', 'montaje': {'src_inicio': 0}}]},
+          open(os.path.join(mi, 'guion.json'), 'w', encoding='utf-8'))
+p_mi, p_honor = resumen.prompt(mi), resumen.prompt(d)
+ok('NUNCA digas «sin PC»' not in p_mi and '«sin PC» se puede' in p_mi, 'el pedido de Shorts de la cuenta Mi no prohíbe «sin PC»')
+ok('NUNCA digas «sin PC»' in p_honor, 'el pedido de Shorts de Honor prohíbe «sin PC»')
+dice = {'shorts': [{'frases': [{'texto': 'Sin PC y en minutos, con cualquier parche.', 'tomas': [[1, 2]]}]}]}
+ok(not any('sin PC' in a for a in resumen.validar(dice, pc=False)), 'en la cuenta Mi, decir «sin PC» no se marca')
+ok(any('sin PC' in a for a in resumen.validar(dice)) and any('sin PC' in a for a in resumen.validar(dice, pc=True)),
+   'en un proceso con PC (o sin saberlo), «sin PC» se marca')
+ok(not any('sin PC' in a for a in resumen.validar({'shorts': [{'frases': [{'texto': 'Sin una PC avanzada, con cualquier parche.',
+                                                                            'tomas': [[1, 2]]}]}]})), '«sin una PC avanzada» sí vale')
 
 # 9) «💡 Sugerir con IA» en «🖼 Miniatura» (titulos.py): lo que la IA propone pasa por las reglas
 import titulos  # noqa: E402
@@ -193,11 +320,28 @@ salida = io.StringIO()
 with contextlib.redirect_stdout(salida):
     titulos.main()
 t = json.loads(salida.getvalue().strip().splitlines()[-1])
-ok([x['es'] for x in t['titulos']] == [['HONOR 400', '2026'], ['HONOR', 'ELIM. CUENTA']], f"títulos de miniatura: {[x['es'] for x in t['titulos']]}")
-ok(t['titulos'][0]['en'] == ['HONOR 400', '2026'], f"la traducción también: {t['titulos'][0]}")
+# «TODOS LOS MODELOS» sigue en la miniatura de Honor (revisión: la regla es de los títulos de YouTube); el año, el de hoy
+ok([x['es'] for x in t['titulos']] == [['HONOR 400', 'TODOS LOS MODELOS 2026'], ['HONOR', 'ELIM. CUENTA']],
+   f"títulos de miniatura: {[x['es'] for x in t['titulos']]}")
+ok(t['titulos'][0]['en'] == ['HONOR 400', 'ALL MODELS 2026'], f"la traducción también: {t['titulos'][0]}")
 ok([x['es'] for x in t['esquinas']] == ['NEW 2026'], f"esquinas: {t['esquinas']}")
 ok('NEW 2026' in PEDIDOS[-1] and 'NEW 2027' not in PEDIDOS[-1] and 'REGLAS DEL AUTOR PARA LOS TEXTOS DE LA MINIATURA' in PEDIDOS[-1],
    'el pedido de textos de miniatura lleva el año de hoy y las reglas')
+
+# 10) «🖼️ Miniaturas de referencia → 💡 Ideas» (referencias.py): las reglas van en el pedido y lo que la IA devuelve se revisa
+os.environ['MINIREF_SIMULAR'] = '1'
+import referencias as mr  # noqa: E402
+os.makedirs(os.path.join(d, 'miniatura'), exist_ok=True)
+json.dump({'conjunto': {'cara': 'derecha'}, 'resumen': 'receta'}, open(os.path.join(d, 'miniatura', 'receta.json'), 'w'))
+pedidos = []
+falsa = lambda prompt, imgs: (pedidos.append(prompt), json.dumps({'ideas': [
+    {'texto': 'SIN PC', 'en': 'NO PC', 'pt': 'SEM PC', 'concepto': 'c'},
+    {'texto': 'HONOR GRATIS 2027', 'en': 'HONOR FREE 2027', 'pt': 'HONOR GRÁTIS 2027', 'concepto': 'c'},
+    {'texto': 'ADIÓS CUENTA GOOGLE', 'en': 'BYE GOOGLE ACCOUNT', 'pt': 'TCHAU CONTA GOOGLE', 'concepto': 'c'}]}))[1]
+l = mr.ideas(d, llamar=falsa)
+ok([x['texto'] for x in l] == ['HONOR 2026', 'ADIÓS CUENTA GOOGLE'], f"ideas de referencia revisadas: {[x['texto'] for x in l]}")
+ok(l[0]['en'] == 'HONOR 2026' and l[0]['pt'] == 'HONOR 2026' and 'La app corrigió' in l[0]['por_que'], f'traducciones y aviso: {l[0]}')
+ok('REGLAS DEL AUTOR PARA LOS TEXTOS DE LA MINIATURA' in pedidos[-1] and 'usa PC' in pedidos[-1], 'al pedido de ideas le faltan las reglas')
 
 if fallos:
     print('FALLÓ:\n- ' + '\n- '.join(fallos))

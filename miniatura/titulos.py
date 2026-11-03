@@ -10,7 +10,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
-import reglas_titulo  # noqa: E402  qué textos se permiten: «SIN PC» por proceso, Honor sin «TODOS LOS MODELOS», «GRATIS», el año (03/11/2026)
+import reglas_titulo  # noqa: E402  qué textos se permiten: «SIN PC» por proceso, «GRATIS», el año (03/11/2026)
 ARCHIVO = 'titulos_miniatura_ia.json'
 REGLAS = ('Cada título tiene DOS partes cortas en MAYÚSCULAS que van en una sola fila al pie de la miniatura: la primera en '
           'blanco (la marca o el modelo, por ejemplo «HONOR» o «HONOR 400 LITE») y la segunda en amarillo, la palabra clave o '
@@ -85,9 +85,10 @@ def main():
     proyecto = reglas_titulo.texto_proyecto(d)
 
     def cumple(partes):
-        """(03/11/2026) Lo que la IA propone pasa por las reglas de fabian: «SIN PC» solo si el proceso no usa PC, Honor sin
-        «TODOS LOS MODELOS», «GRATIS» solo si el método es gratis y el año de hoy. Si la IA lo puso igual, se le quita (y si no
-        queda nada, la propuesta no va)."""
+        """(03/11/2026) Lo que la IA propone pasa por las reglas de fabian: «SIN PC» solo si el proceso no usa PC, «GRATIS»
+        solo si el método es gratis y el año de hoy (el del modelo, como «MOTO G 2024», queda). Si la IA lo puso igual, se le
+        quita (y si no queda nada, la propuesta no va). «TODOS LOS MODELOS» de Honor solo se quita de los títulos de YouTube:
+        en la miniatura sigue (revisión, 03/11/2026)."""
         return [reglas_titulo.revisar_titulo(p, marca, proyecto, miniatura=True)[0].upper() for p in partes]
     titulos = []
     for x in (r.get('titulos') if isinstance(r, dict) else None) or []:

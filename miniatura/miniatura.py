@@ -450,10 +450,11 @@ FONDO_DE = {'foto': 'de tus fotos', 'escritorio': 'tu escritorio oscurecido', 'g
 WEB = re.compile(r'\.(com|co|net|org|io)\b|gsmprime|xiaomiunlock|www\.', re.I)  # «XIAOMIUNLOCK» solo también es su página
 
 
-def revisar_textos(textos, marca, pc=None):
+def revisar_textos(textos, marca, pc=None, proyecto=''):
     """Antes de gastar: nada de páginas web (fabian, 02/11/2026), ni «SIN PC» si el proceso usa PC (todos menos la cuenta Mi de
     Xiaomi y la liberación de bandas de iPhone, 03/11/2026), ni otro año que el de anio() (2026 hasta el 14/12/2026, 2027 desde el 15).
-    pc: si el proceso usa PC (lo calcula quien sabe el proyecto); sin él, por la marca y estos textos."""
+    pc: si el proceso usa PC (lo calcula quien sabe el proyecto); sin él, por la marca y estos textos.
+    proyecto: lo que dice el proyecto (texto_proyecto), para no frenar por el año de un modelo que lo nombra igual."""
     pc = necesita_pc(marca, ' '.join(textos)) if pc is None else pc
     for t in textos:
         if WEB.search(t):
@@ -462,7 +463,8 @@ def revisar_textos(textos, marca, pc=None):
         if reglas_titulo.SIN_PC.search(t) and pc:
             raise SystemExit(f'ERROR: «{t}»: este proceso usa PC, nunca «SIN PC» («PC BÁSICA ✓» o «SIN PC AVANZADA» sí). '
                              'No se gastó nada.')
-        otro = next((x for x in reglas_titulo.ANIO_TITULO.findall(t) if x != str(anio())), '')
+        # solo el año que es etiqueta: el del modelo («MOTO G 2025», «IPHONE SE 2022») va tal cual (revisión, 03/11/2026)
+        otro = next((x.group() for x in reglas_titulo.anios_etiqueta(t, proyecto) if x.group() != str(anio())), '')
         if otro:
             raise SystemExit(f'ERROR: «{t}»: el año de las miniaturas y los títulos hoy es {anio()} (cambia al del año que viene el '
                              f'15 de diciembre), no {otro}. Cámbialo. No se gastó nada.')
@@ -607,8 +609,9 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     import canal_referencia
     lineas = [x.strip() for x in lineas if x and x.strip()]
     # (03/11/2026) «SIN PC» va o no según el PROCESO del video (su nombre, idea.txt y guion), no solo la marca
-    pc = necesita_pc(marca, ' '.join(lineas + [x for x in esquinas if x]) + ' ' + texto_proyecto(d))
-    revisar_textos(lineas + [x for x in esquinas if x], marca, pc)
+    proyecto = texto_proyecto(d)
+    pc = necesita_pc(marca, ' '.join(lineas + [x for x in esquinas if x]) + ' ' + proyecto)
+    revisar_textos(lineas + [x for x in esquinas if x], marca, pc, proyecto)
     texto = ' '.join(lineas)
     logos = logos_miniatura(marca, texto)
     # las del borrador; si ya no están, se eligen otra vez con la misma cuenta que «🖼 Miniatura» (las marcadas con ✓): antes
@@ -915,8 +918,9 @@ def titulo_estilizado(partes, estilo, ancho_max, alto_max=150):
     return fondo
 
 
-def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa', titulo_png=None, esquinas=(f'NEW {anio()}', '')):
-    """Pone encima de la escena de GPT todo lo escrito y los logos, en el idioma pedido."""
+def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa', titulo_png=None, esquinas=(f'NEW {anio()}', ''), pc=None):
+    """Pone encima de la escena de GPT todo lo escrito y los logos, en el idioma pedido.
+    pc: si el proceso del video usa PC (miniaturas_mixtas lo calcula con el proyecto); sin él, por la marca y estos textos."""
     from PIL import Image, ImageDraw
     lienzo = Image.fromarray(cv2.cvtColor(cv2.resize(escena, (W, H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)).convert('RGBA')
     def pega(capa, x, y):  # sin salirse del lienzo
@@ -957,7 +961,8 @@ def componer_mixta(escena, lineas, marca, idioma, salida, estilo='placa', titulo
     s = sello(108 if not alto_der else 96, SELLO[idioma] + (str(anio()),))
     pega(s, W - s.width - 10, max(H * 0.205, 14 + alto_der + 62))
     y = H * 0.545
-    for arriba, abajo, tipo in PILDORAS_MIXTA[necesita_pc(marca, ' '.join(str(x) for x in lineas))][idioma]:
+    pc = necesita_pc(marca, ' '.join(str(x) for x in lineas)) if pc is None else pc
+    for arriba, abajo, tipo in PILDORAS_MIXTA[bool(pc)][idioma]:
         p = pildora(arriba, abajo, tipo, 62)
         pega(p, W - p.width - 16, y)
         y += p.height + 10
@@ -1117,6 +1122,8 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
         escena = imagen_gpt(prompt, refs)
         guardar_img(f'{salida_base}_escena.png', escena)
     hechas = []
+    # la píldora «SIN PC» según el PROCESO del video (su nombre, idea.txt y guion), como en miniaturas_gpt (revisión, 03/11/2026)
+    pc = necesita_pc(marca, ' '.join(str(x) for x in lineas if x) + ' ' + texto_proyecto(d))
     tr = traducciones_titulo(d, lineas)
     llenas = [x for x in esquinas if x]  # las esquinas también van traducidas
     tr_esq = traducciones_titulo(d, llenas) if llenas else {}
@@ -1136,7 +1143,7 @@ def miniaturas_mixtas(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=
                 for txt, col in zip(ANTES_DESPUES[idioma] + tuple(x.upper() for x in esq[idioma]), ('rojo', 'verde', 'rojo', 'azul')):
                     if txt:
                         etiqueta_gpt(txt, col)
-            componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo, png, esq[idioma])
+            componer_mixta(escena, tr.get(idioma, lineas), marca, idioma, f, estilo, png, esq[idioma], pc=pc)
             hechas.append(os.path.basename(f))
             print(f'· {os.path.basename(f)} lista', flush=True)
     return hechas

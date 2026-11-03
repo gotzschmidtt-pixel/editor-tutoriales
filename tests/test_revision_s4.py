@@ -107,7 +107,7 @@ try:
     mini.traducciones_titulo = lambda d_, lineas: {i: [x.upper() for x in lineas] for i in ('es', 'en', 'pt')}
     mini.titulo_gpt = lambda partes, estilo, salida: (dibujados.append(' '.join(partes)), open(salida, 'wb').write(b'png'))
     mini.etiqueta_gpt = lambda *a, **k: None
-    mini.componer_mixta = lambda escena, lineas, marca, idioma, f, estilo, png, esq: puestos.append(open(png, 'rb') and os.path.basename(png))
+    mini.componer_mixta = lambda escena, lineas, marca, idioma, f, estilo, png, esq, **k: puestos.append(open(png, 'rb') and os.path.basename(png))  # **k: pc (03/11/2026)
     base = os.path.join(d, 'miniatura_mixta')
     for texto in (['HONOR', 'SIN CUENTA GOOGLE'], ['HONOR', 'FRP 2026']):
         mini.miniaturas_mixtas(d, [], texto, base, idiomas=('es',), titulo_por_gpt=True, escena=np.zeros((4, 4, 3), np.uint8))

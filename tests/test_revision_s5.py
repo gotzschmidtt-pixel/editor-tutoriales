@@ -105,7 +105,7 @@ try:
     mini.imagen_gpt = lambda prompt, refs, **k: (escenas.append(1), np.zeros((864, 1536, 3), np.uint8))[1]
     mini.titulo_gpt = lambda partes, estilo, salida: (titulos.append(os.path.basename(salida)), open(salida, 'wb').write(b'png'))
     mini.etiqueta_gpt = lambda *a, **k: None
-    mini.componer_mixta = lambda escena, lineas, marca, idioma, f, estilo, png, esq: open(f, 'wb').write(b'jpg')
+    mini.componer_mixta = lambda escena, lineas, marca, idioma, f, estilo, png, esq, **k: open(f, 'wb').write(b'jpg')  # **k: pc (03/11/2026)
     mini.traducciones_titulo = lambda d_, lineas: {i: [x.upper() for x in lineas if x] for i in ('es', 'en', 'pt')}
     a = argparse.Namespace(gpt=True, texto='HONOR|SIN CUENTA GOOGLE', fondo='ambos', mixta=True, titulo='todos', titulo_gpt=True,
                            esquina_izq='NEW 2026', esquina_der='')

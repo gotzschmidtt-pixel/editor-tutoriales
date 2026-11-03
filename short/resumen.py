@@ -99,6 +99,12 @@ def _marca(d):
         return ''
 
 
+def _usa_pc(d):
+    """(revisión, 03/11/2026) Si el PROCESO del video usa PC (procesos_pc.json): todos menos la cuenta Mi de Xiaomi y la
+    liberación de bandas de iPhone. Solo en los que usan PC está prohibido decir «sin PC»."""
+    return reglas_titulo.necesita_pc(_marca(d), reglas_titulo.texto_proyecto(d))
+
+
 def _modelo(d):
     try:
         return (json.load(open(os.path.join(d, 'youtube', 'metadatos.json'), encoding='utf-8')).get('modelo') or '').strip()
@@ -116,12 +122,13 @@ def prompt(d):
         mapa = []
     modelo = _modelo(d) or os.path.basename(os.path.abspath(d))
     ganchos = '\n'.join(f'{i + 1}. {n}: {t}' for i, (n, t) in enumerate(GANCHOS))
+    pc = _usa_pc(d)
     return f"""Escribe 3 guiones de YouTube Shorts (voz en off, español latino, tuteando) para el video «{modelo}».
 Cada Short cuenta el proceso COMPLETO de principio a fin en 55-60 s (entre 750 y 820 letras de voz), con un gancho distinto:
 {ganchos}
 Reglas obligatorias de fabian:
 - Una frase corta con las versiones: «Android quince, dieciséis, diecisiete o superior, y MagicOS nueve, diez u once, con cualquier parche» (adáptala a la marca si no es Honor).
-- NUNCA digas «sin PC». Números escritos como se dicen. Nombra el modelo como «{modelo}».
+- {'NUNCA digas «sin PC» (este proceso usa PC).' if pc else 'Este proceso no usa PC: decir «sin PC» se puede.'} Números escritos como se dicen. Nombra el modelo como «{modelo}».
 - Máximo 3 etiquetas de emoción por guion entre corchetes en inglés ([curious], [excited], [serious]), nunca dos seguidas.
 - La última frase de cada Short es EXACTAMENTE su cierre: Short 1 «{cierre(1)}», Short 2 «{cierre(2)}», Short 3 «{cierre(3)}».
 - No inventes datos: usa solo lo que dice el guion del video largo.
@@ -135,13 +142,13 @@ Responde SOLO con JSON: {{"shorts": [{{"gancho": "antes_despues", "frases": [{{"
 "titulos": {{"es": "…", "en": "…", "pt": "…"}}, "descripciones": {{"es": "…", "en": "…", "pt": "…"}}}}, …]}}"""
 
 
-def validar(r):
-    """Lo que no cumple las reglas de fabian (lista de avisos); nunca deja pasar «sin PC»."""
+def validar(r, pc=True):
+    """Lo que no cumple las reglas de fabian (lista de avisos); nunca deja pasar «sin PC» si el proceso usa PC (pc: _usa_pc(d))."""
     avisos = []
     for n, s in enumerate(r.get('shorts') or [], 1):
         txt = ' '.join(f.get('texto', '') for f in s.get('frases') or [])
-        if re.search(r'\bsin\s+pc\b', txt, re.I):
-            avisos.append(f'Short {n}: dice «sin PC» (prohibido para este canal)')
+        if pc and reglas_titulo.SIN_PC.search(txt):
+            avisos.append(f'Short {n}: dice «sin PC» (prohibido: este proceso usa PC)')
         if len(EMOCION.findall(txt)) > 3:
             avisos.append(f'Short {n}: más de 3 emociones')
         if 'parche' not in txt.lower():
@@ -161,7 +168,7 @@ def proponer(d, llamar=None):
     if not r.get('shorts'):
         raise ValueError('La IA no devolvió los 3 guiones; prueba de nuevo.')
     poner_cierres(r)
-    r['avisos'] = validar(r)
+    r['avisos'] = validar(r, _usa_pc(d))
     r['costo'] = costo(r)
     json.dump(r, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return r
@@ -175,7 +182,7 @@ def leer(d):
 
 
 def guardar(d, r):
-    r['avisos'], r['costo'] = validar(r), costo(r)
+    r['avisos'], r['costo'] = validar(r, _usa_pc(d)), costo(r)
     json.dump(r, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return r
 
