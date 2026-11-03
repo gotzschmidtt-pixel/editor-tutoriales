@@ -108,7 +108,9 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   `miniatura/gastos.json`. Cada resultado se revisa con visión (ortografía, tildes, letras deformes: en rojo si falla) y
   «⭐ Usar como miniatura» la deja elegida en Publicar → YouTube y en `subir_youtube/`. Es fórmula, no calco: nunca se
   copian caras de otras personas, logos de canales ni sus textos. Pruebas sin gastar: `MINIREF_SIMULAR=1` y
-  `python tests/test_miniaturas_referencia.py`.
+  `python tests/test_miniaturas_referencia.py`. Tiene su propia fórmula (la receta de las referencias que subes; se hizo para
+  la de noticias de Movistar: el teléfono de espaldas, nada de desbloqueo), así que no usa la sección «Estilo del canal para
+  GPT» de «🖼 Miniatura»; desde el 03/11/2026 su regla de fondo es la de todas: negro o el de la foto oscurecido, nunca claro.
 
 ## Decisiones del autor (02/11/2026)
 
@@ -131,8 +133,8 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   (fabian, 02/11/2026). Las webs van en el video (etiqueta «web»), en la descripción y en las cards/plantillas PSD.
 - **Miniaturas como las de su canal** (fabian, 03/11/2026: «las que estás haciendo no se parecen nada a las mías»): en
   **«🖼 Miniatura»** TODO lo escribe GPT con su fórmula (abajo la frase en una línea: blanco + logo + amarillo, sin tapar
-  la esquina de la duración; arriba una etiqueta inclinada en cada esquina; el teléfono real grande al centro con filo de luz
-  celeste; fondo negro o su estudio oscurecido, nunca claro) y la app no dibuja nada encima (la «mixta» ya no
+  la esquina de la duración; arriba una etiqueta más chica en cada esquina, derecha o apenas inclinada; el teléfono real grande
+  al centro, en una mano con guante, con un filo fino de luz azul; fondo negro o su estudio oscurecido, nunca claro) y la app no dibuja nada encima (la «mixta» ya no
   está en las páginas). «⬇ Traer mis miniaturas del canal» (gratis, `miniatura/canal_referencia.py`) guarda las recientes y las
   más vistas en `mis_conocimientos/miniaturas/canal_referencia/`; a GPT van 2-3 de ellas SOLO de estilo (las de la misma marca
   o servicio; 📌 fija, 🚫 quita), con sus fotos y los logos de `mis_conocimientos/logos`. Borrador en calidad baja (~0,02 USD);
@@ -141,11 +143,15 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   Pruebas: `python tests/test_miniaturas_canal.py` y `python tests/test_miniaturas_canal_revision.py`.
   **Estilo** (fabian, 03/11/2026, con la grilla de su canal: «mira la primera imagen, fondos negros, tipo de fuente, estilo»; lo
   de antes salió «algo tosco»): fondo NEGRO con luz azul solo detrás del teléfono y de la mano (nunca túnel de rayos, destellos
-  ni piso que refleja), el teléfono real en una mano con guante, letras condensadas en cursiva PLANAS blanco + amarillo (sin
-  cromado ni bisel) y la frase de abajo es lo más grande. De referencia van solo sus miniaturas de fondo oscuro con más vistas
-  por día: las del canal guardadas y, si faltan, `mis_conocimientos/miniaturas/referencias/indice.json` (lo arma
-  `python miniatura/canal_referencia.py --referencias mis_conocimientos/youtube_datos/AAAA-MM-DD`, gratis); el prompt lleva
-  además la sección «Estilo del canal para GPT» de `ESTILO_MINIATURAS.md`. Prueba: `python tests/test_miniaturas_estilo_canal.py`.
+  ni piso que refleja), el teléfono real en una mano con guante, letras condensadas en cursiva blanco + amarillo con el degradé
+  suave de las suyas (blanco a gris muy claro, amarillo a naranja abajo; sin cromado ni bisel) y la frase de abajo es lo más
+  grande. De referencia van solo sus miniaturas de fondo oscuro con más vistas por día: las del canal guardadas y, si faltan,
+  `mis_conocimientos/miniaturas/referencias/indice.json` (lo arma
+  `python miniatura/canal_referencia.py --referencias mis_conocimientos/youtube_datos/AAAA-MM-DD`, gratis; «⬇ Traer mis
+  miniaturas del canal» baja también la HD de esas y no la borra). De las referencias GPT no copia sellos, insignias ni años
+  (las suyas dicen «MÉTODO 2027», «TODOS LOS MODELOS»): solo los textos que le da el pedido. Las de referencias/ que usó un
+  borrador quedan en su `refs_canal`, y la final usa las mismas. El prompt lleva además la sección «Estilo del canal para
+  GPT» de `ESTILO_MINIATURAS.md`. Prueba: `python tests/test_miniaturas_estilo_canal.py`.
 - **Shorts: flechas y círculos del video largo** (fabian, 02/11/2026: «¿por qué no se muestran, sobre todo en Omitir?»):
   short.senales_grabado pasa senales.json a segundos de la grabación y short.con_senales las pega ANTES del recorte vertical
   (siguen al zoom). Si la imagen del video largo no coincide con la grabación, esa señal se salta.

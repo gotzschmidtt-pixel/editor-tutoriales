@@ -1,7 +1,7 @@
 """Prueba del estilo de su canal en lo que la app le pide a GPT (fabian, 03/11/2026, con dos capturas: «mira la primera imagen,
 fondos negros, tipo de fuente, estilo» y la imagen 2, hecha con el pedido de ese día, «es algo tosca»). SIN internet y SIN
 gastar: la IA de imágenes va simulada y no se genera ninguna imagen.
-- el pedido trae lo nuevo (fondo NEGRO, el teléfono en la mano con guante, letras planas blanco + amarillo, la frase de abajo
+- el pedido trae lo nuevo (fondo NEGRO, el teléfono en la mano con guante, letras blanco + amarillo sin cromado (con el degradé suave de las suyas), la frase de abajo
   como lo más grande, las etiquetas de arriba más chicas) y no trae lo que hizo tosca la imagen 2 (rayos y destellos,
   resplandor cian, amarillo-naranja con degradado, todo «GRANDE»);
 - sigue todo lo de la memoria de gustos (cara latina ficticia natural, buzo blanco sin logos, sus fotos originales, máximo 2
@@ -13,7 +13,7 @@ gastar: la IA de imágenes va simulada y no se genera ninguna imagen.
 - canal_referencia.elegir deja fuera las de fondo claro (salvo las fijadas) y ordena por vistas por día;
 - armar_referencias arma el índice desde el export del canal (con sus barras invertidas sueltas) sin borrar nada;
 - miniaturas_gpt completa con las de referencias/ cuando del canal hay menos de 2 oscuras;
-- los pedidos de título y etiquetas por GPT piden letras planas (el «metal» queda solo si se pide).
+- los pedidos de título y etiquetas por GPT piden letras sin cromado (el «metal» queda solo si se pide).
 Uso: python tests/test_miniaturas_estilo_canal.py   (sale con 1 si algo falla)
 """
 import inspect, json, os, sys, tempfile, time, urllib.request
@@ -71,7 +71,8 @@ with tempfile.TemporaryDirectory() as tmp:
                                                     marca='HONOR'), **k})
     pr = pedido()
     for nuevo in ('fondo NEGRO', 'NEGRO o azul noche casi negro', 'viñeta', 'SOSTENIDO por una mano con guante de nitrilo azul',
-                  'Nunca teléfonos flotando', 'relleno PLANO', 'Sin cromado, sin bisel', 'Anton, Bebas Neue o Impact', 'en cursiva',
+                  'Nunca teléfonos flotando', 'relleno de color pleno', 'degradé suave', 'Sin cromado (nada de franja de reflejo metálico), sin bisel',
+                  'NO copies tampoco sus sellos, insignias, cintas ni años', 'ningún sello, insignia ni año que este pedido', 'Anton, Bebas Neue o Impact', 'en cursiva',
                   'Es lo MÁS GRANDE', 'MÁS CHICAS que la frase de abajo', '«SIN CUENTA GOOGLE» en amarillo.',
                   'Nada de túnel ni rayos láser', 'piso que refleja', 'Cada texto UNA sola vez', 'números de variante',
                   'la placa Raspberry Pi Pico', 'copia de ellas el fondo negro, el tipo de letra',
@@ -128,7 +129,7 @@ with tempfile.TemporaryDirectory() as tmp:
     mini.TITULOS_REF = os.path.join(tmp, 'titulos')
     mini.titulo_gpt(['HONOR', 'SIN CUENTA GOOGLE'], 'placa_negra', os.path.join(tmp, 't.png'))
     p = vistos[-1][0]
-    ok('relleno PLANO' in p and 'sin cromado' in p and 'plateado' not in p and 'dorado' not in p and 'condensada' in p,
+    ok('relleno de color pleno' in p and 'sin cromado' in p and 'plateado' not in p and 'dorado' not in p and 'condensada' in p,
        f'el título de GPT: letras planas, condensadas, blanco + amarillo: {p}')
     mini.titulo_gpt(['HONOR', 'SIN CUENTA GOOGLE'], 'metal', os.path.join(tmp, 't2.png'))
     ok('dorado' in vistos[-1][0], 'el «metal» solo si se pide, como antes')
@@ -272,5 +273,5 @@ with tempfile.TemporaryDirectory() as tmp:
     ok(not any(os.path.basename(x).upper().startswith(('SI_', 'NO_')) for _, rr in enviados for x in rr),
        'las capturas SI_/NO_ nunca van a GPT')
 
-print('\n'.join(fallos) or 'ok: miniaturas con el estilo del canal (fondo negro, letras planas, referencias por vistas por día)')
+print('\n'.join(fallos) or 'ok: miniaturas con el estilo del canal (fondo negro, letras sin cromado, referencias por vistas por día)')
 sys.exit(1 if fallos else 0)

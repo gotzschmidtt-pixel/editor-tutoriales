@@ -262,14 +262,15 @@ MASCOTA = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'mascota_xiaomiu
 ESTILO = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'referencias')  # miniaturas de fabian (ESTILO_MINIATURAS.md)
 
 
-def referencias_estilo(marca, n=2, texto='', sin=()):
+def referencias_estilo(marca, n=2, texto='', sin=(), con_id=False):
     """Las miniaturas de fabian que muestran su estilo, sin internet. Con referencias/indice.json (fabian, 03/11/2026: «mira
     la primera imagen, fondos negros, tipo de fuente, estilo»; lo arma «canal_referencia.py --referencias» con el export del
     canal): solo las de fondo oscuro; primero las de la MISMA marca con más vistas por día, después las del mismo servicio
     (FRP, iCloud…) y después las demás, también por vistas por día. Si fabian ya bajó esa misma en HD («⬇ Traer mis
     miniaturas del canal»), va la HD; las que quitó con 🚫 no van. Sin índice, como antes: las de la misma marca primero.
     Nunca las capturas SI_/NO_ (la grilla de su canal y la que salió tosca): son para mirar, no referencias. sin: ids que
-    ya van."""
+    ya van. con_id: en vez de las rutas, {'id', 'titulo', 'ruta'} (revisión, 03/11/2026: para anotarlas en el borrador y que
+    «✅ Hacer la final» use las mismas)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import canal_referencia as cr
     try:
@@ -291,15 +292,16 @@ def referencias_estilo(marca, n=2, texto='', sin=()):
                 continue
             hd = os.path.join(cr.CARPETA, f"{v.get('id')}.jpg")
             f = hd if cr.ID.fullmatch(str(v.get('id') or '')) and os.path.isfile(hd) else os.path.join(ESTILO, os.path.basename(v['archivo']))
-            if os.path.isfile(f) and f not in out:
-                out.append(f)
-        return out
+            if os.path.isfile(f) and f not in [x['ruta'] for x in out]:
+                out.append({'id': str(v.get('id') or ''), 'titulo': str(v.get('titulo') or ''), 'ruta': f})
+        return out if con_id else [x['ruta'] for x in out]
     try:
         todas = sorted(f for f in os.listdir(ESTILO) if f.lower().endswith(('.jpg', '.png')) and not f.upper().startswith(('SI_', 'NO_')))
     except OSError:
         return []
     suyas = [f for f in todas if f.lower().startswith(marca.lower()[:4])] + [f for f in todas if not f.lower().startswith(marca.lower()[:4])]
-    return [os.path.join(ESTILO, f) for f in suyas[:n]]
+    rutas = [os.path.join(ESTILO, f) for f in suyas[:n]]
+    return [{'id': '', 'titulo': os.path.basename(f), 'ruta': f} for f in rutas] if con_id else rutas
 
 
 # los momentos de tu video que sirven para la miniatura (pedido de fabian, 30/10/2026): varias opciones de ANTES y el
@@ -444,6 +446,8 @@ def guia_estilo_gpt(maximo=3500):
     return ' '.join(partes)[:maximo]
 
 
+# cómo se dice cada fondo en la etiqueta del resultado (revisión, 03/11/2026: con «escritorio» decía «negro con luz azul»)
+FONDO_DE = {'foto': 'de tus fotos', 'escritorio': 'tu escritorio oscurecido', 'gpt': 'negro con luz azul'}
 WEB = re.compile(r'\.(com|co|net|org|io)\b|gsmprime|xiaomiunlock|www\.', re.I)  # «XIAOMIUNLOCK» solo también es su página
 
 
@@ -499,8 +503,9 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
                  esquinas=('PASO A PASO', ''), cara=False, marca='TU CELULAR'):
     """El pedido a GPT para que la miniatura salga como las del canal de fabian: su fórmula, con el texto en el idioma pedido.
     (fabian, 03/11/2026: «mira la primera imagen, fondos negros, tipo de fuente, estilo») fondo negro, el teléfono real en la
-    mano con guante, letras planas blanco + amarillo y la frase de abajo como lo más grande; nada de lo que hizo tosca la
-    imagen 2 (túnel de rayos, teléfonos flotando, letras cromadas, todo del mismo tamaño)."""
+    mano con guante, letras blanco + amarillo sin cromado (con el degradé suave de las suyas) y la frase de abajo como lo más
+    grande; nada de lo que hizo tosca la imagen 2 (túnel de rayos, teléfonos flotando, letras cromadas, todo del mismo tamaño).
+    De las referencias no copia sellos, insignias ni años (revisión, 03/11/2026: las suyas dicen «MÉTODO 2027»)."""
     nombre = {'es': 'español', 'en': 'inglés', 'pt': 'portugués'}[idioma]
     textos = [traducir(x.strip(), idioma) for x in lineas if x and x.strip()] or [('PASO A PASO', False)]
     izq, der = [traducir(x.strip(), idioma) if x and x.strip() else ('', False) for x in (list(esquinas) + ['', ''])[:2]]
@@ -510,7 +515,7 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     i = n_fotos + n_extras
     p = ['Miniatura de YouTube 16:9 para el canal Xiaomiunlock de fabian (técnico que desbloquea celulares), hecha IGUAL que las '
          'miniaturas de SU canal que más vistas tienen: fondo NEGRO, el teléfono real en una mano con guante y letras gruesas '
-         'planas en blanco y amarillo. Es una foto real de su trabajo retocada como sus miniaturas, no un render 3D de producto '
+         'en blanco y amarillo, sin cromado. Es una foto real de su trabajo retocada como sus miniaturas, no un render 3D de producto '
          'ni un póster de ciencia ficción.',
          f'Imagen 1: SU foto real del teléfono de este video ANTES ({antes_desc or "bloqueado"}).'
          + (' Imagen 2: el mismo teléfono ya libre, en su pantalla de inicio (DESPUÉS).' if n_fotos > 1 else '')
@@ -523,9 +528,11 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     i += len(logos)
     if n_estilo:
         p.append(f'Imágenes {i + 1} a {i + n_estilo}: miniaturas de SU canal (de las que más vistas por día le dan), SOLO como '
-                 'referencia de ESTILO: copia de ellas el fondo negro, el tipo de letra, los colores planos de las letras, el borde, '
+                 'referencia de ESTILO: copia de ellas el fondo negro, el tipo de letra, los colores de las letras, el borde, '
                  'la sombra, los recuadros y el reparto. NO copies sus textos, ni sus teléfonos, ni sus pantallas, ni sus logos, ni '
-                 'la duración de YouTube.')
+                 'la duración de YouTube. NO copies tampoco sus sellos, insignias, cintas ni años: el sello redondo del método con '
+                 'su año, la píldora de todos los modelos, el círculo rojo de un click o el robot de Android con números son de '
+                 'otros videos. Los únicos textos de esta miniatura son los que te da este pedido.')
     # (revisión, 03/11/2026) entre las palabras va el logo del SERVICIO (la G en FRP, iOS en iPhone), como en «ELIM. CUENTA [G]
     # HONOR»; si ese logo no está guardado, GPT lo dibuja (antes iba el de la marca, que ya está escrita en la frase)
     unido = ' '.join(lineas)
@@ -533,7 +540,8 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     suyo = next((nm for nm, _ in logos if servicio and re.search(rf'\b{servicio}\b', nm, re.I)), '')
     entre = (f'de {suyo}' if suyo else f'de {servicio}' if servicio else f'de {logos[0][0]}' if logos else
              f'de {marca.title()}' if marca != 'TU CELULAR' else 'de la marca')
-    # (fabian, 03/11/2026) amarillo PLANO: con «amarillo-naranja con degradado» GPT hizo letras cromadas con bisel
+    # (fabian, 03/11/2026) con «amarillo-naranja con degradado» GPT hizo letras cromadas con bisel; (revisión, 03/11/2026) las
+    # suyas tampoco son planas del todo: blanco que pasa a gris muy claro y amarillo que pasa a naranja abajo, sin cromado
     if len(textos) > 1:
         frase = f'«{textos[0][0]}» en blanco, el logo {entre} y «{" ".join(x for x, _ in textos[1:])}» en amarillo'
     else:
@@ -542,13 +550,14 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     p.append(f'(1) ABAJO, la frase principal en UNA sola línea a todo el ancho, en {nombre}: {frase}. Es lo MÁS GRANDE de la '
              'miniatura (letras de un 18-20 % del alto). El logo va ENTRE las palabras, dentro de un cuadrito redondeado como un '
              'ícono de app, del alto de las letras (como «ELIM. CUENTA [G] HONOR» o «BYPASS iOS [27] SIN ERRORES»). Letra sans muy '
-             'gruesa y condensada (tipo Anton, Bebas Neue o Impact), en cursiva y en MAYÚSCULAS, con relleno PLANO: blanco puro y '
-             'amarillo intenso (#FFD000, a lo sumo un poco más oscuro abajo); borde negro grueso y una sombra dura corta. Sin '
-             'cromado, sin bisel, sin brillo ni reflejos dentro de las letras. La frase termina ANTES de la esquina de abajo a la '
+             'gruesa y condensada (tipo Anton, Bebas Neue o Impact), en cursiva y en MAYÚSCULAS, con relleno de color pleno y, '
+             'como en las suyas, a lo sumo un degradé suave: blanco puro que abajo pasa a gris muy claro, y amarillo intenso '
+             '(#FFD000) que abajo pasa a naranja; borde negro grueso y una sombra dura corta. Sin cromado (nada de franja de '
+             'reflejo metálico), sin bisel ni relieve, sin brillo dentro de las letras. La frase termina ANTES de la esquina de abajo a la '
              'derecha: deja libre ese rincón (ahí YouTube pone la duración).')
     p.append('(2) ARRIBA, en las esquinas, etiquetas MÁS CHICAS que la frase de abajo, derechas o apenas inclinadas, con la misma '
              'letra: '
-             + (f'arriba a la izquierda «{lin(izq[0])}» en amarillo plano con borde negro (letras de un 10-12 % del alto; sin caja, '
+             + (f'arriba a la izquierda «{lin(izq[0])}» en el mismo amarillo con borde negro (letras de un 10-12 % del alto; sin caja, '
                 'o en un recuadro negro con borde de neón azul); ' if izq[0] else 'arriba a la izquierda nada de texto; ')
              + (f'arriba a la derecha «{lin(der[0])}» en 2 o 3 líneas cortas blancas y amarillas dentro de un recuadro redondeado '
                 'negro con borde de neón azul (letras aún más chicas).' if der[0] else 'arriba a la derecha un recuadro redondeado '
@@ -565,7 +574,8 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     p.append('(5) TODO el texto lo escribes tú, perfectamente escrito, con tildes, en MAYÚSCULAS: que se lea en el celular a '
              '320×180. Cada texto UNA sola vez: un solo título del modelo y ninguna frase repetida ni reflejada. Ningún otro texto: '
              'nada de páginas web ni direcciones (.com, .co, gsmprime, xiaomiunlock), nada de marcas de agua ni de números de '
-             'variante. Nada de letras 3D doradas o metálicas ni sellos dorados.'
+             'variante. Nada de letras 3D doradas o metálicas ni sellos dorados, y ningún sello, insignia ni año que este pedido '
+             'no te dé.'
              + (' Este proceso usa PC: nunca escribas «SIN PC» (si hace falta, «PC BÁSICA ✓»).' if necesita_pc(marca) else ''))
     guia = guia_estilo_gpt()
     if guia:  # lo que su guía dice de su estilo (mis_conocimientos/miniaturas/ESTILO_MINIATURAS.md, fabian 03/11/2026)
@@ -582,7 +592,8 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     logos oficiales de tu biblioteca y 2-3 miniaturas de tu canal de fondo oscuro como referencia de ESTILO (canal_referencia.py;
     si hay menos de 2, se completan con las de mis_conocimientos/miniaturas/referencias por vistas por día). Borrador en baja;
     la final, en media. Devuelve los archivos.
-    refs_canal: los ids de las miniaturas del canal de un borrador, para que su final salga con el mismo estilo."""
+    refs_canal: los ids de las miniaturas del canal de un borrador, para que su final salga con el mismo estilo (también las
+    de referencias/indice.json que completaron ese borrador: revisión, 03/11/2026)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import canal_referencia
     lineas = [x.strip() for x in lineas if x and x.strip()]
@@ -591,18 +602,24 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     logos = logos_miniatura(marca, texto)
     # las del borrador; si ya no están, se eligen otra vez con la misma cuenta que «🖼 Miniatura» (las marcadas con ✓): antes
     # la marca salía de otro lado (el guion) y a GPT podían ir otras (revisión, 03/11/2026)
-    canal = ((canal_referencia.por_ids(refs_canal) if refs_canal else []) or
+    canal = ((canal_referencia.por_ids(refs_canal, ESTILO) if refs_canal else []) or
              canal_referencia.elegir(*canal_referencia.contexto(d, texto)))
     estilo = [v['ruta'] for v in canal]
+    mas = []
     if len(estilo) < 2:  # (fabian, 03/11/2026) sin 2 de fondo oscuro guardadas del canal: las de referencias/ por vistas por día
-        estilo += [f for f in referencias_estilo(marca, 3 - len(estilo), texto, sin={v.get('id') for v in canal}) if f not in estilo]
+        mas = [v for v in referencias_estilo(marca, 3 - len(estilo), texto, sin={v.get('id') for v in canal}, con_id=True)
+               if v['ruta'] not in estilo]
+        estilo += [v['ruta'] for v in mas]
     fotos = list(refs)
     imagenes = fotos + list(extras) + [f for _, f in logos] + estilo
     if canal:
         print('· estilo de tu canal: ' + ' | '.join(str(v.get('titulo') or v['id'])[:45] for v in canal), flush=True)
+    if mas:  # (revisión, 03/11/2026) antes no se decía cuáles iban de tu carpeta de referencias
+        print('· estilo de tu carpeta de referencias: ' + ' | '.join(str(v.get('titulo') or v['id'])[:45] for v in mas), flush=True)
     if info is not None:
-        info.update(modelo=modelo_imagen(), calidad=calidad, refs_canal=[v['id'] for v in canal], logos=[nm for nm, _ in logos],
-                    costo_usd=COSTO_CALIDAD.get(calidad, COSTO_CALIDAD['alta']))
+        # las de referencias/ también quedan anotadas: «✅ Hacer la final» usa exactamente las mismas (canal_referencia.por_ids)
+        info.update(modelo=modelo_imagen(), calidad=calidad, refs_canal=[v['id'] for v in canal + mas if v.get('id')],
+                    logos=[nm for nm, _ in logos], costo_usd=COSTO_CALIDAD.get(calidad, COSTO_CALIDAD['alta']))
     hechas = []
     for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
         prompt = prompt_canal(lineas, idioma, n_fotos=len(fotos), n_extras=len(extras), logos=logos, n_estilo=len(estilo),
@@ -961,15 +978,18 @@ def titulo_gpt(partes, estilo, salida):
     refs, como = TITULO_GPT.get(estilo, TITULO_GPT['placa'])
     refs = [os.path.join(TITULOS_REF, f) for f in refs if os.path.exists(os.path.join(TITULOS_REF, f))]
     blanco, clave = (partes + [''])[:2]
-    metal = estilo == 'metal'  # (fabian, 03/11/2026) salvo «metal», las letras van PLANAS como en su canal, no cromadas
+    # (fabian, 03/11/2026) salvo «metal», las letras van como en su canal, no cromadas: color pleno con a lo sumo un degradé
+    # suave (revisión, 03/11/2026: las suyas pasan de blanco a gris muy claro y de amarillo a naranja abajo)
+    metal = estilo == 'metal'
     prompt = ('Diseña SOLO el título de una miniatura de YouTube, sobre fondo TRANSPARENTE: nada más (sin teléfonos, sin '
               'personas, sin fondo, sin marco de imagen). Copia EXACTAMENTE el estilo de las letras y de lo que va detrás de '
               f'ellas de la(s) imagen(es) de referencia (no su texto): {como}. El texto, en UNA sola fila y perfectamente '
               f'escrito, son estas palabras exactas y ninguna más: «{blanco}» en ' + ('blanco/plateado' if metal else 'blanco')
               + (f' y «{clave}» en ' + ('amarillo/dorado' if metal else 'amarillo intenso') if clave else '') +
               ('. Letras enormes que ocupen casi todo el ancho, con volumen, brillo, borde grueso y sombra.' if metal else
-               '. Letras enormes que ocupen casi todo el ancho, en cursiva, con relleno PLANO (sin cromado, sin bisel, sin '
-               'brillo dentro de las letras), borde negro grueso y una sombra dura corta.') +
+               '. Letras enormes que ocupen casi todo el ancho, en cursiva, con relleno de color pleno y a lo sumo un degradé '
+               'suave (blanco a gris muy claro, amarillo a naranja abajo), sin cromado ni franja de reflejo, sin bisel ni brillo '
+               'dentro de las letras, borde negro grueso y una sombra dura corta.') +
               ' Centrado y completo, sin cortar nada en los bordes.')
     img = imagen_gpt(prompt, refs, size='1536x1024', transparente=True)
     if img.ndim == 3 and img.shape[2] == 3:  # por si no vino transparente
@@ -1311,7 +1331,7 @@ def con_fotos(d, a):
                                         esquinas=(a.esquina_izq, a.esquina_der), cara=bool(getattr(a, 'cara', False)),
                                         refs_canal=[x for x in str(getattr(a, 'refs_canal', None) or '').split(',') if x], info=info):
                     hechas.append({'archivo': f, 'de': f"tus fotos · como tu canal · {'borrador' if calidad == 'baja' else 'final'} en "
-                                                        f"calidad {calidad} · fondo {'de tus fotos' if fondo == 'foto' else 'negro con luz azul'}",
+                                                        f"calidad {calidad} · fondo {FONDO_DE.get(fondo, 'negro con luz azul')}",
                                    'texto': [x for x in lineas if x], 'idioma': f.rsplit('_', 1)[1][:2], 'fondo': fondo,
                                    'calidad': calidad, 'esquinas': [a.esquina_izq, a.esquina_der], 'cara': bool(getattr(a, 'cara', False)),
                                    'modelo': info.get('modelo'), 'refs_canal': info.get('refs_canal'), 'costo_usd': info.get('costo_usd')})

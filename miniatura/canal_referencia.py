@@ -14,7 +14,8 @@ nunca copia sus textos ni sus teléfonos.
 
 Con el export del canal (youtube_datos/AAAA-MM-DD, sin internet), --referencias arma mis_conocimientos/miniaturas/referencias/:
 las miniaturas de tus videos largos de fondo oscuro con más vistas por día, por marca, con su indice.json (las lee
-miniatura.referencias_estilo cuando no hay miniaturas del canal guardadas).
+miniatura.referencias_estilo cuando no hay miniaturas del canal guardadas). Esas del export son chicas (320×180): --bajar
+también trae su versión HD a canal_referencia/ y no la borra (revisión, 03/11/2026).
 
 Uso: python miniatura/canal_referencia.py --bajar [--recientes 18] [--vistas 12]   (imprime una línea JSON)
      python miniatura/canal_referencia.py --elegir "HONOR|SIN CUENTA GOOGLE"
@@ -291,7 +292,8 @@ def bajar_imagen(vid, destino, abrir):
 
 
 def bajar(recientes=RECIENTES, vistas=MAS_VISTAS, abrir=None, listar=None, avisar=print):
-    """Baja (o actualiza) las miniaturas más recientes y las más vistas del último año de tu canal. No gasta nada."""
+    """Baja (o actualiza) las miniaturas más recientes y las más vistas del último año de tu canal y, en HD, las de tu carpeta
+    de referencias (referencias/indice.json). No gasta nada."""
     abrir = abrir or urllib.request.urlopen
     videos, fuente = listar() if listar else lista_videos(abrir)
     if not videos:
@@ -315,6 +317,12 @@ def bajar(recientes=RECIENTES, vistas=MAS_VISTAS, abrir=None, listar=None, avisa
     for i in fijadas:  # las que fijaste se quedan aunque ya no estén entre las recientes ni las más vistas
         if i not in elegidos and i in antes:
             elegidos[i] = antes[i]
+    # (revisión, 03/11/2026) las de referencias/indice.json (tus oscuras con más vistas por día) también se bajan en HD y no se
+    # borran: si no, a GPT iban en 320×180 (las del export), donde casi no se ve el tipo de letra
+    por_id = {v['id']: v for v in largos}
+    for i, v in de_referencias().items():
+        if i not in elegidos:
+            elegidos[i] = por_id.get(i) or antes.get(i) or v
     lista, bien, mal = [], 0, 0
     for i, v in elegidos.items():
         f = os.path.join(CARPETA, f'{i}.jpg')
@@ -389,23 +397,47 @@ def elegir(marca='', texto='', n=USAR, indice=None):
     return out
 
 
-def por_ids(ids):
-    """Las mismas referencias de un borrador (para hacer su final con el mismo estilo), si siguen guardadas."""
+def de_referencias(carpeta=None):
+    """{id: fila} de mis_conocimientos/miniaturas/referencias/indice.json (el que arma --referencias), sin las quitadas."""
+    try:
+        ind = json.load(open(os.path.join(carpeta or REFERENCIAS, 'indice.json'), encoding='utf-8'))
+        quitadas = set(ind.get('quitadas') or {})
+        return {str(v['id']): v for v in ind.get('miniaturas') or [] if isinstance(v, dict) and ID.fullmatch(str(v.get('id') or ''))
+                and v.get('archivo') and v['id'] not in quitadas}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {}
+
+
+def por_ids(ids, referencias=None):
+    """Las mismas referencias de un borrador (para hacer su final con el mismo estilo), si siguen guardadas: las del canal y
+    (revisión, 03/11/2026) las de la carpeta de referencias que completaron el borrador (la HD si está bajada)."""
     ind = leer_indice()
     vs = {v.get('id'): v for v in ind.get('videos') or [] if isinstance(v, dict)}
+    refs = de_referencias(referencias)
     out = []
     for i in ids:
+        if not ID.fullmatch(str(i)):
+            continue
         f = os.path.join(CARPETA, f'{i}.jpg')
-        if ID.fullmatch(str(i)) and os.path.isfile(f):
-            out.append(dict(vs.get(i) or {'id': i, 'titulo': ''}, ruta=f))
+        chica = os.path.join(referencias or REFERENCIAS, os.path.basename(str(refs.get(i, {}).get('archivo') or '')))
+        if os.path.isfile(f):
+            out.append(dict(vs.get(i) or refs.get(i) or {'id': i, 'titulo': ''}, ruta=f))
+        elif i in refs and os.path.isfile(chica):
+            out.append(dict(refs[i], ruta=chica))
     return out
 
 
 # ---------------------------------------------------------------- las de referencia, del export del canal (sin internet)
 
 def _leer_export(f):
-    """Los .json del export de YouTube traen barras invertidas sueltas (rutas de Windows en las descripciones): se leen igual."""
-    return json.loads(re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', open(f, encoding='utf-8').read()))
+    """Los .json del export de YouTube traen barras invertidas sueltas (rutas de Windows en las descripciones): se leen igual.
+    (revisión, 03/11/2026) primero tal cual: un export ya bien escrito («C:\\\\Users») se rompía con el arreglo. Si no se puede,
+    se doblan solo las sueltas: los pares «\\\\» se dejan y «\\u» vale solo con 4 cifras hex («C:\\users» es una suelta)."""
+    t = open(f, encoding='utf-8').read()
+    try:
+        return json.loads(t)
+    except ValueError:
+        return json.loads(re.sub(r'(\\\\)|\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', lambda m: m.group(1) or '\\\\', t))
 
 
 def armar_referencias(export, destino=None, por_marca=4, min_vistas_dia=10, avisar=print):

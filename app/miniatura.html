@@ -85,7 +85,7 @@
       más parecidas (misma marca o servicio) y con más vistas por día: las marcadas con ✓. Las de fondo claro no van, salvo que
       toques <b>📌</b> (usarla siempre); <b>🚫</b> es no usarla nunca. Si de aquí van menos de 2, se completan con las de tu
       carpeta de referencias (tus oscuras con más vistas por día, sin internet).</p>
-    <div class="fila"><button onclick="traerCanal()" title="Baja tus miniaturas de YouTube (i.ytimg.com, público). No gasta nada">⬇ Traer mis miniaturas del canal</button>
+    <div class="fila"><button onclick="traerCanal()" title="Baja tus miniaturas de YouTube (i.ytimg.com, público), también en HD las de tu carpeta de referencias. No gasta nada">⬇ Traer mis miniaturas del canal</button>
       <span class="msg" id="canalMsg"></span></div>
     <div class="canal" id="canal"></div>
   </section>
@@ -93,7 +93,7 @@
   <section>
     <h2>3 · Cómo la quieres</h2>
     <p class="aviso">Como en tus miniaturas: la frase va abajo en una línea y es lo más grande, la primera parte en blanco (la marca o el
-      modelo), el logo en medio y la segunda en amarillo (la palabra clave), en letras planas. Arriba, una etiqueta más chica en
+      modelo), el logo en medio y la segunda en amarillo (la palabra clave), sin letras cromadas. Arriba, una etiqueta más chica en
       cada esquina. El teléfono va en la mano con guante, sobre fondo negro. TODO lo escribe GPT.
       Escríbelo tú o pide ideas a la IA y toca una. Se traduce solo al inglés y al portugués.</p>
     <div class="fila">
@@ -102,7 +102,7 @@
       <button onclick="sugerir()" title="Tu IA (⚙ Ajustes IA) lee el guion y lo que funciona en tu canal y propone 8 títulos con su traducción. Es un pedido corto de texto (centavos)">💡 Sugerir con IA</button>
     </div>
     <div class="sugeridos" id="sugeridos"></div>
-    <div class="fila" title="Textos cortos en las esquinas de arriba, inclinados. Con | partes en líneas (NUEVA UPDATE|EXPLICADO PASO A PASO). También se traducen">
+    <div class="fila" title="Textos cortos en las esquinas de arriba, derechos o apenas inclinados y más chicos que la frase de abajo. Con | partes en líneas (NUEVA UPDATE|EXPLICADO PASO A PASO). También se traducen">
       <label>↖ Arriba izquierda <input type="text" id="esqIzq" value="PASO A PASO" maxlength="40" style="width:11em; text-transform:uppercase"></label>
       <label>↗ Arriba derecha <input type="text" id="esqDer" placeholder="ej.: NUEVA UPDATE|EXPLICADO PASO A PASO" maxlength="40" style="width:17em; text-transform:uppercase"></label>
       <span class="aviso">(izquierda: en amarillo, más chica que la frase de abajo · derecha: 2-3 líneas blancas en recuadro con neón azul; vacía = solo el logo)</span>

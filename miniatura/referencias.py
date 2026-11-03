@@ -34,8 +34,9 @@ REGLAS = ('Reglas fijas del canal: cara con emoción clara; UN objeto principal;
           'con tildes correctas; nada de desbloqueo, WhatsApp ni QR en videos de noticias; los logos reales de marcas los pone '
           'la app encima si la IA los deforma. Es una fórmula, no un calco: no copies caras de otras personas, logos de otros '
           'canales ni sus textos. Gustos de fabian (02/11/2026): expresión natural (ni exagerada, ni seria, ni pícara); buzo o '
-          'camiseta blanco liso sin logos; el fondo original de la foto, nunca uno inventado; un solo título; textos grandes que '
-          'se lean en el celular; solo dos manos; la cámara real del modelo a la vista; las etiquetas las dibuja la IA de imágenes.')
+          'camiseta blanco liso sin logos; un solo título; textos grandes que se lean en el celular; solo dos manos; la cámara '
+          'real del modelo a la vista; las etiquetas las dibuja la IA de imágenes. Fondo (fabian, 03/11/2026: «fondos negros»): '
+          'negro como su canal o el original de la foto oscurecido casi a negro; nunca claro, ni un túnel de rayos o destellos.')
 
 
 def carpeta(d, *partes):
@@ -196,7 +197,11 @@ def ideas(d, llamar=None, n=4):
     guia = ''
     if os.path.exists(GUIA):  # el principio (con la revisión obligatoria) y, siempre, la competencia, los gustos y los errores
         t = open(GUIA, encoding='utf-8').read()
-        guia = t[:3000]
+        # (revisión, 03/11/2026) la sección «Estilo del canal para GPT» (03/11) quedó arriba y el corte de 3000 la partía a la
+        # mitad: el principio llega hasta ella. Esa sección es la de «🖼 Miniatura» (tutoriales: el teléfono en la mano, de
+        # frente); aquí mandan la receta de tus referencias y REGLAS (el teléfono de espaldas), así que no va
+        nueva = t.find('\n## Estilo del canal para GPT')
+        guia = t[:min(3000, nueva) if nueva > 0 else 3000]
         for s, largo in (('## Patrones de la competencia', 2500), ('## Gustos confirmados', 6000)):
             i = t.find(s)
             guia += '\n...\n' + t[i:i + largo] if i >= 0 else ''
