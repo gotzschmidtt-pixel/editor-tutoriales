@@ -552,7 +552,8 @@ Escribe el guion por bloques. Cada bloque tiene:
 - Cada tramo tiene que MOSTRAR lo que dice su texto: si la voz dice «pega la key», el tramo es donde el mapa muestra el
   campo de la key con la key puesta, no donde el autor lo comenta. Antes de responder, revisa bloque por bloque contra el mapa.
 - La voz va AL MISMO TIEMPO que la imagen: no pidas hacer algo que en ese tramo ya está hecho, ni anuncies un resultado
-  (reinicio, «listo», cuenta quitada) antes de que se vea. Los pasos se narran en el orden en que pasan en la grabación.
+  (reinicio, «listo», cuenta quitada) antes de que se vea (el GANCHO del INICIO sí lo cuenta primero: lo muestra con sus
+  "tomas"). Los pasos se narran en el orden en que pasan en la grabación.
 - Cada tramo del original se usa en UN solo bloque: dos bloques nunca muestran la misma escena, y ningún tramo vuelve
   atrás respecto del anterior. Si un paso necesita más explicación, alarga el texto de su bloque: cuando la voz dura más
   que el tramo, la app repite ese tramo en movimiento.
@@ -1102,6 +1103,7 @@ escena larga repetida: cada frase con el trozo que la muestra.
   3) las versiones: {versiones}; 4) la herramienta y la PC que se usan{' (es Honor: nunca digas «sin PC»)' if honor else ''};
   5) «es fácil»; 6) la invitación a comentar las dudas (puede llevar el toque de humor del inicio).
   Lo demás de la estructura de siempre (lo que NO hay que hacer, los pasos numerados, el cierre) va después, en bloques normales.
+  Cada frase termina en punto, signo de pregunta o de exclamación: así la app sabe dónde empieza cada una.
 - "tomas": [[desde, hasta], ...] en cada bloque del gancho: UNA toma por frase y en el orden de las frases, de 3 a 5 s de la
   grabación (segundos del original), que muestre lo que dice esa frase: el resultado con el teléfono ya libre (del final del
   grabado), el problema con la pantalla bloqueada, el programa en la PC, el proceso (Fastboot, borrar, reiniciar). Búscalas
@@ -1143,6 +1145,13 @@ def revisar_gancho(d, bloques, mapa=None):
     cuadros = rotar.pantallas(mapa) if mapa is not None else rotar.leer_mapa(os.path.join(d, 'mapa_video.json'))
     out, previa = [], None
     for b in ganchos:
+        # la app pone la toma k en la frase k (cortada en punto, ¿? o ¡!, como rotar.frases): si no son las mismas, una toma
+        # cae en otra frase o no sale nunca, sin aviso (revisión, 03/11/2026)
+        n_tomas = len(rotar.tomas_de(b))
+        n_frases = len([f for f in re.split(r'(?<=[.?!…])\s+', str(b.get('texto') or '').strip()) if f.strip()])
+        if n_tomas and n_tomas != n_frases:
+            out.append(f"{b['id']}: trae {n_tomas} tomas y {n_frases} frase(s): va una toma por frase, en su orden "
+                       f"(cada frase termina en punto, signo de pregunta o de exclamación)")
         for k, x in enumerate(rotar.tomas_de(b), 1):
             if x is None:  # sin toma: la app elige otro trozo, así que la siguiente ya no va seguida de la anterior
                 previa = None

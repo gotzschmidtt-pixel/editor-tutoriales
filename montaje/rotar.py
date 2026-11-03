@@ -25,6 +25,11 @@ TROZO = (3.0, 5.0)    # largo de cada trozo
 CORTE_GANCHO = 1.5    # con las tomas de la IA el corte cae en cada frase (ritmo de ~2 s del gancho), nunca un trozo más corto
 SEPARACION = 8.0      # dos trozos del inicio no salen de momentos tan cercanos del grabado
 GANCHO = (45.0, 60.0)  # el gancho dura ~45 s; si pasa de 60 s se avisa (la gente se va antes de que empiece el paso a paso)
+# revisión (03/11/2026): con los puntos, «libre y sin la cuenta» elegía la pantalla bloqueada (dice «cuenta») y el después
+# salía de un Ajustes nítido a mitad del proceso. El antes es el comienzo del grabado y el después su final: nunca uno por
+# el otro, y entre los suyos solo compiten los que están a menos de EXTREMO s del de siempre
+OPUESTO = {'antes': 'despues', 'despues': 'antes'}
+EXTREMO = 120.0
 AVISOS = 'avisos_inicio.json'
 SENSIBLE = re.compile(r'\$\s*\d|@|\+\d{7,}|\b\d{9,}\b|imei|serial|s/n|precio|price|order|pedido|pago|payment|tarjeta|contrase', re.I)
 # (palabras de la voz, palabras de la pantalla) de cada tema
@@ -106,8 +111,8 @@ def sensible(cuadros, desde, hasta):
 
 def tomas_de(b):
     """[(desde, hasta) o None] de las tomas que eligió la IA para un bloque del gancho, una por frase y en su orden."""
-    out = []
-    for x in b.get('tomas') or []:
+    out, tomas = [], b.get('tomas')
+    for x in tomas if isinstance(tomas, list) else []:  # «"tomas": 5» de la IA no tumba la revisión ni el montaje
         try:
             if isinstance(x, dict):
                 x = x.get('ventana') or [x.get('desde'), x.get('hasta')]
@@ -174,6 +179,18 @@ class Puntos:
             elif ' ' not in g and len(g) >= 5 and g[:5] in raices:  # volumen ↔ volume, reinicia ↔ reiniciar: vale la mitad
                 pts += 0.5 * math.log(1 + n / max(1, self.cuantas(f' {g[:5]}')))
         return pts
+
+    def rara(self, frase, texto):
+        """Si en esa pantalla se lee algo de la frase que sale en pocas pantallas del video (un tercio o menos). Solo así entra
+        una pantalla de otro tema: la marca o el programa, que salen en casi todas, no la traen (revisión, 03/11/2026:
+        «conectamos el cable a tu Honor» ponía la pantalla bloqueada porque dice HONOR, y no la de USB)."""
+        if self.palabras(frase, texto) <= 0:
+            return False
+        grupos, _ = _palabras(frase)
+        pantalla, raices = self.normal[texto]
+        n = max(1, len(self.textos))
+        return any(self.cuantas(f' {g} ') * 3 <= n if f' {g} ' in pantalla else
+                   ' ' not in g and len(g) >= 5 and g[:5] in raices and self.cuantas(f' {g[:5]}') * 3 <= n for g in grupos)
 
     def cuantas(self, trozo):
         """En cuántas pantallas del video se lee: lo que sale en todas (la marca, el programa) casi no cuenta."""
@@ -290,16 +307,20 @@ def planear(bloques, mapa_f, carpeta_voz, dur_original, fps, guardar_avisos=True
                                                                    f'{problema}: puse otro trozo del grabado. Elige otra toma en el guion.'})
                         print('AVISO inicio ·', avisos[-1]['aviso'], flush=True)
                 if not elegido:
-                    # las pantallas donde se lee lo que dice la frase entran aunque no sean de ningún tema
-                    con_palabras = [c for c, texto in cuadros if frase and puntos.palabras(frase, texto) > 0]
+                    # las pantallas donde se lee algo poco común de la frase entran aunque no sean de ningún tema, pero nunca
+                    # una del ANTES en una frase del DESPUÉS ni al revés
+                    contra = set(por_tema.get(OPUESTO.get(tema), [])) - set(por_tema.get(tema, []))
+                    con_palabras = [c for c, texto in cuadros if frase and c not in contra and puntos.rara(frase, texto)]
                     for t in [tema] + [y for y in ORDEN if y != tema]:  # sin material del tema: el más cercano que haya
                         orden_t = sorted(por_tema.get(t, []), reverse=(t == 'despues'))  # el después, de lo último del grabado
                         if t == tema:
-                            orden_t += [c for c in con_palabras if c not in orden_t]
+                            orden_t += [c for c in sorted(con_palabras, reverse=(t == 'despues')) if c not in orden_t]
                         libres = [s for s in orden_t if all(abs(s - u) > SEPARACION for u in usados)
                                   and not (propio[0] - 2 <= s <= propio[1] + 2)
                                   and s + largo <= dur_original and not sensible(cuadros, s, s + largo)]
                         if libres:  # el de más puntos; si empatan, el primero (el orden de siempre)
+                            if t in OPUESTO:  # el antes y el después: solo los cercanos al de siempre (comienzo o final del grabado)
+                                libres = [s for s in libres if abs(s - libres[0]) <= EXTREMO]
                             elegido = (max(libres, key=lambda s: puntos.de(frase, s, largo)), t)
                             break
                 if not elegido:
