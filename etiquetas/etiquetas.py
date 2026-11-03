@@ -30,6 +30,8 @@ sys.path.insert(0, AQUI)
 import idiomas  # noqa: E402  «🌐 Etiquetas en otro idioma»
 sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
 import deteccion  # noqa: E402  dónde está el teléfono, para no taparlo
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+import pasos_clave  # noqa: E402  el momento exacto del dato va a ×0,9 y lo demás del tramo más rápido (03/11/2026)
 FPS = 25
 ANCHO_ZONA, ALTO_ZONA = 1320, 620  # donde caben 3 etiquetas de las largas, con su sombra y su animación
 
@@ -92,7 +94,7 @@ def de_capturas(carpeta, bloques):
             for b in bloques:
                 mo = b.get('montaje') or {}
                 if str(mo.get('modo', '')).startswith('lento') and mo['src_inicio'] <= s <= mo['src_fin'] and b.get('inicio_min') is not None:
-                    t = b['inicio_min'] + (s - mo['src_inicio']) / (mo.get('velocidad') or 1)
+                    t = b['inicio_min'] + pasos_clave.en_bloque(mo, s)
                     break
             if t is None:
                 print(f"AVISO: el segundo {m.get('segundo')} de tu grabación no queda en el video (ese tramo se saltó); salto «{texto}»")

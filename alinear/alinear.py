@@ -8,7 +8,8 @@ Va DESPUÉS de la voz (con sus tiempos reales) y ANTES del montaje, dentro de «
 2. Por cada frase de cada bloque busca lo que nombra de la pantalla («No copiar», «Ajustes», «Configurar más tarde»…).
    Si en el segundo en que la voz lo dice esa pantalla no se ve, pero sí aparece un poco antes o después dentro del tramo
    del bloque, corre el tramo (inicio y velocidad) para que caiga justo ahí, sin pisar los bloques vecinos y sin pasar los
-   topes de fabian (×1 con su cara o en un ⭐, ×1,5 en los pasos clave, ×2 en los de configuración). Antes de escribir deja
+   topes de fabian (×1 con su cara o en un ⭐, ×1 en los pasos clave —el dato nunca acelerado, 03/11/2026—, ×2 en los de
+   configuración). Antes de escribir deja
    guion.json.antes_alinear y marca cada bloque que corrió con "alineado": true. Los bloques del gancho ("gancho": true,
    el primer minuto) no se tocan.
 3. Lo que no puede arreglar solo lo deja en alineacion.txt y lo avisa (la app pausa «Hacer todo» para que lo veas).
@@ -118,10 +119,12 @@ def candidatos(frase):
 
 
 def en_tramo(mo, t):
-    """Segundo de la grabación que se ve t s después de que empieza el bloque (en la pausa, el final del tramo)."""
+    """Segundo de la grabación que se ve t s después de que empieza el bloque (en la pausa, el final del tramo). Con el
+    dato ubicado, el dato va a ×0,9 y lo demás más rápido (voz/pasos_clave.py, 03/11/2026)."""
+    import pasos_clave
     v = mo.get('velocidad') or 1
     largo = (mo['src_fin'] - mo['src_inicio']) / v
-    return mo['src_inicio'] + min(t, largo) * v if t <= largo else mo['src_fin'] - 1.2
+    return pasos_clave.en_grabacion(mo, min(t, largo)) if t <= largo else mo['src_fin'] - 1.2
 
 
 def se_ve(idx, cand, s):

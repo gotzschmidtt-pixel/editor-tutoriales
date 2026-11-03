@@ -36,7 +36,11 @@ ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'tra
 ARCHIVO_PREGUNTAS = {'guion': 'preguntas_guion.json', 'trailer': 'preguntas_trailer.json'}
 TRAILER_PREGUNTAS_MAX = 10
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
-VEL_CRITICO = 1.5  # en los pasos clave (poner la key, escribir códigos) la imagen va casi a velocidad normal
+# en los pasos clave (poner la key, escribir códigos, el botón exacto) la imagen nunca va acelerada (fabian, 03/11/2026;
+# antes ×1,5). El momento exacto del dato va a ×0,9 y, si está ubicado, lo demás del paso puede ir hasta ×1,5:
+# voz/pasos_clave.py
+VEL_CRITICO = 1.0
+VEL_DATO = 0.9  # un poquito más lento que lo grabado, para que se lea lo que se escribe o se aprieta
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
@@ -547,7 +551,7 @@ Escribe el guion por bloques. Cada bloque tiene:
 - "humor": true si el bloque lleva un remate de humor (y "humor_tema": de qué trata, p. ej. "suegra"), false si no.
 - "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
     {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.6 a {VEL_MAX:.0f}}}  (1 = normal; MÁS de 1 = acelerado, para esperas, cargas,
-      instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien)
+      instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien, y {VEL_DATO:g} en los pasos clave)
     {{"modo": "congelar", "src_inicio": s, "congelar_s": s}}  (pausa en un cuadro; úsalo cuando se explica algo que se ve quieto)
     {{"modo": "lento+congelar", "src_inicio": s, "src_fin": s, "velocidad": v, "congelar_s": s}}
     {{"modo": "imagen", "congelar_s": s}}  (muestra la imagen del proyecto, por ejemplo un mapa)
@@ -576,9 +580,11 @@ Escribe el guion por bloques. Cada bloque tiene:
   suelda o flashea, en el bloque donde empieza ese proceso la voz dice UNA frase corta y natural de cuidado, por ejemplo
   «hazlo solo en un equipo tuyo o con permiso del dueño» o «si no tienes práctica soldando, esto puede dañar la placa».
   Una sola vez en todo el guion, sin sonar a abogado (ayuda a que YouTube no limite el video).
-- PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
-  tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
-  para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
+- PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, el botón exacto que hay que tocar o
+  apretar, elegir la opción exacta): el tramo tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la
+  transcripción) y con velocidad {VEL_DATO:g} (un poquito más lento que lo grabado, para que se lea lo que se escribe o se
+  aprieta; nunca más de {VEL_CRITICO:g}: el momento exacto del dato NUNCA va acelerado). Marca esos bloques con "tipo": "critico".
+  Lo de antes o después del dato (buscar el menú, esperar que cargue) puede ir en su propio bloque, más rápido.
 - LO QUE NO HAY QUE HACER (pedido del autor, 03/11/2026): cada aviso va DENTRO del paso donde aplica, en su bloque, justo
   antes o mientras se hace ese paso («no conectes el Wi-Fi todavía», «no sueltes los botones», «no desconectes el cable
   hasta que termine»). Nunca en un bloque o una lista de advertencias antes de empezar los pasos.
@@ -1406,6 +1412,8 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
     """Arreglo sin IA: si el total queda corto, los tramos acelerados van más despacio (hasta velocidad normal y
     unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz.
     Los bloques «fijos» (con su voz ya hecha y sin cambios desde el editor) no se tocan."""
+    sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+    import pasos_clave  # el momento exacto del dato nunca acelerado (03/11/2026)
     t = sum(largo_bloque(b['montaje']) for b in bloques)
     if t < minimo:
         margen = []
@@ -1437,8 +1445,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = (1.0 if mo.get('importante') or mo.get('cara') else VEL_CRITICO if mo.get('critico')
-                        else VEL_PASO if mo.get('paso') else VEL_MAX)
+                tope = pasos_clave.tope(mo)  # los mismos topes de fabian que la voz (03/11/2026: el dato nunca acelerado)
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -1565,6 +1572,8 @@ def revisar(d, tarea, datos):
         desde = len(avisos)
         sys.path.insert(0, os.path.join(RAIZ, 'voz'))
         import voz as vz  # frenar_tramo: la misma regla de «frenar antes de congelar» que usa voz.py con la voz real
+        import pasos_clave  # el momento exacto del dato (PIN, key, botones) nunca acelerado, a ×0,9 (fabian, 03/11/2026)
+        datos_dichos = pasos_clave.momentos(d)  # de tu transcripción: lo dices mientras lo haces
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1575,6 +1584,7 @@ def revisar(d, tarea, datos):
             if not b['texto'].strip() and mo['modo'].startswith('lento'):
                 # tramo sin voz: quitaste lo que decía y lo dejaste acelerado; va tal cual, a la velocidad que elegiste
                 mo['sin_voz'] = True
+                mo.pop('datos', None)  # va a la velocidad que elegiste
                 mo['velocidad'] = 1.0 if mo.get('cara') else min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
                 largo = largo_bloque(mo)
                 b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = 0
@@ -1594,7 +1604,10 @@ def revisar(d, tarea, datos):
             if paso:
                 mo['paso'] = True
             cara = bool(mo.get('cara'))
-            tope = 1.0 if mo.get('importante') or cara else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
+            pasos_clave.marcar([b], datos_dichos)  # dónde está el dato en su tramo (con las marcas de arriba ya puestas)
+            # ×1 con tu cara o en un ⭐, ×1 en un paso clave (con su dato ubicado: el dato a ×0,9 y lo demás hasta ×1,5),
+            # ×2 en uno de configuración, ×6 en lo demás (03/11/2026: pasos_clave.tope, el mismo de voz.py y «Alinear»)
+            tope = pasos_clave.tope(mo)
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
@@ -1605,14 +1618,18 @@ def revisar(d, tarea, datos):
                     # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
                     # parte donde se hace
                     nuevo = round((voz + RELLENO) * tope, 1)
-                    centro = momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin'])
+                    ws = pasos_clave.ventanas(mo)  # con el dato ubicado, se queda alrededor del dato (03/11/2026)
+                    centro = ((ws[0][0] + ws[-1][1]) / 2 if ws else
+                              momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin']))
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)
                     avisos.append(f"{b['id']}: {'paso clave' if critico else 'paso de configuración' if paso else 'sale tu cara'}: "
                                   f"en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}"
                                   f"{', donde se hace' if critico or paso else ''}")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico or paso or cara or mo.get('importante'):
+                    pasos_clave.marcar([b], datos_dichos)
+                    tope = pasos_clave.tope(mo)  # en el tramo recortado el dato pesa más
+                if critico or paso or cara or mo.get('importante') or mo.get('datos'):
                     mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
                     v = round(min(tope, tramo / (voz + 0.5)), 2)
@@ -3024,7 +3041,7 @@ def autorrevision(d, ajustes, texto, datos):
     pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False) +
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
               "dice su texto y en ese mismo momento (sin pedir algo ya hecho ni adelantar un resultado), que los pasos clave "
-              "estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en orden y ninguna escena se use "
+              f"estén justo donde se hacen y a velocidad {VEL_DATO:g} (nunca más de {VEL_CRITICO:g}: el dato no se acelera), que los tramos vayan en orden y ninguna escena se use "
               "en dos bloques, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
               "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
               "marcados con \"humor\", repartidos a lo largo del video) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
@@ -3071,12 +3088,17 @@ def frases_bloque(d, b):
 
 
 def en_grabacion(mo, t):
-    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final)."""
+    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final).
+    Con el dato ubicado ("datos"), el dato va a ×0,9 y lo demás más rápido (voz/pasos_clave.py, 03/11/2026)."""
     if mo['modo'].startswith('lento'):
         fin = mo.get('src_fin') or mo['src_inicio']
         largo = (fin - mo['src_inicio']) / (mo.get('velocidad') or 1)
         if t <= largo:
-            return mo['src_inicio'] + t * (mo.get('velocidad') or 1), False
+            sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+            import pasos_clave
+            if fin > mo['src_inicio']:
+                return pasos_clave.en_grabacion(dict(mo, src_fin=fin), t), False
+            return mo['src_inicio'], False
         return max(mo['src_inicio'], fin - 1.2), True
     return mo['src_inicio'], True
 

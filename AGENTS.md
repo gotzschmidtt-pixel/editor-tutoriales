@@ -327,8 +327,11 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
 - [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica con calma lo que se
       ve en cada paso; el porqué (y qué pasa si sale mal) solo en los pasos delicados (key, código, PIN, borrar, entrar
       en Fastboot/Recovery/DFU; fabian, 03/11/2026). No dejes minutos de imagen sin voz.
-- [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, elegir la opción exacta) con `"tipo": "critico"` y
-      velocidad 1 (máx. 1.5).
+- [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, el botón exacto, elegir la opción exacta) con
+      `"tipo": "critico"` y velocidad 0.9, nunca más de 1 (fabian, 03/11/2026, a «¿siempre a velocidad normal? (solo el
+      segundo exacto del dato: PIN, key, botones)»: «SÍ, inclusive pasos clave podríamos hacerlo un poquitín más lento»).
+      La app ubica el momento exacto del dato en tu transcripción y lo deja a ×0,9 aunque el resto del bloque vaya más
+      rápido (`voz/pasos_clave.py`).
 - [ ] **⭐ Cortes importantes del autor** (`mis_proyectos/NOMBRE/cortes_importantes.json`, los marca en la app: Recovery,
       DFU, botones…): cada uno se muestra ENTERO, a velocidad 1, en bloques `"tipo": "critico"`; nunca se acelera, recorta
       ni salta. La app los fuerza a ×1 igual, y avisa si un bloque no los muestra. (Pedido del autor, 28/10/2026: en
@@ -400,7 +403,7 @@ El autor contesta en la app y te manda de vuelta su guion editado y sus respuest
 - `id`: L01, L02… `ancla`: qué se ve en pantalla (corto). `texto`: lo que dice la voz.
 - `montaje.modo`:
   - `lento`: tramo del original a una `velocidad` de 0.6 a 6 (1 = normal; más de 1 para esperas, cargas, instalaciones;
-    menos de 1 solo para un detalle rápido).
+    menos de 1 solo para un detalle rápido; 0.9 en los pasos clave).
   - `congelar`: pausa en ese momento (`src_inicio`, `congelar_s`). Ver punto 6: NO es una foto quieta.
   - `lento+congelar`: el tramo y luego una pausa al final.
   - `imagen`: muestra una imagen del proyecto (un mapa, por ejemplo) durante `congelar_s`.
@@ -416,7 +419,7 @@ El autor contesta en la app y te manda de vuelta su guion editado y sus respuest
 | Palabras por segundo | **2.6** (`PALABRAS_POR_S`) | Es la velocidad de la voz. Para que el video no tenga imagen sin voz, total de palabras ≈ minutos de video × 60 × 2.6. |
 | Imagen sin voz por bloque | **1.5 s** máx. (`RELLENO`) | Nada de minutos sin voz. |
 | Velocidad máxima | **6×** (`VEL_MAX`) | Para esperas y cargas. |
-| Velocidad en pasos clave | **1, máx. 1.5** (`VEL_CRITICO`) | Poner key, escribir código/PIN/contraseña, IMEI, serial, usuario: tiene que leerse. Marcar `"tipo": "critico"`. |
+| Velocidad en pasos clave | **0.9, nunca más de 1** (`VEL_DATO`, `VEL_CRITICO`) | Poner key, escribir código/PIN/contraseña, IMEI, serial, usuario, el botón exacto: tiene que leerse. Marcar `"tipo": "critico"`. El momento exacto del dato (lo ubica la app en la transcripción: `"datos"` en el montaje) va a ×0,9 y lo demás del bloque puede ir hasta ×1,5 (×2 en uno de configuración, ×6 en una espera); el bloque dura lo mismo (`voz/pasos_clave.py`, 03/11/2026). |
 | Duración buscada | Parecida al original, o lo que pida la idea del autor | Si el guion queda corto, el video queda corto: explica con calma. |
 | Desfase de la voz | **0.3 s** después del inicio de cada bloque | |
 
@@ -480,7 +483,7 @@ Lo que fabian prefiere ya es lo que hace la app: **una «pausa» no es una foto 
   el autor lo pida.**
 - Cuando la voz de un bloque no cabe en su tramo (el guion se alargó), la app alarga ese bloque con esta pausa en
   movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si el tramo va
-  acelerado (×3 en un reinicio), primero lo pone más despacio (sin bajar de ×1) y la pausa queda solo si a ×1 falta; lo
+  acelerado (×3 en un reinicio), primero lo pone más despacio (sin bajar de ×1; ×0,9 en un paso clave) y la pausa queda solo si a ×1 falta; lo
   mismo con una pausa de relleno tras un tramo acelerado (`voz.frenar_tramo`, 03/11/2026). No toca los bloques corridos
   por «Alinear», los del gancho, con cara, ⭐, sin voz ni los ya ajustados con su voz. Si es el video entero
   el que queda corto, primero baja la velocidad de los tramos acelerados. Si queda largo, acelera tramos y quita pausas

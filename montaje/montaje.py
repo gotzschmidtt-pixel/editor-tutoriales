@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'mejorar'))
 import mejorar  # noqa: E402  «✨ Mejorar imagen» (Real-ESRGAN) en las pausas quietas, si lo pediste
 from texto_voz import texto_voz  # noqa: E402  lo que de verdad se mandó a ElevenLabs
 import encuadres  # noqa: E402  nunca más de 15 s con la misma toma: cambia el encuadre
+import pasos_clave  # noqa: E402  el momento exacto del dato (PIN, key, botones) a ×0,9, nunca acelerado (03/11/2026)
 import rotar  # noqa: E402  el inicio rota trozos reales del grabado (regla de fabian, 31/10/2026)
 
 
@@ -105,6 +106,36 @@ def relleno(n, fps):
     teléfono, que no guarda cuadros mientras la pantalla está quieta) dejaba los bloques siguientes 3 s antes de su voz
     (revisión 2 de la mejora 1)."""
     return f'tpad=stop_mode=clone:stop_duration={n / fps + 1:.3f}'
+
+
+def cadena_tramo(m, out, out_lento):
+    """El filtro que pone el tramo «lento» a su velocidad. Más lento que lo grabado (menos de ×1) va con «out_lento»
+    (solo «fps»): «framerate» mezcla cuadros vecinos y lo que se escribe (la key, el PIN) se vería doble, como las manos
+    fantasma de las pausas. Con el dato ubicado ("datos", voz/pasos_clave.py, 03/11/2026) el tramo va en piezas: el dato a
+    ×0,9 y lo demás un poco más rápido, y entre todas duran lo mismo que el tramo a su velocidad (el bloque no se corre)."""
+    v = m.get('velocidad') or 1
+    ps = pasos_clave.piezas(m) if m.get('datos') else [(m['src_inicio'], m['src_fin'], v)]
+    if len(ps) == 1:
+        return f"setpts=PTS/{v},{out if float(v) >= 1 else out_lento}"
+    a, n = float(m['src_inicio']), len(ps)
+    g = [f"split={n}" + ''.join(f'[d{k}]' for k in range(n))]
+    for k, (x0, x1, vk) in enumerate(ps):
+        corte = (f"trim=start={x0 - a:.4f}" if k else 'trim=start=0') + (f":end={x1 - a:.4f}" if k < n - 1 else '')
+        g.append(f"[d{k}]{corte},setpts=(PTS-STARTPTS)/{vk:.5f},{out if vk >= 1 else out_lento}[p{k}]")
+    g.append(''.join(f'[p{k}]' for k in range(n)) + f'concat=n={n}:v=1:a=0')
+    return ';'.join(g)
+
+
+def dato_dicho(m):
+    """Qué pasó con el dato del tramo, para la salida del paso: a qué velocidad va el dato y a cuál lo demás."""
+    ps = pasos_clave.piezas(m)
+    vd = min(vk for _, _, vk in ps)
+    x = lambda v: f'×{v:.2f}'.replace('.', ',')  # noqa: E731
+    donde = ', '.join(f'{int(a // 60)}:{a % 60:04.1f}–{int(b // 60)}:{b % 60:04.1f}' for a, b in pasos_clave.ventanas(m))
+    if vd > 1 + 1e-6:
+        return (f'OJO: el dato ({donde}) va a {x(vd)}, más rápido que lo grabado: pasa por «Generar voz» para que la app '
+                'baje la velocidad del bloque y vuelve a montar')
+    return f'el dato ({donde}) va a {x(vd)}' + (f' y lo demás del tramo a {x(max(vk for _, _, vk in ps))}' if len(ps) > 1 else '')
 
 
 def largo_tramo(m):
@@ -412,7 +443,8 @@ def main():
         nitido = bool(quieto and mejorar.quieres(proyecto))  # «✨ Mejorar imagen»: solo cambia la clave de las pausas quietas
         clave = hashlib.sha1(json.dumps(base_huella + [numeros_iguales(m), lab, huella_archivo(m.get('imagen'))] + ([cara, ventana] if cambio else []) + (['esrgan'] if nitido else []) + (['quieta_por_agitada'] if agitada else [])
                                         + ([plan.get((i, 'a')), plan.get((i, 'b')), 'otro_momento'] if (i, 'a') in plan or (i, 'b') in plan else [])
-                                        + (['rota', rota[i]] if i in rota else []),
+                                        + (['rota', rota[i]] if i in rota else [])
+                                        + (['lento_nitido'] if m['modo'].startswith('lento') and float(m.get('velocidad') or 1) < 1 else []),
                                         sort_keys=True, default=str).encode()).hexdigest()[:12]
         hecho = os.path.join(cache, f'{i}_{clave}.json')
         guardar = True  # los tramos que se hacen pasan a la carpeta de tramos hechos
@@ -446,12 +478,15 @@ def main():
         if m['modo'].startswith('lento') and n_a >= 1:
             f = os.path.join(tmp, f'{i}_a.mp4')
             entrada = ['-ss', str(m['src_inicio']), '-t', str(m['src_fin'] - m['src_inicio']), '-i', a.original, '-an']
+            cadena = cadena_tramo(m, out, out_pausa)  # el dato a ×0,9 y lo demás más rápido, si está ubicado (03/11/2026)
             if (i, 'a') in plan:  # la misma toma hace rato: cambia de encuadre
-                hechos = con_encuadres(entrada, f"setpts=PTS/{m.get('velocidad') or 1},{out}", plan[(i, 'a')], FPS, res,
+                hechos = con_encuadres(entrada, cadena, plan[(i, 'a')], FPS, res,
                                        f"format=yuv420p{lab}", enc, os.path.join(tmp, f'{i}_a'), n_a)
             else:
-                run(entrada + ['-vf', f"setpts=PTS/{m.get('velocidad') or 1},{out},{relleno(n_a, FPS)}{lab}", '-frames:v', str(n_a)] + enc + [f])
+                run(entrada + ['-vf', f"{cadena},{relleno(n_a, FPS)}{lab}", '-frames:v', str(n_a)] + enc + [f])
                 hechos = [f]
+            if pasos_clave.ventanas(m):
+                print(i, '·', dato_dicho(m), flush=True)
             for f in hechos:
                 if a.estabilizar:
                     estabilizar(f, enc)

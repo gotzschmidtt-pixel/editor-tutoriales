@@ -372,6 +372,7 @@ function pintar() {
           <button onclick="verCorte(${i}, 'video')" title="Este bloque en el último video armado, con la voz y la música">▶ Ver el corte</button>
           <button onclick="verCorte(${i}, 'grabacion')" title="El tramo de tu grabación que usa este bloque, sin cortes ni voz">🎞 Tu grabación</button></div></div>
       <div><div class="cab"><span class="id">${esc(b.id)}</span><span class="chip">${esc(m.modo)}${m.velocidad && m.velocidad !== 1 ? ' ×' + m.velocidad : ''}</span>
+        ${ventanasDato(m).length ? `<span class="chip" title="El momento exacto del dato (PIN, key, botones) nunca va acelerado: va un poquito más lento que lo grabado y lo demás del tramo un poco más rápido; el bloque dura lo mismo">🔑 dato a ×${Math.min(...piezasTramo(m).map(p => p[2])).toFixed(2).replace('.', ',')}</span>` : ''}
         <span class="chip" id="aviso${i}"></span>
         <label class="chip emoChip" title="Cómo lo dice la voz de ElevenLabs (va entre corchetes al principio, no se lee). Vacío = como siempre">😀 [
           <input list="emociones" class="emo" data-i="${i}" value="${esc(b.emocion || '')}" placeholder="como siempre" style="width:8.5em; background:transparent; border:0; color:inherit; font:inherit">]</label></div>
@@ -412,9 +413,53 @@ function frasesEstimadas(txt) {  // sin voz de este texto: 2,6 palabras por segu
   }
   return out;
 }
+// El momento exacto del dato (PIN, key, botones) va a ×0,9 y lo demás del tramo más rápido, y el tramo dura lo mismo
+// (fabian, 03/11/2026): las mismas cuentas que voz/pasos_clave.py, para que «Frase por frase» muestre lo que sale en el montaje
+const VEL_DATO = 0.9;
+function ventanasDato(m) {
+  const a = +m.src_inicio, z = +m.src_fin, out = [];
+  if (!(z > a) || !(m.modo || '').startsWith('lento')) return out;
+  for (const x of m.datos || []) {
+    let x0 = Math.max(a, +x[0]), x1 = Math.min(z, +x[1]);
+    if (x0 - a < 0.6) x0 = a;
+    if (z - x1 < 0.6) x1 = z;
+    if (!(x1 - x0 >= 0.4)) continue;
+    if (out.length && x0 <= out[out.length - 1][1] + 1.0) out[out.length - 1][1] = Math.max(out[out.length - 1][1], x1);
+    else out.push([x0, x1]);
+  }
+  return out;
+}
+function piezasTramo(m) {  // [[desde, hasta, velocidad]] del tramo
+  const a = +m.src_inicio, z = +m.src_fin, v = +(m.velocidad || 1), ws = ventanasDato(m);
+  if (!ws.length || v <= VEL_DATO + 1e-9) return [[a, z, v]];
+  const largo = (z - a) / v, w = ws.reduce((s, [x0, x1]) => s + x1 - x0, 0), r = z - a - w;
+  if (r <= 1e-6) return [[a, z, v]];
+  let rmax = Math.max(m.importante || m.cara ? 1 : m.critico ? 1.5 : m.paso ? 2 : 6, v);
+  let vd = VEL_DATO, tr = largo - w / VEL_DATO;
+  if (tr <= 1e-6 || r / tr > rmax) {
+    tr = r / rmax; vd = largo - tr > 1e-6 ? w / (largo - tr) : v;
+    if (vd > 1 + 1e-9) {  // un guion de antes, más rápido que su tope: el dato manda (lo demás hasta ×6)
+      rmax = Math.max(6, v); tr = Math.max(largo - w, r / rmax); vd = largo - tr > 1e-6 ? w / (largo - tr) : v;
+    }
+    if (vd >= v - 1e-6) return [[a, z, v]];
+  }
+  const vr = r / tr, out = [];
+  let t = a;
+  for (const [x0, x1] of ws) { if (x0 > t + 1e-9) out.push([t, x0, vr]); out.push([x0, x1, vd]); t = x1; }
+  if (z > t + 1e-9) out.push([t, z, vr]);
+  return out;
+}
 function enGrabacion(m, t) {  // [segundo de tu grabación que se ve t s después de que empieza el bloque, si es la pausa]
   if ((m.modo || '').startsWith('lento')) {
     const tramo = (m.src_fin - m.src_inicio) / (m.velocidad || 1);
+    if (t <= tramo && (m.datos || []).length) {
+      let s = 0;
+      for (const [x0, x1, v] of piezasTramo(m)) {
+        if (t <= s + (x1 - x0) / v + 1e-9) return [x0 + Math.max(0, t - s) * v, false];
+        s += (x1 - x0) / v;
+      }
+      return [m.src_fin, false];
+    }
     if (t <= tramo) return [m.src_inicio + t * (m.velocidad || 1), false];
     return [Math.max(m.src_inicio, m.src_fin - 1.2), true];  // la pausa repite el final del tramo
   }

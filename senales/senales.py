@@ -34,6 +34,8 @@ sys.path.insert(0, os.path.join(RAIZ, 'capas'))
 import capas  # noqa: E402  con --capa: se pega junto con etiquetas y tarjetas en una sola pasada
 sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
 import deteccion  # noqa: E402  el teléfono, la laptop o el monitor que hay debajo de la señal
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+import pasos_clave  # noqa: E402  el momento exacto del dato va a ×0,9 y lo demás del tramo más rápido (03/11/2026)
 
 FPS = 25
 MIRAR_CADA = 5   # cada cuántos cuadros de la señal se vuelve a buscar el objeto de debajo (0,2 s)
@@ -150,7 +152,9 @@ def segundo_montado(bloques, src):
         a, z = mo.get('src_inicio'), mo.get('src_fin')
         if a is None or z is None or not str(mo.get('modo', 'lento')).startswith('lento') or not a - 0.05 <= src <= z + 0.05:
             continue
-        return b['inicio_min'] + (src - a) / float(mo.get('velocidad') or 1)
+        if z <= a or not mo.get('datos'):
+            return b['inicio_min'] + (src - a) / float(mo.get('velocidad') or 1)
+        return b['inicio_min'] + pasos_clave.en_bloque(mo, min(max(src, a), z)) + (src - min(max(src, a), z)) / float(mo.get('velocidad') or 1)
     return None
 
 
@@ -164,7 +168,9 @@ def segundo_grabado(bloques, t):
             continue
         v = float(mo.get('velocidad') or 1)
         if b['inicio_min'] - 0.05 <= t <= b['inicio_min'] + (z - a) / v + 0.05:
-            return round(a + (t - b['inicio_min']) * v, 2)
+            if z <= a or not mo.get('datos') or not 0 <= t - b['inicio_min'] <= (z - a) / v:
+                return round(a + (t - b['inicio_min']) * v, 2)
+            return round(pasos_clave.en_grabacion(mo, t - b['inicio_min']), 2)
     return None
 
 

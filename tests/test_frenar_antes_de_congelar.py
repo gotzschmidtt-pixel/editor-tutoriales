@@ -98,7 +98,8 @@ try:
     ok(r['L10']['montaje']['velocidad'] <= 2.0, f"un paso de configuración no pasa de ×2: {r['L10']['montaje']}")
     ok(r['L11']['montaje']['velocidad'] <= 1.5, f"nunca debería subir una velocidad: {r['L11']['montaje']}")
     ok(voz.tope_velocidad({'cara': True}) == 1.0 and voz.tope_velocidad({'importante': True}) == 1.0
-       and voz.tope_velocidad({'critico': True}) == 1.5 and voz.tope_velocidad({'paso': True}) == 2.0, 'topes de fabian')
+       and voz.tope_velocidad({'critico': True}) == 1.0 and voz.tope_velocidad({'paso': True}) == 2.0,
+       'topes de fabian (03/11/2026: un paso clave ya no se acelera, antes ×1,5)')
 
     # 6. ia.revisar con la voz estimada deja el bloque igual que ajustar_guion con la voz real
     d = os.path.join(tmp, 'f')

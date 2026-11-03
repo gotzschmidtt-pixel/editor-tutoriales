@@ -1,7 +1,8 @@
 """Prueba rápida de «Alinear cada frase con su pantalla» dentro de «▶ Hacer todo» (03/11/2026). Sin internet y sin gastar
 nada: el lector de texto (OCR) va simulado sobre un video sintético de colores, y tus ajustes y proyectos no se tocan
 (todo va a una carpeta temporal).
-- alinear.ajustar respeta los topes de fabian: ×1 con su cara (y nada en un ⭐), ×1,5 en los pasos clave, ×2 en los de
+- alinear.ajustar respeta los topes de fabian: ×1 con su cara (y nada en un ⭐), ×1 en los pasos clave (03/11/2026, antes
+  ×1,5: el dato nunca acelerado), ×2 en los de
   configuración, ×6 en lo demás, y nunca pisa el tramo del bloque vecino;
 - alinear.py de punta a punta: deja guion.json.antes_alinear, marca "alineado" en los bloques que corrió, no toca los del
   gancho, vuelve a leer la pantalla cada 0,5 s solo cerca de las frases dudosas, y con --solo-revisar no cambia nada;
@@ -36,8 +37,8 @@ try:
     # 1) los topes, con dos frases cuya pantalla está mucho más adelante (antes: ×4,29 a ×6 y 12 s estirados a 45 s)
     rev = [('frase uno', 1.0, 101.0, 'uno', 100.0), ('frase dos', 6.0, 106.0, 'dos', 130.0)]
     lo, hi = 95.0, 140.0
-    for nombre, extra, tipo, tope in (('cara', {'cara': True}, None, 1.0), ('crítico', {'critico': True}, None, 1.5),
-                                      ('crítico (tipo)', {}, 'critico', 1.5), ('configuración', {'paso': True}, None, 2.0),
+    for nombre, extra, tipo, tope in (('cara', {'cara': True}, None, 1.0), ('crítico', {'critico': True}, None, 1.0),
+                                      ('crítico (tipo)', {}, 'critico', 1.0), ('configuración', {'paso': True}, None, 2.0),
                                       ('normal', {}, None, 6.0)):
         b = {'id': 'L09', 'montaje': {'modo': 'lento', 'src_inicio': 100.0, 'src_fin': 112.0, 'velocidad': 1.0, **extra}}
         if tipo:
@@ -58,7 +59,7 @@ try:
     ok(alinear.ajustar(gancho, rev, lo, hi) is None, 'un bloque del gancho no se toca')
     ok(alinear.TOLERA == (1.0, 1.5), f'la tolerancia es de 1 s antes y 1,5 s después: {alinear.TOLERA}')
     ok(voz.tope_velocidad({'paso': True}) == 2.0 and voz.tope_velocidad({'cara': True, 'paso': True}) == 1.0
-       and voz.tope_velocidad({'critico': True}) == 1.5 and voz.tope_velocidad({}) == voz.VEL_MAX,
+       and voz.tope_velocidad({'critico': True}) == 1.0 and voz.tope_velocidad({}) == voz.VEL_MAX,
        'voz.tope_velocidad debe tener los topes de fabian')
 
     # 2) de punta a punta: un video de 70 s con 7 pantallas (cada color, un texto) y el OCR simulado
