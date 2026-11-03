@@ -103,8 +103,11 @@ def relleno(n, fps):
     """Si un pedazo sale corto, repite su último cuadro hasta los n que tiene que tener (-frames:v corta ahí): nunca falta
     uno. Sin un tope fijo: con 2 s, un tramo que pasaba 5 s del final de la grabación (o una grabación de pantalla del
     teléfono, que no guarda cuadros mientras la pantalla está quieta) dejaba los bloques siguientes 3 s antes de su voz
-    (revisión 2 de la mejora 1)."""
-    return f'tpad=stop_mode=clone:stop_duration={n / fps + 1:.3f}'
+    (revisión 2 de la mejora 1).
+    El trim de después cierra el filtro justo en el cuadro n: así el codificador recibe un final limpio y no lo corta
+    -frames:v a mitad del relleno, que con la gráfica Intel (h264_qsv) a veces fallaba («Invalid data found», 03/11/2026)
+    y el tramo se repetía con el procesador."""
+    return f'tpad=stop_mode=clone:stop_duration={n / fps + 1:.3f},trim=end_frame={n}'
 
 
 def largo_tramo(m):
