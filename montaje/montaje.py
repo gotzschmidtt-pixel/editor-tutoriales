@@ -314,10 +314,13 @@ def main():
     crf = '20' if final else '26'
     FPS = cuadros_por_segundo(a.original)
     # framerate (no fps): en un tramo acelerado o lento, fps se salta cuadros de forma despareja (2, 2, 3, 2…) y el
-    # movimiento tiembla; framerate arma cada cuadro en su momento exacto
-    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps={FPS},format=yuv420p"
-    # en la pausa (más lenta que el original) «framerate» mezcla cuadros vecinos y aparecen manos fantasma: ahí va «fps»
-    out_pausa = out.replace(f'framerate=fps={FPS}', f'fps={FPS}')
+    # movimiento tiembla; framerate arma cada cuadro en su momento exacto.
+    # El «fps» de después no cambia nada en un tramo parejo, pero rellena los huecos de una grabación de cuadros variables
+    # (VFR): con ffmpeg 9, framerate ya no los rellena y el pedazo saltaba ~1,4 s, y todo lo de después se corría
+    # (laptop de fabian, ffmpeg 9.0.2 con Intel Quick Sync, 03/11/2026)
+    out = f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:(ow-iw)/2:(oh-ih)/2,framerate=fps={FPS},fps={FPS},format=yuv420p"
+    # en la pausa (más lenta que el original) «framerate» mezcla cuadros vecinos y aparecen manos fantasma: ahí va solo «fps»
+    out_pausa = out.replace(f'framerate=fps={FPS},', '')
     fuente = next((f for f in ('C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if os.path.exists(f)), None)
 
     def rotulo(txt):
