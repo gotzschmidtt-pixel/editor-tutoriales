@@ -195,6 +195,8 @@ def avance(partes, tmp, destino, voces=()):
     """Une lo que va hecho en un video que la app puede reproducir, con la voz de esos bloques encima
     (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
     se intenta en el bloque siguiente."""
+    if not partes:  # el primer bloque no tenía sitio (menos de un cuadro): todavía no hay nada que ver. Antes ffmpeg escribía
+        return      # «No files to concat… Error opening input file avance.txt» en el registro del paso (revisión 3 de la mejora 1)
     lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
     with open(lista, 'w', encoding='utf-8') as fh:
         fh.writelines(f"file '{p}'\n" for p in partes)

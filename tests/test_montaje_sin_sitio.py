@@ -8,6 +8,8 @@
 2) Los bloques normales siguen igual: cada uno en su cuadro y el video dura lo del guion.
 3) El aviso rojo del montaje (avisos_montaje.json) se borra con su video en «🔁 Rehacer video» y en «▶ Hacer todo»
    (app.VIDEOS_GENERADOS): antes quedaba a la vista sin video.
+4) Si el primer bloque no tiene sitio, el registro del paso no trae errores de ffmpeg («No files to concat… avance.txt»):
+   la vista en vivo espera al primer bloque que pone algo.
 Sin internet y sin gastar nada: un video sintético en una carpeta temporal (tus proyectos no se tocan).
 Uso: python tests/test_montaje_sin_sitio.py   (sale con 1 si algo falla)
 """
@@ -144,6 +146,15 @@ try:
                      and any(getattr(t, 'id', '') == 'VIDEOS_GENERADOS' for t in n.targets))
     ok(montaje.AVISOS_MONTAJE in generados and '1_montaje.mp4' in generados,
        f'3) {montaje.AVISOS_MONTAJE} no se borra con su video (VIDEOS_GENERADOS): {generados}')
+
+    # 4) el primer bloque sin sitio: el registro del paso (como lo corre la app) no trae errores de ffmpeg de la vista en vivo
+    bl = tiempos([bloque('A01', 'imagen', pausa=0.0, imagen=img), bloque('A02', 'lento', 1.0, 3.0)])
+    json.dump({'bloques': bl}, open(os.path.join(d, 'guion.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, 'montaje', 'montaje.py'), '--original', 'original.mp4', '--guion', 'guion.json',
+                        '--salida', '1_montaje.mp4', '--calidad', '360'], cwd=d, capture_output=True, text=True)
+    ok(r.returncode == 0, f'4) el montaje falló:\n{r.stdout}\n{r.stderr}')
+    ok('avance.txt' not in r.stderr and 'No files to concat' not in r.stderr,
+       f'4) con el primer bloque sin sitio, ffmpeg escribe errores en el registro:\n{r.stderr}')
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
