@@ -146,7 +146,7 @@ txt = 'toca el play'
 json.dump({'characters': list(txt), 'character_start_times_seconds': [i * 0.05 for i in range(len(txt))],
            'character_end_times_seconds': [i * 0.05 + 0.05 for i in range(len(txt))]}, open(os.path.join(vid, 'B1.align.json'), 'w'))
 json.dump({'bloques': [{'id': 'B1', 'texto': txt, 'inicio_min': 0.5}]}, open(os.path.join(d, 'guion_play.json'), 'w'))
-subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=1080x1920:r=30:d=4', '-c:v', 'libx264',
+subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=1080x1920:r=30:d=7', '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p', os.path.join(d, 'negro.mp4')], check=True)
 subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', os.path.join(d, 'negro.mp4'), '--guion',
                 os.path.join(d, 'guion_play.json'), '--voz', vid, '--logos', lib, '--salida', os.path.join(d, 'con_play.mp4'),
@@ -158,6 +158,9 @@ ys, xs = np.nonzero((f[:, :, 2] > 180) & (f[:, :, 1] < 80))
 assert ok and len(ys), 'el play no salió'
 assert 1920 * 0.76 < ys.mean() < 1920 * 0.92 and 1080 * 0.12 < xs.mean() < 1080 * 0.36, (ys.mean(), xs.mean())  # abajo a la izquierda
 assert 1920 * 0.09 < ys.max() - ys.min() < 1920 * 0.13, ys.max() - ys.min()  # con su alto propio (0,11), no el 0,30 de los logos
+cap.set(cv2.CAP_PROP_POS_MSEC, 6700)
+ok, f = cap.read()
+assert ok and ((f[:, :, 2] > 180) & (f[:, :, 1] < 80)).sum() > 1000  # el play del cierre se queda hasta el final, no 2,8 s
 
 # 6. el cierre: las flechas que caerían debajo de la tarjeta de WhatsApp no se dibujan
 frases_t = [(0.1, [(0.0, 0.4, 'Paso'), (0.5, 0.9, 'uno.')]),

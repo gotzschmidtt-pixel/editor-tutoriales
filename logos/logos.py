@@ -23,6 +23,7 @@ NO_REPETIR = 30.0
 ALTO = 0.5        # alto del logo, en parte del alto del video (grande, como pop-up en el centro)
 ALTO_ANCHO = 0.26 # alto de las insignias anchas (marcas y webs)
 MINIMO = 0.35     # menos que esto no se alcanza a ver: ese logo se salta
+AL_FINAL = 8.0    # un logo con lugar propio («pos_short», el play) nombrado en los últimos segundos se queda hasta el final
 # las TARJETAS (la de soporte por WhatsApp con los números) no son un logo: llevan texto que hay que leer. fabian, 02/11/2026:
 # «deberíamos tener tarjetas individuales tanto para Short y video largo, noto que están muy pequeñas para ambos». Cada
 # formato tiene su tamaño (y el Short puede tener su propio dibujo, "archivo_short" en logos.json).
@@ -250,6 +251,9 @@ def main():
         hasta = min(total - 0.1, t + queda, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
         if tarjeta:
             hasta = fin_tarjeta(t, hasta, dichas)
+        pos = posicion(l, a.formato)
+        if pos and k + 1 == len(uno) and total - t <= AL_FINAL:
+            hasta = total - 0.1  # el play del cierre se queda hasta el final con la flecha que le apunta (Short 1 del Honor: se iba 2,5 s antes)
         if hasta - t < MINIMO:
             continue
         dur = hasta - t
@@ -258,7 +262,6 @@ def main():
         alto = round(H * (ALTO_ANCHO * a.alto / ALTO if ancho_rel > 1.3 else a.alto)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
         centro_x, centro_y = 0.5, a.centro_y
-        pos = posicion(l, a.formato)
         if tarjeta:
             ancho, alto = medida_tarjeta(l, a.formato, W, H, ancho_rel)
             centro_y = TARJETA[a.formato]['centro_y']
