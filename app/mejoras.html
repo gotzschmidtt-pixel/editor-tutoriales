@@ -171,7 +171,7 @@
     <p class="aviso">Del mismo video, de 2 a 5 Shorts con pasos distintos (ninguno repite tomas), cada uno con un título sugerido y
     el día para publicarlo, para llevar gente al video largo. Usa las voces que ya están hechas: no gasta créditos.</p>
     <div class="fila"><label>Cuántos <select id="shCant"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
-      <label>Duración <select id="shDur"><option value="30">30 s</option><option value="45" selected>45 s</option><option value="60">60 s</option><option value="90">90 s</option></select></label>
+      <label>Duración <select id="shDur"><option value="30">30 s</option><option value="45">45 s</option><option value="60" selected>60 s</option><option value="90">90 s</option></select></label>
       <label>Primero el <input type="date" id="shDesde"></label>
       <button class="principal" onclick="correr('m_shorts', {cantidad: +$('#shCant').value, duracion: +$('#shDur').value, desde: $('#shDesde').value}, '#shMsg', 'Armando los Shorts (unos minutos cada uno)…')">📱 Hacer los Shorts</button>
       <span class="msg" id="shMsg"></span></div>

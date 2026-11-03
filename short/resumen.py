@@ -12,7 +12,7 @@ Pasos (nada gasta hasta que fabian aprueba):
   3. voz(): solo con confirmar=True (el SI de fabian): voz Mauricio en voz_short/S<n>F<k>.mp3.
   4. armar(): gratis. Cada frase con sus tomas en planos de ≤ 4,5 s (la ventana del programa con zoom guiado si hay
      short_encuadres.json), subtítulos estilo C +50 %, música fija, sin difuminados ni portada. Deja SHORT_RESUMEN_<n>.mp4 y
-     shorts_resumen_textos.txt (WhatsApp primero, hashtags y comentario fijado).
+     shorts_resumen_textos.txt (una línea del video y enseguida el WhatsApp, hashtags y comentario fijado).
 """
 import json, math, os, re, shutil, subprocess, sys, tempfile
 
@@ -134,7 +134,7 @@ Reglas obligatorias de fabian:
 - No inventes datos: usa solo lo que dice el guion del video largo.
 Para cada frase da las tomas del grabado original (segundos [desde, hasta], 3-5 s cada una) que muestran EXACTAMENTE lo que dice,
 usando los segundos del guion (src) y del mapa de pantallas.
-Además, para cada Short: título (máx. 70 letras, sin emojis, sin < > ni comillas) y una descripción de 1-2 frases, en es, en y pt.
+Además, para cada Short: título (máx. 70 letras, sin emojis, sin < > ni comillas) y una descripción de 1-2 frases en una sola línea que diga de qué trata el video (la app pone el WhatsApp justo debajo), en es, en y pt.
 {reglas_titulo.para_ia(_marca(d), reglas_titulo.texto_proyecto(d))}
 GUION DEL VIDEO LARGO: {json.dumps(bloques, ensure_ascii=False)}
 MAPA DE PANTALLAS (segundo, lo que se lee): {json.dumps(mapa[:150], ensure_ascii=False)}
@@ -320,8 +320,11 @@ def armar(d, cuales=(1, 2, 3)):
                            '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
                           check=True, cwd=d)
             short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
+            # el último segundo con la miniatura del video largo, solo si fabian la aprobó (03/11/2026); va dentro de los 2 s
+            # de cola del cierre, sin tapar el play ni su flecha. Si la última frase no es el cierre, se agrega 1 s.
+            mini = short.poner_miniatura_final(d, os.path.join(d, salida), alargar=not LLAMADA.search(tomas[-1]['texto']))
             hechos.append({'archivo': salida, 'duracion': round(short.duracion(os.path.join(d, salida)), 1),
-                           'revision': _revisar(d, salida, ass)})
+                           'miniatura_final': os.path.basename(mini) if mini else None, 'revision': _revisar(d, salida, ass)})
         finally:  # los tramos de cada Short pesan cientos de MB: no quedan en %TEMP% (con varias pruebas se llenaba el disco)
             shutil.rmtree(tmp, ignore_errors=True)
     textos(d, r)
@@ -340,7 +343,8 @@ def _revisar(d, salida, ass):
 
 
 def textos(d, r=None):
-    """Títulos y descripciones ES/EN/PT de los Shorts: WhatsApp primero, cierre al tutorial, hashtags y comentario fijado."""
+    """Títulos y descripciones ES/EN/PT de los Shorts: arriba la línea del video y enseguida el WhatsApp (fabian, 03/11/2026),
+    después el cierre al tutorial, hashtags y comentario fijado."""
     import youtube
     r = r or leer(d)
     modelo = re.sub(r'\W', '', _modelo(d).replace('Honor', '')) or 'Honor'
@@ -381,7 +385,13 @@ def _fondo(d, que, fn):
 def get(h, ruta, q, d):
     if ruta == '/api/shorts_resumen/estado':
         r = leer(d)
+        try:  # la miniatura que sale 1 s al final (03/11/2026); None: el Short queda como siempre
+            import short
+            mini = short.miniatura_aprobada(d)
+        except Exception:
+            mini = None
         return h.responder({'guion': r, 'costo': costo(r) if r else None, 'trabajo': ESTADO.get(d, {}),
+                            'miniatura_final': os.path.basename(mini) if mini else '',
                             'hechos': sorted(f for f in os.listdir(d) if f.startswith('SHORT_RESUMEN_') and f.endswith('.mp4'))})
     return h.error('No existe.')
 

@@ -52,21 +52,55 @@ def signos_es(texto):
     return re.sub(r'((?:[^?!.:|\n]|(?<=\d)\.(?=\d))+)([?!])', arreglar, texto)
 
 
+def _es_contacto(parrafo):
+    """Un pedazo del bloque de contacto (sus enlaces de WhatsApp o sus rótulos 🌐 📞 🌎)."""
+    p = parrafo.strip()
+    return 'wa.me/' in p or 'whatsapp.com' in p or p.startswith(('🌐', '📞', '🌎'))
+
+
 def con_capitulos(desc, capitulos_texto):
     """Regla de fabian: la descripción SIEMPRE lleva los capítulos. Si ya los tiene (una línea «0:00 …»), no se repiten;
-    si no, van después del primer párrafo de texto (debajo del bloque de WhatsApp)."""
+    si no, van después del primer párrafo que sigue al bloque de WhatsApp (03/11/2026: arriba va la línea del video y
+    enseguida el contacto; antes los capítulos caían dentro del bloque, entre «📞 Para más detalles…» y los soportes)."""
     desc, cap = (desc or '').strip(), (capitulos_texto or '').strip()
     if not cap or re.search(r'(?m)^\s*0:00\b', desc):
         return desc
     partes = desc.split('\n\n')
-    i = next((k for k, p in enumerate(partes) if 'wa.me/' not in p and 'whatsapp.com' not in p and p.strip()), len(partes) - 1)
+    fin = next((k for k, p in enumerate(partes) if _es_contacto(p)), None)
+    if fin is None:
+        fin = -1  # sin contacto (noticias): después del primer párrafo, como siempre
+    else:
+        while fin + 1 < len(partes) and _es_contacto(partes[fin + 1]):
+            fin += 1
+    i = next((k for k in range(fin + 1, len(partes)) if partes[k].strip()), len(partes) - 1)
     return '\n\n'.join(partes[:i + 1] + ['⏱️ CAPÍTULOS\n' + cap] + partes[i + 1:]).strip()
 
 
+LINEA_MAX = 150  # más o menos lo que YouTube muestra de la descripción antes de «…más»
+
+
+def linea_del_video(desc):
+    """(la línea que dice de qué trata el video, el resto): la primera línea de la descripción. Si es un párrafo entero en
+    una sola línea, solo su primera frase. Si empieza con un enlace, un hashtag, un capítulo o el contacto, no hay línea
+    del video: ('', desc). (fabian, 03/11/2026)"""
+    desc = (desc or '').strip()
+    primera, _, resto = desc.partition('\n')
+    primera = primera.strip()
+    if not primera or re.search(r'https?://', primera) or _es_contacto(primera) or primera.startswith(('#', '⏱')) \
+            or re.match(r'\d+:\d\d\b', primera):
+        return '', desc
+    if len(primera) > LINEA_MAX:
+        m = re.match(r'(.{20,%d}?[.!?])\s+(\S.*)$' % LINEA_MAX, primera)
+        if m:
+            primera, resto = m.group(1), m.group(2) + ('\n' + resto if resto else '')
+    return primera, resto.strip()
+
+
 def con_contacto(desc, idioma='es'):
-    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, LO
-    PRIMERO de todo (regla de fabian: va en la primera línea, antes de cualquier otro texto). Si ya estaba en otro lugar,
-    se mueve arriba; nunca se repite. Los videos de noticias no lo llevan: eso lo decide quien llama."""
+    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios. Regla
+    nueva de fabian (03/11/2026, «¿Una línea sobre el video antes de tu bloque de contacto? SÍ»): primero UNA línea que dice
+    de qué trata el video (la primera de la descripción) y enseguida el bloque de contacto; después el resto. Si el bloque
+    ya estaba en otro lugar, se mueve ahí; nunca se repite. Los videos de noticias no lo llevan: eso lo decide quien llama."""
     try:
         bloques = json.load(open(CONTACTO, encoding='utf-8'))
     except (OSError, ValueError):
@@ -75,12 +109,13 @@ def con_contacto(desc, idioma='es'):
     desc = (desc or '').strip()
     if not bloque:
         return desc
-    for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo arriba
+    for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo debajo de la línea
         b = b.strip() if isinstance(b, str) else ''
         if b.startswith('🌐') and b in desc:
             desc = desc.replace(b, '')
     desc = re.sub(r'\n{3,}', '\n\n', desc).strip()
-    return (bloque + '\n\n' + desc).strip()
+    linea, resto = linea_del_video(desc)
+    return '\n\n'.join(x for x in (linea, bloque, resto) if x).strip()
 
 
 def config(aj):

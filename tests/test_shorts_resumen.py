@@ -26,6 +26,9 @@ try:
 except PermissionError:
     pass
 t = resumen.textos(d)
-assert t.index('wa.me/573186888787') < t.index('Uno.') and '<' not in t and '📌' in t
+# la descripción (fabian, 03/11/2026): primero la línea del video y enseguida el WhatsApp
+assert 'DESCRIPCIÓN:\nUno.\n\n🌐 WhatsApp Grupo:' in t and t.index('Uno.') < t.index('wa.me/573186888787'), t[:400]
+assert 'DESCRIPCIÓN:\nOne.\n\n🌐 WhatsApp Group:' in t and 'DESCRIPCIÓN:\nUm.\n\n🌐 Grupo no WhatsApp:' in t
+assert '<' not in t and '📌' in t
 shutil.rmtree(d, ignore_errors=True)
 print('ok: 3 Shorts resumen (sin gastar)')

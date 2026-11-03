@@ -374,6 +374,11 @@
         <span class="aviso" id="idQuien"></span>
         <span class="msg" id="idVerMsg"></span>
       </div>
+      <div class="fila" style="align-items:center; margin-top:8px">
+        <button onclick="idPista()" title="La voz que ya tiene la versión, sobre los tiempos de tu FINAL.mp4 en español, con tu música debajo. No genera voz ni gasta ElevenLabs, y no sube nada">🎧 Preparar la pista de audio para YouTube Studio (gratis)</button>
+        <span class="aviso">Para el MISMO video: la subes tú en Studio → Idiomas → Agregar idioma → Audio (la app no sube pistas).</span>
+        <span class="msg" id="idPistaMsg"></span>
+      </div>
       <details style="margin-top:14px"><summary><b>🏷 Solo las etiquetas en otro idioma</b> (avanzado: el video sigue con la voz en español)</summary>
         <p class="aviso">Cada etiqueta (las de la IA y las de tus capturas) con su traducción. Sirve solo si quieres el video en español
         con las etiquetas en otro idioma. Vacío = va el texto original.</p>
@@ -569,7 +574,9 @@
       <p class="aviso">Como «Auto Resaltar» + «Reencuadre automático» de Filmora. La app elige lo más importante del video
       (el gancho, tus ⭐ cortes importantes, las acciones y el resultado, sin la promoción), lo pone vertical siguiendo tu cara
       o lo que pasa en la pantalla (con zoom suave y nunca acelerado), con la misma voz del video, subtítulos grandes y tu
-      música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).</p>
+      música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).
+      🖼 Si aprobaste la miniatura del video largo en «▶️ YouTube» («✅ Apruebo esta miniatura»), el Short termina con 1 s
+      más con ella; si no, queda como siempre (fabian, 03/11/2026).</p>
       <div class="fila" style="align-items:center">
         <label>Duración <select id="shortDur" onchange="$('#shortSegL').hidden = this.value !== 'otro'; if (this.value === 'otro') $('#shortSeg').focus()">
           <option value="15">15 s</option><option value="30">30 s</option><option value="45">45 s</option>
@@ -2598,6 +2605,19 @@ async function idVersion() {
       + (r.sin_traducir.length ? ` · sin traducir: ${esc(r.sin_traducir.join(', '))}` : '')
       + ` · <a href="/guion?p=${q(r.proyecto)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="/?p=${q(r.proyecto)}" target="_blank">🎬 Abrir el proyecto</a>`;
   } catch (e) { $('#idVerMsg').className = 'msg err'; $('#idVerMsg').textContent = e.message; }
+}
+// 🎧 la pista de audio en otro idioma para YouTube Studio (fabian, 03/11/2026: «SÍ, PERO CON MI CONFIRMACIÓN»): gratis,
+// con la voz que la versión ya tiene (se generó allá con tu SI); la app no la sube
+async function idPista() {
+  const nombre = $('#idLang').selectedOptions[0]?.textContent.replace(' ✓', '') || ID_LANG;
+  if (!confirm(`¿Preparo la pista de audio en ${nombre} para «${P}»?\n\nUsa la voz que YA está hecha en la versión (no genera voz ni gasta ElevenLabs) y la pone en los tiempos de tu FINAL.mp4 en español, con tu música debajo. No sube nada: la subes tú en YouTube Studio → Idiomas → Agregar idioma → Audio.`)) return;
+  const m = $('#idPistaMsg'); m.className = 'msg'; m.textContent = '⏳ Armando la pista…';
+  try {
+    const r = await api(`/api/pista_idioma?p=${q(P)}&lang=${q(ID_LANG)}`, {method: 'POST', body: '{}'});
+    m.className = 'msg ok';
+    m.innerHTML = `✓ Lista: <a href="/archivo?p=${q(P)}&f=${q(r.archivo)}" target="_blank">${esc(r.archivo)}</a> (${r.duracion} s, ${r.bloques} bloques)<br>`
+      + r.avisos.map(esc).join('<br>');
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function idUsar(lang) {
   lang = lang || ID_LANG;

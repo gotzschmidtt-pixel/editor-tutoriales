@@ -51,6 +51,7 @@ import mejoras  # noqa: E402  «🎛 Audio e imagen»: pronunciación, sonidos, 
 sys.path.insert(0, os.path.join(RAIZ, 'miniatura'))
 sys.path.insert(0, os.path.join(RAIZ, 'short'))
 import resumen as shorts_resumen  # noqa: E402  «📱 3 Shorts resumen»: 3 Shorts con el proceso completo y ganchos distintos
+import short as short_mod  # noqa: E402  el Short: la miniatura aprobada que sale 1 s al final (03/11/2026)
 import referencias as miniref  # noqa: E402  «🖼️ Miniaturas de referencia»: subes miniaturas que te gustan, la IA saca la fórmula y GPT genera las tuyas
 sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
 import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
@@ -58,6 +59,7 @@ import respaldo  # noqa: E402  copia de los finales antes de «🔁 Rehacer vide
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
+import pista_idioma  # noqa: E402  «🎧 Pista de audio en inglés» para YouTube Studio (03/11/2026): gratis, no sube nada
 
 
 def estado_subs(d):
@@ -89,7 +91,8 @@ def idioma_video(d):
 
 def yt_contacto(d, desc):
     """El bloque de WhatsApp de fabian en la descripción, solo en videos de desbloqueo/FRP/servicios (los que son de una
-    marca de teléfono). Las noticias (Movistar→Tigo…) no llevan publicidad de desbloqueo."""
+    marca de teléfono), justo debajo de la primera línea, la que dice de qué trata el video (fabian, 03/11/2026).
+    Las noticias (Movistar→Tigo…) no llevan publicidad de desbloqueo."""
     try:
         if not conocimiento.marca_de_proyecto(d):
             return desc
@@ -1834,6 +1837,17 @@ def yt_elegir_miniatura(d, archivo):
     json.dump({'archivo': archivo}, open(os.path.join(d, 'youtube', 'miniatura.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 
+def yt_aprobar_miniatura(d, archivo, si=True):
+    """«✅ Apruebo esta miniatura» (fabian, 03/11/2026: el segundo con la miniatura al final de los Shorts, «SOLO SI APRUEBO LA
+    MINIATURA»). Queda en youtube/miniatura.json con la fecha del archivo (short.miniatura_aprobada): si la miniatura se
+    rehace o eliges otra, hay que volver a aprobarla. Aprobarla también la deja elegida para YouTube."""
+    datos = {'archivo': archivo}
+    if si:
+        datos.update(aprobada=True, aprobada_mtime=os.path.getmtime(os.path.join(d, archivo)), aprobada_el=time.strftime('%Y-%m-%d %H:%M'))
+    os.makedirs(os.path.join(d, 'youtube'), exist_ok=True)
+    json.dump(datos, open(os.path.join(d, 'youtube', 'miniatura.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+
+
 def yt_investigacion(d):
     """Lo más útil de «🔎 Investigar el tema» para la IA que propone títulos (si ya se investigó)."""
     try:
@@ -2553,6 +2567,13 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.error('Esa miniatura no está en el proyecto.')
             yt_elegir_miniatura(d, archivo)
             return self.responder({'ok': True})
+        if ruta == '/api/youtube/miniatura_aprobar':  # ✅ la que sale 1 s al final de los Shorts (fabian, 03/11/2026)
+            pedido = json.loads(self.rfile.read(largo) or b'{}') or {}
+            archivo = str(pedido.get('archivo') or '')
+            if archivo not in [os.path.basename(f) for f in yt_miniaturas(d)]:
+                return self.error('Esa miniatura no está en el proyecto.')
+            yt_aprobar_miniatura(d, archivo, pedido.get('aprobada') is True)
+            return self.responder({'ok': True})
         if ruta == '/api/youtube/publicar':
             if not existe(d, 'FINAL.mp4'):
                 return self.error('Todavía no hay FINAL.mp4: termina el video primero.')
@@ -2662,9 +2683,11 @@ class Manejador(BaseHTTPRequestHandler):
                 d = carpeta(q['p'])
                 leer_yt = lambda f: json.load(open(os.path.join(d, 'youtube', f), encoding='utf-8')) if existe(d, os.path.join('youtube', f)) else None
                 mini = yt_miniatura(d)
+                aprobada = short_mod.miniatura_aprobada(d)  # la que sale 1 s al final de los Shorts (03/11/2026)
                 return self.responder({'final': existe(d, 'FINAL.mp4'), 'metadatos': leer_yt('metadatos.json'), 'publicado': leer_yt('publicado.json'),
                                        'aprender': leer_yt('aprender.json'), 'subida': YT.get(q['p']), 'investigacion': leer_yt('investigacion.json'),
                                        'miniatura': os.path.basename(mini) if mini else '',
+                                       'miniatura_aprobada': os.path.basename(aprobada) if aprobada else '',
                                        'miniaturas': [os.path.basename(f) for f in yt_miniaturas(d)][:40]})
             if ruta == '/api/biblioteca':
                 sys.path.insert(0, m('conocimiento'))
@@ -4041,6 +4064,26 @@ class Manejador(BaseHTTPRequestHandler):
                 res = json.loads(ultima)
                 voz = (leer_ajustes().get('voces') or {}).get(lang) or VOCES_DEFECTO.get(lang, '')
                 return self.responder({**res, 'voz': NOMBRE_VOZ.get(voz, voz)})
+            if ruta == '/api/pista_idioma':  # 🎧 la pista de audio en otro idioma para YouTube Studio (fabian, 03/11/2026)
+                # gratis: usa la voz que ya tiene la versión (hecha con su SI); no genera voz ni sube nada a YouTube
+                d = carpeta(q['p'])
+                lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]
+                if not lang or lang == 'es':
+                    return self.error('Elige el idioma de la pista.')
+                if idioma_video(d) != 'es':
+                    return self.error('Prepárala desde el proyecto original en español: la pista va sobre su FINAL.mp4.')
+                if not existe(d, 'FINAL.mp4'):
+                    return self.error('Todavía no hay FINAL.mp4 en español: termina el video primero.')
+                vol = (json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')) if existe(d, 'edicion.json') else {}).get('musica_volumen')
+                musica = MUSICA_FIJA if os.path.exists(MUSICA_FIJA) else (os.path.join(d, 'musica.mp3') if existe(d, 'musica.mp3') else None)
+                try:
+                    r = pista_idioma.armar(d, lang, {b['id']: b['s'] for b in yt_bloques(d)}, duracion_original(d, 'FINAL.mp4'),
+                                           musica, pista_idioma.VOLUMEN_MUSICA if vol is None else min(max(float(vol), 0), 1))
+                except pista_idioma.FaltaVoz as e:
+                    return self.error(str(e))
+                except (SystemExit, subprocess.CalledProcessError, OSError, ValueError) as e:
+                    return self.error(f'No pude armar la pista: {e}')
+                return self.responder(r)
             if ruta == '/api/etiquetas_traducir':  # la IA de la app traduce lo que falta (un pedido corto, solo texto)
                 d = carpeta(q['p'])
                 lang = re.sub(r'[^a-z\-]', '', q.get('lang', '').lower())[:8]

@@ -86,7 +86,7 @@
         «Moto G Power 2024», no se toca). Si la IA se saltó una, la app la corrige y lo dice debajo del título.</p>
       <div id="titulos"></div>
       <input type="text" id="titulo" maxlength="100">
-      <label>Descripción</label><div id="descOpciones" class="fila"></div><textarea id="descripcion" style="min-height:10em"></textarea>
+      <label>Descripción <span class="ayuda">(03/11/2026: la primera línea dice de qué trata el video y justo debajo la app pone tu bloque de WhatsApp; en noticias no va)</span></label><div id="descOpciones" class="fila"></div><textarea id="descripcion" style="min-height:10em"></textarea>
       <label>Capítulos (van al final de la descripción; el primero en 0:00, al menos 3)</label><textarea id="capitulos"></textarea>
       <label>Aviso (va al final)</label><input type="text" id="advertencia">
       <label>Etiquetas (separadas por coma)</label><input type="text" id="etiquetas">
@@ -242,7 +242,11 @@ async function cargar() {
   if (r.investigacion && r.investigacion.modelo && !$('#modeloInv').value) $('#modeloInv').value = r.investigacion.modelo;
   // tus miniaturas del proyecto: tocas una y se ve en grande, y ahí eliges la que va a YouTube
   MINIS = r.miniaturas || []; MINI_ELEGIDA = r.miniatura || '';
-  $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca una para verla en grande y elegirla. Va a YouTube: <code>${esc(r.miniatura)}</code></p>
+  // ✅ la aprobada sale 1 s al final de cada Short; sin aprobar, los Shorts quedan como siempre (fabian, 03/11/2026)
+  const aprobada = r.miniatura && r.miniatura_aprobada === r.miniatura;
+  $('#miniInfo').innerHTML = (r.miniaturas || []).length ? `<p style="margin:4px 0">Toca una para verla en grande y elegirla. Va a YouTube: <code>${esc(r.miniatura)}</code>
+    ${aprobada ? `· ✅ <b>Aprobada</b>: sale 1 s al final de tus Shorts <button onclick="aprobarMini(false)">↺ Quitar aprobación</button>`
+      : `<button onclick="aprobarMini(true)" title="Solo la miniatura que apruebas sale 1 s al final de cada Short (arriba, sin tapar el play). Sin aprobar, el Short queda como siempre">✅ Apruebo esta miniatura (sale 1 s al final de los Shorts)</button>`}</p>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px; max-height:420px; overflow:auto">` +
     r.miniaturas.map(f => `<figure style="margin:0; cursor:pointer; border:3px solid ${f === r.miniatura ? '#38f28a' : 'transparent'}; border-radius:10px; padding:2px"
       onclick="verMini(${r.miniaturas.indexOf(f)})" title="${esc(f)}"><img src="/archivo?p=${q(P)}&f=${q(f)}" alt="" loading="lazy" style="width:100%; border-radius:8px; display:block">
@@ -323,6 +327,9 @@ $('#miniArchivo').onchange = async ev => {
 };
 async function elegirMini(f) {
   try { await api(`/api/youtube/miniatura_elegir?p=${q(P)}`, {method: 'POST', body: JSON.stringify({archivo: f})}); await cargar(); } catch (x) { alert(x.message); }
+}
+async function aprobarMini(si) {
+  try { await api(`/api/youtube/miniatura_aprobar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({archivo: MINI_ELEGIDA, aprobada: si})}); await cargar(); } catch (x) { alert(x.message); }
 }
 let MINIS = [], MINI_ELEGIDA = '', MINI_VER = -1;
 function verMini(k) {  // la miniatura en grande, con flechas (← →) y «✓ Usar esta» (pedido de fabian, 30/10/2026)

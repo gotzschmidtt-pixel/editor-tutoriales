@@ -6,7 +6,8 @@ pero cada Short toma bloques que los anteriores no usaron. El primero lleva el g
 propio paso. Deja SHORT_1.mp4, SHORT_2.mp4… y shorts.json con las tomas de cada uno, un título sugerido y el día para
 publicarlo (uno cada 2 días desde hoy, o desde --desde). No gasta créditos.
 
-Uso (desde la carpeta del proyecto): python varios.py --proyecto . --cantidad 3 --duracion 45 [--desde 2026-11-02]
+Uso (desde la carpeta del proyecto): python varios.py --proyecto . --cantidad 3 --duracion 60 [--desde 2026-11-02]
+Los Shorts siguen de ~60 s (fabian, 03/11/2026: «¿Un Short de 30-40 s? No por ahora»).
 """
 import argparse, datetime, json, os, re, shutil, sys
 
@@ -55,7 +56,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--proyecto', default='.')
     ap.add_argument('--cantidad', type=int, default=3)
-    ap.add_argument('--duracion', type=float, default=45)
+    ap.add_argument('--duracion', type=float, default=60)  # ~60 s como todos los Shorts (fabian, 03/11/2026; antes 45)
     ap.add_argument('--desde', help='fecha del primer Short (AAAA-MM-DD); por defecto, mañana')
     ap.add_argument('--cada', type=int, default=2, help='días entre un Short y el siguiente')
     a = ap.parse_args()

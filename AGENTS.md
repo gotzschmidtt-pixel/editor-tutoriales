@@ -166,6 +166,22 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   El play va ABAJO a la izquierda, junto al enlace ("pos_short": {"x": 0.24, "y": 0.84, "alto": 0.11} en logos.json; fabian
   03/11: «el ícono de play está arriba»). El cierre dura 2 s más (COLA_CIERRE) y en él no van flechas ni círculos; las que
   caerían debajo de la tarjeta de WhatsApp tampoco se dibujan.
+- **Descripción, Shorts y audio (fabian, 03/11/2026):**
+  - **Descripción**: primero UNA línea que dice de qué trata el video y enseguida el bloque de contacto (canal de WhatsApp
+    y soportes), en ES/EN/PT; después el resto y los capítulos (`youtube.con_contacto`, `con_capitulos`). Antes el contacto
+    iba en la primera línea. Las noticias siguen sin contacto. Prueba: `python tests/test_contacto_descripcion.py`.
+  - **Shorts de ~60 s** («¿Un Short de 30-40 s? No por ahora»): «📱 Short», «📱 3 Shorts resumen» y «📱 Varios Shorts» (que
+    estaba en 45 s). Prueba: `python tests/test_shorts_60s.py`.
+  - **Pista de audio en inglés, siempre con su confirmación**: «🌐 Idiomas» → «🎧 Preparar la pista de audio para YouTube
+    Studio» (`voz/pista_idioma.py`, gratis) deja `PISTA_AUDIO_EN.mp3`, del largo de FINAL.mp4, con la voz que ya tiene la
+    versión `NOMBRE_EN` (esa voz gasta ElevenLabs y solo se hace con su SI). La API de YouTube no sube pistas de audio: la
+    sube él en Studio → Idiomas → Agregar idioma → Audio. Nunca gastes ni subas nada sin su confirmación, cada vez.
+    Prueba: `python tests/test_pista_idioma.py`.
+  - **Miniatura al final de los Shorts, solo si la aprobó**: «▶️ YouTube» → «✅ Apruebo esta miniatura»
+    (`youtube/miniatura.json` con `"aprobada": true`). Entonces el último segundo de cada Short la muestra arriba al centro,
+    sin tapar el play de abajo a la izquierda ni su flecha (`short.poner_miniatura_final`: en los 3 Shorts resumen, dentro de
+    la cola del cierre, que sigue diciendo una de las 3 frases del play; en el Short normal, 1 s más). Sin aprobar, o si la
+    miniatura se rehízo o se eligió otra, el Short queda como siempre. Prueba: `python tests/test_short_miniatura_final.py`.
 - HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
   los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el

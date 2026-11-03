@@ -30,6 +30,7 @@ La IA escribe los guiones con la toma de cada frase; tú los corriges. La voz (E
 <button id="bVoz" class="gasta" onclick="hacerVoz()">🎙 Hacer la voz</button>
 <button id="bArmar" onclick="armar()">🎬 Armar los 3 Shorts (gratis)</button>
 <div class="estado" id="estado"></div>
+<div class="estado" id="miniFinal"></div>
 <div class="avisos" id="avisos"></div>
 <div id="guiones"></div>
 <div id="hechos"></div>
@@ -82,6 +83,10 @@ async function estado() {
   if (!G) { G = e.guion && e.guion.shorts ? e.guion : null; pintar(); }
   const t = e.trabajo || {};
   document.getElementById('estado').textContent = t.estado ? `Trabajo: ${t.estado} ${t.estado === 'error' ? '— ' + t.msg : ''}` : '';
+  // 1 s con la miniatura del video largo al final, solo si la aprobaste (fabian, 03/11/2026)
+  document.getElementById('miniFinal').textContent = e.miniatura_final
+    ? `🖼 Al final de cada Short: 1 s con tu miniatura aprobada (${e.miniatura_final}), sin tapar el play ni su flecha.`
+    : '🖼 Sin miniatura aprobada: los Shorts terminan como siempre. Para que salga 1 s al final, apruébala en ▶️ YouTube («✅ Apruebo esta miniatura»).';
   document.getElementById('hechos').innerHTML = (e.hechos || []).map(f =>
     `<div>🎬 <a target="_blank" href="/ver?ruta=${q('mis_proyectos/' + P + '/' + f)}">${f}</a></div>`).join('');
   if (t.estado === 'voz' || t.estado === 'armando') setTimeout(estado, 3000);

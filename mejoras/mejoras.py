@@ -88,7 +88,7 @@ def comandos(paso, d, op, py, ajustes):
         return [[py, m('revision', 'revisar_final.py'), '--proyecto', '.', '--ajustes', ajustes] + ([] if op.get('ia', True) else ['--sin-ia'])]
     if paso == 'm_shorts':
         c = [py, m('short', 'varios.py'), '--proyecto', '.', '--cantidad', str(min(max(int(op.get('cantidad') or 3), 2), 5)),
-             '--duracion', f"{min(max(float(op.get('duracion') or 45), 15), 180):g}"]
+             '--duracion', f"{min(max(float(op.get('duracion') or 60), 15), 180):g}"]  # ~60 s (fabian, 03/11/2026; antes 45)
         if re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(op.get('desde') or '')):
             c += ['--desde', op['desde']]
         return [c]

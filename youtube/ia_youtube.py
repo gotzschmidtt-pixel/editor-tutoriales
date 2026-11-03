@@ -23,6 +23,8 @@ webs): usa solo lo que está en el guion, la idea del video y el conocimiento de
 
 
 def metadatos(e):
+    # la descripción empieza con UNA línea del video y enseguida va el bloque de WhatsApp (fabian, 03/11/2026):
+    # youtube.con_contacto toma esa primera línea y pone el contacto debajo
     titulos = '\n'.join(f"- {v['titulo']} ({v['vistas']:,} vistas)".replace(',', '.') for v in e.get('mis_videos', [])[:40])
     return f"""Eres quien publica los videos de este canal de tutoriales en YouTube. {REGLAS}
 
@@ -52,10 +54,10 @@ CONOCIMIENTO DEL CANAL:
 Devuelve este JSON:
 {{"titulos": [{{"titulo": "...", "por_que": "en qué título exitoso se inspira"}}, ... 5 en total, de 100 letras o menos],
   "elegido": 0,
-  "descripcion": "2 a 4 párrafos: qué resuelve el video, para qué modelos/versiones (solo los que se nombran), qué hace falta, y las páginas con su link. Sin capítulos (los pone la app)",
+  "descripcion": "La PRIMERA línea, sola: una frase corta (máx. 150 letras) que dice de qué trata el video (la app pone el bloque de WhatsApp justo debajo; no lo escribas tú). Después, 2 a 4 párrafos: qué resuelve el video, para qué modelos/versiones (solo los que se nombran), qué hace falta, y las páginas con su link. Sin capítulos (los pone la app)",
   "etiquetas": ["15 a 25 etiquetas: marca, modelo, problema, método, año"],
   "capitulos": [{{"bloque": "L01", "titulo": "Qué necesitas"}}, ... entre 4 y 12, el primero el bloque inicial, cada uno donde empieza un paso nuevo],
-  "descripciones": ["otra versión de la descripción, con otro enfoque (más corta y directa)"],
+  "descripciones": ["otra versión de la descripción, con otro enfoque (más corta y directa), también con su primera línea sola sobre de qué trata el video"],
   "comentario": "el comentario que el autor fija: invita a comentar el modelo y la versión, recuerda el WhatsApp o la web si está en las páginas",
   "comentarios": ["otras 2 opciones de comentario fijado, distintas: una con pregunta para generar respuestas, otra con un dato útil"],
   "advertencia": "una frase si el video trata de quitar bloqueos o abrir el equipo: solo en equipos propios y bajo tu responsabilidad; vacío si no hace falta"}}"""
