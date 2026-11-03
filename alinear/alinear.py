@@ -22,6 +22,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import cv2  # noqa: E402
 
 PASO = 2.0       # un cuadro de OCR cada 2 s de la grabación
@@ -155,14 +156,17 @@ def revisar_bloque(idx, b, frases, lo, hi, mo=None):
     return out
 
 
-def ajustar(b, revision, lo, hi):
+def ajustar(b, revision, lo, hi, estrellas=(), pausas=()):
     """Corre inicio y velocidad del tramo para que las frases caigan donde está su pantalla. Devuelve el montaje nuevo o None.
     Respeta los topes de fabian (los mismos de la voz, voz.tope_velocidad) y no sale de lo..hi (lo que dejan libre los
     bloques vecinos). 03/11/2026: en la prueba, un paso de configuración y un bloque con su cara quedaban a ×4,29 y ×6, y un
-    tramo de 12 s se estiraba a 45 s."""
-    import voz
+    tramo de 12 s se estiraba a 45 s. `estrellas`: los «⭐ cortes importantes» (cortes_importantes.json); `pausas`: el
+    segundo de cada pausa sola («congelar») del guion."""
+    import importantes, voz
     mo = dict(b['montaje'])
     if mo.get('importante') or b.get('gancho'):  # «⭐ corte importante»: va entero y a ×1; el gancho (primer minuto) va aparte
+        return None
+    if importantes.toca(mo, estrellas):  # un ⭐ que el bloque muestra aunque no quedó marcado: tampoco se toca
         return None
     pts = [(t, donde if donde is not None else s) for _, t, s, _, donde in revision]
     if not any(donde is not None for *_, donde in revision):
@@ -184,6 +188,14 @@ def ajustar(b, revision, lo, hi):
     a, fin = max(lo, round(a, 1)), min(hi, round(fin, 1))  # el redondeo tampoco pisa a los vecinos
     if fin - a < 1:
         return None
+    # corrido no puede quedar encima de un ⭐ (va entero y a ×1): en la revisión del 03/11/2026 un tramo normal se corrió
+    # sobre un ⭐ que ningún bloque mostraba y lo dejó a ×5,33. Así no se toca y la frase queda como aviso
+    if importantes.toca(dict(mo, src_inicio=a, src_fin=fin), estrellas):
+        return None
+    # la pausa que repite un momento de este tramo tiene que seguir dentro: si no, después del tramo corrido se veía algo
+    # de antes, fuera de orden (revisión 03/11/2026)
+    if any(mo['src_inicio'] < p < mo['src_fin'] and not a <= p <= fin for p in pausas):
+        return None
     mo.update(src_inicio=a, src_fin=fin, velocidad=round(v, 2), alineado=True)
     if mo['modo'].startswith('lento'):
         mo['modo'], mo['congelar_s'] = 'lento+congelar', 0
@@ -196,7 +208,7 @@ def main():
     ap.add_argument('--guion', default='guion.json')
     ap.add_argument('--solo-revisar', action='store_true', help='no cambia el guion: solo dice qué frases no caen en su pantalla')
     a = ap.parse_args()
-    import ia, voz
+    import ia, importantes, voz
     d = os.path.abspath(a.proyecto)
     ruta = os.path.join(d, a.guion)
     g = json.load(open(ruta, encoding='utf-8'))
@@ -218,10 +230,20 @@ def main():
     bl = [b for b in todos if (b.get('montaje') or {}).get('modo', '').startswith('lento') and b['montaje'].get('src_fin')]
     orden = sorted(bl, key=lambda b: b['montaje']['src_inicio'])
     fin_video = max((k for k in idx if grueso(k)), default=max(idx))
+    # las pausas solas («congelar») también son vecinas: un tramo corrido por encima de una pausa que estaba fuera de él la
+    # dejaba mostrando algo de antes, fuera de orden (revisión 03/11/2026). Las que caen dentro de su tramo no son límite:
+    # repiten a propósito un momento de ese tramo, y ajustar() cuida que sigan dentro
+    pausas = [b['montaje']['src_inicio'] for b in todos if (b.get('montaje') or {}).get('modo') == 'congelar'
+              and isinstance(b['montaje'].get('src_inicio'), (int, float))]
+    estrellas = importantes.leer(d)  # «⭐ cortes importantes»: un tramo no se corre encima de ellos
 
     def limites(i):  # lo que dejan libre los bloques de al lado (se mira en el momento: el anterior pudo correrse)
-        return (orden[i - 1]['montaje']['src_fin'] if i else 0.0,
-                orden[i + 1]['montaje']['src_inicio'] if i + 1 < len(orden) else fin_video)
+        mo = orden[i]['montaje']
+        lo = orden[i - 1]['montaje']['src_fin'] if i else 0.0
+        # el último llega hasta el final de lo leído, o hasta donde ya llegaba (antes perdía hasta 2 s de su final)
+        hi = orden[i + 1]['montaje']['src_inicio'] if i + 1 < len(orden) else max(fin_video, mo['src_fin'])
+        return (max([lo] + [p for p in pausas if p <= mo['src_inicio']]),
+                min([hi] + [p for p in pausas if p >= mo['src_fin']]))
 
     gancho = [b['id'] for b in orden if id(b) in mios and b.get('gancho')]
     if gancho:
@@ -243,7 +265,7 @@ def main():
         malas = [r for r in rev if r[4] is not None]
         if not malas:
             continue
-        nuevo = ajustar(b, rev, lo, hi)
+        nuevo = ajustar(b, rev, lo, hi, estrellas, pausas)
         if nuevo:
             despues = [r for r in revisar_bloque(idx, b, frases, lo, hi, nuevo) if r[4] is not None]
             if len(despues) < len(malas):

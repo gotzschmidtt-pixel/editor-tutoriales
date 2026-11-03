@@ -638,9 +638,12 @@ def alinear_args(d, guion='guion.json'):
         return c
     aj['alinear_avisados'] = vistos + [nombre]
     tmp = AJUSTES + '.tmp'  # como en «⚙ Ajustes IA»: se escribe aparte y se cambia de una vez
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(aj, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, AJUSTES)
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(aj, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, AJUSTES)
+    except OSError:  # ajustes.json trabado (Windows, otro programa lo tiene abierto): igual solo avisa y se cuenta la próxima
+        pass         # vez; antes el error cortaba «Hacer todo» entero (revisión 03/11/2026)
     return c + ['--solo-revisar']
 
 
