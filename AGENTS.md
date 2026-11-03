@@ -444,7 +444,10 @@ Lo que fabian prefiere ya es lo que hace la app: **una «pausa» no es una foto 
 - Solo con `"quieto": true` en el montaje vuelve a ser un cuadro fijo (con zoom del 10 %). **No uses `quieto` salvo que
   el autor lo pida.**
 - Cuando la voz de un bloque no cabe en su tramo (el guion se alargó), la app alarga ese bloque con esta pausa en
-  movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si es el video entero
+  movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si el tramo va
+  acelerado (×3 en un reinicio), primero lo pone más despacio (sin bajar de ×1) y la pausa queda solo si a ×1 falta; lo
+  mismo con una pausa de relleno tras un tramo acelerado (`voz.frenar_tramo`, 03/11/2026). No toca los bloques corridos
+  por «Alinear», los del gancho, con cara, ⭐, sin voz ni los ya ajustados con su voz. Si es el video entero
   el que queda corto, primero baja la velocidad de los tramos acelerados. Si queda largo, acelera tramos y quita pausas
   sin voz.
 
