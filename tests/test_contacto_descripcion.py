@@ -36,6 +36,21 @@ assert x[1].startswith('🌐') and x[-1].startswith('Sirve para Android 15'), x
 assert youtube.con_contacto('https://gsmprime.co\n\nTexto.', 'es').startswith('🌐 WhatsApp Grupo:')
 assert youtube.linea_del_video('#Honor #FRP') == ('', '#Honor #FRP')
 
+# un rótulo con su enlace debajo («📥 Descarga aquí…:»): no se separa de su enlace; arriba va el título del video
+rot = '📥 Descarga aquí la herramienta:\nhttps://gsmprime.co/honor\n\nMás texto.'
+TIT = 'Quitar, Eliminar Cuenta Google Honor Magic 8 Lite'
+r = youtube.con_contacto(rot, 'es', TIT).split('\n\n')
+assert r[0] == TIT and r[1].startswith('🌐 WhatsApp Grupo:'), r
+assert r[-2] == '📥 Descarga aquí la herramienta:\nhttps://gsmprime.co/honor' and r[-1] == 'Más texto.', r
+assert youtube.con_contacto('\n\n'.join(r), 'es', TIT) == '\n\n'.join(r)  # otra pasada no cambia nada
+assert youtube.con_contacto(rot, 'es').startswith('🌐 WhatsApp Grupo:')  # sin título: el contacto primero, el rótulo entero
+assert '📥 Descarga aquí la herramienta:\nhttps://gsmprime.co/honor' in youtube.con_contacto(rot, 'es')
+# sin «:» pero con el enlace o una lista en la línea siguiente: también es un rótulo
+assert youtube.linea_del_video('Descarga la herramienta\nhttps://x.co', TIT) == (TIT, 'Descarga la herramienta\nhttps://x.co')
+assert youtube.linea_del_video('Lo que necesitas\n- Una PC', TIT)[0] == TIT
+assert youtube.linea_del_video('https://x.co\n\nTexto.', TIT) == (TIT, 'https://x.co\n\nTexto.')
+assert youtube.linea_del_video(LINEA + '\n\nOtro.', TIT) == (LINEA, 'Otro.')  # si la primera sirve, se usa esa
+
 # inglés y portugués: su línea y su bloque
 en = youtube.con_contacto('Remove the Google account from your Honor.\n\nOne more paragraph.', 'en')
 assert en.startswith('Remove the Google account from your Honor.\n\n🌐 WhatsApp Group:') and 'wa.me/526645320704' in en

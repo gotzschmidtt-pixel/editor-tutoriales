@@ -46,12 +46,59 @@ CIERRES = {'es': ['Toca el enlace con el ícono de play, aquí abajo, y mira el 
                   'Quer ver passo a passo? O vídeo completo está aqui embaixo, no link com o play.',
                   'Assista ao tutorial completo: toque no play que aparece embaixo.']}
 LLAMADA = re.compile(r'tutorial completo|video completo|v[ií]deo completo|en mi canal|full tutorial|full video|play', re.I)
+# Antes del cierre, en TODOS los Shorts (fabian, 03/11/2026): las páginas oficiales en la voz y en pantalla («para darle más
+# toque de profesionalismo», 14:09) y los testimonios del canal de WhatsApp (16:11). En los Shorts los enlaces de la
+# descripción no se pueden tocar: la frase manda a la descripción del tutorial completo, al que lleva el cierre del play.
+# Tienen id fijo: la misma voz sirve para los 3 Shorts (se graba una vez) y no corre los números de las otras frases.
+EXTRAS = [('WEBS', {'es': 'Y visita nuestras páginas oficiales: GSM Prime punto co y Xiaomi Unlock punto com.',
+                    'en': 'And visit our official websites: GSM Prime dot co and Xiaomi Unlock dot com.',
+                    'pt': 'E visite nossas páginas oficiais: GSM Prime ponto co e Xiaomi Unlock ponto com.'}),
+          ('TESTIMONIOS', {'es': 'En nuestro canal de WhatsApp verás testimonios de clientes reales. '
+                                 'El enlace para unirte está en la descripción del tutorial completo.',
+                           'en': 'On our WhatsApp channel you will see testimonials from real customers. '
+                                 'The link to join is in the description of the full tutorial.',
+                           'pt': 'No nosso canal do WhatsApp você vai ver depoimentos de clientes reais. '
+                                 'O link para entrar está na descrição do tutorial completo.'})]
+WEBS_TEXTO = 'GSMPRIME.CO • XIAOMIUNLOCK.COM'  # en pantalla desde la frase de las páginas hasta el final
+WEBS_Y = 0.085  # arriba al centro: debajo de los botones de YouTube y por encima de los logos (0.15) y la miniatura (0.17)
 
 
 def cierre(n, idioma='es'):
     """La frase de cierre del Short n (1, 2, 3…): rotan."""
     lista = CIERRES.get(idioma) or CIERRES['es']
     return lista[(n - 1) % len(lista)]
+
+
+def ids(s, n):
+    """El id de la voz de cada frase del Short n: las fijas (WEBS, TESTIMONIOS) el suyo; las otras S<n>F<k>, contando solo
+    las que no son fijas (así las voces ya grabadas siguen sirviendo)."""
+    out, k = [], 0
+    for f in s.get('frases') or []:
+        if f.get('id'):
+            out.append(f['id'])
+        else:
+            k += 1
+            out.append(f'S{n}F{k}')
+    return out
+
+
+def poner_extras(r, idioma='es'):
+    """Las frases fijas (páginas y testimonios) justo antes del cierre de cada Short, una vez y en ese orden."""
+    fijos = {i for i, _ in EXTRAS}
+    for s in r.get('shorts') or []:
+        frases = [f for f in s.get('frases') or [] if f.get('id') not in fijos]
+        if not frases:
+            continue
+        ultima = frases[-1]
+        # sin una toma que diga lo mismo (páginas, WhatsApp), van trozos distintos del mismo Short, repartidos y cambiando
+        # cada 2-3 s (nunca la misma escena larga); si fabian les puso otras tomas, quedan las suyas
+        todas = [list(t) for f in frases[:-1] for t in f.get('tomas') or []] or [list(t) for t in ultima.get('tomas') or [[0, 3]]]
+        elegir = lambda j: todas[min(len(todas) - 1, len(todas) * j // (2 * len(EXTRAS) + 1))]
+        viejas = {f['id']: f for f in s.get('frases') or [] if f.get('id') in fijos}
+        extras = [dict(viejas.get(i) or {'tomas': [elegir(2 * e + 1), elegir(2 * e + 2)]}, id=i, texto=t.get(idioma) or t['es'])
+                  for e, (i, t) in enumerate(EXTRAS)]
+        s['frases'] = frases[:-1] + extras + [ultima]
+    return r
 
 
 def poner_cierres(r, idioma='es'):
@@ -146,7 +193,7 @@ def validar(r, pc=True):
     """Lo que no cumple las reglas de fabian (lista de avisos); nunca deja pasar «sin PC» si el proceso usa PC (pc: _usa_pc(d))."""
     avisos = []
     for n, s in enumerate(r.get('shorts') or [], 1):
-        txt = ' '.join(f.get('texto', '') for f in s.get('frases') or [])
+        txt = ' '.join(f.get('texto', '') for f in s.get('frases') or [] if not f.get('id'))  # sin las frases fijas
         if pc and reglas_titulo.SIN_PC.search(txt):
             avisos.append(f'Short {n}: dice «sin PC» (prohibido: este proceso usa PC)')
         if len(EMOCION.findall(txt)) > 3:
@@ -167,7 +214,7 @@ def proponer(d, llamar=None):
     r = _json((llamar or _llamar_ia)(prompt(d)))
     if not r.get('shorts'):
         raise ValueError('La IA no devolvió los 3 guiones; prueba de nuevo.')
-    poner_cierres(r)
+    poner_extras(poner_cierres(r))
     r['avisos'] = validar(r, _usa_pc(d))
     r['costo'] = costo(r)
     json.dump(r, open(os.path.join(d, ARCHIVO), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -189,7 +236,11 @@ def guardar(d, r):
 
 def costo(r):
     """{'letras': n, 'creditos': n}: ElevenLabs cobra ~1 crédito por letra (las etiquetas de emoción no se leen)."""
-    n = sum(letras(f.get('texto', '')) for s in r.get('shorts') or [] for f in s.get('frases') or [])
+    voces = {}
+    for n, s in enumerate(r.get('shorts') or [], 1):
+        for i, f in zip(ids(s, n), s.get('frases') or []):
+            voces[i] = letras(f.get('texto', ''))  # las frases fijas se graban una sola vez para los 3 Shorts
+    n = sum(voces.values())
     return {'letras': n, 'creditos': n}
 
 
@@ -197,15 +248,48 @@ def voz(d, confirmar=False):
     """La voz Mauricio de las frases (GASTA ElevenLabs). Solo con confirmar=True, después del SI de fabian."""
     if not confirmar:
         raise PermissionError('La voz gasta créditos de ElevenLabs: hace falta la confirmación de fabian.')
-    r = leer(d)
-    bloques = [{'id': f'S{n}F{k}', 'texto': f['texto'], 'tipo': 'libre', 'humor': False,
-                'montaje': {'modo': 'lento', 'src_inicio': float(f['tomas'][0][0]), 'src_fin': float(f['tomas'][0][0]) + 30,
-                            'velocidad': 1.0, 'congelar_s': None}}
-               for n, s in enumerate(r['shorts'], 1) for k, f in enumerate(s['frases'], 1)]
+    r = guardar(d, poner_extras(leer(d)))  # los guiones de antes del 03/11/2026 reciben las frases de páginas y testimonios
+    bloques, vistos = [], set()
+    for n, s in enumerate(r['shorts'], 1):
+        for i, f in zip(ids(s, n), s['frases']):
+            if i in vistos:
+                continue  # las frases fijas: una sola voz para los 3 Shorts
+            vistos.add(i)
+            bloques.append({'id': i, 'texto': f['texto'], 'tipo': 'libre', 'humor': False,
+                            'montaje': {'modo': 'lento', 'src_inicio': float(f['tomas'][0][0]),
+                                        'src_fin': float(f['tomas'][0][0]) + 30, 'velocidad': 1.0, 'congelar_s': None}})
     g = os.path.join(d, '.shorts_resumen_guion.json')
     json.dump({'bloques': bloques}, open(g, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     subprocess.run([sys.executable, os.path.join(RAIZ, 'voz', 'voz.py'), '--guion', g, '--salida', os.path.join(d, 'voz_short')],
                    check=True, cwd=d)
+
+
+def banner_webs(carpeta):
+    """El PNG de «GSMPRIME.CO • XIAOMIUNLOCK.COM»: una píldora blanca con letras oscuras, como las páginas de la tarjeta del
+    cierre, del ancho justo para que entre en el Short."""
+    from PIL import Image, ImageDraw, ImageFont
+    import short
+    fuente = lambda n: next((ImageFont.truetype(f, n) for f in short.FUENTES if os.path.exists(f)), ImageFont.load_default())
+    dib = ImageDraw.Draw(Image.new('RGBA', (8, 8)))
+    n = 60
+    while n > 30 and dib.textlength(WEBS_TEXTO, font=fuente(n)) > short.SW - 180:
+        n -= 2
+    f = fuente(n)
+    w, h = int(dib.textlength(WEBS_TEXTO, font=f) + 80), n + 44
+    img = Image.new('RGBA', (w + 12, h + 12), (0, 0, 0, 0))
+    d_ = ImageDraw.Draw(img)
+    d_.rounded_rectangle([6, 10, w + 6, h + 10], radius=h // 2, fill=(0, 0, 0, 110))  # sombra suave
+    d_.rounded_rectangle([6, 4, w + 6, h + 4], radius=h // 2, fill='white')
+    d_.text((w / 2 + 6, h / 2 + 4), WEBS_TEXTO, font=f, fill=(17, 17, 17), anchor='mm')
+    ruta = os.path.join(carpeta, 'webs.png')
+    img.save(ruta)
+    return ruta
+
+
+def _sin_logo(tomas):
+    """Las tomas para poner_logos: en la frase de las páginas no sale el logo de Xiaomi («Xiaomi Unlock» es el nombre de la
+    página, no la marca del video); sus segundos se siguen contando."""
+    return [dict(c, id='GANCHO') if c.get('id') == 'WEBS' else c for c in tomas]
 
 
 def _encuadre(encuadres, s0):
@@ -222,7 +306,7 @@ def armar(d, cuales=(1, 2, 3)):
     import cv2
     import short
     import codificar
-    r = leer(d)
+    r = poner_extras(leer(d))
     orig = os.path.join(d, 'original.mp4')
     try:
         encuadres = json.load(open(os.path.join(d, 'short_encuadres.json'), encoding='utf-8'))
@@ -240,11 +324,13 @@ def armar(d, cuales=(1, 2, 3)):
         tmp = tempfile.mkdtemp()
         try:
             plan = []  # primero los trozos de todo el Short: así se dibujan de una vez solo las señales que caen en ellos
-            for k, f in enumerate(s['frases'], 1):
-                bid = f'S{n}F{k}'
+            # las frases fijas (páginas, testimonios) van solo si su voz ya está grabada: sin ella el Short sale como antes
+            frases = [(f, i) for f, i in zip(s['frases'], ids(s, n))
+                      if not f.get('id') or os.path.isfile(os.path.join(d, 'voz_short', f'{i}.mp3'))]
+            for k, (f, bid) in enumerate(frases, 1):
                 mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
                 largo = round(short.duracion(mp3) + AIRE, 2)
-                cierre = k == len(s['frases']) and bool(LLAMADA.search(f.get('texto', '')))
+                cierre = k == len(frases) and bool(LLAMADA.search(f.get('texto', '')))
                 if cierre:  # que se alcance a ver el ícono de play y la flecha al enlace después de la última palabra
                     largo = round(largo + COLA_CIERRE, 2)
                 piezas, cada = [], largo / len(f['tomas'])
@@ -308,18 +394,25 @@ def armar(d, cuales=(1, 2, 3)):
             if os.path.exists(short.MUSICA):
                 entradas += ['-stream_loop', '-1', '-i', short.MUSICA]
                 audio = '[1:a]volume=0.10[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]'
-            video = f'[0:v]ass={ass}[v]'
+            video = f'[0:v]ass={ass}[vb]'
             if LLAMADA.search(tomas[-1]['texto']):  # el cierre: una flecha hacia el enlace ▶ de abajo mientras se dice
                 desde = round(sum(x['largo'] for x in tomas[:-1]) + RETRASO + 0.3, 2)
                 entradas += ['-loop', '1', '-i', short.flecha_al_enlace(tmp)]
                 video = f'[0:v]ass={ass}[s];' + short.filtro_flecha(entradas.count('-i') - 1, 's', desde,
-                                                                    round(sum(x['largo'] for x in tomas), 2), 'v')
+                                                                    round(sum(x['largo'] for x in tomas), 2), 'vb')
+            # las páginas oficiales en pantalla (fabian, 03/11/2026) desde que la voz las nombra (o desde el cierre, si esa
+            # frase no está grabada) hasta el final, arriba al centro: por encima de los logos y de la miniatura del final
+            k_web = next((j for j, x in enumerate(tomas) if x['id'] == 'WEBS'), len(tomas) - 1)
+            desde_web = round(sum(x['largo'] for x in tomas[:k_web]) + RETRASO, 2)
+            entradas += ['-loop', '1', '-i', banner_webs(tmp)]
+            video += (f";[{entradas.count('-i') - 1}:v]format=rgba,fade=t=in:st={desde_web:.2f}:d=0.3:alpha=1[web];"
+                      f"[vb][web]overlay=x=(W-w)/2:y={short.SH * WEBS_Y:.0f}:shortest=1:enable='gte(t,{desde_web:.2f})'[v]")
             salida = f'SHORT_RESUMEN_{n}.mp4'
             codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
                           ['-filter_complex', f'{video};{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
                            '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
                           check=True, cwd=d)
-            short.poner_logos(d, tomas, os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
+            short.poner_logos(d, _sin_logo(tomas), os.path.join(d, salida), RETRASO)  # logos de lo que nombra la voz
             # el último segundo con la miniatura del video largo, solo si fabian la aprobó (03/11/2026); va dentro de los 2 s
             # de cola del cierre, sin tapar el play ni su flecha. Si la última frase no es el cierre, se agrega 1 s.
             mini = short.poner_miniatura_final(d, os.path.join(d, salida), alargar=not LLAMADA.search(tomas[-1]['texto']))
@@ -359,7 +452,7 @@ def textos(d, r=None):
             t = reglas_titulo.revisar_titulo((s.get('titulos') or {}).get(k, ''), _marca(d), reglas_titulo.texto_proyecto(d))[0]
             t = youtube.limpiar_yt(t)
             t = youtube.signos_es(t) if k == 'es' else t
-            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k))
+            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k, t))
             out += [f'--- {k.upper()} ---', 'TÍTULO: ' + t, 'DESCRIPCIÓN:', desc, 'COMENTARIO FIJADO:', FIJADO[k], '']
     open(os.path.join(d, 'shorts_resumen_textos.txt'), 'w', encoding='utf-8').write('\n'.join(out))
     return '\n'.join(out)

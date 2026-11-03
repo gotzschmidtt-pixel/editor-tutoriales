@@ -161,6 +161,9 @@ def parte_final(d, ultimo, cfg, paginas, salida):
                 lineas.append(actual); actual = p
         return lineas + ([actual] if actual else [])
     y = 560
+    caja = caja_de(miniatura_aprobada(d))
+    if caja:  # su último segundo lleva la miniatura arriba al centro: el texto va debajo, nunca tapado (revisión 03/11/2026)
+        y = max(y, int(caja[1] + caja[3] + 90))
     texto = str(cfg.get('final_texto') or '').strip() if cfg.get('final') else ''
     texto = ''.join(c for c in texto if ord(c) < 0x2190).strip()  # la letra no trae emojis (saldrían como cuadraditos)
     if texto:
@@ -393,6 +396,18 @@ def miniatura_aprobada(d):
     return f
 
 
+def caja_de(mini):
+    """La caja (x, y, ancho, alto) de esa miniatura en el último segundo del Short, o None si no hay miniatura."""
+    if not mini or not os.path.isfile(mini):
+        return None
+    try:
+        from PIL import Image
+        with Image.open(mini) as im:
+            return caja_miniatura_final(im.size[0] / max(1, im.size[1]))
+    except (OSError, ValueError):
+        return None
+
+
 def caja_miniatura_final(ancho_rel=16 / 9):
     """(x, y, ancho, alto) en píxeles del Short de la miniatura del último segundo, con su borde blanco."""
     w = SW * MINI_FINAL['ancho']
@@ -415,10 +430,10 @@ def poner_miniatura_final(d, video, alargar=False):
         return None
     tmp = os.path.splitext(video)[0] + '_con_miniatura.mp4'
     try:
-        from PIL import Image
-        with Image.open(mini) as im:
-            ancho_rel = im.size[0] / max(1, im.size[1])
-        x, y, w, h = caja_miniatura_final(ancho_rel)
+        caja = caja_de(mini)
+        if not caja:
+            raise ValueError('no pude leer la miniatura')
+        x, y, w, h = caja
         b = MINI_FINAL['borde']
         total = duracion(video)
         desde = round(total if alargar else max(0.0, total - MINI_FINAL_S), 3)
@@ -426,10 +441,21 @@ def poner_miniatura_final(d, video, alargar=False):
         base = f'[0:v]tpad=stop_mode=clone:stop_duration={MINI_FINAL_S}[b]' if alargar else '[0:v]null[b]'
         filtro = (f'{base};[1:v]scale={w - 2 * b}:{h - 2 * b},pad={w}:{h}:{b}:{b}:white,format=rgba,'
                   f'fade=t=in:st={desde}:d=0.2:alpha=1[m];[b][m]overlay=x={x}:y={y}:enable=\'gte(t,{desde})\',format=yuv420p[v]')
-        if alargar:  # el segundo de más va en silencio (la música ya se mezcló)
-            filtro += f';[0:a]apad=pad_dur={MINI_FINAL_S}[a]'
+        musica = []
+        if alargar:  # en el segundo de más la música sigue desde donde iba (volumen 0.10, como en el Short) y se apaga suave
+            largo_m = duracion(MUSICA) if os.path.isfile(MUSICA) else 0
+            if largo_m > MINI_FINAL_S:
+                desde_m = total % largo_m
+                desde_m = desde_m if desde_m + MINI_FINAL_S <= largo_m else 0.0
+                musica = ['-ss', f'{desde_m:.3f}', '-t', f'{MINI_FINAL_S:.3f}', '-i', MUSICA]
+                filtro += (f';[2:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.10,'
+                           f'afade=t=out:st=0.2:d={MINI_FINAL_S - 0.2:.2f},adelay={int(total * 1000)}:all=1[mu]'
+                           f';[0:a]aresample=44100,aformat=channel_layouts=stereo,apad=pad_dur={MINI_FINAL_S}[va]'
+                           ';[va][mu]amix=inputs=2:duration=first:normalize=0[a]')
+            else:  # sin la música fija: el segundo de más va en silencio
+                filtro += f';[0:a]apad=pad_dur={MINI_FINAL_S}[a]'
         sonido = ['-map', '[a]', '-c:a', 'aac', '-b:a', '160k'] if alargar else ['-map', '0:a?', '-c:a', 'copy']
-        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', video, '-loop', '1', '-t', f'{fin:.3f}', '-i', mini,
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', video, '-loop', '1', '-t', f'{fin:.3f}', '-i', mini] + musica + [
                        '-filter_complex', filtro, '-map', '[v]'] + sonido +
                       ['-t', f'{fin:.3f}', '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-movflags', '+faststart', tmp],
                       check=True)
@@ -897,7 +923,8 @@ def main():
         parte_testimonio(d, extras['testimonio_archivo'], p)
         partes.append(p)
     paginas = ([x.strip() for x in str(extras.get('paginas_texto') or '').split('·') if x.strip()] or paginas_del_autor()) if extras.get('paginas') else []
-    if (extras.get('final') and (extras.get('final_texto') or extras.get('final_audio'))) or paginas:
+    con_cierre = bool((extras.get('final') and (extras.get('final_texto') or extras.get('final_audio'))) or paginas)
+    if con_cierre:
         print('· cierre (ver el video completo / páginas)…', flush=True)
         p = os.path.join(tmp, 'final.mp4')
         parte_final(d, partes[-1], extras, paginas, p)
@@ -921,8 +948,9 @@ def main():
                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart',
                    a.salida], check=True, cwd=d)
     poner_logos(d, tomas, os.path.join(d, a.salida), retraso)  # los logos de lo que nombra la voz, como en el video largo
-    # 1 s más con la miniatura del video largo, solo si fabian la aprobó (03/11/2026); sin aprobar, el Short queda igual
-    poner_miniatura_final(d, os.path.join(d, a.salida), alargar=True)
+    # la miniatura del video largo en el último segundo, solo si fabian la aprobó (03/11/2026); sin aprobar, el Short queda
+    # igual. Con la tarjeta del cierre (mínimo 3 s, su texto ya va debajo) va encima de su último segundo; sin ella, 1 s más
+    poner_miniatura_final(d, os.path.join(d, a.salida), alargar=not con_cierre)
     total = duracion(os.path.join(d, a.salida))  # con el testimonio, el cierre y la miniatura
     json.dump({'duracion_pedida': a.duracion, 'duracion': round(total, 1), 'formato': '9:16',
                'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'encuadre', 'por_que', 'texto')} for c in tomas]},

@@ -16,6 +16,19 @@ sys.path.insert(0, AQUI)
 import short  # noqa: E402
 
 
+def descripcion(titulo_short):
+    """La descripción del Short: arriba la línea del video (su título), enseguida el bloque de WhatsApp de fabian
+    (02/11/2026, en todos los videos de desbloqueo) y después la invitación al tutorial completo. Sin el conocimiento
+    (mis_conocimientos) queda solo la invitación, como antes."""
+    base = 'Mira el tutorial completo en mi canal (link en el comentario fijado).'
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(AQUI), 'youtube'))
+        import youtube
+        return youtube.con_contacto(f'{titulo_short}\n\n{base}' if titulo_short else base, 'es')
+    except Exception:
+        return base
+
+
 def titulo(tomas, usados=()):
     """Un título corto para el Short con lo que se ve (sin el gancho del inicio), distinto de los Shorts anteriores."""
     t = ' '.join(c['texto'] for c in (tomas[1:] if len(tomas) > 1 and tomas[0]['id'] == 'L01' else tomas))
@@ -101,9 +114,10 @@ def main():
         shutil.copyfile(os.path.join(d, 'short.json'), os.path.join(d, f'short_{k}.json'))
         shutil.copyfile(os.path.join(d, 'short_subs.ass'), os.path.join(d, f'short_{k}_subs.ass'))
         revision = revisar_short(d, salida, f'short_{k}_subs.ass')
-        hechos.append({'archivo': salida, 'titulo': con_modelo(d, titulo(plan['tomas'], [h['titulo'] for h in hechos])), 'duracion': plan['duracion'], 'tomas': ids,
+        t = con_modelo(d, titulo(plan['tomas'], [h['titulo'] for h in hechos]))
+        hechos.append({'archivo': salida, 'titulo': t, 'duracion': plan['duracion'], 'tomas': ids,
                        'publicar': (inicio + datetime.timedelta(days=(k - 1) * a.cada)).isoformat(),
-                       'descripcion': 'Mira el tutorial completo en mi canal (link en el comentario fijado).', 'revision': revision})
+                       'descripcion': descripcion(t), 'revision': revision})
     json.dump({'shorts': hechos}, open(os.path.join(d, 'shorts.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     for h in hechos:
         print(f"· {h['archivo']}: «{h['titulo']}», {h['duracion']:.0f} s, publicar el {h['publicar']} ({', '.join(h['tomas'])})"

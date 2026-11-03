@@ -79,16 +79,28 @@ def con_capitulos(desc, capitulos_texto):
 LINEA_MAX = 150  # más o menos lo que YouTube muestra de la descripción antes de «…más»
 
 
-def linea_del_video(desc):
+def _es_rotulo(primera, siguiente):
+    """«📥 Descarga aquí la herramienta:» (o una línea seguida, sin línea en blanco, por su enlace, una lista o un capítulo):
+    es el rótulo de lo que viene, no la línea del video. Separarlo dejaría el enlace lejos de su rótulo."""
+    if primera.rstrip().endswith(':'):
+        return True
+    s = (siguiente or '').strip()
+    return bool(s) and bool(re.search(r'https?://', s) or s.startswith(('-', '•', '*', '✅', '✔', '👉', '➡', '▶', '⏱'))
+                            or re.match(r'\d+:\d\d\b', s) or re.match(r'\d+[.)]\s', s))
+
+
+def linea_del_video(desc, titulo=''):
     """(la línea que dice de qué trata el video, el resto): la primera línea de la descripción. Si es un párrafo entero en
-    una sola línea, solo su primera frase. Si empieza con un enlace, un hashtag, un capítulo o el contacto, no hay línea
-    del video: ('', desc). (fabian, 03/11/2026)"""
+    una sola línea, solo su primera frase. Si empieza con un enlace, un hashtag, un capítulo, el contacto o un rótulo
+    («📥 Descarga aquí…:» con su enlace debajo), esa línea no sirve: va el título del video como línea y la descripción
+    entera queda debajo; sin título, no hay línea: ('', desc). (fabian, 03/11/2026)"""
     desc = (desc or '').strip()
     primera, _, resto = desc.partition('\n')
     primera = primera.strip()
     if not primera or re.search(r'https?://', primera) or _es_contacto(primera) or primera.startswith(('#', '⏱')) \
-            or re.match(r'\d+:\d\d\b', primera):
-        return '', desc
+            or re.match(r'\d+:\d\d\b', primera) or _es_rotulo(primera, resto.partition('\n')[0]):
+        titulo = re.sub(r'\s+', ' ', titulo or '').strip()
+        return (titulo, desc) if titulo and titulo != primera else ('', desc)
     if len(primera) > LINEA_MAX:
         m = re.match(r'(.{20,%d}?[.!?])\s+(\S.*)$' % LINEA_MAX, primera)
         if m:
@@ -96,11 +108,12 @@ def linea_del_video(desc):
     return primera, resto.strip()
 
 
-def con_contacto(desc, idioma='es'):
+def con_contacto(desc, idioma='es', titulo=''):
     """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios. Regla
     nueva de fabian (03/11/2026, «¿Una línea sobre el video antes de tu bloque de contacto? SÍ»): primero UNA línea que dice
-    de qué trata el video (la primera de la descripción) y enseguida el bloque de contacto; después el resto. Si el bloque
-    ya estaba en otro lugar, se mueve ahí; nunca se repite. Los videos de noticias no lo llevan: eso lo decide quien llama."""
+    de qué trata el video (la primera de la descripción; si esa es un enlace o un rótulo, el título del video) y enseguida
+    el bloque de contacto; después el resto. Si el bloque ya estaba en otro lugar, se mueve ahí; nunca se repite. Los
+    videos de noticias no lo llevan: eso lo decide quien llama."""
     try:
         bloques = json.load(open(CONTACTO, encoding='utf-8'))
     except (OSError, ValueError):
@@ -114,7 +127,7 @@ def con_contacto(desc, idioma='es'):
         if b.startswith('🌐') and b in desc:
             desc = desc.replace(b, '')
     desc = re.sub(r'\n{3,}', '\n\n', desc).strip()
-    linea, resto = linea_del_video(desc)
+    linea, resto = linea_del_video(desc, titulo)
     return '\n\n'.join(x for x in (linea, bloque, resto) if x).strip()
 
 

@@ -15,7 +15,7 @@ demás sigue con el ffmpeg de siempre. También se puede indicar su ruta con "ff
 
 Uso desde la app (comando externo): python codificar.py ffmpeg -i ... -c:v libx264 ... salida.mp4
 """
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -133,6 +133,25 @@ def con_nvenc(cmd):
             out.append(x)
         i += 1
     return out
+
+
+_script_nuevo = None
+
+
+def filtro_desde_archivo(ruta):
+    """Los argumentos para leer el -filter_complex de un archivo (con cientos de tramos la línea de comandos de Windows
+    queda corta). Desde ffmpeg 7 la forma es «-/filter_complex archivo» y la vieja «-filter_complex_script» quedó obsoleta
+    (un ffmpeg muy nuevo, como el 9 del laptop de fabian, puede ya no tenerla); los ffmpeg 6 o más viejos solo conocen la
+    vieja. Se mira la versión una vez por proceso; si no se entiende (una versión de prueba «N-…»), se usa la nueva."""
+    global _script_nuevo
+    if _script_nuevo is None:
+        try:
+            r = subprocess.run(['ffmpeg', '-hide_banner', '-version'], capture_output=True, text=True, timeout=30, **SIN_VENTANA)
+            m = re.search(r'ffmpeg version n?(\d+)\.', r.stdout or '')
+            _script_nuevo = not m or int(m.group(1)) >= 7
+        except (OSError, subprocess.SubprocessError):
+            _script_nuevo = True
+    return ['-/filter_complex' if _script_nuevo else '-filter_complex_script', ruta]
 
 
 def run(cmd, **kw):

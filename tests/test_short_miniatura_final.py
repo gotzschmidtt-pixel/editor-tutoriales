@@ -102,6 +102,27 @@ try:
                        capture_output=True, text=True).stdout.strip()
     assert a and float(a) > largo + 0.8, a
 
+    # 5a) con la música fija, en el segundo de más la música sigue y se apaga suave (antes quedaba en silencio de golpe)
+    def volumen(f, desde, largo_s):
+        r = subprocess.run(['ffmpeg', '-v', 'info', '-ss', f'{desde:.2f}', '-t', f'{largo_s:.2f}', '-i', f, '-af', 'volumedetect',
+                            '-f', 'null', '-'], capture_output=True, text=True).stderr
+        return float(r.split('mean_volume:')[1].split('dB')[0])
+    musica_antes, short.MUSICA = short.MUSICA, os.path.join(d, 'musica_fija.mp3')
+    try:
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=d=20:a=0.9', '-ac', '2', short.MUSICA], check=True)
+        hacer_video()
+        assert short.poner_miniatura_final(d, v, alargar=True)
+        assert volumen(v, largo + 0.05, 0.3) > -60, volumen(v, largo + 0.05, 0.3)  # se oye la música, no silencio
+        assert volumen(v, largo + 0.05, 0.3) > volumen(v, largo + 0.75, 0.2) + 3  # y baja hacia el final
+    finally:
+        short.MUSICA = musica_antes
+
+    # 5c) la tarjeta del cierre deja su texto debajo del lugar de la miniatura (no queda tapado en el último segundo)
+    caja = short.caja_de(os.path.join(d, 'miniatura_1.jpg'))
+    assert caja and caja[1] + caja[3] < 1000 and short.caja_de(os.path.join(d, 'no_existe.jpg')) is None
+    assert 'caja_de(miniatura_aprobada(d))' in inspect.getsource(short.parte_final)
+    assert 'alargar=not con_cierre' in inspect.getsource(short.main)
+
     # 5b) una miniatura aprobada que no se puede abrir no tumba el Short: queda como estaba
     open(os.path.join(d, 'miniatura_rota.jpg'), 'wb').write(b'no es una imagen')
     app.yt_aprobar_miniatura(d, 'miniatura_rota.jpg')

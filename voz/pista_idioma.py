@@ -31,9 +31,21 @@ class FaltaVoz(Exception):
                          'Esto no la genera ni gasta nada.')
 
 
+SIN_VENTANA = {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0)} if sys.platform == 'win32' else {}  # sin ventanas negras
+
+
+def _filtro_archivo(script):
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'codificar'))
+        import codificar
+        return codificar.filtro_desde_archivo(script)
+    except ImportError:
+        return ['-filter_complex_script', script]
+
+
 def duracion(f):
     r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, **SIN_VENTANA)
     return float(r.stdout.strip() or 0)
 
 
@@ -101,8 +113,13 @@ def armar(d, idioma, inicios, total, musica=None, volumen=VOLUMEN_MUSICA, salida
         fin = 'voz'
     flt.append(f'[{fin}]loudnorm=I=-16:TP=-1.5,aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,'
                f'apad=whole_dur={total:.3f},atrim=0:{total:.3f}[a]')
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins + ['-filter_complex', ';'.join(flt), '-map', '[a]',
-                    '-t', f'{total:.3f}', '-c:a', 'libmp3lame', '-b:a', '192k', salida], check=True)
+    script = salida + '.filtro.txt'  # con cientos de bloques la línea de comandos de Windows queda corta
+    open(script, 'w', encoding='utf-8').write(';\n'.join(flt))
+    try:
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins + _filtro_archivo(script) + ['-map', '[a]',
+                        '-t', f'{total:.3f}', '-c:a', 'libmp3lame', '-b:a', '192k', salida], check=True, **SIN_VENTANA)
+    finally:
+        os.remove(script)
     acelerados = [i for i, _, _, tempo, _ in filas if tempo != 1]
     cortados = [i for i, _, _, _, cortar in filas if cortar]
     if cortados:

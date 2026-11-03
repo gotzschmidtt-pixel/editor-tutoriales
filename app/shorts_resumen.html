@@ -87,8 +87,10 @@ async function estado() {
   document.getElementById('miniFinal').textContent = e.miniatura_final
     ? `🖼 Al final de cada Short: 1 s con tu miniatura aprobada (${e.miniatura_final}), sin tapar el play ni su flecha.`
     : '🖼 Sin miniatura aprobada: los Shorts terminan como siempre. Para que salga 1 s al final, apruébala en ▶️ YouTube («✅ Apruebo esta miniatura»).';
+  // ⬇ Bajar: con el nombre del proyecto (fabian, 03/11/2026: «para descargar desde la app», también desde el celular)
   document.getElementById('hechos').innerHTML = (e.hechos || []).map(f =>
-    `<div>🎬 <a target="_blank" href="/ver?ruta=${q('mis_proyectos/' + P + '/' + f)}">${f}</a></div>`).join('');
+    `<div>🎬 <a target="_blank" href="/ver?ruta=${q('mis_proyectos/' + P + '/' + f)}">${f}</a>
+     · <a href="/archivo?p=${q(P)}&f=${q(f)}&nombre=${q(P + ' ' + f.replace('SHORT_RESUMEN_', 'Short '))}" download>⬇ Bajar</a></div>`).join('');
   if (t.estado === 'voz' || t.estado === 'armando') setTimeout(estado, 3000);
 }
 

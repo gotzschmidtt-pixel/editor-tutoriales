@@ -89,16 +89,17 @@ def idioma_video(d):
         return 'es'
 
 
-def yt_contacto(d, desc):
+def yt_contacto(d, desc, titulo=''):
     """El bloque de WhatsApp de fabian en la descripción, solo en videos de desbloqueo/FRP/servicios (los que son de una
-    marca de teléfono), justo debajo de la primera línea, la que dice de qué trata el video (fabian, 03/11/2026).
-    Las noticias (Movistar→Tigo…) no llevan publicidad de desbloqueo."""
+    marca de teléfono), justo debajo de la primera línea, la que dice de qué trata el video (fabian, 03/11/2026; si esa
+    línea es un enlace o un rótulo «Descarga aquí…:», va el título del video). Las noticias (Movistar→Tigo…) no llevan
+    publicidad de desbloqueo."""
     try:
         if not conocimiento.marca_de_proyecto(d):
             return desc
     except Exception:
         return desc
-    return youtube.con_contacto(desc, idioma_video(d))
+    return youtube.con_contacto(desc, idioma_video(d), titulo)
 
 
 def voz_env(d):
@@ -1890,7 +1891,7 @@ def yt_publicar(p, op):
         titulo = (meta.get('titulo') or (meta.get('titulos') or [{}])[meta.get('elegido') or 0].get('titulo') or '').strip()
         if not titulo:
             raise youtube.ErrorYT('Falta el título: pulsa «✨ Proponer» o escribe uno.')
-        desc = youtube.con_capitulos(yt_contacto(d, meta.get('descripcion', '').strip()), meta.get('capitulos_texto'))  # siempre con capítulos, sin repetirlos
+        desc = youtube.con_capitulos(yt_contacto(d, meta.get('descripcion', '').strip(), titulo), meta.get('capitulos_texto'))  # siempre con capítulos, sin repetirlos
         if meta.get('advertencia'):
             desc += '\n\n⚠️ ' + meta['advertencia'].strip()
         idioma = idioma_video(d)  # el de la voz: una versión en inglés no se sube marcada como audio en español
@@ -2533,8 +2534,8 @@ class Manejador(BaseHTTPRequestHandler):
             r = yt_ia(d, 'metadatos', {'bloques': bloques, 'mis_videos': videos, 'idea': idea, 'paginas': leer_ajustes().get('paginas', []),
                                        'busquedas': busq, 'investigacion': yt_investigacion(d)})
             r['titulo'] = ((r.get('titulos') or [{}])[r.get('elegido') or 0] or {}).get('titulo', '')
-            r['descripcion'] = yt_contacto(d, r.get('descripcion', ''))
-            r['descripciones'] = [yt_contacto(d, x) for x in r.get('descripciones') or [] if isinstance(x, str)]
+            r['descripcion'] = yt_contacto(d, r.get('descripcion', ''), r['titulo'])
+            r['descripciones'] = [yt_contacto(d, x, r['titulo']) for x in r.get('descripciones') or [] if isinstance(x, str)]
             r['capitulos_texto'] = youtube.texto_capitulos(r.get('capitulos') or [], {b['id']: b['s'] for b in bloques})
             r['descripcion'] = youtube.con_capitulos(r.get('descripcion', ''), r['capitulos_texto'])  # regla de fabian: siempre con capítulos
             for k in ('titulo', 'descripcion', 'descripciones', 'etiquetas', 'comentario'):  # YouTube rechaza < y >
