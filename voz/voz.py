@@ -154,16 +154,6 @@ def largo_bloque(mo):
     return lento + (mo.get('congelar_s') or 0)
 
 
-RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
-VEL_MAX = 6.0  # lo más que se acelera un tramo para acortarlo
-
-
-def tope_velocidad(mo):
-    """Lo más rápido que puede ir un tramo (reglas de fabian): ×1 con su cara o en un «⭐ corte importante», ×1,5 en los
-    pasos clave y ×2 en los pasos de configuración."""
-    return 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else 2.0 if mo.get('paso') else VEL_MAX
-
-
 def frenar_tramo(b):
     """Frenar antes de congelar (03/11/2026): un tramo acelerado que termina en pausa (un reinicio a ×3) pasaba volando y
     después la imagen quedaba yendo y viniendo mientras la voz seguía. Ahora el tramo va más despacio y cubre todo el
@@ -196,6 +186,16 @@ def frenar_tramo(b):
             + (f" y quedan {pausa:.1f} s de pausa" if pausa > 0 else ', sin pausa'))
 
 
+RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
+VEL_MAX = 6.0  # lo más que se acelera un tramo para acortarlo
+
+
+def tope_velocidad(mo):
+    """Lo más que se puede acelerar el tramo de un bloque (reglas de fabian): ×1 con tu cara o en un «⭐ corte importante»,
+    ×1,5 en los pasos clave, ×2 en los de configuración y ×6 en lo demás (esperas, cargas). Lo usa también «Alinear»."""
+    return 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else 2.0 if mo.get('paso') else VEL_MAX
+
+
 def ajustar_guion(guion, carpeta):
     """Pone en cada bloque la duración real de su voz y lo alarga si no cabe. Devuelve los avisos."""
     g = json.load(open(guion, encoding='utf-8'))
@@ -213,17 +213,13 @@ def ajustar_guion(guion, carpeta):
         fijo = b.get('voz_real_s') == real
         b['voz_real_s'] = real
         falta = round(real + DESFASE + MARGEN - largo_bloque(mo), 2)
+        no_cabia = None  # dónde quedó el aviso de «no cabía», para sumarle lo que haga frenar_tramo
         if falta > 0:
             if mo['modo'] == 'lento':
                 mo['modo'] = 'lento+congelar'
             mo['congelar_s'] = round((mo.get('congelar_s') or 0) + falta, 2)
+            no_cabia = len(avisos)
             avisos.append(f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s con una pausa")
-        # tramo acelerado con pausa al final (porque la voz no cabía o de relleno): primero va más despacio
-        frenado = '' if fijo else frenar_tramo(b)
-        if frenado and falta > 0:
-            avisos[-1] = f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s: {frenado}"
-        elif frenado:
-            avisos.append(f"{b['id']}: {frenado}")
         holgura = RELLENO + float(mo.get('relleno_s') or 0)  # relleno_s: imagen sin voz que la app dejó a propósito para no quedar corto
         sobra = round(largo_bloque(mo) - (real + DESFASE + MARGEN + holgura), 2)
         if sobra > 0.5:  # imagen sin voz de más: primero se quita pausa y luego se acelera el tramo
@@ -246,6 +242,13 @@ def ajustar_guion(guion, carpeta):
                     mo['velocidad'] = round(min(tope, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
             if largo_bloque(mo) < antes_b - 0.3:
                 avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
+        # tramo acelerado con pausa al final (porque la voz no cabía o de relleno): primero va más despacio. Va después de
+        # quitar la imagen sin voz que sobra (como en ia.revisar): así el aviso dice la velocidad con la que queda de verdad
+        frenado = '' if fijo else frenar_tramo(b)
+        if frenado and no_cabia is not None:
+            avisos[no_cabia] = f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s: {frenado}"
+        elif frenado:
+            avisos.append(f"{b['id']}: {frenado}")
         largo = largo_bloque(mo)
         b['inicio_min'], b['fin_max'] = round(t, 2), round(t + largo, 2)
         t += largo
