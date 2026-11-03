@@ -38,5 +38,31 @@ huecos = [(k + 1, round(b - a, 3)) for k, (a, b) in enumerate(zip(p, p[1:])) if 
 assert len(p) == n, f'el pedazo tiene {len(p)} cuadros y no {n}'
 assert not huecos, f'el pedazo salta: {huecos[:3]}'
 assert abs((p[-1] - p[0]) - (n - 1) / FPS) < 0.002, f'dura {p[-1] - p[0]:.3f} s y no {(n - 1) / FPS:.3f} s'
+# el concat: cada pedazo con su «duration» exacta (n/fps), no con el largo que guardó el .mp4 (con ffmpeg 9 y solo el procesador,
+# un pedazo salía 2 ms corto y desde ahí todo quedaba corrido: laptop de fabian, 03/11/2026)
+sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+import montaje  # noqa: E402
+lista = os.path.join(d, 'lista.txt')
+montaje.lista_concat(lista, ['a.mp4', 'b.mp4'], [37, 76], 30)
+assert open(lista, encoding='utf-8').read() == "file 'a.mp4'\nduration 1.233333\nfile 'b.mp4'\nduration 2.533333\n", open(lista).read()
+montaje.lista_concat(lista, ['a.mp4'], [1001], 30000 / 1001)
+assert open(lista, encoding='utf-8').read() == "file 'a.mp4'\nduration 33.400033\n", open(lista).read()
+try:
+    montaje.lista_concat(lista, ['a.mp4', 'b.mp4'], [37], 30)
+    raise AssertionError('con menos cuentas que pedazos tenía que parar')
+except SystemExit:
+    pass
+assert fuente.count('lista_concat(lista, partes, cuadros, FPS)') == 1, 'el concat final tiene que llevar los cuadros de cada pedazo'
+assert fuente.count('voces, cuadros, FPS)') == 2, 'la vista en vivo también'
+# y pegados de verdad: el pedazo del hueco tres veces seguidas queda parejo de punta a punta
+montaje.lista_concat(lista, [pedazo] * 3, [n] * 3, FPS)
+junto = os.path.join(d, 'junto.mp4')
+subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', junto], check=True)
+q = sorted(float(x) for x in subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                                             'packet=pts_time', '-of', 'csv=p=0', junto],
+                                            capture_output=True, text=True).stdout.split() if x not in ('', 'N/A'))
+assert len(q) == 3 * n, f'pegados son {len(q)} cuadros y no {3 * n}'
+corridos = [(k, x) for k, x in enumerate(q) if abs((x - q[0]) - k / FPS) > 0.002]
+assert not corridos, f'pegados se corren: {corridos[:3]}'
 version = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True).stdout.splitlines()[0]
-print(f'ok: {n} cuadros parejos aunque el tramo cruza el hueco ({version})')
+print(f'ok: {n} cuadros parejos aunque el tramo cruza el hueco, y pegados con su duración exacta ({version})')

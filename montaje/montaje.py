@@ -191,15 +191,25 @@ def voz_al_dia(carpeta_voz, bid, texto):
         return False
 
 
-def avance(partes, tmp, destino, voces=()):
+def lista_concat(lista, partes, cuadros=None, fps=None):
+    """La lista de pedazos para el concat de ffmpeg. Con sus cuadros, cada pedazo ocupa justo n/fps: concat no usa el largo
+    que guardó el .mp4, que con ffmpeg 9 salía 2 ms corto en algún pedazo y corría todo lo de después (laptop de fabian,
+    solo procesador, 03/11/2026)."""
+    if cuadros is not None and len(cuadros) != len(partes):
+        raise SystemExit(f'ERROR interno del montaje: {len(partes)} pedazos y {len(cuadros)} cuentas de cuadros')
+    with open(lista, 'w', encoding='utf-8') as fh:
+        for k, p in enumerate(partes):
+            fh.write(f"file '{p}'\n" + (f"duration {cuadros[k] / fps:.6f}\n" if cuadros is not None and fps else ''))
+
+
+def avance(partes, tmp, destino, voces=(), cuadros=None, fps=None):
     """Une lo que va hecho en un video que la app puede reproducir, con la voz de esos bloques encima
     (así se puede ir escuchando mientras se arma). Si alguien lo está mirando y Windows no deja reemplazarlo,
     se intenta en el bloque siguiente."""
     if not partes:  # el primer bloque no tenía sitio (menos de un cuadro): todavía no hay nada que ver. Antes ffmpeg escribía
         return      # «No files to concat… Error opening input file avance.txt» en el registro del paso (revisión 3 de la mejora 1)
     lista, nuevo = os.path.join(tmp, 'avance.txt'), os.path.join(tmp, 'avance.mp4')
-    with open(lista, 'w', encoding='utf-8') as fh:
-        fh.writelines(f"file '{p}'\n" for p in partes)
+    lista_concat(lista, partes, cuadros, fps)
     voces = [(t, f) for t, f in voces if os.path.exists(f)]
     try:
         if voces:
@@ -420,7 +430,7 @@ def main():
                     codificar.USADOS.update(info.get('codificadores', []))
                     usadas.update([os.path.basename(hecho)] + info['partes'])
                     print(i, 'ok (ya estaba hecho, no se rehace)', flush=True)
-                    avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
+                    avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces, cuadros, FPS)
                     continue
                 print(i, '· lo ya hecho no cae en su cuadro (cambió un bloque de antes): se rehace', flush=True)
                 guardar = completo
@@ -554,11 +564,9 @@ def main():
                 'todavía no tiene voz' if not os.path.exists(mp3) else
                 'su voz es de otro texto (el guion que se monta no es el mismo con el que se hizo la voz)'
                 if b.get('inicio_min') is not None else 'el guion no trae sus tiempos de voz (falta «Generar voz»)'), flush=True)
-        avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces)
+        avance(partes, tmp, os.path.join(os.path.dirname(os.path.abspath(a.salida)), EN_CURSO), voces, cuadros, FPS)
     lista = os.path.join(tmp, 'lista.txt')
-    with open(lista, 'w', encoding='utf-8') as fh:
-        for p in partes:
-            fh.write(f"file '{p}'\n")
+    lista_concat(lista, partes, cuadros, FPS)  # cada pedazo justo en sus cuadros (ffmpeg 9)
     if len(codificar.USADOS) > 1:  # la tarjeta falló a mitad: tramos de dos codificadores, se igualan en vez de pegarlos tal cual
         run(['-f', 'concat', '-safe', '0', '-i', lista, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf, a.salida])
     else:
