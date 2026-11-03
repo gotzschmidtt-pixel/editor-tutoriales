@@ -57,7 +57,9 @@ try:
     ia.conocimiento.marca_de_proyecto = lambda d: 'APPLE'
     ok('Android quince' not in ia.regla_inicio(d), 'en un video de Apple el gancho no debería pedir las versiones de Android')
     ia.conocimiento.marca_de_proyecto = lambda d: 'MOTOROLA'
-    ok('sin PC' not in ia.regla_inicio(d) and 'MagicOS' not in ia.regla_inicio(d), 'lo de Honor solo va en Honor')
+    ok('MagicOS' not in ia.regla_inicio(d), 'lo de MagicOS solo va en Honor')
+    # fabian, 03/11/2026: Motorola también usa PC (antes el «nunca sin PC» iba solo en Honor)
+    ok('nunca digas «sin PC»' in ia.regla_inicio(d), 'Motorola usa PC: el gancho tampoco debería decir «sin PC»')
 
     # 2. las revisiones de orden no castigan ni mueven el gancho, pero sí revisan sus tomas
     mapa = [{'t': 5.0, 'texto': 'Verifica tu cuenta | Google'}, {'t': 15.0, 'texto': 'USB connected'},
@@ -110,7 +112,7 @@ try:
     ok(any(x.startswith('L02: la toma 2') and 'repite la anterior' in x for x in avisos), f'debería avisar la toma repetida seguida: {avisos}')
     ok(not any('dura unos' in x for x in avisos), 'un gancho de unos 20 s no debería avisar que dura de más')
     largo = [dict(b, texto=' '.join(['palabra'] * 70) + '.') if b.get('gancho') else b for b in guion()]
-    ok(any('el gancho' in x and 'pasa de 45-60 s' in x for x in ia.revisar_gancho(d, largo)), 'un gancho de ~80 s debería avisar que pasa de 45-60 s')
+    ok(any('el gancho' in x and 'pasa de 30-40 s' in x for x in ia.revisar_gancho(d, largo)), 'un gancho de ~80 s debería avisar que pasa de 30-40 s')
     viejo = [b for b in guion(con_gancho=False)[3:]]  # guion de antes, sin campos nuevos: sin avisos del gancho
     ok(ia.revisar_gancho(d, viejo) == [], 'un guion sin gancho no debería tener avisos del gancho')
 
@@ -168,7 +170,7 @@ try:
     bl[1]['fin_max'] = 75.0
     rotar.planear(bl, mapa_f, os.path.join(r, 'voz'), 900.0, 30)
     av = json.load(open(os.path.join(r, rotar.AVISOS), encoding='utf-8'))
-    ok(any('el gancho' in x['aviso'] and 'pasa de 45-60 s' in x['aviso'] for x in av), f'un gancho de 75 s debería avisar: {av}')
+    ok(any('el gancho' in x['aviso'] and 'pasa de 30-40 s' in x['aviso'] for x in av), f'un gancho de 75 s debería avisar: {av}')
 
     # 4. para «entramos en modo fastboot» elige la pantalla FASTBOOT (antes, la primera pantalla USB del grabado)
     alineacion([(0.0, 'Con volumen menos entramos en modo fastboot.')], os.path.join(r, 'voz'), 'L09')

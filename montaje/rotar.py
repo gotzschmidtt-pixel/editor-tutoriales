@@ -24,7 +24,8 @@ PAUSA_MIN_GANCHO = 3.0  # el gancho rota aunque su pausa sea corta: sus frases s
 TROZO = (3.0, 5.0)    # largo de cada trozo
 CORTE_GANCHO = 1.5    # con las tomas de la IA el corte cae en cada frase (ritmo de ~2 s del gancho), nunca un trozo más corto
 SEPARACION = 8.0      # dos trozos del inicio no salen de momentos tan cercanos del grabado
-GANCHO = (45.0, 60.0)  # el gancho dura ~45 s; si pasa de 60 s se avisa (la gente se va antes de que empiece el paso a paso)
+GANCHO = (30.0, 40.0)  # el gancho dura de 30 a 40 s (fabian, 03/11/2026; antes ~45 y aviso a los 60): si pasa de 40 s se
+#                        avisa (la gente se va antes de que empiece el paso a paso)
 # revisión (03/11/2026): con los puntos, «libre y sin la cuenta» elegía la pantalla bloqueada (dice «cuenta») y el después
 # salía de un Ajustes nítido a mitad del proceso. El antes es el comienzo del grabado y el después su final: nunca uno por
 # el otro, y entre los suyos solo compiten los que están a menos de EXTREMO s del de siempre
@@ -350,7 +351,7 @@ def planear(bloques, mapa_f, carpeta_voz, dur_original, fps, guardar_avisos=True
     fin = max((float(b.get('fin_max') or b['inicio_min']) for b in ganchos), default=0)
     if fin > GANCHO[1]:  # en los primeros 30 s se va mucha gente: un gancho largo no la retiene
         avisos.append({'bloque': ganchos[-1]['id'], 'aviso': f'el gancho ({", ".join(b["id"] for b in ganchos)}) dura {fin:.0f} s: pasa de '
-                                                            f'{GANCHO[0]:.0f}-{GANCHO[1]:.0f} s. Acórtalo a unos {GANCHO[0]:.0f} s '
+                                                            f'{GANCHO[0]:.0f}-{GANCHO[1]:.0f} s. Acórtalo a unos {sum(GANCHO) / 2:.0f} s '
                                                             '(frases más cortas o menos bloques).'})
         print('AVISO inicio ·', avisos[-1]['aviso'], flush=True)
     if not guardar_avisos:

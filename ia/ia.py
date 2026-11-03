@@ -502,11 +502,14 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           "pedir el servicio, escribir por WhatsApp, ver más casos) y en el cierre. Di el nombre de forma natural, sin leer "
                           "«https» ni barras. No inventes otras páginas ni cambies sus nombres.")
         if testi:  # el módulo Testimonios pone el video justo después de la frase que habla de clientes y confianza
-            partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la frase "
-                          "que hable de ellos. Cerca del cierre, en un bloque propio, la voz cuenta con sus palabras que en nuestro "
-                          "canal de WhatsApp y en nuestra página (usa sus nombres de MIS PÁGINAS si están) tenemos capturas de conversaciones reales de WhatsApp, y que nuestros "
-                          "clientes también nos mandan su material: el teléfono antes y después. Que sea para que tengan confianza "
-                          "en nuestro proceso, y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar.")
+            # dentro del cierre, en 1-2 frases (fabian, 03/11/2026); antes iba en un bloque propio cerca del cierre
+            partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la "
+                          "frase que hable de ellos. DENTRO DEL CIERRE (no en un bloque aparte), en 1 o 2 frases, la voz cuenta "
+                          "con sus palabras que en nuestro canal de WhatsApp y en nuestra página (usa sus nombres de MIS PÁGINAS "
+                          "si están) tenemos capturas de conversaciones reales de WhatsApp, y que nuestros clientes también nos "
+                          "mandan su material: el teléfono antes y después. Que sea para que tengan confianza en nuestro proceso, "
+                          "y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar. Nunca "
+                          "inventes un testimonio: ni nombres, ni casos, ni frases de clientes que no estén en esos videos.")
         ac = [c for c in acortar_plan(d).get('tramos', []) if c.get('usar')]
         if ac:
             partes.append("TRAMOS QUE SOBRAN en la grabación (marcados en «Acortar»). Los que dicen «cortar» no los uses; los que dicen "
@@ -576,18 +579,26 @@ Escribe el guion por bloques. Cada bloque tiene:
 - PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
   tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
   para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
+- LO QUE NO HAY QUE HACER (pedido del autor, 03/11/2026): cada aviso va DENTRO del paso donde aplica, en su bloque, justo
+  antes o mientras se hace ese paso («no conectes el Wi-Fi todavía», «no sueltes los botones», «no desconectes el cable
+  hasta que termine»). Nunca en un bloque o una lista de advertencias antes de empezar los pasos.
+- EL PORQUÉ, SOLO EN LOS PASOS DELICADOS (pedido del autor, 03/11/2026): explica por qué se hace un paso (y qué pasa si sale
+  mal) solo en los delicados: los críticos (key, código, PIN, contraseña, IMEI, serial), borrar o formatear, entrar en un
+  modo (Fastboot, Recovery, DFU), lo que si se hace mal hay que repetir todo o deja el teléfono peor. En los pasos sencillos
+  (tocar «Siguiente», abrir un menú, esperar una carga) di qué se hace y lo que se ve, sin explicar el porqué.
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
-  el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
+  el video queda mucho más corto. Explica cada paso con calma en vez de resumir (lo que se ve y qué se toca; el porqué,
+  solo en los pasos delicados).
 - PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
   es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
   paso se hace o se salta), NO lo inventes: escribe la frase sin ese dato (por ejemplo «sigue la secuencia de botones que
   se ve en pantalla») y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
   Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX}).
 - PREGUNTAS PARA MEJORARLO (siempre, entre 2 y {MEJORAS_MAX}): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
-  al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
+  al autor con "tipo": "mejora": un paso delicado que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
   (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
   dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
   concretas, por ejemplo {{"tipo": "mejora", "bloque": "L03", "pregunta": "¿Explico por qué hay que quitar la batería antes?",
@@ -846,7 +857,8 @@ def problemas(bloques, total, con_saltos=True):
     if total > 0 and palabras / PALABRAS_POR_S < total * (1 - SIN_VOZ_MAX):
         sin_voz = 1 - palabras / PALABRAS_POR_S / total
         out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
-                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
+                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica con calma lo que "
+                   f"se ve en cada paso (el porqué, solo en los pasos delicados)")
     return out + pasos_numerados(bloques) + huecos_humor(bloques) + repeticiones(bloques)
 
 
@@ -1086,6 +1098,76 @@ def falta_patron_versiones(d, bloques):
     return out
 
 
+# PC sencilla (fabian, 03/11/2026): «se puede hacer el proceso sin una pc avanzada, solo se necesita una pc sencilla, si no
+# la tienen pueden hacerlo desde un café internet o pedirla prestada a un amigo o familiar». Va al principio de TODOS los
+# guiones de procesos con PC (Honor, Motorola, Samsung, Xiaomi cuenta Google, iCloud…: es lo que él ya dice en sus videos de
+# Xiaomi HyperOS y Samsung Odin) y nunca en los dos que hoy van sin PC: la cuenta Mi de Xiaomi (basta el unlock code o el
+# IMEI) y la liberación de bandas de iPhone (basta el IMEI y el número de serie). Si no se reconoce el proceso, usa PC.
+# Si conocimiento/reglas_titulo.py (procesos_pc.json por proceso) no reconoce el proceso o no está, esta lista hace lo mismo:
+# (marca, palabras del proceso sin PC, palabras de los procesos de esa marca que sí usan PC, lo que basta).
+SIN_PC = [('XIAOMI', r'mi account|\bcuentas? mi\b|mi cloud|xiaomi cloud|unlock ?code',
+           r'cuenta (de )?google|google account|\bfrp\b|usb redirector', 'el unlock code o el IMEI'),
+          ('APPLE', r'liberacion de bandas|liberar (las )?bandas|\bbandas\b|sim ?lock|carrier unlock|network unlock',
+           r'icloud|hello|bypass|activacion|\bdfu\b|ramdisk', 'el IMEI y el número de serie')]
+# (también en inglés y portugués, por las versiones del video en otro idioma)
+PC_SENCILLA = r'sencill|basic|avanzad|cualquier (pc|computador|laptop)|simple|advanced|avancad|any (pc|computer|laptop)'
+PC_SIN_TENER = r'cafe ?internet|cibercafe|\bprest[ae]|internet cafe|cyber ?cafe|lan ?house|borrow|empresta'
+DICE_SIN_PC = (r'\b(sin|sem|without) (una |la |ninguna |um |a |any )?(pc|computador\w*|computadora|laptop|ordenador|computer)\b'
+               r'(?! (tan |muito |too )?(avanzad|avancad|advanced|potente|powerful|cara|gamer))')
+INICIO_S = 90.0  # «al principio»: lo que la voz dice en los primeros ~90 s del video
+
+
+def proceso_pc(d):
+    """(usa_pc, lo_que_basta) del proceso del proyecto, por su nombre, su idea.txt y la transcripción. lo_que_basta solo en
+    los procesos sin PC («el unlock code o el IMEI»). usa_pc es None si el proyecto no es de una marca de teléfono (una
+    noticia, como Movistar→Tigo): ahí no va la regla de la PC."""
+    marca = conocimiento.marca_de_proyecto(d) or ''
+    if not marca:
+        return None, ''
+    texto = ' '.join([os.path.basename(os.path.abspath(d)), conocimiento.leer(os.path.join(d, 'idea.txt'))[:3000],
+                      conocimiento.leer(os.path.join(d, 'transcripcion.txt'))[:8000]])
+    try:  # lo mismo que usan los títulos y las miniaturas (procesos_pc.json por proceso), si ya está en la app
+        import reglas_titulo
+        p = reglas_titulo.proceso(texto, marca)
+    except Exception:  # sin ese módulo o con el archivo roto: la lista de aquí
+        p = None
+    if p is not None:
+        usa = p.get('pc', True) is not False
+        return usa, ('' if usa else str(p.get('basta') or ''))
+    t = normal(texto)
+    for m, sin, con, basta in SIN_PC:
+        if marca.upper() == m and len(re.findall(sin, t)) > len(re.findall(con, t)):  # si empatan, usa PC
+            return False, basta
+    return True, ''
+
+
+def falta_pc_sencilla(d, bloques):
+    """Avisos de la regla de la PC (fabian, 03/11/2026): en un proceso con PC, al principio la voz dice que basta una PC
+    sencilla (o un café internet, o una prestada) y nunca «sin PC»; en un proceso sin PC, nada de eso."""
+    usa, basta = proceso_pc(d)
+    if usa is None:
+        return []
+    t, inicio = 0.0, []
+    for b in bloques:
+        if t < INICIO_S:
+            inicio.append(str(b.get('texto') or ''))
+        t += _largo_estimado(b)
+    al_inicio, todo = normal(' '.join(inicio)), normal(' '.join(str(b.get('texto') or '') for b in bloques))
+    out = []
+    if usa:
+        if not (re.search(PC_SENCILLA, al_inicio) and re.search(PC_SIN_TENER, al_inicio)):
+            out.append('al principio: este proceso usa PC, así que la voz dice que no hace falta una PC avanzada, que basta una '
+                       'PC sencilla, y que si no tienen una, un café internet o una prestada de un amigo o familiar sirve')
+        dice = [b['id'] for b in bloques if re.search(DICE_SIN_PC, normal(str(b.get('texto') or '')))]
+        if dice:
+            out.append(f"{', '.join(map(str, dice))}: dice «sin PC», y este proceso usa PC (nunca «sin PC»; «sin una PC "
+                       "avanzada» sí)")
+    elif re.search(PC_SIN_TENER, todo) or re.search(r'(pc|computador\w*|laptop) (sencill|basic)', todo):
+        out.append(f'este proceso va sin PC (basta {basta or "lo que pide el servicio"}): quita lo de la PC sencilla, el café '
+                   'internet o la PC prestada')
+    return out
+
+
 # Primer minuto (pedido de fabian, 03/11/2026): entre los 10 y los 30 s el canal pierde del 30 al 50 % de la gente. La IA
 # escribe el gancho (resultado → problema → versiones → herramienta y PC → «es fácil» → comentar) en bloques "gancho": true,
 # cada frase con la toma del grabado que la muestra; montaje/rotar.py las pone en la pausa del bloque, una por frase.
@@ -1095,14 +1177,28 @@ def regla_inicio(d):
     versiones = ('«sirve para Android quince, dieciséis, diecisiete o superiores, y cualquier parche»'
                  + (' (y en la frase siguiente, «también funciona con MagicOS nueve, diez u once»)' if honor else '')
                  if patron_versiones(d) else 'a qué modelos y versiones sirve (solo las que se ven o dice el autor)')
+    usa, basta = proceso_pc(d)
+    if usa:  # fabian, 03/11/2026: «aclarar al principio que se puede hacer sin una pc avanzada…»
+        pc = ('4) la herramienta y la PC que se usan. Este proceso usa PC: nunca digas «sin PC». Sí di, en una o dos frases '
+              'cortas, que no hace falta una PC avanzada, que basta una PC sencilla, y que si no tienen una pueden hacerlo '
+              'desde un café internet o pedirla prestada a un amigo o familiar (si no cabe en el gancho, va en el primer '
+              'bloque de después)')
+    elif usa is False:
+        pc = (f'4) la herramienta y lo que se necesita: este proceso NO necesita PC, basta {basta or "lo que pide el servicio"} '
+              '(no hables de PC sencilla, café internet ni PC prestada)')
+    else:
+        pc = '4) la herramienta y la PC que se usan'
+    g = _rotar().GANCHO  # fabian, 03/11/2026: de 30 a 40 s (antes unos 45, de 30 a 60)
     return f"""INICIO (primer minuto), pedido del autor: entre los 10 y los 30 segundos se va del 30 al 50 % de la gente. Nada de una
 escena larga repetida: cada frase con el trozo que la muestra.
 - Los primeros 2 a 4 bloques son el GANCHO: llevan "gancho": true y "avatar": false (sin avatar: voz en off sobre el video).
-  Entre todos duran unos 45 s (de 30 a 60, nunca más). Frases cortas, de 12 palabras como mucho, en este orden fijo:
+  Entre todos duran de {g[0]:.0f} a {g[1]:.0f} s (nunca más de {g[1]:.0f}). Frases cortas, de 12 palabras como mucho, en este
+  orden fijo:
   1) el resultado (el teléfono ya libre); 2) el problema del que mira (por ejemplo, bloqueado pidiendo la cuenta de Google);
-  3) las versiones: {versiones}; 4) la herramienta y la PC que se usan{' (es Honor: nunca digas «sin PC»)' if honor else ''};
+  3) las versiones: {versiones}; {pc};
   5) «es fácil»; 6) la invitación a comentar las dudas (puede llevar el toque de humor del inicio).
-  Lo demás de la estructura de siempre (lo que NO hay que hacer, los pasos numerados, el cierre) va después, en bloques normales.
+  Después van los pasos numerados y el cierre, en bloques normales. Lo que NO hay que hacer no va en un bloque aparte antes
+  de los pasos: cada aviso va dentro del paso donde aplica (ver las reglas de abajo).
   Cada frase termina en punto, signo de pregunta o de exclamación: así la app sabe dónde empieza cada una.
 - "tomas": [[desde, hasta], ...] en cada bloque del gancho: UNA toma por frase y en el orden de las frases, de 3 a 5 s de la
   grabación (segundos del original), que muestre lo que dice esa frase: el resultado con el teléfono ya libre (del final del
@@ -1137,7 +1233,7 @@ def _largo_estimado(b):
 def revisar_gancho(d, bloques, mapa=None):
     """Lo que sí se revisa de los bloques del gancho (no se mueven ni cuentan como salto atrás): que ninguna toma muestre
     precio ni datos personales (lo que el mapa leyó en esa pantalla, con el filtro SENSIBLE de rotar.py), que ninguna
-    se repita seguida y que el gancho no pase de 45-60 s. Devuelve los avisos."""
+    se repita seguida y que el gancho no pase de 30-40 s (rotar.GANCHO). Devuelve los avisos."""
     ganchos = [b for b in bloques if b.get('gancho')]
     if not ganchos:
         return []
@@ -1172,7 +1268,7 @@ def revisar_gancho(d, bloques, mapa=None):
             fin = t
     if fin > rotar.GANCHO[1]:
         out.append(f"el gancho ({', '.join(b['id'] for b in ganchos)}) dura unos {fin:.0f} s: pasa de {rotar.GANCHO[0]:.0f}-"
-                   f"{rotar.GANCHO[1]:.0f} s. Acórtalo a unos {rotar.GANCHO[0]:.0f} s (frases más cortas o menos bloques)")
+                   f"{rotar.GANCHO[1]:.0f} s. Acórtalo a unos {sum(rotar.GANCHO) / 2:.0f} s (frases más cortas o menos bloques)")
     return out
 
 
@@ -1214,6 +1310,7 @@ def verificar_orden(d, bloques):
     avisos += desfases(d, bloques)
     avisos += acciones_desfasadas(d, bloques)
     avisos += falta_patron_versiones(d, bloques)
+    avisos += falta_pc_sencilla(d, bloques)
     avisos += revisar_gancho(d, bloques)
     if avisos:
         txt = '\n'.join(avisos) + '\n'
@@ -3492,8 +3589,9 @@ def ideas_guion(d, ajustes):
     partes.append(f"""Relee el guion como lo vería alguien que nunca hizo este proceso, y pregúntale al autor para dejarlo mejor:
 - DUDAS (tipo "dato", hasta {PREGUNTAS_MAX}): lo que no queda claro o no coincide con lo que se ve o se dice en la grabación
   (un nombre, un modelo, un botón, un valor, el orden de un paso, algo que se da por sabido, un salto raro entre bloques).
-- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso, explicar el porqué
-  de un paso, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de humor, una frase que sobra).
+- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso dentro del paso donde
+  aplica, explicar el porqué de un paso delicado, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de
+  humor, una frase que sobra).
 Cada una con el bloque que toca y 2 o 3 opciones concretas, la primera la que recomiendas. Pregunta solo lo que cambiaría
 el guion. Responde SOLO con el objeto JSON {{"preguntas": [{{"tipo": "dato" | "mejora", "bloque": "L07",
 "pregunta": "¿...?", "opciones": ["...", "..."]}}]}}.""")
@@ -3599,8 +3697,9 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
                   (f"- Con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
                    f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
                    f"y necesita unas {quiero}. " +
-                   ("Alárgalo: explica con más detalle cada paso y agrega bloques para las partes de la grabación que "
-                    "saltaste, cada uno con su propio tramo. " if corto else
+                   ("Alárgalo: explica con más detalle cada paso (lo que se ve y qué se toca; el porqué, solo en los pasos "
+                    "delicados) y agrega bloques para las partes de la grabación que saltaste, cada uno con su propio "
+                    "tramo. " if corto else
                     "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ")
                    + "\n" if fuera else '') +
                   ''.join(f"- {x}\n" for x in lista[:30]) +

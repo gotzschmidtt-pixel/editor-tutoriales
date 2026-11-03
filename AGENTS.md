@@ -78,7 +78,8 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   ~20 %) y Danskyx «TV satelital pirata» (21:48, 1 M de vistas: 245 cortes, toma media 5,3 s, cada 2 s en el primer minuto
   y cada 5,7 s después; cara 35 % en 10 tramos largos; la cara recién en 1:32; cierre a cámara y pantalla final desenfocada;
   `danskyx_tv_pirata/ANALISIS.txt`). Reglas por defecto (se cambian en la pestaña, «Ritmo»):
-  - **Gancho sin avatar**: los primeros ~45 s (30-60) son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
+  - **Gancho sin avatar**: los primeros ~35 s (30-40; fabian, 03/11/2026) son voz en off con cortes cada ~2 s; el avatar entra
+    después a presentarse.
   - **Dos velocidades**: cada ~2 s en el primer minuto y cada ~5 s después; cada corte cae en el inicio de una frase si hay
     una cerca, nunca el mismo trozo dos veces seguidas, y las gráficas animadas entran ya armadas.
   - **Pocos tramos de avatar y largos**: 2-4 de 30-55 s (presentación, momentos con más peso y cierre), tope ~15 % del
@@ -323,8 +324,9 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
       pegándose, no ya pegada ni todavía sin pegar. Si la voz dice «haz clic en Erase FRP», se ve el clic, no el reinicio.
 - [ ] **Sin escenas repetidas:** dos bloques no usan el mismo trozo de video.
 - [ ] **En orden:** cada `src_inicio` es mayor o igual que el `src_fin` del bloque anterior (no se vuelve atrás).
-- [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica más cada paso
-      (por qué se hace, qué pasa si sale mal); no dejes minutos de imagen sin voz.
+- [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica con calma lo que se
+      ve en cada paso; el porqué (y qué pasa si sale mal) solo en los pasos delicados (key, código, PIN, borrar, entrar
+      en Fastboot/Recovery/DFU; fabian, 03/11/2026). No dejes minutos de imagen sin voz.
 - [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, elegir la opción exacta) con `"tipo": "critico"` y
       velocidad 1 (máx. 1.5).
 - [ ] **⭐ Cortes importantes del autor** (`mis_proyectos/NOMBRE/cortes_importantes.json`, los marca en la app: Recovery,
@@ -447,12 +449,19 @@ Reglas del humor:
 - Botones, menús y archivos escritos tal cual aparecen en pantalla.
 - **No inventar datos**: precios, pines, webs, archivos, versiones solo si están en la transcripción, las capturas o la
   idea del autor. Si falta, la frase va sin el dato y se pregunta.
-- Estructura que funciona (guion Honor): gancho con el problema del espectador → ANTES y DESPUÉS → a qué modelos sirve →
-  «es fácil» → lo que NO hay que hacer (entregar el teléfono, test point) → invitación a comentar → pasos numerados
-  («Paso uno: …») → cierre con webs y WhatsApp.
+- Estructura que funciona (fabian, 03/11/2026): gancho de **30-40 s** (resultado → problema → versiones → herramienta y
+  PC → «es fácil» → invitación a comentar) → pasos numerados («Paso uno: …») → cierre con webs y WhatsApp. **Lo que NO hay
+  que hacer va dentro del paso donde aplica** («no conectes el Wi-Fi todavía»), nunca en un bloque de advertencias antes
+  de los pasos. **El porqué, solo en los pasos delicados**; en los sencillos, qué se hace y lo que se ve.
+- **PC sencilla (fabian, 03/11/2026):** en los procesos con PC (Honor, Motorola, Samsung, Xiaomi cuenta Google, iCloud…),
+  al principio la voz dice que no hace falta una PC avanzada, que basta una sencilla, y que si no tienen una pueden
+  hacerlo desde un café internet o pedirla prestada a un amigo o familiar. Nunca «sin PC» en ellos. En los dos procesos
+  sin PC (cuenta Mi de Xiaomi: basta el unlock code o el IMEI; liberación de bandas de iPhone: basta el IMEI y el número
+  de serie) no va lo de la PC sencilla. La revisión del guion lo avisa (`ia.falta_pc_sencilla`).
 - Números y años escritos como se dicen («dos mil veintiséis», «Android quince») para que la voz los lea bien.
 - Las webs del autor (xiaomiunlock.com, gsmprime.co) se dicen por su nombre y llevan etiqueta «web».
-- Cerca del cierre, en un bloque propio: en el canal de WhatsApp y en la página hay capturas de conversaciones reales con clientes.
+- **Testimonios dentro del cierre, en 1-2 frases** (fabian, 03/11/2026; antes en un bloque propio): en el canal de WhatsApp y
+  en la página hay capturas de conversaciones reales con clientes. Nunca inventes un testimonio (nombres, casos, frases).
 - Si se usa el estilo del canal «Psicótico»: leer `perfil_estilo.md` (tono de verdad incómoda, autoridad del técnico).
 - Datos a recordar del autor: método 2026–2027, Android 15, 16 y 17, últimos Honor (Honor 600, Honor 8 Lite).
 
