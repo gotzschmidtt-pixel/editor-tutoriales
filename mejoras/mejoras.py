@@ -115,7 +115,8 @@ def comandos(paso, d, op, py, ajustes):
             extra = ['--calidad', op.get('calidad') if op.get('calidad') in ('baja', 'media', 'alta') else 'baja', '--idiomas', ','.join(idiomas)]
             extra += ['--cara'] if op.get('cara') else []
             refs = [x for x in (op.get('refs_canal') or []) if re.fullmatch(r'[\w-]{11}', str(x))]
-            extra += ['--refs-canal', ','.join(refs)] if refs else []
+            # con «=»: un id de YouTube puede empezar con «-» y, separado, argparse lo toma por otra opción (revisión, 03/11/2026)
+            extra += ['--refs-canal=' + ','.join(refs)] if refs else []
         return [[py, m('miniatura', 'miniatura.py'), '--proyecto', '.', '--fotos', '--gpt', '--fondo', fondo] + extra
                 + ['--esquina-izq', str(op.get('esq_izq') if op.get('esq_izq') is not None else ('NEW 2026' if mixta else 'PASO A PASO')).strip()[:largo],
                    '--esquina-der', str(op.get('esq_der') or '').strip()[:largo]]
@@ -222,7 +223,8 @@ def estado(d):
 
 def _canal_ref():
     """miniatura/canal_referencia.py: las miniaturas de tu canal como referencia de estilo (fabian, 03/11/2026)."""
-    sys.path.insert(0, m('miniatura'))
+    if m('miniatura') not in sys.path:  # una sola vez: la página lo pide a cada rato mientras escribes el título
+        sys.path.insert(0, m('miniatura'))
     import canal_referencia
     return canal_referencia
 

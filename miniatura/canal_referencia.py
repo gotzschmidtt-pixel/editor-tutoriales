@@ -3,10 +3,10 @@ parecen nada a las mías de mi canal que últimamente he generado»).
 
 Gratis, sin IA: baja y guarda en tu PC las miniaturas más recientes y las más vistas de tu canal (i.ytimg.com es público) en
 mis_conocimientos/miniaturas/canal_referencia/ (esa carpeta no va a este repo), con indice.json: título, vistas, fecha, marca
-y servicio de cada una, y las que fijaste o quitaste. La lista de videos sale, en este orden, de:
+y servicio de cada una, y las que fijaste o quitaste. La lista de videos sale de:
   1. tu canal con el permiso de YouTube de la app (▶️ YouTube → Conectar), si está conectado;
-  2. lo último que bajó «📊 Aprender de todo tu canal» (mis_conocimientos/youtube_canal/videos.json);
-  3. la página pública del canal (los ~30 videos más nuevos, con sus vistas).
+  2. si no, la página pública del canal (los ~30 videos más nuevos, con sus vistas) junto con lo último que bajó
+     «📊 Aprender de todo tu canal» (mis_conocimientos/youtube_canal/videos.json), para los más viejos.
 Al pedir una miniatura, elegir() da 2-3, las más parecidas al video (misma marca o servicio); las que fijaste (📌 en
 «🖼 Miniatura») van primero y las que quitaste (🚫) nunca. GPT las usa SOLO de estilo: nunca copia sus textos ni sus teléfonos.
 
@@ -169,13 +169,18 @@ def _de_pagina(abrir):
 
 
 def lista_videos(abrir=None):
-    """(videos, de dónde salió la lista). Primero tu canal con OAuth, después lo guardado y por último la página pública."""
-    for fuente, f in (('YouTube conectado', _de_oauth), ('estadísticas guardadas del canal', _de_guardado),
-                      ('página pública del canal', lambda: _de_pagina(abrir or urllib.request.urlopen))):
-        vs = f()
-        if vs:
-            return vs, fuente
-    return [], ''
+    """(videos, de dónde salió la lista). Primero tu canal con OAuth; si no está conectado, la página pública (los ~30 más
+    nuevos) junto con lo guardado (los más viejos y sus vistas)."""
+    vs = _de_oauth()
+    if vs:
+        return vs, 'YouTube conectado'
+    # (revisión, 03/11/2026) lo guardado puede tener semanas (el permiso de prueba vence cada 7 días y con él se dejan de
+    # bajar las estadísticas): sin la página pública faltaban justo las miniaturas más nuevas, las que fabian pidió copiar
+    pagina, guardado = _de_pagina(abrir or urllib.request.urlopen) or [], _de_guardado() or []
+    ids = {v.get('id') for v in pagina}
+    vs = pagina + [v for v in guardado if v.get('id') not in ids]
+    fuente = ' + '.join(x for x, hay in (('página pública del canal', pagina), ('estadísticas guardadas del canal', guardado)) if hay)
+    return vs, fuente
 
 
 # ---------------------------------------------------------------- bajar las miniaturas (gratis)

@@ -256,7 +256,7 @@ with tempfile.TemporaryDirectory() as tmp:
     c = mejoras.comandos('m_miniatura_fotos', d, {'confirmo': 'SI', 'texto': 'HONOR|SIN CUENTA GOOGLE', 'fondo': 'gpt', 'calidad': 'media',
                                                   'idiomas': ['es'], 'refs_canal': ['honorFRP001', '../../x']}, 'py', 'aj.json')[0]
     ok('--mixta' not in c and c[c.index('--calidad') + 1] == 'media' and c[c.index('--idiomas') + 1] == 'es'
-       and c[c.index('--refs-canal') + 1] == 'honorFRP001', f'comando de la final: {c}')
+       and '--refs-canal=honorFRP001' in c, f'comando de la final: {c}')
     c = mejoras.comandos('m_miniatura_fotos', d, {'confirmo': 'SI'}, 'py', 'aj.json')[0]
     ok('--mixta' not in c and c[c.index('--calidad') + 1] == 'baja' and c[c.index('--esquina-izq') + 1] == 'PASO A PASO', f'por defecto: {c}')
     c = mejoras.comandos('m_miniatura_fotos', d, {'confirmo': 'SI', 'modo': 'mixta', 'titulo': 'placa'}, 'py', 'aj.json')[0]

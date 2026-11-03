@@ -377,7 +377,7 @@ FONDOS_CANAL = {
     'escritorio': 'SU escritorio real, el que se ve alrededor del teléfono en sus fotos, oscurecido y con contraste, con un toque '
                   'de neón azul y cian',
 }
-WEB = re.compile(r'\.(com|co|net|org|io)\b|gsmprime|www\.', re.I)
+WEB = re.compile(r'\.(com|co|net|org|io)\b|gsmprime|xiaomiunlock|www\.', re.I)  # «XIAOMIUNLOCK» solo también es su página
 
 
 def revisar_textos(textos, marca):
@@ -452,8 +452,13 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
         p.append(f'Imágenes {i + 1} a {i + n_estilo}: miniaturas de SU canal, SOLO como referencia de ESTILO (reparto, tipo de '
                  'letra, borde, sombra, degradados, neón, brillo y fondo): NO copies sus textos, ni sus teléfonos, ni sus '
                  'pantallas, ni sus logos, ni la duración de YouTube.')
-    entre = f'de {logos[0][0]}' if logos else ('de Google' if re.search(r'frp|google', ' '.join(lineas), re.I) else
-                                               f'de {marca.title()}' if marca != 'TU CELULAR' else 'de la marca')
+    # (revisión, 03/11/2026) entre las palabras va el logo del SERVICIO (la G en FRP, iOS en iPhone), como en «ELIM. CUENTA [G]
+    # HONOR»; si ese logo no está guardado, GPT lo dibuja (antes iba el de la marca, que ya está escrita en la frase)
+    unido = ' '.join(lineas)
+    servicio = 'Google' if re.search(r'frp|google', unido, re.I) else 'iOS' if re.search(r'iphone|icloud|\bios\b', unido, re.I) else ''
+    suyo = next((nm for nm, _ in logos if servicio and re.search(rf'\b{servicio}\b', nm, re.I)), '')
+    entre = (f'de {suyo}' if suyo else f'de {servicio}' if servicio else f'de {logos[0][0]}' if logos else
+             f'de {marca.title()}' if marca != 'TU CELULAR' else 'de la marca')
     if len(textos) > 1:
         frase = (f'«{textos[0][0]}» en blanco, el logo {entre} y «{" ".join(x for x, _ in textos[1:])}» en amarillo-naranja con '
                  'degradado')
@@ -498,8 +503,10 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     revisar_textos(lineas + [x for x in esquinas if x], marca)
     texto = ' '.join(lineas)
     logos = logos_miniatura(marca, texto)
-    canal = ((canal_referencia.por_ids(refs_canal) if refs_canal else []) or  # las del borrador; si ya no están, se eligen otra vez
-             canal_referencia.elegir(marca, canal_referencia.contexto(d, texto)[1]))
+    # las del borrador; si ya no están, se eligen otra vez con la misma cuenta que «🖼 Miniatura» (las marcadas con ✓): antes
+    # la marca salía de otro lado (el guion) y a GPT podían ir otras (revisión, 03/11/2026)
+    canal = ((canal_referencia.por_ids(refs_canal) if refs_canal else []) or
+             canal_referencia.elegir(*canal_referencia.contexto(d, texto)))
     estilo = [v['ruta'] for v in canal] or referencias_estilo(marca, 3)
     fotos = list(refs)
     imagenes = fotos + list(extras) + [f for _, f in logos] + estilo
@@ -1170,8 +1177,8 @@ def momentos_miniatura(d):
 
 
 def con_fotos(d, a):
-    """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video; GPT y la app
-    ponen fondo, textos, sello, píldoras y logo."""
+    """El módulo «🖼 Miniatura» (pedido de fabian, 30/10/2026): tus fotos HD en vez de los cuadros del video. Desde el
+    03/11/2026 GPT hace todo (textos incluidos) con la fórmula de su canal; con --mixta, como antes, la app pone los textos."""
     fotos = {k: os.path.join(d, f'foto_miniatura_{k}.jpg') for k in FOTOS if os.path.exists(os.path.join(d, f'foto_miniatura_{k}.jpg'))}
     if not a.gpt:
         raise SystemExit('ERROR: la miniatura con tus fotos la hace GPT: escribe SI para confirmar el gasto.')
@@ -1205,7 +1212,8 @@ def con_fotos(d, a):
         for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
             if not a.mixta:  # (fabian, 03/11/2026) todo GPT con la fórmula de su canal: borrador en baja y la final en media
                 info = {}
-                base = os.path.join(d, f"miniatura_canal_{fondo}_{calidad}_{time.strftime('%H%M%S')}")
+                # con la fecha: solo con la hora, un borrador de otro día a la misma hora pisaba al de antes (revisión, 03/11/2026)
+                base = os.path.join(d, f"miniatura_canal_{fondo}_{calidad}_{time.strftime('%m%d%H%M%S')}")
                 for f in miniaturas_gpt(d, [fotos['antes'], fotos['despues']], lineas, base, marca, idiomas=idiomas,
                                         antes_desc='tal como está en la foto HD', fondo=fondo, extras=extras, calidad=calidad,
                                         esquinas=(a.esquina_izq, a.esquina_der), cara=bool(getattr(a, 'cara', False)),
