@@ -616,6 +616,34 @@ def ultimo_video(d, hasta):
     return None
 
 
+ALINEAR_AVISAR = 2  # en los 2 primeros videos «Alinear» solo avisa (03/11/2026, al meterlo en «Hacer todo»)
+
+
+def alinear_args(d, guion='guion.json'):
+    """El paso «Alinear cada frase con su pantalla» (gratis). En los primeros videos va con --solo-revisar: no toca el guion,
+    solo deja en alineacion.txt lo que haría, para que lo compares con lo que corriges a mano; después corrige solo.
+    La cuenta queda a la vista en app/ajustes.json: "alinear_avisados" (los videos que ya pasaron así) y
+    "alinear_solo_avisar" (cuántos, 2 si no está; 0 = que corrija solo desde ya). Se cambia en «⚙ Ajustes IA»."""
+    c = [PY, m('alinear', 'alinear.py'), '--proyecto', '.'] + (['--guion', guion] if guion != 'guion.json' else [])
+    try:
+        aj = leer_ajustes()
+        n = max(0, int(aj.get('alinear_solo_avisar', ALINEAR_AVISAR)))
+    except (OSError, ValueError, TypeError):
+        return c + ['--solo-revisar']  # sin poder leer la cuenta, mejor no tocar el guion
+    nombre = os.path.basename(os.path.normpath(d))
+    vistos = [x for x in aj.get('alinear_avisados') or [] if isinstance(x, str)]
+    if nombre in vistos:  # el mismo video sigue igual cada vez que lo rehaces
+        return c + (['--solo-revisar'] if vistos.index(nombre) < n else [])
+    if len(vistos) >= n:
+        return c
+    aj['alinear_avisados'] = vistos + [nombre]
+    tmp = AJUSTES + '.tmp'  # como en «⚙ Ajustes IA»: se escribe aparte y se cambia de una vez
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(aj, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, AJUSTES)
+    return c + ['--solo-revisar']
+
+
 def comandos(paso, d, op):
     """Lista de comandos (cada uno una lista de argumentos) para un paso. cwd = carpeta del proyecto."""
     if paso in mejoras.IDS:
@@ -627,7 +655,7 @@ def comandos(paso, d, op):
     if paso == 'voz':
         return [[PY, m('voz', 'voz.py')] + g + ['--salida', 'voz'] + voz_args(d)]
     if paso == 'alinear':  # con la voz ya hecha: cada frase sobre la pantalla que nombra (OCR en tu PC, gratis)
-        return [[PY, m('alinear', 'alinear.py'), '--proyecto', '.']]
+        return [alinear_args(d)]
     if paso == 'montaje':
         c = [PY, m('montaje', 'montaje.py'), '--original', 'original.mp4'] + g + ['--salida', '1_montaje.mp4']
         if existe(d, 'imagen.png'):
@@ -773,7 +801,9 @@ def comandos(paso, d, op):
     if paso == 'prueba':  # «Solo los bloques»: voz, montaje y voz puesta de unos pocos bloques, para revisarlos rápido
         mo = comandos('montaje', d, op)[0]
         mo[mo.index('guion.json')], mo[mo.index('1_montaje.mp4')] = PRUEBA_GUION, 'prueba_montaje.mp4'
-        return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'] + voz_args(d), mo,
+        # entre la voz y el montaje, como en «Hacer todo»: cada frase sobre su pantalla (la casilla de «⚙ Ajustes IA»)
+        alinear = [alinear_args(d, PRUEBA_GUION)] if leer_ajustes().get('alinear', True) is not False else []
+        return [[PY, m('voz', 'voz.py'), '--guion', PRUEBA_GUION, '--salida', 'voz'] + voz_args(d)] + alinear + [mo,
                 [PY, m('voz', 'mezclar_voz.py'), 'prueba_montaje.mp4', PRUEBA_GUION, 'voz', 'prueba_bloques.mp4']]
     if paso == 'vista_previa':  # las diapositivas de «👀 Vista previa» (no pone nada en el video)
         return [[PY, m('vista', 'vista.py'), '--proyecto', '.']]
@@ -794,7 +824,7 @@ PASOS = [
     {'id': 'transcribir', 'nombre': 'Transcribir tu voz', 'necesita': ['original.mp4'], 'produce': 'transcripcion.txt', 'opcional': True},
     {'id': 'voz', 'nombre': 'Generar voz (ElevenLabs)', 'necesita': ['guion.json'], 'produce': 'voz'},
     {'id': 'alinear', 'nombre': 'Alinear cada frase con su pantalla (gratis)', 'necesita': ['guion.json', 'original.mp4', 'voz'],
-     'produce': 'alineacion.txt'},
+     'produce': 'alineacion.txt', 'blando': True},  # si falla (el lector de texto no arranca…), «Hacer todo» sigue sin eso
     {'id': 'montaje', 'nombre': 'Montar video', 'necesita': ['original.mp4', 'guion.json'], 'produce': '1_montaje.mp4'},
     {'id': 'insertos', 'nombre': 'Cortes y zooms con material extra', 'necesita': ['1_montaje.mp4', 'insertos.json', 'voz'], 'produce': '2_insertos.mp4', 'opcional': True, 'blando': True},
     {'id': 'mezclar', 'nombre': 'Poner la voz y subtítulos', 'necesita': ['1_montaje.mp4', 'voz'], 'produce': '3_voz.mp4'},
@@ -825,7 +855,9 @@ PASOS = [
     {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},
 ] + mejoras.PASOS
-TODO = ['voz', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'logos', 'testimonios', 'nuevos_modelos', 'trailer']
+TODO = ['voz', 'alinear', 'montaje', 'insertos', 'mezclar', 'musica', 'etiquetas', 'senales', 'tarjetas', 'logos', 'testimonios', 'nuevos_modelos', 'trailer']
+# 'alinear' (03/11/2026): con la voz hecha y antes de montar, cada frase sobre la pantalla que nombra (gratis, en tu PC).
+# Se quita con la casilla «Alinear cada frase con su pantalla (gratis)» de «⚙ Ajustes IA» (marcada si no la tocas)
 # «▶ Hacer todo» arma primero el video (voz, cortes, subtítulos y música); los extras se agregan después con «✨ Agregar extras»,
 # así si el guion no gusta no se pierde tiempo en etiquetas, flechas, testimonios, nuevos modelos ni tráiler
 EXTRAS = ['etiquetas', 'senales', 'tarjetas', 'logos', 'testimonios', 'nuevos_modelos', 'trailer']
@@ -1195,12 +1227,17 @@ def avisos_de_alineacion(d, nombre):
     seccion = texto[texto.rfind('▶ ' + nombre):] if '▶ ' + nombre in texto else ''
     avisos = [l.strip().lstrip('·').strip() for l in seccion.splitlines() if 'no se ve; aparece en' in l]
     vista = os.path.join(d, '.alineacion_vista.json')
+    # se comparan por bloque y frase, sin los segundos: de una vuelta a otra pueden moverse un poco (el tramo ya corrido, la
+    # pantalla leída de más cerca) y era la misma frase (03/11/2026, «Alinear» dentro de «Hacer todo»)
+    frase = lambda x: x.split(', pero en ')[0]
     try:
-        if json.load(open(vista, encoding='utf-8')) == avisos:
-            return []
-    except (OSError, ValueError):
-        pass
-    json.dump(avisos, open(vista, 'w', encoding='utf-8'), ensure_ascii=False)
+        vistas = [x for x in json.load(open(vista, encoding='utf-8')) if isinstance(x, str)]
+    except (OSError, ValueError, TypeError):
+        vistas = []
+    if {frase(x) for x in avisos} <= {frase(x) for x in vistas}:
+        return []
+    json.dump(avisos + [x for x in vistas if frase(x) not in {frase(y) for y in avisos}], open(vista, 'w', encoding='utf-8'),
+              ensure_ascii=False)
     return avisos
 
 
@@ -1610,10 +1647,17 @@ def correr(proyecto, pasos, opciones):
                 if avisos:
                     # pedido de fabian (30/10/2026): en HONOR 8 LITE, con la voz nueva, 3 frases no caían sobre su pantalla y se
                     # notó recién en el video. Ahora se frena antes de montar (la voz ya está y no se vuelve a pagar)
-                    log.write(f'\n⏸ Me frené antes del montaje: {len(avisos)} frase(s) no caen sobre la pantalla que nombran y no las '
-                              'pude correr solo (mira alineacion.txt). Corrige esos tramos en «📝 Ver y editar guion» o vuelve a tocar '
-                              '«▶ Hacer todo» para seguir igual.\n'); log.flush()
-                    opciones['_pausa'], opciones['_avisos'] = 'revision', avisos
+                    try:  # en los primeros videos «Alinear» solo avisa (alinear_args): ahí no intentó correrlas
+                        solo = 'Modo solo avisar' in open(os.path.join(d, 'alineacion.txt'), encoding='utf-8').read()
+                    except OSError:
+                        solo = False
+                    log.write(f'\n⏸ Me frené antes del montaje: {len(avisos)} frase(s) no caen sobre la pantalla que nombran y ' +
+                              ('no toqué el guion porque en tus primeros videos solo aviso (en alineacion.txt está lo que haría)'
+                               if solo else 'no las pude correr solo (mira alineacion.txt)') +
+                              '. Corrige esos tramos en «📝 Ver y editar guion» o vuelve a tocar «▶ Hacer todo» para seguir igual.\n')
+                    log.flush()
+                    # su propio aviso en la página: el de 'revision' dice «antes de la voz» y aquí la voz ya está hecha
+                    opciones['_pausa'], opciones['_avisos'] = 'alineacion', avisos
                     break
             if paso == 'revisar_imagen' and k < len(pasos) - 1:
                 log.flush()
@@ -3298,6 +3342,8 @@ class Manejador(BaseHTTPRequestHandler):
                     pasos = [x for x in pasos if x not in EXTRAS and x not in PREPARA_EXTRA and x != 'final_sin_trailer'] + sigue
                     if 'trailer' not in sigue:
                         pasos.append('final_sin_trailer')
+                if len(pasos) > 1 and 'alinear' in pasos and aj.get('alinear', True) is False:
+                    pasos.remove('alinear')  # destildaste «Alinear cada frase con su pantalla (gratis)» en «⚙ Ajustes IA»
                 if q['paso'] == 'todo' and not extras and pasos[0] == 'voz' and revision_imagen_pendiente(carpeta(q['p'])) \
                         and aj.get('revisar_imagen', True) is not False:  # la casilla de «⚙ Ajustes IA» (sí, salvo que la destildes)
                     pasos.insert(0, 'revisar_imagen')  # aprobaste el guion: ahora sí se revisa cada bloque contra su imagen

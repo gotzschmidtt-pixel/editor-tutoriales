@@ -157,6 +157,12 @@ RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 VEL_MAX = 6.0  # lo más que se acelera un tramo para acortarlo
 
 
+def tope_velocidad(mo):
+    """Lo más que se puede acelerar el tramo de un bloque (reglas de fabian): ×1 con tu cara o en un «⭐ corte importante»,
+    ×1,5 en los pasos clave, ×2 en los de configuración y ×6 en lo demás (esperas, cargas). Lo usa también «Alinear»."""
+    return 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else 2.0 if mo.get('paso') else VEL_MAX
+
+
 def ajustar_guion(guion, carpeta):
     """Pone en cada bloque la duración real de su voz y lo alarga si no cabe. Devuelve los avisos."""
     g = json.load(open(guion, encoding='utf-8'))
@@ -195,7 +201,7 @@ def ajustar_guion(guion, carpeta):
                     mo['src_fin'] = round(mo['src_inicio'] + min(tramo, quiere), 2)
                 else:
                     # «⭐ corte importante»: nunca se acelera; los pasos de configuración, a ×2 como máximo
-                    tope = 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else 2.0 if mo.get('paso') else VEL_MAX
+                    tope = tope_velocidad(mo)
                     mo['velocidad'] = round(min(tope, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
             if largo_bloque(mo) < antes_b - 0.3:
                 avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
