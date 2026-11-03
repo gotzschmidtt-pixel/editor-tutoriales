@@ -362,9 +362,12 @@ def main():
         fin_tramo = round((inicios[kb] + largo_tramo(m)) * FPS)  # cuadro donde termina el tramo y empieza la pausa
         # una pausa de 0 s (así deja «Alinear» los tramos que corre: "congelar_s": 0) no se arma aunque el redondeo de los
         # tiempos deje un cuadro entre el tramo y el bloque siguiente: ese cuadro lo pone el tramo. Antes salía una
-        # «pausa» de 1 cuadro con todo su trabajo (buscar caras, la escena de ida y vuelta, «✨ Mejorar imagen») (revisión 2)
-        pausa = (m['modo'].endswith('congelar') and round((m.get('congelar_s') or 0) * FPS) >= 1
-                 and meta[kb + 1] - fin_tramo >= 1)
+        # «pausa» de 1 cuadro con todo su trabajo (buscar caras, la escena de ida y vuelta, «✨ Mejorar imagen») (revisión 2).
+        # Una pausa sola («congelar», sin tramo) sí llena su sitio aunque sea casi de 0 s: nadie más puede ponerlo, y con los
+        # tiempos de ia.py (redondeados a 0,1 s) ese sitio llega a 3 cuadros; vacío, el bloque siguiente empezaba 3 cuadros
+        # antes, con el aviso rojo (revisión 3)
+        pausa = (m['modo'].endswith('congelar') and meta[kb + 1] - fin_tramo >= 1
+                 and (m['modo'] == 'congelar' or round((m.get('congelar_s') or 0) * FPS) >= 1))
         lab = rotulo(f"{i}  {b.get('ancla', '')}")
         enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf]
         cara, ventana, tocada = False, None, False

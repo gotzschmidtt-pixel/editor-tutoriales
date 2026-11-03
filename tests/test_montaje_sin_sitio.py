@@ -5,6 +5,8 @@
    acepta al reutilizar un tramo guardado) el bloque siguiente quedaba 2 cuadros tarde y salía el aviso rojo «la imagen
    empieza 2 cuadros tarde… Vuelve a montar», que no se iba aunque volvieras a montar. Ahora un bloque sin sitio no pone
    nada y el siguiente cae en su cuadro, también al volver a montar con lo ya hecho.
+1b) Al revés, una pausa sola («congelar», sin tramo) de casi 0 s sí llena el sitio que le dan los tiempos de ia.py
+   (redondeados a 0,1 s: hasta 3 cuadros). Desde la revisión 2 quedaba vacía y el bloque siguiente empezaba 3 cuadros antes.
 2) Los bloques normales siguen igual: cada uno en su cuadro y el video dura lo del guion.
 3) El aviso rojo del montaje (avisos_montaje.json) se borra con su video en «🔁 Rehacer video» y en «▶ Hacer todo»
    (app.VIDEOS_GENERADOS): antes quedaba a la vista sin video.
@@ -129,6 +131,19 @@ try:
                 x = se_ve[n] if n < len(se_ve) else None
                 ok(x is not None and abs(x - b['montaje']['src_inicio']) <= 0.06,
                    f'1) {nombre}, {vuelta}: en el cuadro {n} ({b["id"]}) se ve {x} y tendría que verse {b["montaje"]["src_inicio"]}')
+
+    # 1b) una pausa sola («congelar», sin tramo) de 0,01 s con los tiempos de ia.py (redondeados a 0,1 s): su sitio es de 3
+    #     cuadros (2,0 → 2,1 s). Nadie más puede llenarlo: la pausa lo llena (con la regla de la revisión 2, «menos de un
+    #     cuadro de pausa no se arma», quedaba vacío y P03 empezaba 3 cuadros antes, con el aviso rojo)
+    bl = [bloque('P01', 'lento', 1.0, 3.042), bloque('P02', 'congelar', 4.0, None, 1.0, 0.01), bloque('P03', 'lento', 5.0, 7.0)]
+    for b, ini in zip(bl, (0.0, 2.0, 2.1)):
+        b['inicio_min'] = ini  # como ia.py: round(2,042; 1) y round(2,052; 1)
+    log = armar(d, bl)
+    filas = donde_empieza(d, bl)
+    ok(all(f[1] == f[2] for f in filas), f'1b) bloques fuera de su cuadro: {filas}')
+    ok('AVISO' not in log and not os.path.exists(f_av), '1b) avisó sin motivo:\n' + '\n'.join(x for x in log.splitlines() if 'AVISO' in x))
+    se_ve = que_se_ve(os.path.join(d, '1_montaje.mp4'))
+    ok(se_ve[63] is not None and abs(se_ve[63] - 5.0) <= 0.06, f'1b) en el cuadro 63 (P03) se ve {se_ve[63]} y tendría que verse 5.0')
 
     # 2) un guion normal (sin bloques sin sitio) sigue igual: cada bloque en su cuadro, sin aviso
     bl = tiempos([bloque('N01', 'congelar', 1.0, None, 1.0, 0.77), bloque('N02', 'lento', 2.0, 3.37, 1.37),
