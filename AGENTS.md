@@ -113,6 +113,10 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   la de noticias de Movistar: el teléfono de espaldas, nada de desbloqueo), así que no usa la sección «Estilo del canal para
   GPT» de «🖼 Miniatura»; desde el 03/11/2026 su regla de fondo es la de todas: negro o el de la foto oscurecido, nunca claro.
 
+## Decisiones del autor (03/11/2026)
+
+- **Pantalla de la PC y zooms en los «📱 3 Shorts resumen»** (`short/material_pc.py`, gratis): si el proyecto tiene `material.mp4`, según lo que dice la voz usa la grabación (leer el serial, la KEY en la web, pegar la KEY, la página) con zoom por claves y círculo sobre el dato; «OKAY, Finished» queda en la cámara (la grabación puede traer intentos fallidos) y la cámara se acerca en OKAY, Omitir y Ajustes. Queda en `shorts_resumen.json` (`{"material": true, "src", "claves", "senales"}`); en la pestaña se ve como «PC 65» y se cambia a mano. Botón «🖥 Poner la pantalla de la PC»; si no se pulsa, se elige al armar. Sin difuminar. Sin `material.mp4`, igual que antes. Prueba: `python tests/test_shorts_material_pc.py`.
+
 ## Decisiones del autor (02/11/2026)
 
 - **«↻ Actualizar» es como F5**: recarga la página con el mismo proyecto abierto (no borra ni rehace nada; un paso que esté trabajando sigue).

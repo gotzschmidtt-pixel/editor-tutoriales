@@ -22,6 +22,7 @@ sys.path.insert(0, AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'youtube'))
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import reglas_titulo  # noqa: E402  lo que va y no va en los títulos (fabian, 03/11/2026)
+import material_pc  # noqa: E402  la pantalla de la PC en los Shorts (fabian, 03/11/2026)
 ARCHIVO = 'shorts_resumen.json'
 GANCHOS = [('antes_despues', 'Antes y después: empieza diciendo que el teléfono estaba bloqueado y «mira cómo terminó»'),
            ('un_minuto', 'En 1 minuto: el proceso como pasos numerados («Paso uno… paso cuatro»)'),
@@ -60,6 +61,7 @@ EXTRAS = [('WEBS', {'es': 'Y visita nuestras páginas oficiales: GSM Prime punto
                            'pt': 'No nosso canal do WhatsApp você vai ver depoimentos de clientes reais. '
                                  'O link para entrar está na descrição do tutorial completo.'})]
 WEBS_TEXTO = 'GSMPRIME.CO • XIAOMIUNLOCK.COM'  # en pantalla desde la frase de las páginas hasta el final
+ZOOM_CLAVE = 1.22  # acercamiento de la cámara en los pasos clave
 WEBS_Y = 0.085  # arriba al centro: debajo de los botones de YouTube y por encima de los logos (0.15) y la miniatura (0.17)
 
 
@@ -92,7 +94,8 @@ def poner_extras(r, idioma='es'):
         ultima = frases[-1]
         # sin una toma que diga lo mismo (páginas, WhatsApp), van trozos distintos del mismo Short, repartidos y cambiando
         # cada 2-3 s (nunca la misma escena larga); si fabian les puso otras tomas, quedan las suyas
-        todas = [list(t) for f in frases[:-1] for t in f.get('tomas') or []] or [list(t) for t in ultima.get('tomas') or [[0, 3]]]
+        todas = [list(t) for f in frases[:-1] for t in f.get('tomas') or [] if not material_pc.es_pc(t)] or \
+            [list(t) for t in ultima.get('tomas') or [[0, 3]] if not material_pc.es_pc(t)] or [[0, 3]]
         elegir = lambda j: todas[min(len(todas) - 1, len(todas) * j // (2 * len(EXTRAS) + 1))]
         viejas = {f['id']: f for f in s.get('frases') or [] if f.get('id') in fijos}
         extras = [dict(viejas.get(i) or {'tomas': [elegir(2 * e + 1), elegir(2 * e + 2)]}, id=i, texto=t.get(idioma) or t['es'])
@@ -301,12 +304,50 @@ def _encuadre(encuadres, s0):
     return None
 
 
-def armar(d, cuales=(1, 2, 3)):
-    """Gratis (la voz ya está hecha). Deja SHORT_RESUMEN_<n>.mp4 y shorts_resumen_textos.txt."""
+def trozo_pc(d, toma, desde, dur, salida, movs=None):
+    """Un trozo de material.mp4 en vertical: su recorte con zoom por claves, sobre la misma imagen desenfocada de fondo."""
+    import short
+    import codificar
+    video = os.path.join(d, material_pc.MATERIAL)
+    W, H = [int(x) for x in subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+                                            '-of', 'csv=p=0', video], capture_output=True, text=True).stdout.strip().split(',')[:2]]
+    a, b = toma['claves'][0], toma['claves'][-1]
+    bw, bh = short.SW, int(short.SW / 1.1) // 2 * 2
+    pw = min(W, int(H * 1.1) // 2 * 2)
+    x0 = max(0, min(W - pw, int(a['cx'] * W - pw / 2)))
+    z0, z1 = max(1, pw / (a['w'] * W)), max(1, pw / (b['w'] * W))
+    n = max(1, round(dur * 30))
+    z = f"{z0:.4f}+({z1 - z0:.4f})*min(on/{n},1)"
+    cxr = (a['cx'] * W - x0) / pw
+    # las flechas y círculos de esta toma (mismo dibujo que en la cámara) van pegados a la imagen ANTES del zoom: lo siguen
+    ins, pre, ult = [], '', 'b'
+    for sn in toma.get('senales') or []:
+        mov = (movs or {}).get(material_pc.clave_senal(sn))
+        off = sn['src'] - desde
+        if not mov or off >= dur or off + sn.get('dur', 3) <= 0:
+            continue
+        ins += ['-i', mov]
+        i = len(ins) // 2
+        tiempo = f'setpts=PTS+{off:.3f}/TB' if off >= 0 else f'trim=start={-off:.3f},setpts=PTS-STARTPTS'
+        pre += f'[{i}:v]scale={W}:-1,{tiempo}[s{i}];[{ult}][s{i}]overlay=0:0:eof_action=pass[o{i}];'
+        ult = f'o{i}'
+    fondo = f"[0:v]split[a][b];[a]scale={short.SW}:{short.SH}:force_original_aspect_ratio=increase,crop={short.SW}:{short.SH},gblur=sigma=30[f];"
+    vf = (f"crop={pw}:{H}:{x0}:0,fps=30,zoompan=z='{z}':x='{cxr:.4f}*iw-iw/zoom/2':y='{a['cy']:.4f}*ih-ih/zoom/2':d=1:s={bw}x{bh}:fps=30[c];"
+          f"[f][c]overlay=0:(H-h)/2-{int(short.SH * 0.08)},setsar=1,fps=30,format=yuv420p")
+    codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{desde:.3f}', '-t', f'{dur:.3f}', '-i', video] + ins + [
+                   '-filter_complex', f'{fondo}{pre}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}', '-an',
+                   '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', salida], check=True)
+
+
+def armar(d, cuales=(1, 2, 3), idioma='es'):
+    """Gratis (la voz ya está hecha). Deja SHORT_RESUMEN_<n>.mp4 y shorts_resumen_textos.txt. Otro idioma (en, pt): lee
+    shorts_resumen_<idioma>.json y voz_short_<idioma>/ y deja SHORT_RESUMEN_<n>_<IDIOMA>.mp4, con las mismas tomas."""
     import cv2
     import short
     import codificar
-    r = leer(d)
+    r = leer(d) if idioma == 'es' else json.load(open(os.path.join(d, f'shorts_resumen_{idioma}.json'), encoding='utf-8'))
+    carpeta = 'voz_short' if idioma == 'es' else f'voz_short_{idioma}'
+    sufijo = '' if idioma == 'es' else f'_{idioma.upper()}'
     orig = os.path.join(d, 'original.mp4')
     try:
         encuadres = json.load(open(os.path.join(d, 'short_encuadres.json'), encoding='utf-8'))
@@ -317,7 +358,9 @@ def armar(d, cuales=(1, 2, 3)):
         for k, f in enumerate(r['shorts'][n - 1]['frases'], 1):
             if not f.get('tomas'):
                 raise ValueError(f'Short {n}, frase {k}: no tiene tomas (escríbelas como 18-22)')
-    poner_extras(r)  # después de revisar: el número de frase del aviso es el que fabian ve en la pestaña
+    poner_extras(r, idioma)  # después de revisar: el número de frase del aviso es el que fabian ve en la pestaña
+    if idioma == 'es' and not r.get('pc_elegido') and material_pc.poner(d, r):  # si no pulsó «🖥 Poner la pantalla de la PC», se elige acá
+        guardar(d, r)
     senales_src = short.senales_grabado(d)  # las flechas y círculos del video largo, en segundos de la grabación
     for n in cuales:
         s = r['shorts'][n - 1]
@@ -327,27 +370,31 @@ def armar(d, cuales=(1, 2, 3)):
             plan = []  # primero los trozos de todo el Short: así se dibujan de una vez solo las señales que caen en ellos
             # las frases fijas (páginas, testimonios) van solo si su voz ya está grabada: sin ella el Short sale como antes
             frases = [(f, i) for f, i in zip(s['frases'], ids(s, n))
-                      if not f.get('id') or os.path.isfile(os.path.join(d, 'voz_short', f'{i}.mp3'))]
+                      if not f.get('id') or os.path.isfile(os.path.join(d, carpeta, f'{i}.mp3'))]
             for k, (f, bid) in enumerate(frases, 1):
-                mp3 = os.path.join(d, 'voz_short', f'{bid}.mp3')
+                mp3 = os.path.join(d, carpeta, f'{bid}.mp3')
                 largo = round(short.duracion(mp3) + AIRE, 2)
                 cierre = k == len(frases) and bool(LLAMADA.search(f.get('texto', '')))
                 if cierre:  # que se alcance a ver el ícono de play y la flecha al enlace después de la última palabra
                     largo = round(largo + COLA_CIERRE, 2)
-                piezas, cada = [], largo / len(f['tomas'])
-                for a, _b in f['tomas']:
+                piezas, pesos = [], f.get('pesos') or [1] * len(f['tomas'])
+                for tm, w in zip(f['tomas'], pesos):
+                    cada = largo * w / sum(pesos)
                     m = max(1, math.ceil(cada / TROZO))
-                    piezas += [(float(a) + j * cada / m, cada / m) for j in range(m)]
+                    pc = tm if material_pc.es_pc(tm) else None
+                    a = pc['src'] if pc else tm[0]
+                    piezas += [(float(a) + j * cada / m, cada / m, pc) for j in range(m)]
                 plan.append((k, f, bid, mp3, largo, piezas, cierre))
             # cuándo tapa el centro la tarjeta de WhatsApp: las flechas que caerían debajo no se dibujan
             ventanas, t0 = [], 0.0
             if short.hay_tarjeta():
                 frases_t = []
                 for k, f, bid, mp3, largo, piezas, cierre in plan:
-                    frases_t.append((t0 + RETRASO, short.palabras_voz(d, bid, 'voz_short')))
+                    frases_t.append((t0 + RETRASO, short.palabras_voz(d, bid, carpeta)))
                     t0 += largo
                 ventanas = short.ventanas_tarjeta(frases_t)
-            dibujadas = short.dibujar_senales(orig, senales_src, [(a, a + b) for p_ in plan if not p_[6] for a, b in p_[5]], tmp)
+            movs = material_pc.dibujar_senales(d, [pc for p_ in plan for _a, _b, pc in p_[5] if pc], tmp)
+            dibujadas = short.dibujar_senales(orig, senales_src, [(a, a + b) for p_ in plan if not p_[6] for a, b, pc in p_[5] if pc is None], tmp)
             # el recorte vertical deja adentro lo que señala cada flecha o círculo (como tus marcas)
             marcas = short.marcas_autor(d) + [(c['src'] + c['dur'] / 2, c['x'], c['y']) for c in dibujadas]
             memoria = short.deteccion.Memoria(orig)
@@ -355,19 +402,33 @@ def armar(d, cuales=(1, 2, 3)):
             inicio = 0.0  # segundo del Short en que empieza cada trozo
             for k, f, bid, mp3, largo, piezas, cierre in plan:
                 lista = []
-                for j, (s0, dur) in enumerate(piezas):
+                for j, (s0, dur, pc) in enumerate(piezas):
+                    p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
+                    if pc is not None:  # la pantalla de la PC, con su zoom; las flechas de la cámara no van acá
+                        inicio += dur
+                        trozo_pc(d, pc, s0, dur, p, movs)
+                        lista.append(p)
+                        continue
                     # en el cierre no van flechas ni etiquetas de la frase anterior (tapaban la flecha al enlace)
                     sus = [] if cierre else short.sin_tapar(dibujadas, s0, inicio, ventanas)
                     inicio += dur
-                    conf = _encuadre(encuadres, s0)
-                    guiado = short.seguir_ref(cap, s0, dur, conf, d) if conf else None
-                    claves, zoom, _ = guiado or short.seguir(cap, s0, dur, marcas, memoria)
+                    # (opcional en shorts_resumen.json) tramos que se ven enteros: el cuadro grande sobre su propio fondo desenfocado
+                    entero = any(x0 <= s0 <= x1 for x0, x1 in r.get('completos') or [])
+                    conf = next((encuadres[c] for c, rangos in (r.get('encuadre_en') or {}).items() if c in encuadres
+                                 and any(x0 <= s0 <= x1 for x0, x1 in rangos)), None) or _encuadre(encuadres, s0)
+                    guiado = short.seguir_ref(cap, s0, dur, conf, d) if conf and not entero else None
+                    claves, zoom, _ = guiado or (([], 1, None) if entero else short.seguir(cap, s0, dur, marcas, memoria))
+                    if any(x0 <= s0 <= x1 for x0, x1 in f.get('acercar') or []) or \
+                            ('acercar' not in f and material_pc.RE_ACERCAR.search(f.get('texto', ''))):
+                        zoom *= ZOOM_CLAVE  # OKAY, Omitir, Ajustes: se acerca al paso clave
                     ch = round(short.H / zoom / 2) * 2
                     cw = round(ch * 9 / 16 / 2) * 2
                     cl = [(t, x - cw / 2, y - ch / 2) for t, x, y in claves]
                     vf = (f"crop={cw}:{ch}:x='{short.expr(cl, 1, 0, short.W - cw)}':y='{short.expr(cl, 2, 0, short.H - ch)}',"
-                          f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p')
-                    p = os.path.join(tmp, f'v{k:02d}_{j:02d}.mp4')
+                          f'scale={short.SW}:{short.SH},setsar=1,fps=30,format=yuv420p') if not entero else (
+                        f'split[a][b];[a]scale={short.SW}:{short.SH}:force_original_aspect_ratio=increase,crop={short.SW}:{short.SH},'
+                        f'gblur=sigma=30[f];[b]scale=-2:{int(short.SH * 0.5)},crop={short.SW}:{int(short.SH * 0.5)}[c];'
+                        f'[f][c]overlay=0:(H-h)/2-{int(short.SH * 0.08)},setsar=1,fps=30,format=yuv420p')
                     ins, filtro, ult = short.con_senales(s0, dur, sus, 1)
                     codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig] + ins +
                                   ['-filter_complex', f'{filtro}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}',
@@ -381,7 +442,7 @@ def armar(d, cuales=(1, 2, 3)):
                                'aresample=44100,aformat=channel_layouts=stereo[a]', '-map', '0:v', '-map', '[a]', '-t', f'{largo:.3f}',
                                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', p], check=True)
                 partes.append(p)
-                tomas.append({'id': bid, 'carpeta': 'voz_short', 'largo': largo, 'texto': f['texto']})
+                tomas.append({'id': bid, 'carpeta': carpeta, 'largo': largo, 'texto': f['texto']})
             cap.release()
             memoria.guardar()
             lista = os.path.join(tmp, 'lista.txt')
@@ -389,7 +450,7 @@ def armar(d, cuales=(1, 2, 3)):
             junto = os.path.join(tmp, 'junto.mp4')
             subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', junto],
                            check=True)
-            ass = f'short_resumen_{n}_subs.ass'
+            ass = f'short_resumen_{n}{sufijo}_subs.ass'
             open(os.path.join(d, ass), 'w', encoding='utf-8').write(short.subtitulos(d, tomas, RETRASO))
             entradas, audio = ['-i', junto], '[0:a]anull[a]'
             if os.path.exists(short.MUSICA):
@@ -408,7 +469,7 @@ def armar(d, cuales=(1, 2, 3)):
             entradas += ['-loop', '1', '-i', banner_webs(tmp)]
             video += (f";[{entradas.count('-i') - 1}:v]format=rgba,fade=t=in:st={desde_web:.2f}:d=0.3:alpha=1[web];"
                       f"[vb][web]overlay=x=(W-w)/2:y={short.SH * WEBS_Y:.0f}:shortest=1:enable='gte(t,{desde_web:.2f})'[v]")
-            salida = f'SHORT_RESUMEN_{n}.mp4'
+            salida = f'SHORT_RESUMEN_{n}{sufijo}.mp4'
             codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + entradas +
                           ['-filter_complex', f'{video};{audio}', '-map', '[v]', '-map', '[a]', '-c:v', 'libx264',
                            '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida],
@@ -421,7 +482,8 @@ def armar(d, cuales=(1, 2, 3)):
                            'miniatura_final': os.path.basename(mini) if mini else None, 'revision': _revisar(d, salida, ass)})
         finally:  # los tramos de cada Short pesan cientos de MB: no quedan en %TEMP% (con varias pruebas se llenaba el disco)
             shutil.rmtree(tmp, ignore_errors=True)
-    textos(d, r)
+    if idioma == 'es':
+        textos(d, r)
     return hechos
 
 
@@ -486,6 +548,7 @@ def get(h, ruta, q, d):
             mini = None
         return h.responder({'guion': r, 'costo': costo(r) if r else None, 'trabajo': ESTADO.get(d, {}),
                             'miniatura_final': os.path.basename(mini) if mini else '',
+                            'hay_material': os.path.isfile(os.path.join(d, material_pc.MATERIAL)),
                             'hechos': sorted(f for f in os.listdir(d) if f.startswith('SHORT_RESUMEN_') and f.endswith('.mp4'))})
     return h.error('No existe.')
 
@@ -497,6 +560,14 @@ def post(h, ruta, q, largo, d):
             return h.responder(proponer(d))
         if ruta == '/api/shorts_resumen/guardar':  # lo que fabian corrigió a mano
             return h.responder(guardar(d, datos.get('guion') or {}))
+        if ruta == '/api/shorts_resumen/pc':  # gratis: la pantalla de la PC según lo que dice la voz; se revisa antes de armar
+            def elegir_pc():
+                r = leer(d)
+                n = material_pc.poner(d, r)
+                guardar(d, r)
+                return {'frases': n}
+            _fondo(d, 'leyendo la pantalla de la PC', elegir_pc)
+            return h.responder({'ok': True})
         if ruta == '/api/shorts_resumen/voz':  # GASTA ElevenLabs: solo con «confirmo»
             if not datos.get('confirmo'):
                 return h.error(f"La voz gasta ~{costo(leer(d))['creditos']} créditos de ElevenLabs: confirma primero.")

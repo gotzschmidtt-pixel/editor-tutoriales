@@ -27,7 +27,8 @@
 La IA escribe los guiones con la toma de cada frase; tú los corriges. La voz (ElevenLabs) solo se hace cuando confirmas.</div>
 <button id="bProponer" onclick="proponer()">✨ Escribir los 3 guiones (IA de Ajustes)</button>
 <button onclick="guardar()">💾 Guardar mis cambios</button>
-<button id="bVoz" class="gasta" onclick="hacerVoz()">🎙 Hacer la voz</button>
+<button id="bPc" style="display:none" onclick="ponerPc()" title="Gratis: según lo que dice la voz, usa la grabación de la pantalla de tu PC (material.mp4) con zoom. Luego puedes cambiarlo en cada frase: PC y el segundo">🖥 Poner la pantalla de la PC</button>
+  <button id="bVoz" class="gasta" onclick="hacerVoz()">🎙 Hacer la voz</button>
 <button id="bArmar" onclick="armar()">🎬 Armar los 3 Shorts (gratis)</button>
 <div class="estado" id="estado"></div>
 <div class="estado" id="miniFinal"></div>
@@ -61,10 +62,23 @@ function pintar() {
       const t = document.createElement('textarea');
       t.value = f.texto; t.oninput = () => { f.texto = t.value; };
       const tm = document.createElement('input');
-      tm.value = (f.tomas || []).map(x => x.join('-')).join(', ');
-      tm.title = 'Segundos del grabado (desde-hasta), separados por coma';
-      tm.oninput = () => { f.tomas = tm.value.split(',').map(x => x.trim().split('-').map(Number)).filter(x => x.length === 2 && !x.some(isNaN)); };
-      fila.append(t, tm);
+      // una toma de la cámara es «18-22»; una de la pantalla de la PC, «PC 65» (el segundo de material.mp4, con su zoom)
+      tm.value = (f.tomas || []).map(x => x.material ? 'PC ' + x.src : x.join('-')).join(', ');
+      tm.title = 'Cámara: segundos desde-hasta (18-22). Pantalla de la PC: PC y el segundo (PC 65). Separados por coma';
+      const tmv = document.createElement('span');
+      tmv.className = 'nota';
+      const marcarPc = () => { tmv.textContent = (f.tomas || []).some(x => x.material) ? '🖥 Con pantalla de la PC' : ''; };
+      marcarPc();
+      tm.oninput = () => {
+        const viejas = (f.tomas || []).filter(x => x.material);
+        f.tomas = tm.value.split(',').map(x => {
+          const pc = x.trim().match(/^pc\s*([\d.]+)$/i);
+          if (pc) return viejas.find(v => v.src === Number(pc[1])) || {material: true, src: Number(pc[1]), claves: [{t: 0, cx: .5, cy: .5, w: .62}, {t: 1, cx: .5, cy: .5, w: .52}]};
+          return x.trim().split('-').map(Number);
+        }).filter(x => x.material || (x.length === 2 && !x.some(isNaN)));
+        marcarPc();
+      };
+      fila.append(t, tm, tmv);
       div.append(fila);
     });
     const tit = document.createElement('div');
@@ -82,6 +96,7 @@ async function estado() {
   const e = await api('estado');
   if (!G) { G = e.guion && e.guion.shorts ? e.guion : null; pintar(); }
   const t = e.trabajo || {};
+  document.getElementById('bPc').style.display = e.hay_material ? '' : 'none';
   document.getElementById('estado').textContent = t.estado ? `Trabajo: ${t.estado} ${t.estado === 'error' ? '— ' + t.msg : ''}` : '';
   // 1 s con la miniatura del video largo al final, solo si la aprobaste (fabian, 03/11/2026)
   document.getElementById('miniFinal').textContent = e.miniatura_final
@@ -91,7 +106,8 @@ async function estado() {
   document.getElementById('hechos').innerHTML = (e.hechos || []).map(f =>
     `<div>🎬 <a target="_blank" href="/ver?ruta=${q('mis_proyectos/' + P + '/' + f)}">${f}</a>
      · <a href="/archivo?p=${q(P)}&f=${q(f)}&nombre=${q(P + ' ' + f.replace('SHORT_RESUMEN_', 'Short '))}" download>⬇ Bajar</a></div>`).join('');
-  if (t.estado === 'voz' || t.estado === 'armando') setTimeout(estado, 3000);
+  if (t.estado === 'voz' || t.estado === 'armando' || t.estado === 'leyendo la pantalla de la PC') setTimeout(estado, 3000);
+  else if (t.estado === 'listo' && PC_PEDIDO) { PC_PEDIDO = false; G = e.guion; pintar(); }
 }
 
 async function proponer() {
@@ -99,6 +115,12 @@ async function proponer() {
   b.disabled = true; b.textContent = '✨ Escribiendo… (1-2 min)';
   try { G = await api('proponer', {}); pintar(); } catch (e) { alert(e.message); }
   b.disabled = false; b.textContent = '✨ Escribir los 3 guiones (IA de Ajustes)';
+}
+
+let PC_PEDIDO = false;
+async function ponerPc() {
+  if (!G) return alert('Primero escribe los guiones.');
+  try { await guardar(); await api('pc', {}); PC_PEDIDO = true; estado(); } catch (e) { alert(e.message); }
 }
 
 async function guardar() {
