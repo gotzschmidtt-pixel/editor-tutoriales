@@ -51,6 +51,9 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 
 ## Portadas de Shorts y miniaturas
 - Las hace ChatGPT con el estilo de `mis_conocimientos/miniaturas/ESTILO_MINIATURAS.md`, nunca dibujadas por la app.
+- **NUNCA inventar pantallas** (fabian, 06/11/2026): en el teléfono solo van pantallas que fabian suministró (sus capturas
+  o fotos reales del proceso). A ChatGPT se le pasa la captura real y se le pide copiarla tal cual, sin redibujar textos.
+  Si falta la captura de una pantalla, pídesela; no la inventes.
 - Los chats van SIEMPRE dentro del proyecto de ChatGPT, nunca sueltos.
 - Portadas de Shorts:
   - el título arriba;

@@ -1258,7 +1258,7 @@ def avisos_de_imagen(d, nombre):
     return [l.strip().lstrip('·').strip() for l in seccion.splitlines() if DESALINEADO.search(l)]
 
 
-RAMA_APP = 'claude/project-thread-ns2vx0'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
+RAMA_APP = 'claude/project-thread-j40le1'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
 NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'mis_conocimientos', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
 
