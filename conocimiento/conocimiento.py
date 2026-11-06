@@ -414,7 +414,100 @@ def guiones_ia_para_ia(d, limite=3000):
 # PRIVADO (el de la app es público), y cada PC sube y baja lo suyo. Los .md y .txt se juntan línea por línea (las notas
 # de las dos PCs quedan); en un .json cambiado en las dos PCs queda el de esta PC y el de la otra al lado (.otra_pc.json).
 REPO_CONOCIMIENTO = 'https://github.com/gotzschmidtt-pixel/GUIONES-IA.git'
-ATRIBUTOS = '*.md merge=union\n*.txt merge=union\n*.json merge=otra_pc\n'
+ATRIBUTOS = '*.md merge=union\n*.txt merge=union\n*.json merge=otra_pc\napp_material/** merge=nuestra\napp_material/**/*.md merge=union\napp_material/**/*.txt merge=union\n'
+
+# «🔄 Sincronizar» también pasa entre las PCs lo que no es conocimiento pero hace falta en las dos (fabian, 06/11/2026: «un
+# botón para sincronizar PC1 y PC2 para no tener que pasar por esto»): la música, los sonidos, los estilos, el kit de estilo
+# de Remotion y, de mis_proyectos, solo lo liviano (portadas, miniaturas, entregas y textos). Nunca videos ni audios de
+# proyecto: GitHub no admite archivos grandes. Van en mis_conocimientos/app_material/<carpeta con _ en vez de />.
+CARPETAS_PCS = ['mis_musica', 'mis_sonidos', 'mis_estilos', 'remotion/public/estilo', 'mis_proyectos']
+EXT_IMAGEN = {'.png', '.jpg', '.jpeg', '.webp'}
+EXT_TEXTO = {'.txt', '.md', '.srt'}
+MAX_ARCHIVO = 20 * 1024 * 1024  # GitHub avisa desde 50 MB y rechaza desde 100 MB
+MAX_TANDA = 300 * 1024 * 1024  # lo nuevo que sube una sola sincronización
+SALTAR = {'__pycache__', '1_montaje', 'montaje_en_curso', 'trabajo', 'node_modules'}
+
+
+def _entra_pcs(carpeta, rel, tam):
+    """Si el archivo rel (dentro de carpeta) se pasa a la otra PC."""
+    partes = rel.replace('\\', '/').split('/')
+    if any(x.startswith('.') or x in SALTAR or x.startswith('antes_') for x in partes[:-1]) or partes[-1].startswith('.'):
+        return False
+    if tam > MAX_ARCHIVO or partes[-1].endswith(('.otra_pc.json', '.tmp')):
+        return False
+    if carpeta != 'mis_proyectos':
+        return True
+    ext = os.path.splitext(partes[-1])[1].lower()
+    if ext in EXT_TEXTO:
+        return tam <= 1024 * 1024
+    if partes[0] == '_entregas':
+        return not partes[-1].lower().endswith('.zip')
+    return ext in EXT_IMAGEN and any(x.lower().startswith(('portada', 'miniatura')) for x in partes)
+
+
+def _espejo(carpeta):
+    return os.path.join(CARPETA, 'app_material', carpeta.replace('/', '_'))
+
+
+def _iguales(a, b):
+    try:
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        with open(a, 'rb') as x, open(b, 'rb') as y:
+            return x.read() == y.read()
+    except OSError:
+        return False
+
+
+def _subir_material_pcs():
+    """Copia a app_material lo que cambió en esta PC. Devuelve (archivos, bytes, saltados por tamaño de la tanda)."""
+    import shutil
+    n = total = saltados = 0
+    for carpeta in CARPETAS_PCS:
+        origen = os.path.join(RAIZ, *carpeta.split('/'))
+        for raiz, dirs, archivos in os.walk(origen):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in SALTAR]
+            for f in archivos:
+                a = os.path.join(raiz, f)
+                rel = os.path.relpath(a, origen)
+                try:
+                    tam = os.path.getsize(a)
+                except OSError:
+                    continue
+                if not _entra_pcs(carpeta, rel, tam):
+                    continue
+                b = os.path.join(_espejo(carpeta), rel)
+                if os.path.exists(b) and _iguales(a, b):
+                    continue
+                if total + tam > MAX_TANDA:
+                    saltados += 1
+                    continue
+                os.makedirs(os.path.dirname(b), exist_ok=True)
+                shutil.copy2(a, b)
+                n += 1
+                total += tam
+    return n, total, saltados
+
+
+def _bajar_material_pcs(cambiados):
+    """Copia a su lugar en la app lo que llegó de la otra PC (cambiados: rutas de git dentro de mis_conocimientos)."""
+    import shutil
+    n = 0
+    for c in cambiados:
+        c = c.strip().strip('"')
+        if not c.startswith('app_material/'):
+            continue
+        for carpeta in CARPETAS_PCS:
+            pre = 'app_material/' + carpeta.replace('/', '_') + '/'
+            if c.startswith(pre):
+                b = os.path.join(CARPETA, *c.split('/'))
+                a = os.path.join(RAIZ, *carpeta.split('/'), *c[len(pre):].split('/'))
+                if os.path.isfile(b) and not (os.path.exists(a) and _iguales(a, b)):
+                    os.makedirs(os.path.dirname(a), exist_ok=True)
+                    shutil.copy2(b, a)
+                    n += 1
+                break
+    return n
 
 
 def _git(*args, timeout=300):
@@ -441,7 +534,9 @@ def sincronizar(url=None):
     if '*.otra_pc.json' not in leer(os.path.join(CARPETA, '.gitignore')):
         escribir(os.path.join(CARPETA, '.gitignore'), leer(os.path.join(CARPETA, '.gitignore')).rstrip('\n') + '\n*.otra_pc.json\n')
     _git('config', 'merge.otra_pc.driver', 'cp %B %P.otra_pc.json; true')  # git ya pone %P entre comillas
+    _git('config', 'merge.nuestra.driver', 'true')  # una imagen o música cambiada en las dos PCs: queda la de esta
     antes = set(f for _, _, fs in os.walk(CARPETA) for f in fs if f.endswith('.otra_pc.json'))
+    subidos, peso, saltados = _subir_material_pcs()
     _git('add', '-A')
     if _git('diff', '--cached', '--quiet')[0]:
         _git('commit', '-q', '-m', f"Conocimientos desde {socket.gethostname()} · {time.strftime('%Y-%m-%d %H:%M')}")
@@ -449,17 +544,29 @@ def sincronizar(url=None):
     remoto = c == 0
     if not remoto and 'couldn\'t find remote ref' not in out.lower():
         raise ValueError(f'No pude bajar los conocimientos de GitHub (revisa internet o conecta tu cuenta de GitHub): {out[-200:]}')
+    bajados = 0
     if remoto:
+        previo = _git('rev-parse', 'HEAD')[1] if _git('rev-parse', '--verify', '-q', 'HEAD')[0] == 0 else ''
         c, out = _git('merge', '-q', '--no-edit', '--allow-unrelated-histories', 'FETCH_HEAD')
         if c:
             _git('merge', '--abort')
             raise ValueError(f'No pude juntar los conocimientos de las dos PCs; no cambié nada: {out[-200:]}')
+        if previo:
+            cambiados = _git('-c', 'core.quotepath=false', 'diff', '--name-only', previo, 'HEAD', '--', 'app_material')[1].splitlines()
+        else:
+            cambiados = _git('-c', 'core.quotepath=false', 'ls-files', 'app_material')[1].splitlines()
+        bajados = _bajar_material_pcs(cambiados)
     c, out = _git('push', '-q', 'estudio', 'HEAD:main')
     if c:
         raise ValueError(f'No pude subir los conocimientos a GitHub (conecta tu cuenta de GitHub en esta PC): {out[-200:]}')
     otras = [f for _, _, fs in os.walk(CARPETA) for f in fs if f.endswith('.otra_pc.json') and f not in antes]
-    return ('✓ Conocimientos al día en las dos PCs.' + (f' Ojo: {len(otras)} archivo(s) cambiaron en las dos PCs; el de la otra quedó '
-                                                        f'al lado como .otra_pc.json.' if otras else ''))
+    material = ''
+    if subidos or bajados:
+        material = f' Música, portadas y entregas: {subidos} subido(s) ({peso / 1048576:.1f} MB) y {bajados} bajado(s) de la otra PC.'
+    if saltados:
+        material += f' Quedaron {saltados} archivo(s) para la próxima vez (más de {MAX_TANDA // 1048576} MB en una tanda): pulsa otra vez.'
+    return ('✓ Conocimientos al día en las dos PCs.' + material + (f' Ojo: {len(otras)} archivo(s) cambiaron en las dos PCs; el de la '
+                                                                   f'otra quedó al lado como .otra_pc.json.' if otras else ''))
 
 
 def _parecido(d, f):

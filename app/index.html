@@ -230,6 +230,7 @@
   </dialog>
   <button onclick="abrirRecursos()" title="Cuánto procesador, memoria RAM y tarjeta gráfica se está usando mientras la app trabaja (pedido del autor: suelto, al lado de «Actualizar la app»)">📊 Uso del PC</button>
   <button onclick="actualizarApp()" title="Baja la versión nueva y la pone en esta misma carpeta. Tus proyectos, estilos y claves no se tocan.">⬇ Actualizar la app</button>
+  <button onclick="sincronizarPCs()" title="Pasa entre tus dos PCs, por tu GitHub PRIVADO (GUIONES-IA): conocimientos, logos, música, estilos, portadas, miniaturas, la carpeta _entregas y los textos de los proyectos. Los videos no (pesan demasiado para GitHub). Púlsalo en una PC y después en la otra.">🔄 Sincronizar PC1 y PC2</button>
 </header>
 
 <div id="sinProyecto" class="vacio" hidden>
@@ -708,7 +709,7 @@
         <button onclick="conoAprender(true)">🧠 Aprender de todos</button>
         <a href="/api/conocimiento/bajar" download="CONOCIMIENTO.md"><button title="Todo en un solo archivo, para subirlo al chat de Claude, DeepSeek o ChatGPT">⬇ Bajar para otra IA</button></a>
         <button onclick="conoAbrir()">📂 Abrir carpeta</button>
-        <button onclick="conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
+        <button onclick="conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA): conocimientos, música, estilos, portadas, miniaturas y entregas. También se hace solo al actualizar la app">🔄 Sincronizar PC1 y PC2</button>
         <span class="msg" id="conoMsg"></span>
       </div>
       <details style="margin-top:8px"><summary class="aviso" id="conoAprSum">Aprendido de los proyectos</summary>
@@ -3348,6 +3349,12 @@ function abrirRecursos() {  // «📊 Uso del PC»: procesador, RAM y gráfica e
       (r.error ? `<p class="aviso">${esc(r.error)}</p>` : '');
   };
   pinta(); if (!RELOJ_REC) RELOJ_REC = setInterval(pinta, 2000);
+}
+async function sincronizarPCs() {  // fabian, 06/11/2026: «un botón para sincronizar PC1 y PC2»
+  const b = event && event.target; if (b) { b.disabled = true; b.textContent = '🔄 Sincronizando…'; }
+  try { const r = await api('/api/conocimiento/sincronizar', {method: 'POST', body: '{}'}); alert(r.msg + '\n\nEn la otra PC pulsa también «🔄 Sincronizar PC1 y PC2» para bajar lo de esta.'); }
+  catch (e) { alert(e.message); }
+  if (b) { b.disabled = false; b.textContent = '🔄 Sincronizar PC1 y PC2'; }
 }
 async function actualizarApp() {
   if (!confirm('Bajo la versión nueva de la app y la pongo en esta misma carpeta.\n\nTus proyectos, estilos y claves no se tocan, ' +

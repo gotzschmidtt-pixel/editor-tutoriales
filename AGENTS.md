@@ -6,6 +6,12 @@ Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene t
 **Reglas fijas (léelas primero, 06/11/2026):** `REGLAS_FIJAS_VIDEOS.md` en esta misma carpeta tiene las voces, emociones,
 círculos, páginas, cierre con play y contacto. Aplícalas sin preguntarle al autor.
 
+**Sincronizar las dos PCs (06/11/2026):** el botón «🔄 Sincronizar PC1 y PC2» (arriba, junto a «⬇ Actualizar la app», y en
+«🧠 Conocimiento») pasa por GUIONES-IA los conocimientos y también `mis_musica`, `mis_sonidos`, `mis_estilos`,
+`remotion/public/estilo` y, de `mis_proyectos`, solo portadas, miniaturas, `_entregas` (sin zips) y textos (.txt/.md/.srt
+≤ 1 MB). Van en `mis_conocimientos/app_material/`. Nunca videos ni audios de proyecto (archivos ≤ 20 MB, ≤ 300 MB por tanda).
+Prueba: `python tests/test_sincronizar_pcs.py`.
+
 **Pedido fijo del autor:** cuando le digas dónde está o dónde dejar un archivo o carpeta, dale SIEMPRE la dirección completa
 (por ejemplo `C:\Users\PC\Downloads\CLOUDE SINCRONIZACION\EDITOR DE VIDEO CLAUDE\editor-tutoriales\mis_musica\musica_fija.mp3`),
 nunca solo el nombre o una ruta a medias como `mis_musica\musica_fija.mp3`.
