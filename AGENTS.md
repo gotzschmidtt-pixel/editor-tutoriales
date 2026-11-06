@@ -3,6 +3,9 @@
 Pega este archivo al inicio del chat de DeepSeek, o déjalo como `AGENTS.md` en la carpeta `editor-tutoriales`.
 Cuando fabian te pase un video, sigue la PARTE A paso a paso. La PARTE B tiene todos los parámetros exactos.
 
+**Reglas fijas (léelas primero, 06/11/2026):** `REGLAS_FIJAS_VIDEOS.md` en esta misma carpeta tiene las voces, emociones,
+círculos, páginas, cierre con play y contacto. Aplícalas sin preguntarle al autor.
+
 **Pedido fijo del autor:** cuando le digas dónde está o dónde dejar un archivo o carpeta, dale SIEMPRE la dirección completa
 (por ejemplo `C:\Users\PC\Downloads\CLOUDE SINCRONIZACION\EDITOR DE VIDEO CLAUDE\editor-tutoriales\mis_musica\musica_fija.mp3`),
 nunca solo el nombre o una ruta a medias como `mis_musica\musica_fija.mp3`.
