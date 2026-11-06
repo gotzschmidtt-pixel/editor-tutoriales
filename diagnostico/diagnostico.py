@@ -252,7 +252,8 @@ def informe(d, proyecto, paso, nombre_paso, ejec, registro, estado, proveedor=''
     """Escribe diagnostico_<fecha>_<id>.json y .txt para esta ejecución. Devuelve el resumen para la app, o None si no
     hay nada que informar (paso bien hecho y sin llamadas fallidas)."""
     todas = llamadas(d, ejec)
-    propias = [x for x in todas if x.get('paso') == paso] or todas
+    # solo las llamadas de ESTE paso: un paso sin IA (voz, montaje) no hereda los fallos de la IA de otro paso
+    propias = [x for x in todas if x.get('paso') == paso] if paso else todas
     # problemas: llamadas que fallaron y las que siguieron solo porque respondió otro modelo tras un rechazo
     fallidas = [x for x in propias if not x.get('ok') or x.get('incidencia')]
     if estado == 'ok' and not fallidas:

@@ -110,13 +110,27 @@ def _id_item(e):
     return _clave(f"{e.get('bloque', '')}|{e.get('frase') or e.get('t') or e.get('src_t') or ''}|{e.get('texto') or e.get('etiqueta') or ''}")
 
 
+def _mismo_lugar(a, b):
+    """La misma etiqueta o círculo con otro texto: mismo bloque y misma frase (o segundo), o mismo bloque y mismo título."""
+    if _clave(a.get('bloque', '')) != _clave(b.get('bloque', '')):
+        return False
+    fa, fb = (_clave(x.get('frase') or x.get('t') or x.get('src_t') or '') for x in (a, b))
+    ta, tb = _clave(a.get('titulo')), _clave(b.get('titulo'))
+    return bool(fa and fa == fb) or bool(ta and ta == tb)
+
+
 def _eventos_lista(viejo, nuevo, que):
     va, vb = {_id_item(e): e for e in _lista(viejo)}, {_id_item(e): e for e in _lista(nuevo)}
     if not va or len([k for k in va if k not in vb]) > max(4, len(va) // 2):
         return []
+    nuevas = [e for k, e in vb.items() if k not in va]  # las que cambiaste o agregaste
     ev = []
     for k, e in va.items():
         if k not in vb:
+            igual = next((n for n in nuevas if _mismo_lugar(e, n)), None)
+            if igual is not None:  # sigue en el mismo lugar con otro texto: la corregiste, no la quitaste
+                nuevas.remove(igual)
+                continue
             ev.append({'tipo': f'quito_{que}', 'bloque': e.get('bloque', ''), 'clase': e.get('tipo') or e.get('forma') or '',
                        'antes': _normal(e.get('texto') or e.get('etiqueta') or e.get('frase')), 'titulo': _normal(e.get('titulo'))})
     return ev

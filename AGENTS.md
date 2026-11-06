@@ -79,6 +79,7 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   y cada 5,7 s después; cara 35 % en 10 tramos largos; la cara recién en 1:32; cierre a cámara y pantalla final desenfocada;
   `danskyx_tv_pirata/ANALISIS.txt`). Reglas por defecto (se cambian en la pestaña, «Ritmo»):
   - **Gancho sin avatar**: los primeros ~45 s (30-60) son voz en off con cortes cada ~2 s; el avatar entra después a presentarse.
+    (El gancho de 30-40 s del 03/11/2026 es del tutorial largo: este modo de videos con avatar sigue con lo que fabian aprobó el 01/11.)
   - **Dos velocidades**: cada ~2 s en el primer minuto y cada ~5 s después; cada corte cae en el inicio de una frase si hay
     una cerca, nunca el mismo trozo dos veces seguidas, y las gráficas animadas entran ya armadas.
   - **Pocos tramos de avatar y largos**: 2-4 de 30-55 s (presentación, momentos con más peso y cierre), tope ~15 % del
@@ -108,7 +109,13 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   `miniatura/gastos.json`. Cada resultado se revisa con visión (ortografía, tildes, letras deformes: en rojo si falla) y
   «⭐ Usar como miniatura» la deja elegida en Publicar → YouTube y en `subir_youtube/`. Es fórmula, no calco: nunca se
   copian caras de otras personas, logos de canales ni sus textos. Pruebas sin gastar: `MINIREF_SIMULAR=1` y
-  `python tests/test_miniaturas_referencia.py`.
+  `python tests/test_miniaturas_referencia.py`. Tiene su propia fórmula (la receta de las referencias que subes; se hizo para
+  la de noticias de Movistar: el teléfono de espaldas, nada de desbloqueo), así que no usa la sección «Estilo del canal para
+  GPT» de «🖼 Miniatura»; desde el 03/11/2026 su regla de fondo es la de todas: negro o el de la foto oscurecido, nunca claro.
+
+## Decisiones del autor (03/11/2026)
+
+- **Pantalla de la PC y zooms en los «📱 3 Shorts resumen»** (`short/material_pc.py`, gratis): si el proyecto tiene `material.mp4`, según lo que dice la voz usa la grabación (leer el serial, la KEY en la web, pegar la KEY, la página) con zoom por claves y círculo sobre el dato; «OKAY, Finished» queda en la cámara (la grabación puede traer intentos fallidos) y la cámara se acerca en OKAY, Omitir y Ajustes. Queda en `shorts_resumen.json` (`{"material": true, "src", "claves", "senales"}`); en la pestaña se ve como «PC 65» y se cambia a mano. Botón «🖥 Poner la pantalla de la PC»; si no se pulsa, se elige al armar. Sin difuminar. Sin `material.mp4`, igual que antes. Prueba: `python tests/test_shorts_material_pc.py`.
 
 ## Decisiones del autor (02/11/2026)
 
@@ -127,6 +134,58 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - **Caras en fotos y miniaturas**: expresión natural, ni exagerada (sin gritos), ni demasiado seria, ni pícara (ojos
   entrecerrados, cabeza ladeada). Si sale fabian, GPT pone un hombre latino ficticio (el mismo en todas) con buzo blanco liso,
   sin logos (fabian, 02/11/2026).
+- **Miniaturas SIN las páginas del autor**: nunca poner gsmprime.co, xiaomiunlock.com ni otra web en las miniaturas
+  (fabian, 02/11/2026). Las webs van en el video (etiqueta «web»), en la descripción y en las cards/plantillas PSD.
+- **Miniaturas como las de su canal** (fabian, 03/11/2026: «las que estás haciendo no se parecen nada a las mías»): en
+  **«🖼 Miniatura»** TODO lo escribe GPT con su fórmula (abajo la frase en una línea: blanco + logo + amarillo, sin tapar
+  la esquina de la duración; arriba una etiqueta más chica en cada esquina, derecha o apenas inclinada; el teléfono real grande
+  al centro, en una mano con guante, con un filo fino de luz azul; fondo negro o su estudio oscurecido, nunca claro) y la app no dibuja nada encima (la «mixta» ya no
+  está en las páginas). «⬇ Traer mis miniaturas del canal» (gratis, `miniatura/canal_referencia.py`) guarda las recientes y las
+  más vistas en `mis_conocimientos/miniaturas/canal_referencia/`; a GPT van 2-3 de ellas SOLO de estilo (las de la misma marca
+  o servicio; 📌 fija, 🚫 quita), con sus fotos y los logos de `mis_conocimientos/logos`. Borrador en calidad baja (~0,02 USD);
+  «✅ Hacer la final» la repite en media (~0,07 USD) con las mismas fotos y referencias; alta solo si la pide. Modelo:
+  gpt-image-2.5-flare, o el de la familia 2.5 que se ponga en `app/ajustes.json` («modelo_imagen»).
+  Pruebas: `python tests/test_miniaturas_canal.py` y `python tests/test_miniaturas_canal_revision.py`.
+  **Estilo** (fabian, 03/11/2026, con la grilla de su canal: «mira la primera imagen, fondos negros, tipo de fuente, estilo»; lo
+  de antes salió «algo tosco»): fondo NEGRO con luz azul solo detrás del teléfono y de la mano (nunca túnel de rayos, destellos
+  ni piso que refleja), el teléfono real en una mano con guante, letras condensadas en cursiva blanco + amarillo con el degradé
+  suave de las suyas (blanco a gris muy claro, amarillo a naranja abajo; sin cromado ni bisel) y la frase de abajo es lo más
+  grande. De referencia van solo sus miniaturas de fondo oscuro con más vistas por día: las del canal guardadas y, si faltan,
+  `mis_conocimientos/miniaturas/referencias/indice.json` (lo arma
+  `python miniatura/canal_referencia.py --referencias mis_conocimientos/youtube_datos/AAAA-MM-DD`, gratis; «⬇ Traer mis
+  miniaturas del canal» baja también la HD de esas y no la borra). De las referencias GPT no copia sellos, insignias ni años
+  (las suyas dicen «MÉTODO 2027», «TODOS LOS MODELOS»): solo los textos que le da el pedido. Las de referencias/ que usó un
+  borrador quedan en su `refs_canal`, y la final usa las mismas. El prompt lleva además la sección «Estilo del canal para
+  GPT» de `ESTILO_MINIATURAS.md`. Prueba: `python tests/test_miniaturas_estilo_canal.py`.
+- **Shorts: flechas y círculos del video largo** (fabian, 02/11/2026: «¿por qué no se muestran, sobre todo en Omitir?»):
+  short.senales_grabado pasa senales.json a segundos de la grabación y short.con_senales las pega ANTES del recorte vertical
+  (siguen al zoom). Si la imagen del video largo no coincide con la grabación, esa señal se salta.
+- **Tarjeta de WhatsApp con tamaño propio por formato** (fabian, 02/11/2026: «están muy pequeñas para ambos»): en
+  logos.json va con "tarjeta": true (o se reconoce por su nombre y su "queda"). logos.TARJETA: ~80 % del alto en el video
+  largo y ~92 % del ancho en el Short, sin pisar los subtítulos. "archivo_short" permite un dibujo propio para el Short.
+- **Cierre de TODOS los Shorts, de todas las marcas** (fabian, 02/11/2026): la última frase es una de las 3 de
+  resumen.CIERRES (ES/EN/PT), rotando (Short 1 → la 1…). Nunca mandar «a la descripción»: en los Shorts esos enlaces no se
+  tocan; lo que lleva al tutorial es el «Video relacionado» (enlace ▶ abajo a la izquierda, se elige al subir). Apenas la
+  voz dice «play» sale el ícono de play (logo con "solo_short": true y la palabra «play») y una flecha rebota hacia el enlace.
+  El play va ABAJO a la izquierda, junto al enlace ("pos_short": {"x": 0.24, "y": 0.84, "alto": 0.11} en logos.json; fabian
+  03/11: «el ícono de play está arriba»). El cierre dura 2 s más (COLA_CIERRE) y en él no van flechas ni círculos; las que
+  caerían debajo de la tarjeta de WhatsApp tampoco se dibujan.
+- **Descripción, Shorts y audio (fabian, 03/11/2026):**
+  - **Descripción**: primero UNA línea que dice de qué trata el video y enseguida el bloque de contacto (canal de WhatsApp
+    y soportes), en ES/EN/PT; después el resto y los capítulos (`youtube.con_contacto`, `con_capitulos`). Antes el contacto
+    iba en la primera línea. Las noticias siguen sin contacto. Prueba: `python tests/test_contacto_descripcion.py`.
+  - **Shorts de ~60 s** («¿Un Short de 30-40 s? No por ahora»): «📱 Short», «📱 3 Shorts resumen» y «📱 Varios Shorts» (que
+    estaba en 45 s). Prueba: `python tests/test_shorts_60s.py`.
+  - **Pista de audio en inglés, siempre con su confirmación**: «🌐 Idiomas» → «🎧 Preparar la pista de audio para YouTube
+    Studio» (`voz/pista_idioma.py`, gratis) deja `PISTA_AUDIO_EN.mp3`, del largo de FINAL.mp4, con la voz que ya tiene la
+    versión `NOMBRE_EN` (esa voz gasta ElevenLabs y solo se hace con su SI). La API de YouTube no sube pistas de audio: la
+    sube él en Studio → Idiomas → Agregar idioma → Audio. Nunca gastes ni subas nada sin su confirmación, cada vez.
+    Prueba: `python tests/test_pista_idioma.py`.
+  - **Miniatura al final de los Shorts, solo si la aprobó**: «▶️ YouTube» → «✅ Apruebo esta miniatura»
+    (`youtube/miniatura.json` con `"aprobada": true`). Entonces el último segundo de cada Short la muestra arriba al centro,
+    sin tapar el play de abajo a la izquierda ni su flecha (`short.poner_miniatura_final`: en los 3 Shorts resumen, dentro de
+    la cola del cierre, que sigue diciendo una de las 3 frases del play; en el Short normal, 1 s más). Sin aprobar, o si la
+    miniatura se rehízo o se eligió otra, el Short queda como siempre. Prueba: `python tests/test_short_miniatura_final.py`.
 - HONOR 8 LITE: el giro COMPLETO de 180° del teléfono (pantalla → tapa trasera, 6:20.3-6:21.35 del grabado, nítido, solo
   los datos de la laptop difuminados) y 3 fotos
   van en los primeros 8,3 s, dentro del inicio fijo (`prueba_inicio/hacer_giro.py`). En las fotos antes/después el
@@ -285,10 +344,14 @@ Estos son los errores que encontró la auditoría del guion de Honor FRP. Revís
       pegándose, no ya pegada ni todavía sin pegar. Si la voz dice «haz clic en Erase FRP», se ve el clic, no el reinicio.
 - [ ] **Sin escenas repetidas:** dos bloques no usan el mismo trozo de video.
 - [ ] **En orden:** cada `src_inicio` es mayor o igual que el `src_fin` del bloque anterior (no se vuelve atrás).
-- [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica más cada paso
-      (por qué se hace, qué pasa si sale mal); no dejes minutos de imagen sin voz.
-- [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, elegir la opción exacta) con `"tipo": "critico"` y
-      velocidad 1 (máx. 1.5).
+- [ ] **Largo:** total de palabras ≈ minutos del video final × 60 × 2.6. Si faltan palabras, explica con calma lo que se
+      ve en cada paso; el porqué (y qué pasa si sale mal) solo en los pasos delicados (key, código, PIN, borrar, entrar
+      en Fastboot/Recovery/DFU; fabian, 03/11/2026). No dejes minutos de imagen sin voz.
+- [ ] **Pasos críticos** (key, código, PIN, contraseña, IMEI, serial, el botón exacto, elegir la opción exacta) con
+      `"tipo": "critico"` y velocidad 0.9, nunca más de 1 (fabian, 03/11/2026, a «¿siempre a velocidad normal? (solo el
+      segundo exacto del dato: PIN, key, botones)»: «SÍ, inclusive pasos clave podríamos hacerlo un poquitín más lento»).
+      La app ubica el momento exacto del dato en tu transcripción y lo deja a ×0,9 aunque el resto del bloque vaya más
+      rápido (`voz/pasos_clave.py`).
 - [ ] **⭐ Cortes importantes del autor** (`mis_proyectos/NOMBRE/cortes_importantes.json`, los marca en la app: Recovery,
       DFU, botones…): cada uno se muestra ENTERO, a velocidad 1, en bloques `"tipo": "critico"`; nunca se acelera, recorta
       ni salta. La app los fuerza a ×1 igual, y avisa si un bloque no los muestra. (Pedido del autor, 28/10/2026: en
@@ -360,7 +423,7 @@ El autor contesta en la app y te manda de vuelta su guion editado y sus respuest
 - `id`: L01, L02… `ancla`: qué se ve en pantalla (corto). `texto`: lo que dice la voz.
 - `montaje.modo`:
   - `lento`: tramo del original a una `velocidad` de 0.6 a 6 (1 = normal; más de 1 para esperas, cargas, instalaciones;
-    menos de 1 solo para un detalle rápido).
+    menos de 1 solo para un detalle rápido; 0.9 en los pasos clave).
   - `congelar`: pausa en ese momento (`src_inicio`, `congelar_s`). Ver punto 6: NO es una foto quieta.
   - `lento+congelar`: el tramo y luego una pausa al final.
   - `imagen`: muestra una imagen del proyecto (un mapa, por ejemplo) durante `congelar_s`.
@@ -376,7 +439,7 @@ El autor contesta en la app y te manda de vuelta su guion editado y sus respuest
 | Palabras por segundo | **2.6** (`PALABRAS_POR_S`) | Es la velocidad de la voz. Para que el video no tenga imagen sin voz, total de palabras ≈ minutos de video × 60 × 2.6. |
 | Imagen sin voz por bloque | **1.5 s** máx. (`RELLENO`) | Nada de minutos sin voz. |
 | Velocidad máxima | **6×** (`VEL_MAX`) | Para esperas y cargas. |
-| Velocidad en pasos clave | **1, máx. 1.5** (`VEL_CRITICO`) | Poner key, escribir código/PIN/contraseña, IMEI, serial, usuario: tiene que leerse. Marcar `"tipo": "critico"`. |
+| Velocidad en pasos clave | **0.9, nunca más de 1** (`VEL_DATO`, `VEL_CRITICO`) | Poner key, escribir código/PIN/contraseña, IMEI, serial, usuario, el botón exacto: tiene que leerse. Marcar `"tipo": "critico"`. El momento exacto del dato (lo ubica la app en la transcripción: `"datos"` en el montaje) va a ×0,9 y lo demás del bloque puede ir hasta ×1,5 (×2 en uno de configuración, ×6 en una espera); el bloque dura lo mismo (`voz/pasos_clave.py`, 03/11/2026). |
 | Duración buscada | Parecida al original, o lo que pida la idea del autor | Si el guion queda corto, el video queda corto: explica con calma. |
 | Desfase de la voz | **0.3 s** después del inicio de cada bloque | |
 
@@ -409,12 +472,19 @@ Reglas del humor:
 - Botones, menús y archivos escritos tal cual aparecen en pantalla.
 - **No inventar datos**: precios, pines, webs, archivos, versiones solo si están en la transcripción, las capturas o la
   idea del autor. Si falta, la frase va sin el dato y se pregunta.
-- Estructura que funciona (guion Honor): gancho con el problema del espectador → ANTES y DESPUÉS → a qué modelos sirve →
-  «es fácil» → lo que NO hay que hacer (entregar el teléfono, test point) → invitación a comentar → pasos numerados
-  («Paso uno: …») → cierre con webs y WhatsApp.
+- Estructura que funciona (fabian, 03/11/2026): gancho de **30-40 s** (resultado → problema → versiones → herramienta y
+  PC → «es fácil» → invitación a comentar) → pasos numerados («Paso uno: …») → cierre con webs y WhatsApp. **Lo que NO hay
+  que hacer va dentro del paso donde aplica** («no conectes el Wi-Fi todavía»), nunca en un bloque de advertencias antes
+  de los pasos. **El porqué, solo en los pasos delicados**; en los sencillos, qué se hace y lo que se ve.
+- **PC sencilla (fabian, 03/11/2026):** en los procesos con PC (Honor, Motorola, Samsung, Xiaomi cuenta Google, iCloud…),
+  al principio la voz dice que no hace falta una PC avanzada, que basta una sencilla, y que si no tienen una pueden
+  hacerlo desde un café internet o pedirla prestada a un amigo o familiar. Nunca «sin PC» en ellos. En los dos procesos
+  sin PC (cuenta Mi de Xiaomi: basta el unlock code o el IMEI; liberación de bandas de iPhone: basta el IMEI y el número
+  de serie) no va lo de la PC sencilla. La revisión del guion lo avisa (`ia.falta_pc_sencilla`).
 - Números y años escritos como se dicen («dos mil veintiséis», «Android quince») para que la voz los lea bien.
 - Las webs del autor (xiaomiunlock.com, gsmprime.co) se dicen por su nombre y llevan etiqueta «web».
-- Cerca del cierre, en un bloque propio: en el canal de WhatsApp y en la página hay capturas de conversaciones reales con clientes.
+- **Testimonios dentro del cierre, en 1-2 frases** (fabian, 03/11/2026; antes en un bloque propio): en el canal de WhatsApp y
+  en la página hay capturas de conversaciones reales con clientes. Nunca inventes un testimonio (nombres, casos, frases).
 - Si se usa el estilo del canal «Psicótico»: leer `perfil_estilo.md` (tono de verdad incómoda, autoridad del técnico).
 - Datos a recordar del autor: método 2026–2027, Android 15, 16 y 17, últimos Honor (Honor 600, Honor 8 Lite).
 
@@ -432,7 +502,10 @@ Lo que fabian prefiere ya es lo que hace la app: **una «pausa» no es una foto 
 - Solo con `"quieto": true` en el montaje vuelve a ser un cuadro fijo (con zoom del 10 %). **No uses `quieto` salvo que
   el autor lo pida.**
 - Cuando la voz de un bloque no cabe en su tramo (el guion se alargó), la app alarga ese bloque con esta pausa en
-  movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si es el video entero
+  movimiento al final (`lento` pasa a `lento+congelar`); la imagen de los otros bloques no se toca. Si el tramo va
+  acelerado (×3 en un reinicio), primero lo pone más despacio (sin bajar de ×1; ×0,9 en un paso clave) y la pausa queda solo si a ×1 falta; lo
+  mismo con una pausa de relleno tras un tramo acelerado (`voz.frenar_tramo`, 03/11/2026). No toca los bloques corridos
+  por «Alinear», los del gancho, con cara, ⭐, sin voz ni los ya ajustados con su voz. Si es el video entero
   el que queda corto, primero baja la velocidad de los tramos acelerados. Si queda largo, acelera tramos y quita pausas
   sin voz.
 

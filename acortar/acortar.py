@@ -254,7 +254,7 @@ def armar(video, tramos, salida):
     open(script, 'w', encoding='utf-8').write(';\n'.join(fil))
     print(f'Armando el video acortado ({len(partes)} partes)…', flush=True)
     try:
-        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video, '-filter_complex_script', script,
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', video] + codificar.filtro_desde_archivo(script) + [
                         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac',
                         '-b:a', '160k', '-movflags', '+faststart', salida], check=True)
     finally:

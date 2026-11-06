@@ -162,6 +162,7 @@ def main():
     ap.add_argument('--final')
     ap.add_argument('--srt')
     ap.add_argument('--donde', choices=['inicio', 'final'], default='inicio', help='el tráiler abre el video o lo cierra')
+    ap.add_argument('--difuminar', action='store_true', help='difumina los datos personales del tráiler (difuminar_datos.json) antes de unirlo')
     a = ap.parse_args()
     plan = json.load(open(a.plan, encoding='utf-8'))
     shutil.rmtree(PUB, ignore_errors=True); os.makedirs(PUB)
@@ -173,7 +174,7 @@ def main():
         centro = mejor(*nt, t0, t1)
         ini = min(max(t0, centro - c['dur'] / 2), max(t0, t1 - c['dur']))
         ff(['-ss', str(ini), '-t', str(c['dur'] + 0.2), '-i', a.video, '-an', '-vf',
-            'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,framerate=fps=25,format=yuv420p',
+            'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,framerate=fps=25,fps=25,format=yuv420p',  # fps: rellena huecos VFR (ffmpeg 9)
             '-c:v', 'libx264', '-crf', '16', '-preset', 'veryfast', os.path.join(PUB, f'c{k}.mp4')])
         clips.append({'src': f'trailer/c{k}.mp4', 'dur': c['dur'], 'fase': c['fase']})
         print(f"{c['fase']:8s} {ini:6.1f}s")
@@ -196,6 +197,9 @@ def main():
         previo = open(vf + '.txt', encoding='utf-8').read() if os.path.exists(vf) and os.path.exists(vf + '.txt') else None
         firma = plan['voz'] + (f'|{VOZ_ID}|{IDIOMA}' if IDIOMA else '')  # en otro idioma, también si cambió la voz
         if previo != firma:
+            if os.environ.get('SIN_SI') == '1':  # la app arrancó sin tu SI porque esta frase ya estaba hecha (app.py, correr)
+                raise SystemExit(f"ERROR: la frase de voz del tráiler cambió mientras la app trabajaba y gasta ElevenLabs (unos "
+                                 f"{len(plan['voz'])} créditos). No la hice porque no escribiste SI: vuelve a pulsar el botón y te lo pide.")
             voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(firma)
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")
@@ -259,14 +263,23 @@ def main():
                     '--props', f_props, '--crf', '18', '--enforce-audio-track'], cwd=REMOTION, env=env, check=True)
     shutil.rmtree(tmp_node, ignore_errors=True)
 
+    if a.difuminar:  # el tráiler sale de tu grabación: el correo, el teléfono o el saldo no pueden leerse (el video es público)
+        subprocess.run([sys.executable, os.path.join(RAIZ, 'privacidad', 'difuminar_datos.py'), '--entrada', os.path.abspath(a.salida),
+                        '--salida', os.path.abspath(a.salida), '--todo'], cwd=d_proy, check=True)
+
     if a.unir and a.final:
         n = duracion(a.salida)
         primero, segundo = (a.salida, a.unir) if a.donde == 'inicio' else (a.unir, a.salida)
         r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=avg_frame_rate',
                             '-of', 'csv=p=0', a.unir], capture_output=True, text=True).stdout.strip() or '25'
         fps = r if re.fullmatch(r'\d+(/\d+)?', r) and r not in ('0', '0/0') else '25'  # los del video (30 si grabaste a 60)
+        # el tráiler sale a 1920x1080 y el video puede ser una «Prueba rápida» (720p, 480p, 360p): concat pide el mismo tamaño
+        tam = re.search(r'(\d+)x(\d+)', subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                        'stream=width,height', '-of', 'csv=p=0:s=x', a.unir], capture_output=True, text=True).stdout)
+        vw, vh = tam.groups() if tam else ('1920', '1080')
+        esc = f'scale={vw}:{vh}:force_original_aspect_ratio=decrease,pad={vw}:{vh}:(ow-iw)/2:(oh-ih)/2,'
         ff(['-i', primero, '-i', segundo, '-filter_complex',
-            f'[0:v]framerate=fps={fps},format=yuv420p,setsar=1[v0];[1:v]fps={fps},format=yuv420p,setsar=1[v1];'
+            f'[0:v]{esc}framerate=fps={fps},format=yuv420p,setsar=1[v0];[1:v]{esc}fps={fps},format=yuv420p,setsar=1[v1];'
             '[0:a]aresample=48000[a0];[1:a]aresample=48000[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]',
             '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
             '-c:a', 'aac', '-b:a', '192k', a.final])

@@ -14,6 +14,7 @@ El proyecto lo activa con difuminar_datos.json:
 El paso «Video final sin tráiler» lo corre solo después del inicio fijo (así no se pierde al rehacer el final).
 
 Uso (desde la carpeta del proyecto): python difuminar_datos.py --entrada FINAL.mp4 --salida FINAL.mp4
+Con --todo busca en todo el video sin mirar los tramos (así se revisa el tráiler, que va aparte).
 """
 import argparse, json, os, shutil, subprocess, tempfile
 
@@ -84,6 +85,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--entrada', required=True)
     ap.add_argument('--salida', required=True)
+    ap.add_argument('--todo', action='store_true', help='busca los datos en todo el video, sin mirar los tramos (para el tráiler)')
     a = ap.parse_args()
     if not os.path.exists('difuminar_datos.json'):
         if os.path.abspath(a.entrada) != os.path.abspath(a.salida):
@@ -93,7 +95,8 @@ def main():
     refs_conf = [r for r in conf.get('referencias', []) if os.path.exists(r['imagen'])]
     if not refs_conf:
         raise SystemExit('ERROR: difuminar_datos.json no tiene referencias que existan en el proyecto.')
-    tramos = [(float(x), float(y)) for x, y in conf.get('tramos') or [[0, 1e9]]]
+    # los tramos están contados sobre el video sin tráiler; el tráiler (--todo) se revisa entero
+    tramos = [(0.0, 1e9)] if a.todo else [(float(x), float(y)) for x, y in conf.get('tramos') or [[0, 1e9]]]
     minimo = int(conf.get('minimo', 50))
     W, H, fps = dimensiones(a.entrada)
     sift, bf = cv2.SIFT_create(3000), cv2.BFMatcher()

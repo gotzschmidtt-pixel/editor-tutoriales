@@ -16,12 +16,15 @@ sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 import ia  # noqa: E402
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import conocimiento  # noqa: E402
+import reglas_titulo  # noqa: E402  lo que va y no va en los títulos (fabian, 03/11/2026)
 
 REGLAS = """Escribe en español latinoamericano neutro, como el autor del canal. No inventes datos (modelos, versiones, precios,
 webs): usa solo lo que está en el guion, la idea del video y el conocimiento del canal. Contesta SOLO con el JSON pedido."""
 
 
 def metadatos(e):
+    # la descripción empieza con UNA línea del video y enseguida va el bloque de WhatsApp (fabian, 03/11/2026):
+    # youtube.con_contacto toma esa primera línea y pone el contacto debajo
     titulos = '\n'.join(f"- {v['titulo']} ({v['vistas']:,} vistas)".replace(',', '.') for v in e.get('mis_videos', [])[:40])
     return f"""Eres quien publica los videos de este canal de tutoriales en YouTube. {REGLAS}
 
@@ -46,13 +49,15 @@ PÁGINAS Y CONTACTOS DEL AUTOR (van en la descripción con su link exacto):
 CONOCIMIENTO DEL CANAL:
 {e.get('conocimiento', '')[:6000]}
 
+{e.get('reglas_titulo') or ''}
+
 Devuelve este JSON:
 {{"titulos": [{{"titulo": "...", "por_que": "en qué título exitoso se inspira"}}, ... 5 en total, de 100 letras o menos],
   "elegido": 0,
-  "descripcion": "2 a 4 párrafos: qué resuelve el video, para qué modelos/versiones (solo los que se nombran), qué hace falta, y las páginas con su link. Sin capítulos (los pone la app)",
+  "descripcion": "La PRIMERA línea, sola: una frase corta (máx. 150 letras) que dice de qué trata el video (la app pone el bloque de WhatsApp justo debajo; no lo escribas tú). Después, 2 a 4 párrafos: qué resuelve el video, para qué modelos/versiones (solo los que se nombran), qué hace falta, y las páginas con su link. Sin capítulos (los pone la app)",
   "etiquetas": ["15 a 25 etiquetas: marca, modelo, problema, método, año"],
   "capitulos": [{{"bloque": "L01", "titulo": "Qué necesitas"}}, ... entre 4 y 12, el primero el bloque inicial, cada uno donde empieza un paso nuevo],
-  "descripciones": ["otra versión de la descripción, con otro enfoque (más corta y directa)"],
+  "descripciones": ["otra versión de la descripción, con otro enfoque (más corta y directa), también con su primera línea sola sobre de qué trata el video"],
   "comentario": "el comentario que el autor fija: invita a comentar el modelo y la versión, recuerda el WhatsApp o la web si está en las páginas",
   "comentarios": ["otras 2 opciones de comentario fijado, distintas: una con pregunta para generar respuestas, otra con un dato útil"],
   "advertencia": "una frase si el video trata de quitar bloqueos o abrir el equipo: solo en equipos propios y bajo tu responsabilidad; vacío si no hace falta"}}"""
@@ -132,6 +137,11 @@ def main():
             e['conocimiento'] = (canal.texto_para_ia() + '\n\n' + e['conocimiento']).strip()
         except Exception:
             pass
+        # (03/11/2026) las reglas de fabian para los títulos, según el proceso del video: dos verbos al inicio sí, «Sin PC»
+        # solo al inicio y solo si el proceso no usa PC, Honor sin «Todos los Modelos», «Gratis» solo si es gratis, el año
+        marca = conocimiento.marca_de_proyecto(a.proyecto) or ''
+        proyecto = reglas_titulo.texto_proyecto(a.proyecto) + ' ' + str(e.get('idea') or '')
+        e['reglas_titulo'] = reglas_titulo.para_ia(marca, proyecto)
     print(f'Pido a la IA ({aj["modelo"]}): {a.tarea}…', flush=True)
     try:
         r = ia.extraer_json(ia.llamar(aj, TAREAS[a.tarea](e), []))
@@ -139,6 +149,12 @@ def main():
         sys.exit(str(x))
     if not isinstance(r, dict):
         sys.exit('ERROR: la IA no contestó con el JSON pedido.')
+    if a.tarea == 'metadatos':  # si la IA igual se saltó una regla, la app lo corrige y lo dice debajo del título
+        for t in r.get('titulos') or []:
+            if isinstance(t, dict) and t.get('titulo'):
+                t['titulo'], avisos = reglas_titulo.revisar_titulo(t['titulo'], marca, proyecto)
+                if avisos:
+                    t['por_que'] = (str(t.get('por_que') or '') + ' · La app corrigió: ' + '; '.join(avisos)).strip(' ·')
     if a.tarea == 'aprender':
         nuevas = 0
         for n in r.get('notas') or []:

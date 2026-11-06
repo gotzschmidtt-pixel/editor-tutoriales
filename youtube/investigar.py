@@ -21,12 +21,14 @@ sys.path.insert(0, AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import youtube  # noqa: E402
+import reglas_titulo  # noqa: E402  el año por la fecha, la PC por proceso y lo que no va en los títulos (fabian, 03/11/2026)
 
-PROBLEMAS = [(r'icloud|activaci[oó]n|hello', ('quitar icloud {modelo}', 'bypass icloud {marca} 2026')),
+# {anio}: el de reglas_titulo.anio() (2026 hasta el 14 de diciembre, 2027 desde el 15; 03/11/2026)
+PROBLEMAS = [(r'icloud|activaci[oó]n|hello', ('quitar icloud {modelo}', 'bypass icloud {marca} {anio}')),
              (r'\bmdm\b', ('quitar mdm {modelo}', '{marca} mdm bypass')),
              (r'patr[oó]n|contrase[ñn]a|pin\b', ('quitar patron {modelo}', 'desbloquear {marca} olvide contraseña')),
              (r'\bfrp\b|cuenta (de )?google', ('eliminar cuenta google {marca}', 'quitar cuenta google {modelo}',
-                                               '{marca} frp 2026', '{marca} frp bypass'))]
+                                               '{marca} frp {anio}', '{marca} frp bypass'))]
 
 
 def avisar(texto):
@@ -72,7 +74,7 @@ def tema(d, modelo_tuyo=''):
     frases = PROBLEMAS[max(range(len(PROBLEMAS)), key=lambda k: (cuenta[k], k))][1] if max(cuenta) else PROBLEMAS[-1][1]
     semillas = []
     for f in frases:
-        s = f.format(marca=marca, modelo=modelo)
+        s = f.format(marca=marca, modelo=modelo, anio=reglas_titulo.anio())
         if s not in semillas:
             semillas.append(s)
     return marca, modelo, semillas
@@ -198,10 +200,11 @@ def main():
         import ia
         lista = '\n'.join(f"- {v['titulo']} | {v['canal']} | {v['vistas']} vistas | {v['por_dia']} por día | {v['publicado']}"
                           + (' | (TUYO)' if v['tuyo'] else '') for v in videos[:25])
-        try:  # lo que fabian ya enseñó: qué procesos necesitan PC (Honor sí): nunca prometer «SIN PC» si la necesita
-            pc = json.load(open(os.path.join(RAIZ, 'mis_conocimientos', 'procesos_pc.json'), encoding='utf-8')).get(marca, True) is not False
-        except (OSError, ValueError):
-            pc = True
+        # lo que fabian ya enseñó: qué PROCESOS necesitan PC (03/11/2026: todos menos la cuenta Mi de Xiaomi y la liberación de
+        # bandas de iPhone): nunca prometer «SIN PC» si la necesita
+        proyecto = reglas_titulo.texto_proyecto(d) + ' ' + modelo
+        pc = reglas_titulo.necesita_pc(marca, proyecto)
+        con_img = aj.get('imagenes', True) is not False  # DeepSeek o un modelo de Ollama solo texto no ven imágenes (daban 400)
         pedido = (('OJO, REGLA DEL AUTOR: este proceso NECESITA PC. Nunca propongas «SIN PC» ni lo prometas (aunque la competencia lo use). '
                    if pc else '') +
                   f'Eres el estratega de YouTube del canal Xiaomiunlock (tutoriales de desbloqueo de celulares, en español). '
@@ -210,20 +213,26 @@ def main():
                   f'LO QUE LA GENTE ESCRIBE EN YOUTUBE: {json.dumps(yt, ensure_ascii=False)}\n'
                   f'LO QUE LA GENTE ESCRIBE EN GOOGLE: {json.dumps(google, ensure_ascii=False)}\n'
                   f'LO QUE BUSCARON PARA LLEGAR A LOS VIDEOS DEL CANAL (90 días): {json.dumps(propias[:20], ensure_ascii=False)}\n'
-                  f'ETIQUETAS QUE MÁS USAN ESOS VIDEOS: {json.dumps(etiquetas[:20], ensure_ascii=False)}\n\n'
-                  'Las imágenes son las miniaturas de los videos que más vistas por día juntan, en el mismo orden. '
+                  f'ETIQUETAS QUE MÁS USAN ESOS VIDEOS: {json.dumps(etiquetas[:20], ensure_ascii=False)}\n\n' +
+                  ('Las imágenes son las miniaturas de los videos que más vistas por día juntan, en el mismo orden. ' if con_img else
+                   'No tienes las miniaturas (esta IA no ve imágenes): en "miniaturas" escribe "(no se miraron)". ') +
                   'Analiza todo y responde SOLO con JSON: {"palabras_clave": ["las 10 a 15 que más se buscan, en orden"], '
                   '"titulos": "cómo son los títulos que ganan (largo, palabras, año, signos) en 2 o 3 frases", '
                   '"miniaturas": "qué tienen en común las miniaturas que más funcionan (colores, texto, teléfono, caras, flechas) en 2 o 3 frases", '
                   '"competencia": "qué canales dominan y qué hacen", "oportunidad": "qué hueco hay para destacar", '
-                  '"ideas_titulo": ["5 títulos para este video, de 100 letras o menos, que usen lo que funciona sin copiar"]}')
-        avisar('· [75%] La IA está mirando los títulos y las miniaturas…')
+                  '"ideas_titulo": ["5 títulos para este video, de 100 letras o menos, que usen lo que funciona sin copiar"]}\n\n'
+                  + reglas_titulo.para_ia(marca, proyecto))
+        avisar('· [75%] La IA está mirando los títulos y las miniaturas…' if con_img else
+               '· [75%] La IA está mirando los títulos (tu IA no ve imágenes: las miniaturas no se miraron)…')
         try:
-            r = ia.extraer_json(ia.llamar(dict(aj, imagenes=True), pedido, caps))
+            r = ia.extraer_json(ia.llamar(dict(aj, imagenes=con_img), pedido, caps if con_img else []))
             r = r if isinstance(r, dict) else {}
             if pc:  # por si igual lo propone
-                for k in ('palabras_clave', 'ideas_titulo'):
-                    r[k] = [x for x in (r.get(k) or []) if not re.search(r'\bsin\s*pc\b', str(x), re.I)]
+                r['palabras_clave'] = [x for x in (r.get('palabras_clave') or []) if not reglas_titulo.SIN_PC.search(str(x))]
+            # (03/11/2026) los títulos propuestos, con las reglas de fabian («Sin PC» solo al inicio y solo sin PC, Honor sin
+            # «Todos los Modelos», «Gratis» solo si es gratis, el año de hoy)
+            r['ideas_titulo'] = [t for t in (reglas_titulo.revisar_titulo(str(x), marca, proyecto)[0]
+                                             for x in (r.get('ideas_titulo') or [])) if t]
             datos['resumen'] = r
         except Exception as e:
             avisar(f'· la IA no pudo hacer el resumen ({e}); quedan los datos igual')

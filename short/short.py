@@ -161,6 +161,9 @@ def parte_final(d, ultimo, cfg, paginas, salida):
                 lineas.append(actual); actual = p
         return lineas + ([actual] if actual else [])
     y = 560
+    caja = caja_de(miniatura_aprobada(d))
+    if caja:  # su último segundo lleva la miniatura arriba al centro: el texto va debajo, nunca tapado (revisión 03/11/2026)
+        y = max(y, int(caja[1] + caja[3] + 90))
     texto = str(cfg.get('final_texto') or '').strip() if cfg.get('final') else ''
     texto = ''.join(c for c in texto if ord(c) < 0x2190).strip()  # la letra no trae emojis (saldrían como cuadraditos)
     if texto:
@@ -201,6 +204,269 @@ def marcas_autor(d):
         except (KeyError, ValueError, TypeError):
             pass
     return out
+
+
+def _senales():
+    sys.path.insert(0, os.path.join(RAIZ, 'senales'))
+    import senales
+    return senales
+
+
+def senales_grabado(d):
+    """Las flechas y círculos del video largo (senales.json) en segundos y píxeles de la GRABACIÓN (original.mp4):
+    [{..., 'src': segundo}]. fabian, 02/11/2026: «¿por qué no se muestran flechas y círculos, sobre todo en Omitir?».
+    El Short sale de la grabación y las señales solo se dibujaban encima del video largo.
+    Las que traen el segundo del video largo se pasan a la grabación con los tramos del guion y se confirma que la imagen
+    sea la misma (si no, se saltan: mejor sin círculo que con uno en el lugar equivocado)."""
+    try:
+        lista = json.load(open(os.path.join(d, 'senales.json'), encoding='utf-8'))
+        bloques = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))['bloques']
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(lista, list) or not lista:
+        return []
+    senales = _senales()
+    inicio = {b['id']: b['inicio_min'] for b in bloques if b.get('inicio_min') is not None}
+    texto_original = {b['id']: b.get('texto_original') for b in bloques}
+    orig = os.path.join(d, 'original.mp4')
+    montado = next((os.path.join(d, f) for f in ('3_voz.mp4', '4_musica.mp4', '1_montaje.mp4') if os.path.exists(os.path.join(d, f))), None)
+    out = []
+    for s in lista:
+        if not isinstance(s, dict) or s.get('tipo') not in ('circulo', 'flecha', 'caja') or s.get('x') is None or s.get('y') is None:
+            continue
+        frase = s.get('frase') or s.get('texto') or 'tu captura'
+        try:
+            if s.get('src_t') is not None:  # ya viene en segundos de la grabación
+                out.append(dict(s, src=round(float(s['src_t']) + float(s.get('retraso') or 0), 2)))
+                continue
+            t, aviso = senales.en_el_video(s, inicio, texto_original, os.path.join(d, 'voz'), 0.3)
+            src = senales.segundo_grabado(bloques, t) if t is not None else None
+        except (ValueError, TypeError, OSError) as e:
+            print(f'· flecha o círculo «{frase}»: no la pude ubicar ({e})', flush=True)
+            continue
+        if src is None:
+            if aviso:
+                print('·', aviso, flush=True)
+            continue
+        if montado and os.path.exists(orig):  # la misma imagen en el video largo y en la grabación
+            src, parecido = senales.afinar(montado, orig, t, src, margen=1.0)
+            if parecido < 0.6:
+                print(f'· flecha o círculo «{frase}»: no encontré esa imagen en la grabación (parecido {parecido:.2f}), la salto', flush=True)
+                continue
+        out.append(dict(s, src=round(src, 2)))
+    return out
+
+
+def dibujar_senales(orig, senales_src, rangos, tmp):
+    """Dibuja con Remotion (las mismas del video largo, con el dibujo de GPT si está) las señales que caen en los tramos
+    [(s0, s1)] de la grabación que usa el Short, siguiendo lo señalado: [{'src', 'dur', 'archivo', 'x', 'y'}].
+    Si Remotion falla, el Short sale igual, sin flechas (y lo avisa)."""
+    usar = [s for s in senales_src if any(a - 0.5 <= s['src'] < b for a, b in rangos)]
+    if not usar:
+        return []
+    senales = _senales()
+    trabajos, hechas = [], []
+    for k, s in enumerate(usar, 1):
+        tr, dur = senales.trabajo(orig, s, s['src'], os.path.join(tmp, f'senal{k:02d}.mov'))
+        trabajos.append(tr)
+        hechas.append({'src': s['src'], 'dur': dur, 'archivo': tr['salida'], 'x': s['x'], 'y': s['y']})
+    try:
+        senales.dibujar(trabajos, tmp)
+    except SystemExit as e:
+        print(f'· AVISO: el Short sale sin flechas ni círculos: {e}', flush=True)
+        return []
+    print(f'· {len(hechas)} flechas y círculos del video largo van en el Short', flush=True)
+    return [h for h in hechas if os.path.exists(h['archivo'])]
+
+
+def con_senales(s0, dur, dibujadas, primera):
+    """Para un trozo [s0, s0+dur] de la grabación: (entradas de ffmpeg, filtro, etiqueta) que pegan encima, ANTES del
+    recorte vertical, las flechas y círculos que caen ahí (así siguen al recorte y al zoom). `primera` es el número de
+    entrada de ffmpeg que toca a la primera señal. Sin señales: ([], '', '0:v')."""
+    ins, filtro, ult = [], '', '0:v'
+    for c in dibujadas:
+        if c['src'] >= s0 + dur or c['src'] + c['dur'] <= s0:
+            continue
+        k = primera + len(ins) // 2
+        off = c['src'] - s0
+        pre = f'setpts=PTS+{off:.3f}/TB' if off >= 0 else f'trim=start={-off:.3f},setpts=PTS-STARTPTS'
+        ins += ['-i', c['archivo']]
+        filtro += f'[{k}:v]{pre}[s{k}];[{ult}][s{k}]overlay=0:0:eof_action=pass[o{k}];'
+        ult = f'o{k}'
+    return ins, filtro, ult
+
+
+TARJETA_DICE = re.compile(r'whats|wasap|guasap', re.I)  # la voz nombra WhatsApp: ahí sale la tarjeta de soporte (logos.py)
+
+
+def hay_tarjeta():
+    """Si la biblioteca de logos tiene la tarjeta de soporte de WhatsApp (la que tapa el centro del Short)."""
+    sys.path.insert(0, os.path.join(RAIZ, 'logos'))
+    try:
+        import logos
+        carpeta = os.path.join(RAIZ, 'mis_conocimientos', 'logos')
+        lib = json.load(open(os.path.join(carpeta, 'logos.json'), encoding='utf-8')).get('logos', [])
+        return any(logos.es_tarjeta(l) and os.path.isfile(os.path.join(carpeta, l.get('archivo', ''))) for l in lib)
+    except Exception:
+        return False
+
+
+def ventanas_tarjeta(frases_t, minimo=2.5):
+    """[(desde, hasta)] del Short en que la tarjeta de WhatsApp tapa el centro, como la pone logos.py (fin_tarjeta): desde
+    que la voz dice «WhatsApp» hasta que termina esa frase, mínimo 2,5 s. frases_t: [(segundo del Short en que empieza la
+    voz de la frase, [(inicio, fin, palabra)])]."""
+    out = []
+    for t0, pal in frases_t:
+        for a0, _a1, w in pal:
+            if TARJETA_DICE.search(w):
+                out.append((round(t0 + a0, 2), round(max(t0 + a0 + minimo, t0 + pal[-1][1] + 0.2), 2)))
+                break
+    return out
+
+
+def sin_tapar(dibujadas, s0, inicio, ventanas):
+    """Las flechas y círculos de un trozo (que empieza en el segundo `inicio` del Short y en el `s0` de la grabación) que NO
+    quedarían debajo de la tarjeta de WhatsApp: una flecha tapada no se ve y confunde (Short 1 y 2 del Honor, 03/11/2026)."""
+    out = []
+    for c in dibujadas:
+        a = inicio + (c['src'] - s0)
+        if not any(a < z and a + c['dur'] > y for y, z in ventanas):
+            out.append(c)
+    return out
+
+
+def flecha_al_enlace(tmp):
+    """PNG de una flecha que apunta abajo a la izquierda, donde YouTube pone el enlace ▶ del «Video relacionado» en los
+    Shorts (fabian, 02/11/2026: el cierre manda ahí). Usa la flecha de GPT del kit (mis_conocimientos/estilo_video) si está."""
+    from PIL import Image, ImageDraw
+    kit = os.path.join(RAIZ, 'mis_conocimientos', 'estilo_video', 'flecha.png')
+    try:
+        im = Image.open(kit).convert('RGBA') if os.path.exists(kit) else None
+    except OSError:
+        im = None
+    if im is None:  # una flecha gruesa amarilla con borde negro, apuntando a la derecha
+        im = Image.new('RGBA', (440, 170), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(im)
+        forma = [(14, 60), (290, 60), (290, 14), (426, 85), (290, 156), (290, 110), (14, 110)]
+        dr.polygon(forma, fill=(255, 210, 0, 255), outline=(0, 0, 0, 255), width=10)
+    k = 330 / max(im.size)
+    im = im.resize((max(1, round(im.size[0] * k)), max(1, round(im.size[1] * k))), Image.LANCZOS)
+    im = im.rotate(225, expand=True, resample=Image.BICUBIC)  # de «hacia la derecha» a «hacia abajo a la izquierda»
+    im = im.crop(im.getbbox() or (0, 0, im.size[0], im.size[1]))
+    out = os.path.join(tmp, 'flecha_enlace.png')
+    im.save(out)
+    return out
+
+
+def filtro_flecha(entrada, base, desde, hasta, salida):
+    """Filtro de ffmpeg que pone la flecha (entrada número `entrada`) sobre [base] entre desde y hasta, rebotando hacia el
+    enlace de abajo a la izquierda, por encima de la barra de YouTube."""
+    rebote = f'22*abs(sin(5*(t-{desde:.2f})))'
+    return (f"[{entrada}:v]format=rgba,fade=t=in:st={desde:.2f}:d=0.3:alpha=1[fl];"
+            f"[{base}][fl]overlay=x='{SW * 0.17:.0f}+{rebote}':y='{SH * 0.78:.0f}-h-{rebote}':eval=frame:shortest=1:"
+            f"enable='between(t,{desde:.2f},{hasta:.2f})'[{salida}]")
+
+
+# fabian, 03/11/2026 («¿Un segundo con la miniatura del video largo al final de cada Short? SÍ, PERO SOLO SI APRUEBO LA
+# MINIATURA»): el último segundo del Short muestra la miniatura del video largo, solo la que aprobó en «▶️ YouTube»
+# («✅ Apruebo esta miniatura» → youtube/miniatura.json con "aprobada": true). Sin esa marca el Short queda como siempre.
+MINI_FINAL_S = 1.0
+# arriba al centro, en parte del Short: lejos del ícono de play (abajo a la izquierda, «pos_short» x 0.24 y 0.84 en
+# logos.json) y de la flecha que le apunta (filtro_flecha: desde x 0.17, termina en y 0.78), y por encima de los subtítulos
+MINI_FINAL = {'ancho': 0.86, 'alto_max': 0.36, 'arriba': 0.17, 'borde': 6}
+
+
+def miniatura_aprobada(d):
+    """La miniatura del video largo que fabian aprobó (youtube/miniatura.json con "aprobada": true), o None. Vale solo
+    para ese archivo tal como estaba al aprobarla: si se rehízo con el mismo nombre, hay que volver a aprobarla."""
+    try:
+        m = json.load(open(os.path.join(d, 'youtube', 'miniatura.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(m, dict) or m.get('aprobada') is not True or not m.get('archivo'):
+        return None
+    f = os.path.join(d, os.path.basename(str(m['archivo'])))
+    if not os.path.isfile(f):
+        return None
+    try:
+        if m.get('aprobada_mtime') is not None and abs(os.path.getmtime(f) - float(m['aprobada_mtime'])) > 1:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return f
+
+
+def caja_de(mini):
+    """La caja (x, y, ancho, alto) de esa miniatura en el último segundo del Short, o None si no hay miniatura."""
+    if not mini or not os.path.isfile(mini):
+        return None
+    try:
+        from PIL import Image
+        with Image.open(mini) as im:
+            return caja_miniatura_final(im.size[0] / max(1, im.size[1]))
+    except (OSError, ValueError):
+        return None
+
+
+def caja_miniatura_final(ancho_rel=16 / 9):
+    """(x, y, ancho, alto) en píxeles del Short de la miniatura del último segundo, con su borde blanco."""
+    w = SW * MINI_FINAL['ancho']
+    h = w / ancho_rel
+    if h > SH * MINI_FINAL['alto_max']:  # una miniatura vertical: más angosta, nunca más abajo
+        h = SH * MINI_FINAL['alto_max']
+        w = h * ancho_rel
+    w, h = round(w / 2) * 2, round(h / 2) * 2
+    return (SW - w) // 4 * 2, round(SH * MINI_FINAL['arriba'] / 2) * 2, w, h
+
+
+def poner_miniatura_final(d, video, alargar=False):
+    """Pone la miniatura aprobada del video largo en el último segundo del Short (arriba al centro, con borde blanco y
+    entrando suave). alargar=False: encima del último segundo (los 3 Shorts resumen ya tienen 2 s de cola después de la
+    frase del play); alargar=True: agrega 1 s con el último cuadro quieto (un Short normal puede terminar hablando).
+    Sin miniatura aprobada no toca nada y devuelve None; si la puso, devuelve la ruta de la miniatura. Si algo falla, el
+    Short queda como estaba (la miniatura es un extra: nunca tumba el armado)."""
+    mini = miniatura_aprobada(d)
+    if not mini or not os.path.isfile(video):
+        return None
+    tmp = os.path.splitext(video)[0] + '_con_miniatura.mp4'
+    try:
+        caja = caja_de(mini)
+        if not caja:
+            raise ValueError('no pude leer la miniatura')
+        x, y, w, h = caja
+        b = MINI_FINAL['borde']
+        total = duracion(video)
+        desde = round(total if alargar else max(0.0, total - MINI_FINAL_S), 3)
+        fin = round(total + (MINI_FINAL_S if alargar else 0), 3)
+        base = f'[0:v]tpad=stop_mode=clone:stop_duration={MINI_FINAL_S}[b]' if alargar else '[0:v]null[b]'
+        filtro = (f'{base};[1:v]scale={w - 2 * b}:{h - 2 * b},pad={w}:{h}:{b}:{b}:white,format=rgba,'
+                  f'fade=t=in:st={desde}:d=0.2:alpha=1[m];[b][m]overlay=x={x}:y={y}:enable=\'gte(t,{desde})\',format=yuv420p[v]')
+        musica = []
+        if alargar:  # en el segundo de más la música sigue desde donde iba (volumen 0.10, como en el Short) y se apaga suave
+            largo_m = duracion(MUSICA) if os.path.isfile(MUSICA) else 0
+            if largo_m > MINI_FINAL_S:
+                desde_m = total % largo_m
+                desde_m = desde_m if desde_m + MINI_FINAL_S <= largo_m else 0.0
+                musica = ['-ss', f'{desde_m:.3f}', '-t', f'{MINI_FINAL_S:.3f}', '-i', MUSICA]
+                filtro += (f';[2:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.10,'
+                           f'afade=t=out:st=0.2:d={MINI_FINAL_S - 0.2:.2f},adelay={int(total * 1000)}:all=1[mu]'
+                           f';[0:a]aresample=44100,aformat=channel_layouts=stereo,apad=pad_dur={MINI_FINAL_S}[va]'
+                           ';[va][mu]amix=inputs=2:duration=first:normalize=0[a]')
+            else:  # sin la música fija: el segundo de más va en silencio
+                filtro += f';[0:a]apad=pad_dur={MINI_FINAL_S}[a]'
+        sonido = ['-map', '[a]', '-c:a', 'aac', '-b:a', '160k'] if alargar else ['-map', '0:a?', '-c:a', 'copy']
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', video, '-loop', '1', '-t', f'{fin:.3f}', '-i', mini] + musica + [
+                       '-filter_complex', filtro, '-map', '[v]'] + sonido +
+                      ['-t', f'{fin:.3f}', '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-movflags', '+faststart', tmp],
+                      check=True)
+        os.replace(tmp, video)
+    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        print(f'· no pude poner tu miniatura al final ({e}): el Short queda sin ella', flush=True)
+        return None
+    print(f'· 1 s con tu miniatura aprobada al final: {os.path.basename(mini)}', flush=True)
+    return mini
 
 
 def seguir(cap, s0, largo, marcas, memoria=None):
@@ -334,8 +600,14 @@ def palabras_voz(d, bid, carpeta='voz'):
     except (OSError, ValueError):
         return []
     out, actual, ini = [], '', None
-    for ch, t0, t1 in zip(a['characters'], a['character_start_times_seconds'], a['character_end_times_seconds']):
-        if ch.isspace():
+    # las etiquetas de emoción ([curious], [sighs deeply]…) no se dicen: no van en los subtítulos (salían como «[CURIOUS]»)
+    texto = ''.join(a['characters'])
+    etiqueta = set()
+    if len(texto) == len(a['characters']):
+        for m in re.finditer(r'\[[^\[\]]{0,40}\][.,]?', texto):
+            etiqueta.update(range(*m.span()))
+    for k, (ch, t0, t1) in enumerate(zip(a['characters'], a['character_start_times_seconds'], a['character_end_times_seconds'])):
+        if ch.isspace() or k in etiqueta:
             if actual:
                 out.append((ini, fin, actual)); actual = ''
             continue
@@ -400,9 +672,27 @@ def rotar_gancho(d, c, largo, dur_video, tomas):
     if not fr or not por_tema:
         return None
     try:
-        privados = json.load(open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8')).get('tramos', [])
+        tramos = json.load(open(os.path.join(d, 'difuminar_datos.json'), encoding='utf-8')).get('tramos', [])
     except (OSError, ValueError):
-        privados = []
+        tramos = []
+    # los tramos del difuminado son segundos del video armado y s es un segundo del grabado: se pasan al grabado con los
+    # bloques del guion que caen en cada tramo (antes se comparaban tal cual y el correo o el saldo podían colarse)
+    try:
+        bloques = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8')).get('bloques', [])
+    except (OSError, ValueError):
+        bloques = []
+    privados = []
+    for p0, p1 in ((float(x), float(y)) for x, y in tramos):
+        antes = len(privados)
+        for b in bloques:
+            mo = b.get('montaje') or {}
+            if b.get('inicio_min') is None or mo.get('src_inicio') is None:
+                continue
+            if b['inicio_min'] <= p1 and (b.get('fin_max') or b['inicio_min']) >= p0:
+                fin = mo.get('src_fin') or mo['src_inicio'] + float(mo.get('congelar_s') or 0)
+                privados.append((mo['src_inicio'] - 3, fin + 3))
+        if len(privados) == antes:  # sin bloques con sus tiempos: el tramo tal cual, como antes
+            privados.append((p0, p1))
     otros = [(x['src_inicio'] - 3, x['src_inicio'] + x['voz'] + 3) for x in tomas if x is not c]
     cortes = [0.0]
     for s, _ in fr:
@@ -432,8 +722,9 @@ def rotar_gancho(d, c, largo, dur_video, tomas):
     return piezas
 
 
-def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida):
-    """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima."""
+def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i, salida, dibujadas=()):
+    """Cada trozo reencuadrado a 9:16 como las demás tomas, unidos, con la voz del bloque entera encima (y las flechas y
+    círculos del video largo que caen en cada trozo)."""
     lista = []
     for k, pz in enumerate(piezas):
         s0, dur = pz[0], pz[1]
@@ -445,7 +736,9 @@ def armar_rotado(cap, orig, piezas, marcas, memoria, mp3, retraso, largo, tmp, i
         vf = (f"crop={cw}:{ch}:x='{expr(cl, 1, 0, W - cw)}':y='{expr(cl, 2, 0, H - ch)}',"
               f'scale={SW}:{SH},setsar=1,fps=30,format=yuv420p')
         p = os.path.join(tmp, f'p{i:02d}_{k:02d}.mp4')
-        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig, '-vf', vf, '-an',
+        ins, filtro, ult = con_senales(s0, dur, dibujadas, 1)
+        codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{dur:.3f}', '-i', orig] + ins +
+                      ['-filter_complex', f'{filtro}[{ult}]{vf}[v]', '-map', '[v]', '-t', f'{dur:.3f}', '-an',
                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', p], check=True)
         lista.append(p)
     lf = os.path.join(tmp, f'rot{i:02d}.txt')
@@ -478,7 +771,8 @@ def poner_logos(d, tomas, video, retraso):
     salida = video.replace('.mp4', '_logos.mp4')
     r = subprocess.run([sys.executable, os.path.join(RAIZ, 'logos', 'logos.py'), '--video', video, '--guion', g,
                         '--voz', os.path.join(d, carpetas.pop()), '--logos', carpeta_logos, '--salida', salida,
-                        '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--desfase', str(retraso)], cwd=d, capture_output=True, text=True)
+                        '--alto', '0.30', '--centro-y', '0.3', '--queda-max', '3', '--desfase', str(retraso),
+                        '--formato', 'short'], cwd=d, capture_output=True, text=True)
     print(r.stdout.strip(), flush=True)
     if r.returncode == 0 and os.path.exists(salida):
         os.replace(video, video.replace('.mp4', '_sin_logos.mp4'))  # para volver a ponerlos sin rearmar el Short
@@ -547,11 +841,13 @@ def main():
         reservado += duracion(os.path.join(d, extras['testimonio_archivo']))
     if extras.get('final') or extras.get('paginas'):
         reservado += float(extras.get('final_dur') or 4)
+    if miniatura_aprobada(d):  # el segundo con tu miniatura aprobada al final (03/11/2026): el Short sigue en ~60 s
+        reservado += MINI_FINAL_S
     if a.voz_nueva:
         tomas = voz_nueva(d)
     else:
         if reservado:
-            print(f'· {reservado:.0f} s son del testimonio y el cierre: elijo tomas para {max(10, a.duracion - reservado):.0f} s', flush=True)
+            print(f'· {reservado:.0f} s son del testimonio, el cierre y la miniatura: elijo tomas para {max(10, a.duracion - reservado):.0f} s', flush=True)
         tomas = elegir(d, g, max(10.0, a.duracion - reservado), dur_video) if not a.bloques else [
             {'k': k, 'id': b['id'], 'voz': round(duracion(os.path.join(d, 'voz', f"{b['id']}.mp3")), 2), 'puntos': 0,
              'por_que': 'elegido para este Short', 'src_inicio': float((b.get('montaje') or {})['src_inicio']), 'texto': b['texto']}
@@ -569,6 +865,10 @@ def main():
     memoria = deteccion.Memoria(orig)
     tmp = codificar.temporal('short')
     retraso = 0.15
+    rangos = [(c['src_inicio'], c['src_inicio'] + max(c['voz'] + 0.4, MIN_TOMA if c.get('carpeta') == 'voz_short' else 0))
+              for c in tomas]
+    dibujadas = dibujar_senales(orig, senales_grabado(d), rangos, tmp)  # las flechas y círculos del video largo
+    marcas += [(c['src'] + c['dur'] / 2, c['x'], c['y']) for c in dibujadas]  # el recorte deja adentro lo señalado
     cap = cv2.VideoCapture(orig)
     partes = []
     gancho = None
@@ -592,7 +892,7 @@ def main():
         if piezas:  # regla de fabian: el inicio rota trozos distintos de 3-5 s según lo que dice la voz
             p = os.path.join(tmp, f'p{i:02d}.mp4')
             armar_rotado(cap, orig, piezas, marcas, memoria, os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
-                         retraso, largo, tmp, i, p)
+                         retraso, largo, tmp, i, p, dibujadas)
             c.update(largo=largo, src_inicio=round(s0, 2), zoom=1, encuadre='rotado')
             partes.append(p)
             continue
@@ -607,11 +907,12 @@ def main():
         p = os.path.join(tmp, f'p{i:02d}.mp4')
         que = {'cara': 'tu cara', 'telefono': f'el teléfono, zoom ×{zoom:g}'}.get(encuadre, 'pantalla, con zoom')
         print(f"· armo {c['id']} ({que})…", flush=True)
+        ins, filtro, ult = con_senales(s0, largo, dibujadas, 2)
         codificar.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{s0:.3f}', '-t', f'{largo:.3f}', '-i', orig,
-                       '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3"),
-                       '-filter_complex', f'[0:v]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
+                       '-i', os.path.join(d, c.get('carpeta', 'voz'), f"{c['id']}.mp3")] + ins +
+                      ['-filter_complex', f'{filtro}[{ult}]{vf}[v];[1:a]adelay={int(retraso * 1000)}:all=1,apad,atrim=0:{largo:.3f},'
                        'aresample=44100,aformat=channel_layouts=stereo[a]',
-                       '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+                       '-map', '[v]', '-map', '[a]', '-t', f'{largo:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
                        '-c:a', 'aac', '-b:a', '160k', p], check=True)
         partes.append(p)
     cap.release()
@@ -622,7 +923,8 @@ def main():
         parte_testimonio(d, extras['testimonio_archivo'], p)
         partes.append(p)
     paginas = ([x.strip() for x in str(extras.get('paginas_texto') or '').split('·') if x.strip()] or paginas_del_autor()) if extras.get('paginas') else []
-    if (extras.get('final') and (extras.get('final_texto') or extras.get('final_audio'))) or paginas:
+    con_cierre = bool((extras.get('final') and (extras.get('final_texto') or extras.get('final_audio'))) or paginas)
+    if con_cierre:
         print('· cierre (ver el video completo / páginas)…', flush=True)
         p = os.path.join(tmp, 'final.mp4')
         parte_final(d, partes[-1], extras, paginas, p)
@@ -646,7 +948,10 @@ def main():
                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart',
                    a.salida], check=True, cwd=d)
     poner_logos(d, tomas, os.path.join(d, a.salida), retraso)  # los logos de lo que nombra la voz, como en el video largo
-    total = duracion(os.path.join(d, a.salida))  # con el testimonio y el cierre
+    # la miniatura del video largo en el último segundo, solo si fabian la aprobó (03/11/2026); sin aprobar, el Short queda
+    # igual. Con la tarjeta del cierre (mínimo 3 s, su texto ya va debajo) va encima de su último segundo; sin ella, 1 s más
+    poner_miniatura_final(d, os.path.join(d, a.salida), alargar=not con_cierre)
+    total = duracion(os.path.join(d, a.salida))  # con el testimonio, el cierre y la miniatura
     json.dump({'duracion_pedida': a.duracion, 'duracion': round(total, 1), 'formato': '9:16',
                'tomas': [{k: c[k] for k in ('id', 'src_inicio', 'largo', 'zoom', 'encuadre', 'por_que', 'texto')} for c in tomas]},
               open(os.path.join(d, 'short.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

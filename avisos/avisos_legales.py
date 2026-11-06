@@ -43,10 +43,13 @@ def main():
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
     falta = revisar(g)
     f = os.path.join(d, 'etiquetas.json')
-    try:
-        et = json.load(open(f, encoding='utf-8'))
-    except (OSError, ValueError):
-        et = []
+    et = []
+    if os.path.exists(f):
+        try:
+            et = json.load(open(f, encoding='utf-8-sig'))
+        except (OSError, ValueError) as e:  # con un error no se escribe nada: si no, se perdían todas tus etiquetas
+            raise SystemExit(f"ERROR: etiquetas.json tiene un error (línea {getattr(e, 'lineno', '?')}); arréglalo antes "
+                             'de agregar los avisos de cuidado. No cambié nada.')
     lista = et.get('etiquetas', []) if isinstance(et, dict) else et
     lista = [x for x in lista if x.get('origen') != 'aviso_legal']
     if not falta:
@@ -55,7 +58,8 @@ def main():
         palabras = re.findall(r"[\wáéíóúñü']+", b['texto'])
         print(f"· {b['id']}: el video trata de {'quitar cuentas o bypass' if tema == 'cuenta' else 'abrir o soldar el equipo'} "
               f"y la voz no dice ninguna frase de cuidado → etiqueta «{frase}»", flush=True)
-        lista.append({'bloque': b['id'], 'frase': ' '.join(palabras[:3]), 'tipo': 'consejo', 'titulo': 'Importante',
+        # 'en': 0,3 s después de que empieza el bloque (la «frase» con «Paso uno: …» no se encontraba en la voz y no salía)
+        lista.append({'bloque': b['id'], 'frase': ' '.join(palabras[:3]), 'en': 0.3, 'tipo': 'consejo', 'titulo': 'Importante',
                       'texto': frase, 'dur': 4.5, 'origen': 'aviso_legal', 'por_que': 'aviso de cuidado para que YouTube no limite el video'})
     if a.solo_revisar:
         return

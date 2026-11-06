@@ -385,7 +385,7 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
     ${vs.map(v => `<div style="border:1px solid #ffffff22; border-radius:14px; padding:12px; margin:12px 0">${v.archivo
       ? `<div class="acciones" style="align-items:center; flex-wrap:wrap">
            <button ${v.elegida ? 'class="principal"' : ''} onclick="elegirTrailer('${esc(v.id)}')">${v.elegida ? '✓ ' : ''}${esc(v.nombre)}</button>
-           <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Arma el tráiler de ${esc(v.nombre)} con su frase de voz, para compararlo: gasta unos ${(v.voz || '').length} créditos de ElevenLabs (una sola vez por frase)">▶ Ver con voz</button>
+           <button onclick="verTrailerIA('${esc(v.id)}', false)" title="Arma el tráiler de ${esc(v.nombre)} con su frase de voz, para compararlo: gasta unos ${(v.voz || '').length} créditos de ElevenLabs (una sola vez por frase: antes te pide escribir SI)">▶ Ver con voz</button>
            <button onclick="verTrailerIA('${esc(v.id)}', true)" title="Sin la frase de voz: no gasta nada">sin voz (gratis)</button>
            ${SOLO ? '' : `<a href="/trailer?p=${q(P)}&solo=${q(v.id)}" target="_blank"><button title="Solo este tráiler, en grande, para editarlo cómodo">↗ Abrir en pestaña nueva</button></a>`}</div>
          <p class="msg" style="margin:8px 0">${esc(v.modelo)} · ${v.tomas} tomas${v.segundos != null ? ' · tardó ' + mmss(v.segundos) : ''}</p>
@@ -397,16 +397,21 @@ async function verVersiones() {  // «Con varias IAs»: la propuesta de cada una
                <textarea data-t="subtitulo" rows="2" style="${caja}">${esc((TEXTOS[v.id] || {}).subtitulo ?? '')}</textarea></label>
              <label style="display:block; margin-bottom:8px">🔊 Frase de la voz (vacía = sin voz)
                <textarea data-t="voz" rows="3" style="${caja}">${esc((TEXTOS[v.id] || {}).voz ?? v.voz ?? '')}</textarea></label>
-             <div class="acciones"><button class="principal" onclick="guardarTextos('${esc(v.id)}', true)" title="Guarda y vuelve a armar este tráiler con voz (la frase nueva gasta sus créditos de ElevenLabs)">💾 Guardar y rehacer</button>
+             <div class="acciones"><button class="principal" onclick="guardarTextos('${esc(v.id)}', true)" title="Guarda y vuelve a armar este tráiler con voz (la frase nueva gasta sus créditos de ElevenLabs: antes te pide escribir SI)">💾 Guardar y rehacer</button>
                <button onclick="guardarTextos('${esc(v.id)}', false)">Solo guardar</button></div></div>
            <div>${hay('trailer_' + v.id + '.mp4') ? `<video controls preload="metadata" style="width:100%; max-height:${SOLO ? '70vh' : '320px'}" src="/archivo?p=${q(P)}&f=trailer_${esc(v.id)}.mp4&v=${E.archivos['trailer_' + v.id + '.mp4'].fecha}"></video>`
              : '<p class="msg">Todavía no está armado: «▶ Ver con voz».</p>'}</div></div>`
       : `<span class="msg">✗ ${esc(v.nombre)} (${esc(v.modelo)}) no propuso tráiler: ${esc(v.error || '')}</span>`}</div>`).join('')}</div>`;
 }
 async function verTrailerIA(id, sinVoz) {  // el tráiler de esa IA armado aparte (trailer_<ia>.mp4), sin tocar el elegido
-  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
+  const msg = $('#msg');
+  // con voz, su frase se hace con ElevenLabs si todavía no está hecha con ese texto: hay que escribir SI, como en «🎬 Ver solo
+  // el tráiler» (un Aceptar no alcanza). Si ya está hecha, no gasta y no se pregunta
+  const si = sinVoz ? '' : await siVozTrailer(id, 'Armo el tráiler de esta IA con su frase de voz, para compararlo; tu video no se toca.\n\n');
+  if (si === null) return;
+  msg.className = 'msg'; msg.textContent = 'Armando el tráiler para verlo…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_version`, {method: 'POST', body: JSON.stringify({v: id, sin_voz: sinVoz, confirmo: si})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Listo: lo ves debajo de su propuesta, en «Tráileres de cada IA».';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
@@ -416,14 +421,29 @@ async function elegirTrailer(id) {
   try { await api(`/api/elegir_version_trailer?p=${q(P)}&v=${q(id)}`, {method: 'POST'}); sucio = false; await cargar(); }
   catch (e) { $('#msg').className = 'msg err'; $('#msg').textContent = e.message; }
 }
+// la frase de voz del tráiler se hace con ElevenLabs si todavía no está hecha con ese mismo texto: antes hay que escribir SI
+// (pedido de fabian). Se mira después de guardar, con la frase que va de verdad. Devuelve 'SI', '' (no gasta) o null (no seguir).
+// Con `v`, la frase del tráiler de esa IA (trailer_<v>.json, «▶ Ver con voz» y «💾 Guardar y rehacer»); `antes`: qué se arma
+async function siVozTrailer(v = '', antes = '') {
+  let c = null;
+  try { c = await api(v ? `/api/costo_paso?p=${q(P)}&paso=trailer_version&v=${q(v)}` : `/api/costo_extras?p=${q(P)}&solo=trailer`); } catch (e) {}
+  if (c && !c.gasta.length) return '';
+  const r = prompt(`${antes}⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la frase de voz del tráiler (no pude calcular cuánto)'}.`
+    + ' Si ya la armaste con esta misma frase, no se vuelve a pagar.\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
+  if (r !== null && /^\s*s[ií]\s*$/i.test(r)) return 'SI';
+  const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'No armé nada: no se gastó nada.';
+  if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.');
+  return null;
+}
 async function armarSolo() {
   const v = (T && T.voz || '').trim();
   if (!confirm('Armo solo el tráiler (trailer.mp4) para que lo veas; tu video no se toca.\n\n' +
     (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos, una sola vez (al unirlo después no se vuelve a pagar mientras no cambies la frase).` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
   if (sucio && !await guardar()) return;
+  const si = await siVozTrailer(); if (si === null) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer_solo`, {method: 'POST', body: JSON.stringify({confirmo: si})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Tráiler listo: míralo arriba. Cuando el video esté terminado, «▶ Armar y unir al video».';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
@@ -448,9 +468,10 @@ async function armar() {
   if (!confirm(`Armo el tráiler y lo uno ${DONDE === 'final' ? 'al final' : 'al inicio'} de tu video (queda en FINAL.mp4 y aparte en trailer.mp4).\n\n` +
     (v ? `La frase de voz (${v.length} letras) se hace con ElevenLabs: gasta unos ${v.length} créditos.` : 'Sin frase de voz: no gasta ElevenLabs.') + '\n\n¿Seguir?')) return;
   if (sucio && !await guardar()) return;
+  const si = await siVozTrailer(); if (si === null) return;
   const msg = $('#msg'); msg.className = 'msg'; msg.textContent = 'Armando el tráiler…';
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=trailer`, {method: 'POST', body: JSON.stringify({confirmo: si})});
     await esperar(); await cargar();
     msg.className = 'msg ok'; msg.textContent = '✓ Tráiler armado y unido a tu video (FINAL.mp4). Míralo arriba.';
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }

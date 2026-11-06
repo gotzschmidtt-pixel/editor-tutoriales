@@ -6,9 +6,12 @@ como si hubiera varias cámaras. El acercamiento apunta a lo que más detalle ti
 En los bloques con un corte importante (critico) solo se acerca un poco, para no dejar nada afuera.
 "encuadre": "fijo" en el montaje de un bloque lo deja sin cambios.
 """
-import os, subprocess
+import os, subprocess, sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'voz'))
+import pasos_clave  # noqa: E402  el momento exacto del dato va a ×0,9 y lo demás del tramo más rápido (03/11/2026)
 
 LARGO = 15.0      # segundos de la misma escena a partir de los cuales se cambia el encuadre
 CADA = 7.0        # cada cuánto cambia
@@ -65,7 +68,9 @@ def piezas_del_guion(bloques):
         if m['modo'].startswith('lento'):
             v = m.get('velocidad') or 1
             dur = (m['src_fin'] - m['src_inicio']) / v
-            out.append({'id': b['id'], 'parte': 'a', 't0': t, 'dur': dur, 'src': lambda s, m=m, v=v: m['src_inicio'] + s * v, 'm': m})
+            # con el dato ubicado, el dato va a ×0,9 y lo demás más rápido (voz/pasos_clave.py, 03/11/2026)
+            out.append({'id': b['id'], 'parte': 'a', 't0': t, 'dur': dur, 'm': m,
+                        'src': (lambda s, m=m: pasos_clave.en_grabacion(m, s)) if m.get('datos') else (lambda s, m=m, v=v: m['src_inicio'] + s * v)})
             t += dur
         if m['modo'].endswith('congelar') and (m.get('congelar_s') or 0) > 0:
             s = m['src_fin'] - 1 if m['modo'] == 'lento+congelar' else m['src_inicio'] + 1

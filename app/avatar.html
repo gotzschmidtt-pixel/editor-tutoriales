@@ -112,8 +112,10 @@ function pintar(p) {
     <td><select onchange="marcar('${esc(b.id)}', this.value)">${[['auto', 'Auto'], ['si', 'Sí'], ['no', 'No']].map(([v, n]) =>
       `<option value="${v}" ${(b.avatar === true ? 'si' : b.avatar === false ? 'no' : 'auto') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
     <td>${esc(b.texto.slice(0, 200))}${b.texto.length > 200 ? '…' : ''}</td></tr>`).join('');
-  $('#donde').textContent = p.exportado ? `Audios listos en ${p.carpeta} (ORDEN_AVATAR.txt dice el orden y el look). Videos de HeyGen puestos: ${p.heygen_listos.length} de ${r.tramos_avatar} (en la carpeta heygen/, como avatar_01.mp4…).` : '';
-  $('#bMontar').disabled = !p.exportado || p.heygen_listos.length < r.tramos_avatar;
+  const total = p.heygen_total ?? r.tramos_avatar;  // los videos de HeyGen son de los tramos de los audios preparados
+  $('#donde').textContent = p.exportado ? `Audios listos en ${p.carpeta} (ORDEN_AVATAR.txt dice el orden y el look). Videos de HeyGen puestos: ${p.heygen_listos.length} de ${total} (en la carpeta heygen/, como avatar_01.mp4…).`
+    + (p.tramos_cambiaron ? ' ⚠ Cambiaste el ritmo o los bloques después de preparar los audios: «🎬 Montar» usa los tramos de esos audios (los de tus videos de HeyGen), no los de la tabla. Para usar los nuevos, vuelve a «🎧 Preparar audios para HeyGen» y rehaz los videos en HeyGen (gasta sus créditos).' : '') : '';
+  $('#bMontar').disabled = !p.exportado || p.heygen_listos.length < total;
 }
 
 async function cargar() { try { pintar(await api('/api/avatar/plan')); } catch (e) { $('#msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; } }

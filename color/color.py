@@ -102,10 +102,11 @@ def corr_en(cs, t):
     return cs[k] * (1 - f) + cs[k2] * f
 
 
-def armar(entrada, salida, cs, W, H, fps):
+def armar(entrada, salida, cs, W, H, fps, audio=None):
+    """`audio`: de dónde sale el sonido (el archivo actual): si limpiaste la voz después del color, no se pierde al rehacerlo."""
     W2, H2 = W // 2 * 2, H // 2 * 2
     p = subprocess.Popen(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{W2}x{H2}',
-                          '-r', f'{fps:.5f}', '-i', '-', '-i', entrada, '-map', '0:v', '-map', '1:a?', '-c:a', 'copy',
+                          '-r', f'{fps:.5f}', '-i', '-', '-i', audio or entrada, '-map', '0:v', '-map', '1:a?', '-c:a', 'copy',
                           '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-shortest', salida],
                          stdin=subprocess.PIPE)
     for i, c in enumerate(cuadros(entrada, W2, H2)):
@@ -133,6 +134,10 @@ def main():
             print('· puse de nuevo la grabación sin corregir', flush=True)
         return
     fuente = previo if not a.salida and os.path.exists(previo) else a.entrada  # siempre desde la grabación sin tocar
+    otro = base + '_sin_zoom' + ext
+    if not a.prueba and fuente == previo and os.path.exists(otro) and os.path.getmtime(otro) > os.path.getmtime(previo):
+        # el zoom se hizo después del color: rehacer el color desde la grabación sin tocar lo borraría
+        raise SystemExit('ERROR: el zoom se puso después del color. Deshaz primero el zoom, rehaz el color y vuelve a poner el zoom.')
     W, H, fps, dur = probar(fuente)
     print(f'Mido el color de {os.path.basename(fuente)} ({dur / 60:.1f} min)…', flush=True)
     med = medir(fuente, W, H)
@@ -152,7 +157,7 @@ def main():
                 cv2.imwrite(os.path.join(a.prueba, f'color_{k}.jpg'), np.hstack([c, aplicar(c, corr_en(cs, t))]))
         return
     destino = a.salida or base + '.color' + ext
-    armar(fuente, destino, cs, W, H, fps)
+    armar(fuente, destino, cs, W, H, fps, a.entrada)  # el sonido del archivo actual (la voz limpia, si la limpiaste)
     if not a.salida:
         if not os.path.exists(previo):
             os.replace(a.entrada, previo)

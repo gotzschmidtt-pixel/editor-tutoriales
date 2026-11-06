@@ -184,10 +184,11 @@ def aplicar(cuadro, W, H, cx, cy, z):
     return cv2.warpAffine(cuadro, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
 
-def armar(entrada, salida, tramos, W, H, fps):
+def armar(entrada, salida, tramos, W, H, fps, audio=None):
+    """`audio`: de dónde sale el sonido (el archivo actual): si limpiaste la voz después del zoom, no se pierde al rehacerlo."""
     W2, H2 = W // 2 * 2, H // 2 * 2
     p = subprocess.Popen(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{W2}x{H2}',
-                          '-r', f'{fps:.5f}', '-i', '-', '-i', entrada, '-map', '0:v', '-map', '1:a?', '-c:a', 'copy',
+                          '-r', f'{fps:.5f}', '-i', '-', '-i', audio or entrada, '-map', '0:v', '-map', '1:a?', '-c:a', 'copy',
                           '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-shortest', salida],
                          stdin=subprocess.PIPE)
     for i, c in enumerate(cuadros(entrada, W2, H2)):
@@ -215,6 +216,10 @@ def main():
             print('· puse de nuevo la grabación sin zoom', flush=True)
         return
     fuente = previo if not a.salida and os.path.exists(previo) else a.entrada  # nunca un zoom sobre otro zoom
+    otro = base + '_sin_color' + ext
+    if not a.prueba and fuente == previo and os.path.exists(otro) and os.path.getmtime(otro) > os.path.getmtime(previo):
+        # el color se hizo después del zoom: rehacer el zoom desde la grabación sin zoom lo borraría
+        raise SystemExit('ERROR: el color se puso después del zoom. Deshaz primero el color, rehaz el zoom y vuelve a poner el color.')
     W, H, fps, dur = probar(fuente)
     print(f'Busco los clics en {os.path.basename(fuente)} ({dur / 60:.1f} min)…', flush=True)
     tramos = plan(eventos(fuente, W, H), dur, a.max)
@@ -238,7 +243,7 @@ def main():
         print('· no encontré clics para acercar: el video queda como está', flush=True)
         return
     destino = a.salida or base + '.zoom' + ext
-    armar(fuente, destino, tramos, W, H, fps)
+    armar(fuente, destino, tramos, W, H, fps, a.entrada)  # el sonido del archivo actual (la voz limpia, si la limpiaste)
     if not a.salida:
         if not os.path.exists(previo):
             os.replace(a.entrada, previo)

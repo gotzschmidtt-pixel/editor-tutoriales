@@ -6,8 +6,10 @@ modelo o la estabilidad); si no, se reutiliza y no gasta créditos dos veces.
 
 Después mide cuánto dura de verdad cada voz y, si no cabe en su bloque, alarga el bloque en guion.json con una pausa
 congelada al final y corre los bloques siguientes. Así la voz nunca se monta encima de la del bloque siguiente.
+Si el tramo va acelerado, primero lo pone más despacio (sin bajar de ×1) y solo deja la pausa que falte (frenar_tramo).
+En un paso clave el momento exacto del dato nunca va acelerado y puede bajar hasta ×0,9 (pasos_clave.py, 03/11/2026).
 """
-import argparse, base64, sys, json, os, re, shutil, subprocess, time, urllib.error, urllib.request
+import argparse, base64, sys, json, math, os, re, shutil, subprocess, time, urllib.error, urllib.request
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -26,6 +28,7 @@ def _clave():
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from texto_voz import texto_voz  # noqa: E402
 import pronunciacion  # noqa: E402  «🗣 Pronunciación»: FRP, DFU, IMEI… siempre dichos igual
+import pasos_clave  # noqa: E402  el momento exacto del dato (PIN, key, botones) nunca acelerado (fabian, 03/11/2026)
 
 _K, FUENTE_CLAVE = _clave()
 CLAVE = {'xi-api-key': _K} if _K else {}
@@ -83,6 +86,24 @@ def texto_pedido(b, a):
 _AVISADO = set()
 
 
+def sin_etiquetas(al):
+    """Los tiempos por letra de ElevenLabs sin las etiquetas de emoción ([excited], [chuckles]…) ni el espacio que las
+    sigue. Se buscan en lo que devolvió ElevenLabs y no por el largo del texto: emociones.py las quita o las cambia
+    ([laughs] → [chuckles]) y entonces el largo ya no sirve (cortaba «Ho» de «Hola» o dejaba solo «de Google!»)."""
+    import emociones
+    ch = al.get('characters') or []
+    dicho = ''.join(ch)
+    if len(dicho) != len(ch):  # cada elemento debería ser una letra; si no, mejor no tocar nada
+        return al
+    fuera = set()
+    for m in emociones.ETIQUETA.finditer(dicho):
+        fuera.update(range(*m.span()))
+    if not fuera:
+        return al
+    return {k: [x for i, x in enumerate(v) if i not in fuera] if isinstance(v, list) and len(v) == len(ch) else v
+            for k, v in al.items()}
+
+
 def firma(b, a):
     f = {'texto': b['texto'], 'voz': a.voz, 'modelo': a.modelo, 'estabilidad': a.estabilidad}
     pron = pronunciacion.firma_bloque(b['texto'])
@@ -135,15 +156,96 @@ def largo_bloque(mo):
     return lento + (mo.get('congelar_s') or 0)
 
 
+def frenar_tramo(b):
+    """Frenar antes de congelar (03/11/2026): un tramo acelerado que termina en pausa (un reinicio a ×3) pasaba volando y
+    después la imagen quedaba yendo y viniendo mientras la voz seguía. Ahora el tramo va más despacio y cubre todo el
+    bloque; solo si a ×1 todavía falta, queda la pausa que falte. El bloque dura lo mismo: la voz, los subtítulos y las
+    etiquetas no se mueven. Nunca sube una velocidad ni pasa los topes de fabian.
+    En un paso clave (03/11/2026, fabian: «inclusive pasos clave podríamos hacerlo un poquitín más lento») baja hasta ×0,9
+    antes de dejar la pausa, también si ya iba a ×1; con el dato ubicado, solo el dato va a ×0,9 (pasos_clave.piso).
+    No toca los bloques corridos por «Alinear» (su velocidad pone cada frase sobre su pantalla), los del gancho, los que
+    tienen tu cara, los «⭐ cortes importantes», los sin voz ni una pausa pedida a mano ("quieto" o con su "cuadro").
+    Devuelve qué hizo (para el aviso) o '' si no tocó nada."""
+    mo = b.get('montaje') or {}
+    v0, p0 = float(mo.get('velocidad') or 1), float(mo.get('congelar_s') or 0)
+    piso = pasos_clave.piso(de_paso_clave(b)) if mo.get('src_inicio') is not None and mo.get('src_fin') is not None else 1.0
+    if (mo.get('modo') != 'lento+congelar' or v0 <= piso or p0 <= 0 or mo.get('src_inicio') is None or mo.get('src_fin') is None
+            or not str(b.get('texto') or '').strip() or mo.get('sin_voz') or mo.get('alineado') or b.get('gancho')
+            or mo.get('cara') or mo.get('importante') or mo.get('quieto') or mo.get('cuadro') is not None):
+        return ''
+    tramo = mo['src_fin'] - mo['src_inicio']
+    if tramo <= 0:
+        return ''
+    largo = tramo / v0 + p0
+    # dos decimales, hacia abajo: el tramo nunca queda más corto que el bloque (la voz no pisa la del bloque siguiente)
+    nueva = min(v0, tope_velocidad(de_paso_clave(b)), max(piso, math.floor(round(tramo / largo * 100, 6)) / 100))
+    if nueva >= v0:
+        return ''
+    pausa = math.ceil(round((largo - tramo / nueva) * 100, 6)) / 100  # hacia arriba, por lo mismo
+    mo['velocidad'] = nueva
+    if pausa > 0:  # a ×1 todavía falta: «lento+congelar» con la pausa que falte
+        mo['congelar_s'] = pausa
+    else:
+        mo['modo'], mo['congelar_s'] = 'lento', None
+    return (f"en vez de {p0:.1f} s de pausa al final, el tramo va más despacio (×{v0:g} → ×{nueva:g})"
+            + (f" y quedan {pausa:.1f} s de pausa" if pausa > 0 else ', sin pausa'))
+
+
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
 VEL_MAX = 6.0  # lo más que se acelera un tramo para acortarlo
+
+
+def tope_velocidad(mo):
+    """Lo más que se puede acelerar el tramo de un bloque (reglas de fabian): ×1 con tu cara o en un «⭐ corte importante»,
+    ×1 en los pasos clave (03/11/2026, antes ×1,5: el momento exacto del dato nunca va acelerado), ×2 en los de
+    configuración y ×6 en lo demás (esperas, cargas). Si el bloque tiene el dato ubicado ("datos"), el tope deja el dato a
+    ×0,9 y lo demás a su tope de siempre (pasos_clave.tope). Lo usa también «Alinear»."""
+    return pasos_clave.tope(mo)
+
+
+def de_paso_clave(b):
+    """El montaje del bloque para calcular su tope: un bloque de tipo «crítico» o «clave» cuenta como paso clave aunque
+    el guion no lo tenga marcado (como ia.es_critico)."""
+    mo = b.get('montaje') or {}
+    return dict(mo, critico=True) if str(b.get('tipo', '')).lower().startswith(('crit', 'clave')) else mo
+
+
+def con_datos(g, guion):
+    """Ubica el momento exacto de cada dato (PIN, key, botones) en los bloques del guion, según tu transcripción, y baja la
+    velocidad de los bloques que quedaron por encima de su tope (pasos clave a ×1, o lo que deja el dato a ×0,9).
+    Solo en el guion del video (guion.json o el de «Solo los bloques»): el del Short o el tráiler no se montan así.
+    Devuelve los avisos."""
+    if os.path.basename(guion) not in ('guion.json', 'guion_prueba.json'):
+        return []
+    avisos = []
+    lista = pasos_clave.momentos(os.path.dirname(os.path.abspath(guion)))
+    pasos_clave.marcar(g['bloques'], lista)
+    for b in g['bloques']:
+        mo = b.get('montaje') or {}
+        if (not str(mo.get('modo', '')).startswith('lento') or mo.get('src_inicio') is None or mo.get('src_fin') is None
+                or not str(b.get('texto') or '').strip() or mo.get('sin_voz') or b.get('gancho') or mo.get('cara')
+                or mo.get('importante')):
+            continue
+        clave = de_paso_clave(b)
+        if not (clave.get('critico') or mo.get('datos')):
+            continue
+        v, tope = float(mo.get('velocidad') or 1), tope_velocidad(clave)
+        if v > tope + 1e-9:
+            mo['velocidad'] = tope
+            if v <= 1 + 1e-9:  # (revisión, 03/11/2026) no iba acelerado: el dato solo va un poquito más lento (×0,9)
+                avisos.append(f"{b['id']}: {'el dato' if mo.get('datos') else 'el paso clave'} va un poquito más lento (×0,9): "
+                              f"el bloque pasa de ×{v:g} a ×{tope:g}")
+            else:
+                avisos.append(f"{b['id']}: {'el dato' if mo.get('datos') else 'el paso clave'} no puede ir acelerado: "
+                              f"el tramo pasa de ×{v:g} a ×{tope:g}")
+    return avisos
 
 
 def ajustar_guion(guion, carpeta):
     """Pone en cada bloque la duración real de su voz y lo alarga si no cabe. Devuelve los avisos."""
     g = json.load(open(guion, encoding='utf-8'))
     antes = json.dumps(g, sort_keys=True)
-    avisos, t = [], 0.0
+    avisos, t = con_datos(g, guion), 0.0  # el momento exacto del dato nunca acelerado (03/11/2026)
     for b in g['bloques']:
         mo = b['montaje']
         if not str(b.get('texto') or '').strip():  # tramo sin voz: dura lo que dura su imagen, a tu velocidad
@@ -152,12 +254,16 @@ def ajustar_guion(guion, carpeta):
             t += largo_bloque(mo)
             continue
         real = round(duracion_voz(carpeta, b['id']), 2)
+        # ya ajustado con esta misma voz (como los «fijos» de ia.ajustar_largo): su montaje quedó así o lo retocaste a mano
+        fijo = b.get('voz_real_s') == real
         b['voz_real_s'] = real
         falta = round(real + DESFASE + MARGEN - largo_bloque(mo), 2)
+        no_cabia = None  # dónde quedó el aviso de «no cabía», para sumarle lo que haga frenar_tramo
         if falta > 0:
             if mo['modo'] == 'lento':
                 mo['modo'] = 'lento+congelar'
             mo['congelar_s'] = round((mo.get('congelar_s') or 0) + falta, 2)
+            no_cabia = len(avisos)
             avisos.append(f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s con una pausa")
         holgura = RELLENO + float(mo.get('relleno_s') or 0)  # relleno_s: imagen sin voz que la app dejó a propósito para no quedar corto
         sobra = round(largo_bloque(mo) - (real + DESFASE + MARGEN + holgura), 2)
@@ -176,10 +282,18 @@ def ajustar_guion(guion, carpeta):
                     mo['velocidad'] = 1.0
                     mo['src_fin'] = round(mo['src_inicio'] + min(tramo, quiere), 2)
                 else:
-                    tope = 1.0 if mo.get('importante') or mo.get('cara') else 1.5 if mo.get('critico') else VEL_MAX  # «⭐ corte importante»: nunca se acelera
+                    # «⭐ corte importante»: nunca se acelera; los pasos de configuración, a ×2 como máximo
+                    tope = tope_velocidad(de_paso_clave(b))  # el paso clave nunca acelerado (03/11/2026)
                     mo['velocidad'] = round(min(tope, max(mo.get('velocidad') or 1, tramo / quiere)), 2)
             if largo_bloque(mo) < antes_b - 0.3:
                 avisos.append(f"{b['id']}: la voz dura {real:.1f} s; acorté el bloque de {antes_b:.0f} s a {largo_bloque(mo):.0f} s")
+        # tramo acelerado con pausa al final (porque la voz no cabía o de relleno): primero va más despacio. Va después de
+        # quitar la imagen sin voz que sobra (como en ia.revisar): así el aviso dice la velocidad con la que queda de verdad
+        frenado = '' if fijo else frenar_tramo(b)
+        if frenado and no_cabia is not None:
+            avisos[no_cabia] = f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s: {frenado}"
+        elif frenado:
+            avisos.append(f"{b['id']}: {frenado}")
         largo = largo_bloque(mo)
         b['inicio_min'], b['fin_max'] = round(t, 2), round(t + largo, 2)
         t += largo
@@ -237,10 +351,9 @@ def main():
                 time.sleep(2 * (intento + 1))
         open(mp3, 'wb').write(base64.b64decode(r['audio_base64']))
         al = r.get('alignment')
-        corte = len(pedido) - len(texto_voz(b['texto']))
-        if al and corte and ''.join(al['characters'][:corte]) == pedido[:corte]:
-            # la etiqueta de emoción no se dice: fuera de los tiempos, así subtítulos y etiquetas ven solo el texto
-            al = {k: v[corte:] for k, v in al.items()}
+        if al and a.modelo.startswith(CON_EMOCION):
+            # las etiquetas de emoción no se dicen: fuera de los tiempos, así subtítulos y etiquetas ven solo el texto
+            al = sin_etiquetas(al)
         json.dump(al, open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)

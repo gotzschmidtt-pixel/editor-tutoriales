@@ -465,7 +465,7 @@ def sincronizar(url=None):
 def _parecido(d, f):
     """Qué tanto se parece el guion aprobado f al proyecto d: la misma marca pesa más, después las palabras en común."""
     nombre = os.path.basename(f)[:-3]
-    if os.path.basename(os.path.abspath(d)) == nombre:
+    if re.sub(r'[^\w\-]', '_', os.path.basename(os.path.abspath(d))) == nombre:  # el .md se guarda con _ en vez de espacios
         return -1  # el mismo proyecto no es ejemplo de sí mismo
     marca = marca_de_proyecto(d)
     puntos = 3.0 if marca and marca_de_proyecto(os.path.join(os.path.dirname(os.path.abspath(d)), nombre)) == marca else 0.0
@@ -706,8 +706,9 @@ def juntar(otra_carpeta):
         for x in otro.split('\n'):
             if x.startswith('## '):
                 seccion = x[3:].strip()
-                if seccion.lower() not in tipo_de and f'## {seccion}'.lower() not in md.lower():
-                    md = md.rstrip('\n') + f'\n\n## {seccion}\n'
+                if seccion.lower() not in tipo_de:  # una sección propia (p. ej. «Modelos»): sus notas van ahí, no a «Ideas»
+                    if f'## {seccion}'.lower() not in md.lower():
+                        md = md.rstrip('\n') + f'\n\n## {seccion}\n'
                     SECCIONES.setdefault(seccion.lower(), seccion)
                     tipo_de[seccion.lower()] = seccion.lower()
             elif x.strip().startswith('- '):

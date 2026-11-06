@@ -16,23 +16,56 @@ import argparse, json, os, subprocess
 import numpy as np
 
 FPS, ANCHO, ALTO = 5, 480, 270
+TROZO = 150  # cuadros que se miden a la vez: la memoria queda fija aunque la grabación dure media hora
+
+
+def _firma(video):
+    """Tamaño y fecha del video: si subes otra grabación con el mismo nombre, la caché vieja no sirve."""
+    try:
+        s = os.stat(video)
+        return np.array([s.st_size, s.st_mtime], np.float64)
+    except OSError:
+        return None
 
 
 def analizar(video, cache=None):
     """Devuelve (tiempos, nitidez, movimiento). Guarda caché .npz al lado si se indica."""
+    firma = _firma(video)
     if cache and os.path.exists(cache):
-        z = np.load(cache)
-        return z['t'], z['n'], z['m']
-    crudo = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-i', video, '-vf', f'fps={FPS},scale={ANCHO}:{ALTO},format=gray',
-                            '-f', 'rawvideo', '-'], capture_output=True, check=True).stdout
-    f = np.frombuffer(crudo, np.uint8).reshape(-1, ALTO, ANCHO).astype(np.float32)
-    lap = f[:, 1:-1, 2:] + f[:, 1:-1, :-2] + f[:, 2:, 1:-1] + f[:, :-2, 1:-1] - 4 * f[:, 1:-1, 1:-1]
-    n = lap.reshape(len(f), -1).var(axis=1)
-    d = np.abs(np.diff(f, axis=0)).reshape(len(f) - 1, -1).mean(axis=1)
-    m = np.maximum(np.r_[d[:1], d], np.r_[d, d[-1:]])  # peor de los dos vecinos
-    t = np.arange(len(f)) / FPS
+        with np.load(cache) as z:
+            if firma is None or ('firma' in z.files and np.allclose(z['firma'], firma, rtol=0, atol=1e-3)):
+                return z['t'], z['n'], z['m']
+    # se lee por trozos (antes se cargaba todo el video en memoria: 16-20 GB con 30 min y la PC se quedaba sin RAM)
+    p = subprocess.Popen(['ffmpeg', '-nostdin', '-v', 'error', '-i', video, '-vf', f'fps={FPS},scale={ANCHO}:{ALTO},format=gray',
+                          '-f', 'rawvideo', '-'], stdout=subprocess.PIPE)
+    tam = ALTO * ANCHO
+    ns, ds, previo = [], [], None
+    try:
+        while True:
+            crudo = p.stdout.read(tam * TROZO)
+            k = len(crudo) // tam
+            if not k:
+                break
+            f = np.frombuffer(crudo[:k * tam], np.uint8).reshape(k, ALTO, ANCHO).astype(np.float32)
+            lap = f[:, 1:-1, 2:] + f[:, 1:-1, :-2] + f[:, 2:, 1:-1] + f[:, :-2, 1:-1] - 4 * f[:, 1:-1, 1:-1]
+            ns.append(lap.reshape(k, -1).var(axis=1))
+            g = f if previo is None else np.concatenate([previo, f])  # con el último cuadro del trozo anterior
+            if len(g) > 1:
+                ds.append(np.abs(np.diff(g, axis=0)).reshape(len(g) - 1, -1).mean(axis=1))
+            previo = f[-1:]
+    finally:
+        p.stdout.close()
+        p.wait()
+    if p.returncode:
+        raise subprocess.CalledProcessError(p.returncode, 'ffmpeg')
+    if not ns:
+        raise ValueError(f'no pude leer cuadros de {os.path.basename(video)}')
+    n = np.concatenate(ns)
+    d = np.concatenate(ds) if ds else np.zeros(0, np.float32)
+    m = np.maximum(np.r_[d[:1], d], np.r_[d, d[-1:]]) if len(d) else np.zeros(len(n), np.float32)  # peor de los dos vecinos
+    t = np.arange(len(n)) / FPS
     if cache:
-        np.savez(cache, t=t, n=n, m=m)
+        np.savez(cache, t=t, n=n, m=m, **({'firma': firma} if firma is not None else {}))
     return t, n, m
 
 

@@ -80,7 +80,7 @@
   <h1>👀 Vista previa · <span id="nombre"></span></h1>
   <button onclick="generar()" id="btnGen" title="Dibuja cada etiqueta y cada círculo sobre el cuadro exacto del video (1–2 min). No gasta nada">🔄 Generar / actualizar</button>
   <button onclick="abrirMano()" id="btnMano" title="Pausa el video donde quieras y pon tú un círculo, una flecha, un recuadro o una etiqueta">➕ Marcar a mano</button>
-  <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min, sin gastar créditos)">▶ Ponerlas en el video</button>
+  <button class="principal" onclick="poner()" id="btnPoner" title="Pone en el video las que no quitaste (unos 15 min). Si con ellas vuelve un testimonio narrado, «Nuevos modelos» o el tráiler sin su voz guardada, antes te pide escribir SI (gasta ElevenLabs)">▶ Ponerlas en el video</button>
   <span class="msg" id="msg"></span>
 </header>
 <main>
@@ -177,9 +177,10 @@ const guardarJson = (f, datos) => api(`/api/json?p=${q(P)}&f=${f}`, {method: 'PO
 const msg = (t, c = '') => { $('#msg').className = 'msg ' + c; $('#msg').textContent = t; };
 
 async function avisosInicio() {  // montaje/rotar.py: el inicio no tuvo material para rotar trozos distintos
+  // y montaje/montaje.py (avisos_montaje.json): la imagen no dura lo que dice el guion (no coincidiría con la voz)
   try {
-    const r = await fetch(`/archivo?p=${q(P)}&f=avisos_inicio.json&v=${Date.now()}`);
-    const a = r.ok ? await r.json() : [];
+    const leer = async f => { try { const r = await fetch(`/archivo?p=${q(P)}&f=${f}&v=${Date.now()}`); return r.ok ? await r.json() : []; } catch (e) { return []; } };
+    const a = [...await leer('avisos_inicio.json'), ...await leer('avisos_montaje.json')];
     $('#avisosInicio').style.display = a.length ? 'block' : 'none';
     $('#avisosInicio').innerHTML = a.map(x => '⚠ ' + esc(x.aviso)).join('<br>');
   } catch (e) { $('#avisosInicio').style.display = 'none'; }
@@ -188,6 +189,7 @@ async function cargar() {
   avisosInicio();
   try { const r = await api(`/archivo?p=${q(P)}&sub=vista_extras&f=lista.json&v=${Date.now()}`); LISTA = typeof r === 'string' ? JSON.parse(r) : r; }
   catch (e) { LISTA = []; }
+  LISTA.forEach(x => { x._huella = huella(x); });  // cómo era cada marca al dibujarla: los botones no tocan otra
   pintar();
   if (!LISTA.length) msg('Todavía no hay vista previa: pulsa «🔄 Generar / actualizar».');
 }
@@ -221,12 +223,15 @@ function pintar() {
       </div></div></div>`}`).join('');
   eRefrescar();
 }
+const huella = e => JSON.stringify(['bloque', 'frase', 'texto', 'titulo'].map(c => String(e[c] ?? '')));
 async function cambiar(k, fn) {  // cambia la marca en etiquetas.json o senales.json (lo mismo que lee el armado)
   const x = LISTA[k], f = ARCH[x.clase];
-  const datos = await leerJson(f);
-  if (!datos[x.idx]) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
-  fn(datos, datos[x.idx]);
+  const datos = await leerJson(f), e = datos[x.idx];
+  // en ese lugar del archivo tiene que estar la misma marca de la diapositiva: si no, se cambiaría o borraría otra
+  if (!e || (x._huella && huella(e) !== x._huella)) throw new Error('No encontré esa marca (¿cambió el archivo?). Pulsa «🔄 Generar / actualizar».');
+  fn(datos, e);
   await guardarJson(f, datos);
+  x._huella = huella(e);
 }
 async function aprobar(k) {
   try { const v = !LISTA[k].aprobado; await cambiar(k, (d, e) => { e.aprobado = v; }); LISTA[k].aprobado = v; pintar(); }
@@ -243,7 +248,15 @@ async function guardarTexto(k) {
 }
 async function quitar(k) {
   if (!confirm('¿Quitar esta del video? (Se puede volver a agregar a mano en el editor por pistas.)')) return;
-  try { const x = LISTA[k]; await cambiar(k, d => d.splice(x.idx, 1)); await generar(); }  // cambian los números: se rehace todo
+  try {
+    const x = LISTA[k]; await cambiar(k, d => d.splice(x.idx, 1));
+    // cambian los números: la lista de aquí se corrige ya (si el redibujo falla, los botones siguen apuntando a la marca correcta)
+    LISTA.splice(k, 1);
+    LISTA.forEach(y => { if (y.clase === x.clase && y.idx > x.idx) y.idx--; });
+    if (ED.sel && ED.sel.startsWith(x.clase + ':')) ED.sel = null;
+    pintar();
+    await generar();  // y se rehace todo
+  }
   catch (e) { msg(e.message, 'err'); }
 }
 async function mover(ev, k) {
@@ -277,10 +290,22 @@ async function generar(solo = '') {
   $('#btnGen').disabled = false;
 }
 async function poner() {
-  if (!confirm('Pongo en el video las etiquetas y los círculos que no quitaste (unos 15 min). No gasta créditos. ¿Seguir?')) return;
+  // con ellas vuelven los extras que el video ya llevaba: si falta la voz de un testimonio narrado, de nuevos modelos o del
+  // tráiler, gasta. Se mira antes de preguntar: sin gasto basta Aceptar; con gasto solo se pide el SI (sin un «No gasta» antes)
+  const que = 'Pongo en el video las etiquetas y los círculos que no quitaste (unos 15 min).';
+  let c = null, si = '';
+  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=etiquetas,senales&vista=1`); } catch (e) {}
+  if (c && !c.gasta.length) {
+    if (!confirm(que + ' No gasta créditos. ¿Seguir?')) return;
+  } else {
+    const r = prompt(`${que}\n\n⚠ Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'la voz que falte de los testimonios narrados, de «Nuevos modelos» o del tráiler (no pude calcular cuánta)'}.`
+      + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
+    if (r === null || !/^\s*s[ií]\s*$/i.test(r)) { if (r !== null) alert('No escribiste SI: no hice nada y no se gastó nada.'); return; }
+    si = 'SI';
+  }
   $('#btnPoner').disabled = true; msg('Poniéndolas en el video…');
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({solo: ['etiquetas', 'senales'], revisado: true, sin_ia: true})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({solo: ['etiquetas', 'senales'], revisado: true, sin_ia: true, confirmo: si})});
     for (;;) {
       await new Promise(r => setTimeout(r, 4000));
       const e = await api(`/api/estado?p=${q(P)}`);

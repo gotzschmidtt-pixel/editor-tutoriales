@@ -208,7 +208,7 @@
   </div></details>
   <details class="menu"><summary title="El Short y YouTube">📤 Publicar</summary><div class="lista">
     <button onclick="abrirModulo('panelShort')" title="Como «Auto Resaltar + Reencuadre 9:16» de Filmora: lo más importante del video, vertical, con subtítulos (no gasta créditos)">📱 Short</button>
-    <button onclick="P ? window.open('/miniatura?p=' + q(P), 'miniatura_' + P) : alert('Abre primero un proyecto.')" title="Subes tus fotos HD (ANTES, DESPUÉS y otras tomas) y la app con GPT les pone fondo, textos, sello, píldoras y el logo oficial, en 3 idiomas">🖼 Miniatura</button>
+    <button onclick="P ? window.open('/miniatura?p=' + q(P), 'miniatura_' + P) : alert('Abre primero un proyecto.')" title="Subes tus fotos HD (ANTES, DESPUÉS y otras tomas) y GPT hace la miniatura con la fórmula y el estilo de tu canal (textos incluidos), en 1 o 3 idiomas">🖼 Miniatura</button>
     <button onclick="P ? window.open('/shorts_resumen?p=' + q(P), 'shres_' + P) : alert('Abre primero un proyecto.')" title="3 Shorts de ~1 min con el proceso COMPLETO y ganchos distintos (antes y después, en 1 minuto, ¿ya probaste todo?). La IA escribe los guiones, tú los corriges y la voz solo se hace con tu confirmación">📱 3 Shorts resumen</button>
     <button onclick="P ? window.open('/miniref?p=' + q(P), 'miniref_' + P) : alert('Abre primero un proyecto.')" title="Subes miniaturas que te gustan (tuyas o de otros canales), la IA saca la fórmula, propone ideas y GPT genera las tuyas (te muestra el costo antes)">🖼️ Miniaturas de referencia</button>
     <button onclick="P ? window.open('/youtube?p=' + q(P), 'youtube_' + P) : alert('Abre primero un proyecto.')" title="Publica el video en tu canal (título, descripción, capítulos, subtítulos, miniatura), aprende de su retención y comentarios, y busca ideas para los próximos">▶️ YouTube</button>
@@ -373,6 +373,11 @@
         <button class="principal" onclick="idVersion()" id="idBtnVersion">🌐 Crear la versión (traduce la IA de Ajustes)</button>
         <span class="aviso" id="idQuien"></span>
         <span class="msg" id="idVerMsg"></span>
+      </div>
+      <div class="fila" style="align-items:center; margin-top:8px">
+        <button onclick="idPista()" title="La voz que ya tiene la versión, sobre los tiempos de tu FINAL.mp4 en español, con tu música debajo. No genera voz ni gasta ElevenLabs, y no sube nada">🎧 Preparar la pista de audio para YouTube Studio (gratis)</button>
+        <span class="aviso">Para el MISMO video: la subes tú en Studio → Idiomas → Agregar idioma → Audio (la app no sube pistas).</span>
+        <span class="msg" id="idPistaMsg"></span>
       </div>
       <details style="margin-top:14px"><summary><b>🏷 Solo las etiquetas en otro idioma</b> (avanzado: el video sigue con la voz en español)</summary>
         <p class="aviso">Cada etiqueta (las de la IA y las de tus capturas) con su traducción. Sirve solo si quieres el video en español
@@ -569,7 +574,9 @@
       <p class="aviso">Como «Auto Resaltar» + «Reencuadre automático» de Filmora. La app elige lo más importante del video
       (el gancho, tus ⭐ cortes importantes, las acciones y el resultado, sin la promoción), lo pone vertical siguiendo tu cara
       o lo que pasa en la pantalla (con zoom suave y nunca acelerado), con la misma voz del video, subtítulos grandes y tu
-      música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).</p>
+      música. No gasta créditos: usa las voces que ya están hechas. Necesita la voz del video («Generar voz»).
+      🖼 Si aprobaste la miniatura del video largo en «▶️ YouTube» («✅ Apruebo esta miniatura»), el Short termina con 1 s
+      más con ella; si no, queda como siempre (fabian, 03/11/2026).</p>
       <div class="fila" style="align-items:center">
         <label>Duración <select id="shortDur" onchange="$('#shortSegL').hidden = this.value !== 'otro'; if (this.value === 'otro') $('#shortSeg').focus()">
           <option value="15">15 s</option><option value="30">30 s</option><option value="45">45 s</option>
@@ -701,7 +708,7 @@
         <button onclick="conoAprender(true)">🧠 Aprender de todos</button>
         <a href="/api/conocimiento/bajar" download="CONOCIMIENTO.md"><button title="Todo en un solo archivo, para subirlo al chat de Claude, DeepSeek o ChatGPT">⬇ Bajar para otra IA</button></a>
         <button onclick="conoAbrir()">📂 Abrir carpeta</button>
-        <button onclick="$('#conoMsg').textContent = 'Sincronizando…'; conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
+        <button onclick="conoPost('sincronizar')" title="Sube lo de esta PC y baja lo de la otra, en tu repositorio PRIVADO de GitHub (GUIONES-IA). También se hace solo al actualizar la app">🔄 Sincronizar con la otra PC</button>
         <span class="msg" id="conoMsg"></span>
       </div>
       <details style="margin-top:8px"><summary class="aviso" id="conoAprSum">Aprendido de los proyectos</summary>
@@ -931,6 +938,8 @@
   <label class="aviso"><input type="checkbox" id="ajMin"> Guion minucioso: revisa el video segundo a segundo, lee con zoom el texto de cada cambio de pantalla (en tu PC, sin IA), le manda a la IA hojas con todo el video y revisa cada bloque con el comienzo y el final de su tramo (y en los pasos clave, el detalle). Igual con cualquier IA: si un modelo no aguanta tantas imágenes juntas, se las manda de a menos. Hace unos pedidos más a la IA</label>
   <label class="aviso"><input type="checkbox" id="ajRevExtras"> 👀 Pasar siempre por la vista previa: antes de poner etiquetas, flechas, círculos o recuadros en el video, la app dibuja las diapositivas y se para hasta que pulses «▶ Ponerlas en el video». En la cola de noche el video queda armado sin ellas y quedan pendientes de aprobar</label>
   <label class="aviso"><input type="checkbox" id="ajRevImg"> 🔎 Revisar el guion contra las imágenes antes de la voz: al empezar «▶ Hacer todo», la IA mira el comienzo, el medio y el final del tramo de cada bloque (y el texto de la pantalla en los pasos clave) y, si la voz habla de algo que se ve en otro momento, mueve el tramo. Se hace una sola vez por guion, antes de pagar la voz. Tarda unos 15 a 30 min y hace algunos pedidos a la IA con imágenes. Sin tildar, «Hacer todo» va directo a la voz (puedes hacerla igual cuando quieras con «🔎 Revisar con imágenes»)</label>
+  <label class="aviso"><input type="checkbox" id="ajAlinear"> 📐 Alinear cada frase con su pantalla (gratis): en «▶ Hacer todo» y en «Solo los bloques», con la voz ya hecha y antes del montaje, la app lee el texto de la pantalla en tu PC (sin IA, no gasta) y corre un poco el tramo para que cada frase caiga sobre lo que nombra. Nunca pasa tus topes (×1 con tu cara o en un ⭐, ×1 en los pasos clave —el momento exacto del dato nunca va acelerado: a ×0,9—, ×2 en los de configuración) ni pisa el bloque de al lado, y no toca el gancho. Lo que no puede arreglar lo deja en alineacion.txt y se frena antes del montaje. La primera vez tarda unos minutos (lee todo el video); el guion de antes queda en guion.json.antes_alinear</label>
+  <label class="aviso">En los primeros <input type="number" id="ajAlinearAvisar" min="0" max="20" step="1" style="width:4em"> videos «Alinear» solo avisa: no toca el guion y deja en alineacion.txt lo que haría, para que lo compares con lo que corriges a mano (0 = que corrija solo desde ya). <span id="ajAlinearVan"></span></label>
   <label class="aviso"><input type="checkbox" id="ajTodoIA"> 🤖 Todo con IA: la IA misma mira el video entero (un cuadro cada 2–3 s), lee el texto, elige los tramos y se revisa sola con nuestras reglas (estilo, pasos clave, duración, preguntas). Tu PC solo arma el video: cortes, voz y subtítulos. Hace muchos más pedidos a la IA (unos 15 a 30 por video) y necesita un modelo que vea imágenes</label>
   <label class="aviso"><input type="checkbox" id="ajTres"> ✍️ <b>Guion con varias IAs a la vez</b> (GPT, Claude, Gemini y DeepSeek): las que tengan clave y modelo escriben el guion
     al mismo tiempo con el mismo análisis del video. Tarda lo que la más lenta (no la suma), pero se paga un guion a cada una.
@@ -991,9 +1000,14 @@ async function listaProyectos() {
   return null;
 }
 async function cargarProyectos(sel) {
-  const lista = await listaProyectos();
-  if (!lista) return;
-  $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('');
+  const todas = await listaProyectos();
+  if (!todas) return;
+  // una carpeta con puntos, paréntesis o «+» en el nombre se abría como otra (la app quita esos signos) y salía vacía:
+  // no se puede elegir y se avisa que hay que renombrarla (02/11/2026)
+  const raras = todas.filter(p => p.replace(/[^\p{L}\p{N}_\- ]/gu, '').trim() !== p);
+  const lista = todas.filter(p => !raras.includes(p));
+  $('#proyecto').innerHTML = lista.map(p => `<option>${p}</option>`).join('')
+    + raras.map(p => `<option disabled>⚠ ${p}: renombra la carpeta sin puntos, paréntesis ni signos</option>`).join('');
   $('#sinProyecto').hidden = lista.length > 0; $('#principal').hidden = lista.length === 0;
   if (!lista.length) return;
   if (!sel) sel = new URLSearchParams(location.search).get('p') || '';  // un link con ?p=PROYECTO abre ese proyecto
@@ -1001,12 +1015,18 @@ async function cargarProyectos(sel) {
     try { sel = (await api('/api/ultimo_proyecto')).nombre; } catch (e) {}
   }
   P = sel || lista[0];
-  if (!lista.includes(P)) P = lista[0];
+  // «honor 8 lite» y «HONOR 8 LITE» son la misma carpeta en Windows: se abre esa, no el primero de la lista
+  if (!lista.includes(P)) P = lista.find(x => x.toUpperCase() === String(P).toUpperCase()) || lista[0];
   $('#proyecto').value = P;
   ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar(); setTimeout(MODULO ? abrirModuloAqui : irLink, 800);
 }
 async function nuevo() {
+  if (editado && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
   const n = prompt('Nombre del proyecto (por ejemplo: pico2-bypass)'); if (!n) return;
+  // mismo nombre que ya existe (aunque cambien las mayúsculas o los símbolos): se avisa y se abre ese, no se crea otro
+  const limpio = n.replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().toUpperCase();
+  const ya = [...$('#proyecto').options].map(o => o.value).find(x => x.toUpperCase() === limpio);
+  if (ya) { alert(`Ya existe el proyecto «${ya}»: lo abro.`); return cargarProyectos(ya); }
   const r = await api('/api/proyecto', {method: 'POST', body: JSON.stringify({nombre: n})});
   await cargarProyectos(r.nombre);
 }
@@ -1016,7 +1036,11 @@ document.querySelectorAll('details.menu').forEach(m => {
   m.querySelector('.lista').addEventListener('click', e => { if (e.target.closest('button')) m.open = false; });
 });
 document.addEventListener('click', e => { if (!e.target.closest('details.menu')) document.querySelectorAll('details.menu[open]').forEach(o => o.open = false); });
-$('#proyecto').onchange = e => cargarProyectos(e.target.value);
+$('#proyecto').onchange = e => {
+  // lo escrito en «4 · Guion y extras» sin guardar no se pierde sin preguntar
+  if (editado && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) { e.target.value = P; return; }
+  cargarProyectos(e.target.value);
+};
 // «↻ Actualizar» = F5 (pedido de fabian, 02/11/2026): recarga la página con el mismo proyecto abierto (la pestaña ya se guarda
 // sola). Un paso que esté trabajando sigue en el servidor: recargar no lo detiene.
 function recargar() {
@@ -1112,10 +1136,13 @@ function pintarPasos(pasos, t, fallo) {
 }
 // Segunda confirmación antes de gastar ElevenLabs (pedido de fabian, 29/10/2026: un «▶ Hacer todo» generó la voz entera sin
 // que él lo ordenara). Un clic en «Aceptar» no alcanza: hay que escribir SI. El servidor tampoco arranca sin ese SI.
+// SI_ESCRITO: si se preguntó y lo escribiste. Los botones mandan confirmo 'SI' solo así: un SI fijo, sin haber preguntado,
+// dejaba que el servidor pagara lo que cambiaras después (la «🌙 Cola de noche», un testimonio cambiado mientras trabaja…)
+let SI_ESCRITO = false;
 function pedirSi(texto) {
   const r = prompt('⚠ ' + texto + '\n\nEscribe SI para seguir (Cancelar = no hago nada):', '');
   if (r === null) return false;
-  if (/^\s*s[ií]\s*$/i.test(r)) return true;
+  if (/^\s*s[ií]\s*$/i.test(r)) return SI_ESCRITO = true;
   alert('No escribiste SI: no hice nada y no se gastó nada.');
   return false;
 }
@@ -1135,6 +1162,31 @@ async function confirmarMusica() {  // sin música 📌 fija ni musica.mp3 del p
   return pedirSi((e ? 'No hay música guardada (ni 📌 fija ni de este proyecto)' : 'No pude revisar si hay música guardada')
     + ': se genera una pista nueva con ElevenLabs Music, unos 2.950 créditos por cada 3:35 de música (hasta 5 min). '
     + 'Queda guardada en el proyecto y no se vuelve a pagar.');
+}
+// los testimonios con texto los narra tu voz, «Nuevos modelos» dice su frase y el tráiler la suya, con ElevenLabs: si esa
+// voz todavía no está guardada, gasta créditos (~1 por letra). Devuelve 'SI' (lo escribiste), '' (no gasta nada: no se
+// pregunta) o null (no seguir). `mas`: lo que el pedido lleva además (&revisado=1), para que el servidor cuente igual que al
+// arrancar (si esa vuelta se para en la propuesta de la IA, todavía no se paga nada)
+async function confirmarVocesExtras(solo, mas = '') {
+  if (!['testimonios', 'nuevos_modelos', 'trailer'].some(x => solo.includes(x))) return '';
+  let c = null;
+  try { c = await api(`/api/costo_extras?p=${q(P)}&solo=${q(solo.join(','))}${mas}`); } catch (e) {}
+  if (!c) return pedirSi('No pude revisar si falta la voz de los testimonios narrados, de «Nuevos modelos» o del tráiler. La que '
+    + 'falte se hace con ElevenLabs (~1 crédito por letra); la que ya está guardada se reutiliza.') ? 'SI' : null;
+  if (!c.gasta.length) return '';
+  return pedirSi(`Esto gasta ElevenLabs: ${c.gasta.join(' y ')}.\n\nLas voces que ya están guardadas con el mismo texto se `
+    + 'reutilizan (no gastan).') ? 'SI' : null;
+}
+// sin guion, «▶ Hacer todo» primero se lo pide a la IA (desde tu video): es un pedido que gasta saldo si la IA es de pago
+async function confirmarGuionIA() {
+  let e, aj;
+  try { e = await api(`/api/estado?p=${q(P)}`); aj = (await api('/api/ajustes')).ajustes; } catch (x) { e = null; }
+  if (!e) return pedirSi('No pude revisar si ya hay guion. Si falta, la IA lo escribe desde tu video (gasta su saldo si es de pago).');
+  if (e.archivos['guion.json'] || !e.archivos['original.mp4'] || !(aj.modelo && aj.url)) return true;  // el servidor avisa lo que falte
+  return pedirSi(`Todavía no hay guion: la IA (${aj.modelo}) lo escribe desde tu video`
+    + (e.archivos['transcripcion.srt'] ? '' : ' (antes se transcribe con Whisper en tu PC, gratis)')
+    + '. Es un pedido a la IA: gasta su saldo si es de pago (GPT, Claude, Gemini, DeepSeek…).\n\n'
+    + 'Se para con el guion listo para que lo revises antes de hacer la voz.');
 }
 async function abrirGuardados() {
   if (!P) return alert('Elige primero un proyecto.');
@@ -1177,12 +1229,14 @@ async function volverAGuardado(nombre) {
   catch (e) { m.className = 'msg err'; m.textContent = e.message; }
 }
 async function ejecutar(paso) {
+  if (paso === 'todo' && !(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;  // el SI que cuenta es el de la voz o la música (el de la IA del guion no paga ElevenLabs)
   if ((paso === 'todo' || paso === 'voz') && !(await confirmarVoz())) return;
   if (paso === 'todo' && !(await confirmarMusica())) return;
   if (paso === 'todo') soltarVideo();
   if (paso === 'voz' && (await api(`/api/estado?p=${q(P)}`)).archivos['guion.json']) alert('Solo se genera la voz de los bloques nuevos o cuyo texto cambiaste; los demás se reutilizan. Luego el guion se ajusta a lo que dura de verdad cada voz: vuelve a «Montar video» después.');
   const op = {calidad: $('#calidad').value};
-  if (paso === 'todo' || paso === 'voz') op.confirmo = 'SI';  // ya lo escribiste en confirmarVoz / confirmarMusica
+  if ((paso === 'todo' || paso === 'voz') && SI_ESCRITO) op.confirmo = 'SI';  // solo si lo escribiste en confirmarVoz / confirmarMusica
   const est = paso === 'musica' ? await api(`/api/estado?p=${q(P)}`) : null;
   if (paso === 'musica' && !est.musica_fija && !est.archivos['musica.mp3']) {
     const pr = prompt('No hay pista de música: se genera una con ElevenLabs Music (unos 2.950 créditos por cada 3:35, hasta 5 min; queda guardada). Describe el estilo (o deja vacío para el estilo por defecto: lo-fi alegre de taller). Cancelar = no generar:');
@@ -1190,12 +1244,26 @@ async function ejecutar(paso) {
     if (!pedirSi('Esto gasta unos 2.950 créditos de ElevenLabs Music por cada 3:35 de música.')) return;
     op.confirmo = 'SI';
   }
+  if (['testimonios', 'nuevos_modelos', 'capas_juntas', 'trailer'].includes(paso)) {  // su voz (si falta) se hace con ElevenLabs
+    const a = paso === 'capas_juntas' ? (await api(`/api/estado?p=${q(P)}`)).archivos : null;  // vuelven los que ya tenía
+    const si = await confirmarVocesExtras(a ? [a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos'].filter(Boolean) : [paso]);
+    if (si === null) return;
+    if (si) op.confirmo = 'SI';
+  }
   if (paso === 'transcribir') {
     // con una transcripción ya hecha (y corregida a mano en transcripcion.txt), Forced Alignment solo le pone los tiempos exactos
     const hay = (est || await api(`/api/estado?p=${q(P)}`)).archivos['transcripcion.txt'];
-    if (hay && confirm('¿Alinear la transcripción corregida?\n\nUsa el texto de transcripcion.txt (el que corregiste a mano) y ElevenLabs Forced Alignment le pone el segundo exacto de cada palabra, sin volver a transcribir. Usa ElevenLabs. La versión anterior queda como *.antes_alinear.\n\nCancelar = transcribir de nuevo.'))
+    if (hay && confirm('¿Alinear la transcripción corregida?\n\nUsa el texto de transcripcion.txt (el que corregiste a mano) y ElevenLabs Forced Alignment le pone el segundo exacto de cada palabra, sin volver a transcribir. Usa ElevenLabs (gasta créditos: antes te pido escribir SI). La versión anterior queda como *.antes_alinear.\n\nCancelar = transcribir de nuevo.'))
       op.motor = 'alinear';
-    else op.motor = confirm('¿Transcribir en línea con ElevenLabs? (Cancelar = Whisper en tu PC, sin internet)') ? 'scribe' : 'whisper';
+    else op.motor = confirm('¿Transcribir en línea con ElevenLabs Scribe? Gasta créditos (~330 por minuto de tu grabación; antes te pido escribir SI).\n\nCancelar = Whisper en tu PC, gratis y sin internet.') ? 'scribe' : 'whisper';
+    if (op.motor !== 'whisper') {  // Scribe y Forced Alignment gastan ElevenLabs: un Aceptar (o Enter) no alcanza, hay que escribir SI
+      let c = null;
+      try { c = await api(`/api/costo_paso?p=${q(P)}&paso=transcribir&motor=${op.motor}`); } catch (e) {}
+      if (!c || c.gasta.length) {
+        if (!pedirSi(`Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : 'unos 330 créditos por minuto de tu grabación (no pude medir cuánto dura)'}.`)) return;
+        op.confirmo = 'SI';
+      }
+    }
   }
   try { await api(`/api/ejecutar?p=${q(P)}&paso=${paso}`, {method: 'POST', body: JSON.stringify(op)}); } catch (e) { alert(e.message); }
   refrescar();
@@ -1205,9 +1273,10 @@ let esperaPrueba = false;
 async function probarBloques() {
   const desde = $('#bloqueDesde').value.trim(), hasta = $('#bloqueHasta').value.trim() || desde;
   if (!desde) return alert('Escribe el primer bloque a probar (por ejemplo L23) y, si son varios, el último (L27).');
+  SI_ESCRITO = false;
   if (!(await confirmarVoz(desde, hasta))) return;
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value, confirmo: 'SI'})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=prueba`, {method: 'POST', body: JSON.stringify({desde, hasta, calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})}); }
   catch (e) { return alert(e.message); }
   esperaPrueba = true; refrescar();
 }
@@ -1247,8 +1316,11 @@ function pintarSalidas(arch) {
       $('#calidades').innerHTML = html; $('#calidades').dataset.html = html;
       $('#calidades').querySelectorAll('input').forEach(i => i.checked = marcadas.has(i.value));
     }
-    for (const h of [...PEND_DESCARGA]) if (h === 'mp3' ? mp3Listo : lista(h)) {  // terminó de prepararse: se descarga solo
-      PEND_DESCARGA.delete(h);
+    for (const k of [...PEND_DESCARGA]) {  // terminó de prepararse: se descarga solo (solo lo pedido en ESTE proyecto)
+      if (!k.startsWith(P + '|')) continue;
+      const h = k.slice(P.length + 1);
+      if (!(h === 'mp3' ? mp3Listo : lista(h))) continue;
+      PEND_DESCARGA.delete(k);
       const f = h === 'mp3' ? 'FINAL.mp3' : `FINAL_${h}p.mp4`;
       const a = document.createElement('a'); a.href = `/archivo?p=${q(P)}&f=${f}&nombre=${q(bajada(f))}`; a.download = bajada(f); a.click();
     }
@@ -1276,8 +1348,8 @@ async function exportar() {
   if (!alturas.length && !mp3) return alert('Marca al menos una calidad o «Solo audio (MP3)» (lo que ya está listo se descarga con su botón).');
   if (!seguirConVozVieja()) return;
   try { await api(`/api/ejecutar?p=${q(P)}&paso=exportar`, {method: 'POST', body: JSON.stringify({alturas, mp3})}); } catch (e) { alert(e.message); return; }
-  alturas.forEach(h => PEND_DESCARGA.add(h));
-  if (mp3) PEND_DESCARGA.add('mp3');
+  alturas.forEach(h => PEND_DESCARGA.add(`${P}|${h}`));  // con el proyecto: si abres otro, no se baja su video
+  if (mp3) PEND_DESCARGA.add(`${P}|mp3`);
   refrescar();
 }
 function ver(f, seguir, tocar) {
@@ -1483,8 +1555,8 @@ async function abrirPromptCapturas() {
   catch (err) { alert(err.message + '\n\nAbre primero el proyecto; el prompt y las capturas aparecen después de «Escribir con IA» o «Prompt para copiar».'); }
 }
 async function paqueteClaude() {
-  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete'})}); }
+  if (!confirm('Armo un ZIP con el prompt, tus capturas, la transcripción y tu idea (si falta la transcripción, la hago primero con Whisper en tu PC, gratis).\n\nLo subes al chat de ChatGPT, Claude o DeepSeek y le pides el guion. Cuando te lo dé, lo pegas en la app con «Revisar respuesta pegada».\n\nNo gasta saldo de API (lo hace el chat).')) return;
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=ia`, {method: 'POST', body: JSON.stringify({tarea: 'guion', modo: 'paquete', motor: 'whisper'})}); }
   catch (e) { return alert(e.message); }
   esperaIA = {tarea: 'guion', modo: 'paquete', archivo: 'guion.json'};
 }
@@ -1501,7 +1573,10 @@ async function finIA() {
     const caps = await api(`/api/capturas?p=${q(P)}`);
     $('#caps').innerHTML = caps.map(c => `<a href="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" download><img src="/archivo?p=${q(P)}&sub=ia_capturas&f=${c}" title="${c}"></a>`).join('');
     $('#msgCopia').textContent = ''; dlgPrompt.querySelector('h3').textContent = 'Prompt para tu IA'; dlgPrompt.showModal();
-  } else { editado = false; await abrir(f); }
+  } else {
+    if (archivo === f) editado = false;  // en otra pestaña (por ejemplo «idea») abrir() pregunta antes de descartar lo no guardado
+    await abrir(f);
+  }
 }
 async function pegar() {
   const tarea = TAREA[archivo];
@@ -1511,7 +1586,12 @@ async function pegar() {
   } catch (e) { return alert(e.message); }  // antes fallaba callado (por ejemplo con otro paso corriendo)
   esperaIA = {tarea, modo: 'revisar', archivo};
 }
-function copiar() { navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; }); }
+function copiar() {
+  // en el celular (http por Wi‑Fi o Tailscale) el navegador no da navigator.clipboard: se copia seleccionando el texto
+  const plan = () => { $('#txtPrompt').select(); document.execCommand('copy'); $('#msgCopia').textContent = '✓ Copiado'; };
+  if (!navigator.clipboard?.writeText) return plan();
+  navigator.clipboard.writeText($('#txtPrompt').value).then(() => $('#msgCopia').textContent = '✓ Copiado', plan);
+}
 const FASES = {ANTES: 'Cómo empieza: el equipo o la pieza antes de tocarlo, el problema. Ej.: «cuando muestro la placa sin soldar».',
   DURANTE: 'El proceso: las tomas más vistosas mientras trabajas. Ej.: una captura del cautín en los pines.',
   DESPUES: 'El resultado: funcionando, la pantalla final. Ej.: «cuando aparece el bypass listo».'};
@@ -2000,9 +2080,9 @@ async function cargarGuionesIA() {
         <a href="${g.ver_json}" target="_blank" class="aviso">JSON</a></div>`).join('')}</details>`).join('');
 }
 // «🏷 Por marca»: mis_conocimientos/marcas/MOTOROLA.md, APPLE.md… (preguntas o dudas, ideas o mejoras, textos y .txt)
-let MARCA = '';
+let MARCA = '', MARCAS_LISTA = [];
 function pintarMarca(r, msg) {
-  MARCA = r.marca;
+  MARCA = r.marca; MARCAS_LISTA = r.marcas || [];
   $('#marcasChips').innerHTML = r.marcas.map(m => `<button class="${m === r.marca ? 'principal' : ''}" onclick="marcaVer('${esc(m)}')">${esc(m)}${m === r.detectada ? ' · este proyecto' : ''}</button>`).join('')
     + '<button onclick="marcaNueva()">+ Marca</button>';
   $('#marcaRuta').innerHTML = `📄 <b>${esc(r.ruta)}</b>`;
@@ -2022,18 +2102,30 @@ async function marcaPost(que, datos) {
   catch (e) { $('#marcaMsg').className = 'msg err'; $('#marcaMsg').textContent = e.message; }
 }
 function marcaNueva() {
-  const m = (prompt('Nombre de la marca nueva (por ejemplo OPPO, VIVO, LG):') || '').trim();
-  if (m) marcaPost('marca_guardar', {marca: m.toUpperCase(), texto: ''}).then(() => marcaVer(m.toUpperCase()));
+  // el mismo nombre que arma el servidor (_nombre_marca): sin símbolos y en mayúsculas
+  const m = (prompt('Nombre de la marca nueva (por ejemplo OPPO, VIVO, LG):') || '').replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().toUpperCase().slice(0, 40);
+  if (!m) return;
+  if (MARCAS_LISTA.includes(m)) return marcaVer(m);  // ya existe (MOTOROLA o «motorola»): solo se abre, no se vacía su archivo
+  if ($('#marcaMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en esta marca. ¿Cambiar igual?')) return;
+  marcaPost('marca_guardar', {marca: m, texto: '', nuevo: true}).then(() => marcaVer(m));
+}
+// los botones de la marca repintan su texto con lo del disco: lo editado y no guardado se perdía sin aviso
+async function marcaGuardarAntes() {
+  if ($('#marcaMsg').textContent !== 'Sin guardar') return true;
+  if (!confirm('Tienes cambios sin guardar en el texto de esta marca. ¿Los guardo antes de seguir?')) return false;
+  return !!(await marcaGuardar());
 }
 async function marcaAnotar() {
   const texto = $('#marcaNota').value.trim();
   if (!texto) return $('#marcaNota').focus();
+  if (!(await marcaGuardarAntes())) return;
   if (await marcaPost('marca_anotar', {tipo: $('#marcaTipo').value, texto})) $('#marcaNota').value = '';
 }
 function marcaGuardar() { return marcaPost('marca_guardar', {texto: $('#marcaTexto').value}); }
 async function marcaUrl_() {  // YouTube (título, descripción y subtítulos) o blog/web (texto de la página)
   const urls = $('#marcaUrl').value.split(/\s+/).filter(u => /^https?:\/\//.test(u));
   if (!urls.length) return $('#marcaUrl').focus();
+  if (!(await marcaGuardarAntes())) return;
   for (const url of urls) {
     $('#marcaMsg').className = 'msg'; $('#marcaMsg').textContent = `Leyendo ${url}…`;
     if (!(await marcaPost('marca_url', {url}))) return;
@@ -2041,10 +2133,19 @@ async function marcaUrl_() {  // YouTube (título, descripción y subtítulos) o
   $('#marcaUrl').value = '';
 }
 $('#marcaTxt').onchange = async () => {  // cada .txt entra entero como «Texto para alimentar», con su nombre de archivo
+  if (!(await marcaGuardarAntes())) { $('#marcaTxt').value = ''; return; }
   for (const f of [...$('#marcaTxt').files]) await marcaPost('marca_anotar', {tipo: 'texto', texto: await f.text(), archivo: f.name});
   $('#marcaTxt').value = '';
 };
+// los botones de aquí repintan el texto grande con lo del disco: lo editado y no guardado se perdía sin aviso
+async function conoGuardarAntes() {
+  if ($('#conoMsg').textContent !== 'Sin guardar') return true;
+  if (!confirm('Tienes cambios sin guardar en el texto. ¿Los guardo antes de seguir?')) return false;
+  return !!(await conoGuardar());
+}
 async function conoPost(que, datos, ok) {
+  if (que !== 'guardar' && !(await conoGuardarAntes())) return;
+  if (que === 'sincronizar') $('#conoMsg').textContent = 'Sincronizando…';
   try { const r = await api('/api/conocimiento/' + que, {method: 'POST', body: JSON.stringify(datos || {})}); pintarConocimiento(r, r.msg || ok || ''); return r; }
   catch (e) { $('#conoMsg').className = 'msg err'; $('#conoMsg').textContent = e.message; }
 }
@@ -2052,12 +2153,15 @@ function conoGuardar() { return conoPost('guardar', {texto: $('#conoTexto').valu
 async function conoAnotar() {
   const texto = $('#conoNota').value.trim();
   if (!texto) return $('#conoNota').focus();
-  if ($('#conoMsg').textContent === 'Sin guardar' && !confirm('Tienes cambios sin guardar en el texto. ¿Los guardo antes de anotar?')) return;
-  if ($('#conoMsg').textContent === 'Sin guardar') await conoGuardar();
+  if (!(await conoGuardarAntes())) return;
   if (await conoPost('anotar', {tipo: $('#conoTipo').value, texto}, '✓ Anotado')) $('#conoNota').value = '';
 }
 function conoAprender(todos) { return conoPost('aprender' + (todos ? '' : `?p=${q(P)}`), {todos}); }
-function conoUsar() { return conoPost('usar', {usar: $('#conoUsar').checked}, $('#conoUsar').checked ? '✓ La IA lo va a leer' : 'La IA ya no lo lee'); }
+async function conoUsar() {
+  const r = await conoPost('usar', {usar: $('#conoUsar').checked}, $('#conoUsar').checked ? '✓ La IA lo va a leer' : 'La IA ya no lo lee');
+  if (!r) $('#conoUsar').checked = !$('#conoUsar').checked;  // no se cambió: la casilla vuelve a como estaba
+  return r;
+}
 function conoAbrir() { return conoPost('abrir', {}, ''); }
 async function verPerfil() {
   const t = estilo ? await api(`/api/estilo_perfil?e=${q(estilo)}`) : '';
@@ -2370,10 +2474,19 @@ async function shortHacer() {
     if (!(dur >= 10 && dur <= 180)) { $('#shortMsg').className = 'msg err'; $('#shortMsg').textContent = 'Escribe entre 10 y 180 segundos.'; return; }
   }
   const voz = $('#shortVozNueva').checked;
-  if (voz && !confirm(`La voz nueva del Short gasta ElevenLabs: unos ${$('#shortLetras').textContent} créditos (las frases que no cambiaron se reutilizan, no gastan). ¿Seguir?`)) return;
+  let si = '';
+  if (voz) {  // la voz nueva del Short gasta ElevenLabs en las frases nuevas o cambiadas: hay que escribir SI (un Aceptar no alcanza)
+    let c = null;
+    try { c = await api(`/api/costo_paso?p=${q(P)}&paso=short&voz_nueva=1`); } catch (e) {}
+    if (!c || c.gasta.length) {
+      if (!pedirSi(`Esto gasta ElevenLabs: ${c ? c.gasta.join(' y ') : `la voz nueva del Short (unos ${$('#shortLetras').textContent} créditos como mucho; no pude calcular cuánto)`}.`
+        + '\n\nLas frases que no cambiaron se reutilizan (no gastan).')) return;
+      si = 'SI';
+    }
+  }
   const m = $('#shortMsg'); m.className = 'msg'; m.textContent = 'Armando el Short (unos 2 minutos)…'; $('#shortBtn').disabled = true;
   try {
-    await api(`/api/ejecutar?p=${q(P)}&paso=short`, {method: 'POST', body: JSON.stringify({duracion: parseFloat(dur) || 60, voz_nueva: voz})});
+    await api(`/api/ejecutar?p=${q(P)}&paso=short`, {method: 'POST', body: JSON.stringify({duracion: parseFloat(dur) || 60, voz_nueva: voz, confirmo: si})});
     for (let k = 0; k < 900; k++) {
       await new Promise(r => setTimeout(r, 2000));
       const e = await api(`/api/estado?p=${q(P)}`);
@@ -2493,6 +2606,19 @@ async function idVersion() {
       + ` · <a href="/guion?p=${q(r.proyecto)}" target="_blank">📝 Revisar el guion traducido</a> · <a href="/?p=${q(r.proyecto)}" target="_blank">🎬 Abrir el proyecto</a>`;
   } catch (e) { $('#idVerMsg').className = 'msg err'; $('#idVerMsg').textContent = e.message; }
 }
+// 🎧 la pista de audio en otro idioma para YouTube Studio (fabian, 03/11/2026: «SÍ, PERO CON MI CONFIRMACIÓN»): gratis,
+// con la voz que la versión ya tiene (se generó allá con tu SI); la app no la sube
+async function idPista() {
+  const nombre = $('#idLang').selectedOptions[0]?.textContent.replace(' ✓', '') || ID_LANG;
+  if (!confirm(`¿Preparo la pista de audio en ${nombre} para «${P}»?\n\nUsa la voz que YA está hecha en la versión (no genera voz ni gasta ElevenLabs) y la pone en los tiempos de tu FINAL.mp4 en español, con tu música debajo. No sube nada: la subes tú en YouTube Studio → Idiomas → Agregar idioma → Audio.`)) return;
+  const m = $('#idPistaMsg'); m.className = 'msg'; m.textContent = '⏳ Armando la pista…';
+  try {
+    const r = await api(`/api/pista_idioma?p=${q(P)}&lang=${q(ID_LANG)}`, {method: 'POST', body: '{}'});
+    m.className = 'msg ok';
+    m.innerHTML = `✓ Lista: <a href="/archivo?p=${q(P)}&f=${q(r.archivo)}" target="_blank">${esc(r.archivo)}</a> (${r.duracion} s, ${r.bloques} bloques)<br>`
+      + r.avisos.map(esc).join('<br>');
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
 async function idUsar(lang) {
   lang = lang || ID_LANG;
   const r = await idGuardar({idioma: lang});
@@ -2577,6 +2703,10 @@ async function ajustesIA() {
   const pon = x => { $('#ajUrl').value = x.url || ''; $('#ajModelo').value = x.modelo || ''; $('#ajImg').checked = x.imagenes !== false; };
   pon(a.url ? a : PROV[$('#ajProv').value]); $('#ajClave').value = a.clave || ''; $('#ajCaps').value = a.capturas || 14; $('#ajMin').checked = a.minucioso !== false; $('#ajRevImg').checked = a.revisar_imagen !== false; $('#ajRevExtras').checked = a.revisar_extras !== false; $('#ajTodoIA').checked = !!a.todo_ia; $('#ajHumor').value = String(a.humor ?? 1);
   $('#ajTres').checked = !!a.tres_ia; $('#ajAprVarias').checked = !!a.aprender_varias;
+  // «Alinear» en «Hacer todo» (03/11/2026): marcado si nunca lo tocaste; la cuenta de los videos que solo avisan, a la vista
+  const van = Array.isArray(a.alinear_avisados) ? a.alinear_avisados : [];
+  $('#ajAlinear').checked = a.alinear !== false; $('#ajAlinearAvisar').value = a.alinear_solo_avisar ?? 2;
+  $('#ajAlinearVan').textContent = van.length ? `Van ${van.length}: ${van.join(', ')}.` : 'Todavía ningún video.';
   const ias = a.ias_guion || {};
   $('#ajTresIAs').innerHTML = TRES_IAS.map(([id, nombre, , , ayuda]) => `<div style="margin:8px 0; padding:6px 8px; border:1px solid var(--borde, #333); border-radius:8px">
     <b>${nombre}</b>
@@ -2645,6 +2775,7 @@ async function guardarAjustes() {
   await api('/api/ajustes', {method: 'POST', body: JSON.stringify({proveedor: $('#ajProv').value, url: $('#ajUrl').value.trim(),
     modelo: $('#ajModelo').value.trim(), clave: $('#ajClave').value.trim(), imagenes: $('#ajImg').checked,
     tipo: (PROV[$('#ajProv').value] || {}).tipo || '', json: (PROV[$('#ajProv').value] || {}).json !== false, capturas: Math.max(4, Math.min(60, parseInt($('#ajCaps').value) || 14)), minucioso: $('#ajMin').checked, revisar_imagen: $('#ajRevImg').checked, revisar_extras: $('#ajRevExtras').checked, todo_ia: $('#ajTodoIA').checked, humor: +$('#ajHumor').value,
+    alinear: $('#ajAlinear').checked, alinear_solo_avisar: (n => isNaN(n) ? 2 : Math.max(0, Math.min(20, n)))(parseInt($('#ajAlinearAvisar').value)),
     tres_ia: $('#ajTres').checked, aprender_varias: $('#ajAprVarias').checked, ias_guion: Object.fromEntries(TRES_IAS.map(([id]) => [id, {modelo: $('#ajTM_' + id).value.trim(), clave: $('#ajTC_' + id).value.trim()}]))})});
   const ke = $('#ajEleven').value.trim();
   if (ke) { await api('/api/ajustes', {method: 'POST', body: JSON.stringify({elevenlabs: ke})}); verEleven(); }
@@ -2753,6 +2884,18 @@ function pintarBarra(t, r, arch) {
     if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
     return;
   }
+  if (r.ok && r.pausa === 'alineacion') {  // «Hacer todo» se frenó antes del montaje: «Alinear» dejó frases fuera de su pantalla (03/11/2026)
+    const av = r.avisos || [];
+    b.className = 'ok';
+    b.innerHTML = `<div class="arriba"><span class="que">⏸ Me frené antes del montaje: ${av.length} frase${av.length === 1 ? ' no cae' : 's no caen'} sobre la pantalla que nombra${av.length === 1 ? '' : 'n'}</span>
+      <span class="cuanto">la voz ya está hecha (no se vuelve a pagar); el detalle está en alineacion.txt. Al volver a tocar «▶ Hacer todo» no me freno por las mismas</span>
+      <span class="chips"><button class="principal" onclick="verGuion()">📝 Ver y editar guion</button>
+      <button onclick="seguirTodo()" title="Sigue con el montaje sin corregirlas (la voz ya está: no gasta)">▶ Seguir igual</button>${cerrar}</span></div>
+      <div class="riel"><div class="lleno" style="width:100%"></div></div>
+      ${av.length ? `<pre class="detalle" style="white-space:pre-wrap; margin:4px 0; max-height:12em; overflow:auto">${esc(av.join('\n'))}</pre>` : ''}`;
+    if (avisoGuion !== r.cuando) { avisoGuion = r.cuando; verGuion(true); }
+    return;
+  }
   if (r.ok && r.pausa === 'vista') {  // pedido de fabian (31/10/2026): etiquetas y flechas siempre pasan por la vista previa
     b.className = 'ok';
     b.innerHTML = `<div class="arriba"><span class="que">⏸ Etiquetas y flechas esperando tu aprobación</span>
@@ -2827,8 +2970,13 @@ async function verDiagnostico() {
   catch (e) { $('#diagTexto').textContent = 'No pude abrir el informe: ' + e.message; }
   $('#diagTexto').style.display = '';
 }
-async function reintentar() {
-  try { await api(`/api/reintentar?p=${q(P)}`, {method: 'POST'}); dlgDiag.close(); } catch (e) { $('#msgDiag').textContent = e.message; }
+async function reintentar(si = '') {
+  // si ahora hay voz que pagar (cambiaste el texto de un testimonio después de la falla…), el servidor dice cuánto y se pide SI
+  let r = null, j = {};
+  try { r = await fetch(`/api/reintentar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({confirmo: si})}); j = await r.json(); } catch (e) {}
+  if (r && r.ok) dlgDiag.close();
+  else if (j.gasta && !si) { if (pedirSi(`Reintentar gasta ElevenLabs: ${j.gasta.join(' y ')}.`)) return reintentar('SI'); $('#msgDiag').textContent = 'No reintenté: no se gastó nada.'; }
+  else $('#msgDiag').textContent = j.error || 'No pude reintentar: revisa que la app siga abierta.';
   refrescar();
 }
 
@@ -3081,13 +3229,15 @@ async function insertarExtras() {  // todo el material extra sobre el video ya h
   solo.push('logos');  // tus logos fijos van siempre: si la voz no nombra ninguno, no se pone nada
   if (TESTI.TESTIMONIOS.length) solo.push('testimonios');
   if (MODS.MODELOS.length) solo.push('nuevos_modelos');
-  const aj = (await api('/api/ajustes')).ajustes;
-  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede || (aj.modelo && aj.url)) solo.push('trailer');  // sin plan propio, lo arma la IA
-  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o configura una IA para el tráiler.');
+  // solo el tráiler que ya armaste en «🎬 Tráiler» (trailer.json). Sin él, la IA lo armaba y le hacía voz con ElevenLabs
+  // sin preguntar, y quedaba pegado al video sin que lo aprobaras
+  if ((e.pasos.find(x => x.id === 'trailer') || {}).puede) solo.push('trailer');
+  if (!solo.length) return alert('Todavía no hay material extra: sube un testimonio, una tarjeta o el video de nuevos modelos, o arma el tráiler en «🎬 Tráiler».');
   const nombres = {etiquetas: 'etiquetas', senales: 'flechas', tarjetas: 'comentarios y WhatsApp', logos: 'logos (Android, MagicOS…)', testimonios: 'testimonios', nuevos_modelos: 'nuevos modelos', trailer: `tráiler (${TRAILER_DONDE === 'final' ? 'al final' : 'al inicio'})`};
   if (!confirm(`Se mete en el video: ${solo.map(x => nombres[x]).join(', ')}. No se rehace el guion, la voz ni el montaje. ¿Seguir?`)) return;
+  const si = await confirmarVocesExtras(solo); if (si === null) return;  // testimonios narrados y nuevos modelos: SI antes de gastar
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo, confirmo: si})}); }
   catch (x) { $('#msgMapa').textContent = '✗ ' + x.message; $('#msgMapa').className = 'msg err'; return; }
   $('#msgMapa').textContent = '⏳ Insertando… mira el avance abajo.'; $('#msgMapa').className = 'msg ok';
   refrescar();
@@ -3110,23 +3260,28 @@ async function abrirExtras() {
 async function agregarExtras() {
   const solo = [...document.querySelectorAll('#listaExtras input[data-extra]:checked')].map(i => i.dataset.extra);
   if (!solo.length) { $('#msgExtras').textContent = 'Marca al menos uno'; $('#msgExtras').className = 'msg err'; return; }
+  const si = await confirmarVocesExtras(solo);  // testimonios narrados y nuevos modelos: SI antes de gastar
+  if (si === null) { $('#msgExtras').textContent = 'No agregué nada: no se gastó nada.'; $('#msgExtras').className = 'msg'; return; }
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, solo, confirmo: si})}); }
   catch (x) { $('#msgExtras').textContent = x.message; $('#msgExtras').className = 'msg err'; return; }
   dlgExtras.close(); refrescar();
 }
 let SEGUIR_EXTRAS = null;
 async function ponerExtrasAsi() {
   const sg = SEGUIR_EXTRAS || {};
+  const si = await confirmarVocesExtras(sg.solo || ['testimonios', 'nuevos_modelos'], '&revisado=1'); if (si === null) return;  // sin lista van todos
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=extras`, {method: 'POST', body: JSON.stringify({calidad: sg.calidad || $('#calidad').value, solo: sg.solo, revisado: true, confirmo: si})}); }
   catch (e) { return alert(e.message); }
   refrescar();
 }
 async function seguirTodo() {
-  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar ElevenLabs
+  if (!(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;
+  if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // como «▶ Hacer todo»: antes de gastar
   soltarVideo();
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: 'SI'})}); } catch (e) { alert(e.message); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})}); } catch (e) { alert(e.message); }
   refrescar();
 }
 
@@ -3148,17 +3303,25 @@ async function actualizarProyecto() {  // «🔁 Rehacer video»: reutiliza tran
     + lista('Se vuelve a poner solo:', capas.solas)
     + lista('⚠ NO se vuelve a poner solo (queda solo en la copia):', capas.a_mano)
     + (capas.a_mano.length ? '\n\nRecomendación: NO lo rehagas si no hace falta. Para ver lo último, usa «↻ Actualizar».' : ''))) return;
+  SI_ESCRITO = false;
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // si falta alguna voz o la música, antes de borrar nada
+  let a = {}; try { a = (await api(`/api/estado?p=${q(P)}`)).archivos; } catch (e) {}  // los testimonios, modelos y tráiler que vuelven
+  if ((await confirmarVocesExtras([a['8_testimonios.mp4'] && 'testimonios', a['9_modelos.mp4'] && 'nuevos_modelos', a['trailer.mp4'] && 'trailer'].filter(Boolean))) === null) return;
   soltarVideo();
   let r;
   try { r = await api(`/api/actualizar?p=${q(P)}`, {method: 'POST'}); } catch (e) { alert(e.message); return; }
-  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true, confirmo: 'SI'})}); }
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=todo`, {method: 'POST', body: JSON.stringify({calidad: $('#calidad').value, luego_extras: r.extras || [], sin_ia: true, confirmo: SI_ESCRITO ? 'SI' : ''})}); }
   catch (e) { alert(e.message); }
   refrescar();
 }
 async function borrarTodo() {
-  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔁 Rehacer video»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas.\n\nNo se puede deshacer.`)) return;
-  try { const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'}); alert(`Listo: borré ${r.borrados} archivos. Pulsa «▶ Hacer todo» para empezar.`); }
+  if (!confirm(`¿Empezar de nuevo «${P}»?\n\nSe borra todo lo que hizo la app: transcripción, guion, voces, montajes, etiquetas, flechas, tráiler, FINAL.mp4 y el registro. Volver a hacer la transcripción y las voces GASTA créditos de ElevenLabs (para no gastarlos usa «🔁 Rehacer video»).\n\nSe conserva lo que tú subiste: el video grabado, material extra, imagen, música, tu idea, las pistas del tráiler, tus tarjetas, tus testimonios, tu video de nuevos modelos, los cortes importantes que marcaste, lo que elegiste en el editor por pistas y en subtítulos, y las traducciones de etiquetas. También quedan los videos de HeyGen (avatar), tus tomas de apoyo, las miniaturas y el Short, el inicio fijo y los datos que se difuminan, la versión en inglés (FINAL_EN.mp4) y los respaldos FINAL_antes_….mp4.\n\nNo se puede deshacer.`)) return;
+  soltarVideo();  // Windows no deja borrar el video que el reproductor tiene abierto (quedaba a medio borrar)
+  try {
+    const r = await api(`/api/empezar_de_nuevo?p=${q(P)}`, {method: 'POST'});
+    alert(`Listo: borré ${r.borrados} archivos.` + ((r.quedaron || []).length ? `\n\n⚠ No pude borrar (están abiertos en otro programa): ${r.quedaron.join(', ')}. `
+      + 'Ciérralos y vuelve a pulsar «🗑 Borrar todo».' : ' Pulsa «▶ Hacer todo» para empezar.'));
+  }
   catch (e) { alert(e.message); return; }
   editado = false; abrir(archivo); refrescar();
 }
@@ -3194,7 +3357,9 @@ async function actualizarApp() {
   refrescar();
 }
 // «📲 Celular»: solo se ve y se cambia desde la app del PC
-if (!['localhost', '127.0.0.1'].includes(location.hostname)) $('#btnCelular').hidden = true;
+// (también en http://estudio.localhost, la dirección con la que se abre la app: cualquier «algo.localhost» es este PC)
+const HOST_PC = location.hostname;
+if (!(['localhost', '127.0.0.1', '[::1]'].includes(HOST_PC) || HOST_PC.endsWith('.localhost'))) $('#btnCelular').hidden = true;
 async function abrirCelular() {
   const c = await api('/api/celular');
   $('#celActivo').checked = c.activo; $('#celWindows').checked = c.con_windows; $('#celPin').value = '';
@@ -3242,8 +3407,11 @@ async function abrirCola() {
 }
 async function colaAgregar() {
   if (!P) return alert('Abre primero un proyecto.');
+  if (!(await confirmarGuionIA())) return;
+  SI_ESCRITO = false;
   if (!(await confirmarVoz()) || !(await confirmarMusica())) return;  // gasta lo mismo que «▶ Hacer todo»
-  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: 'SI'})})); }
+  // el SI solo si lo escribiste: la cola lo guarda con lo que se pagaba ahora, y de noche no paga nada nuevo sin él
+  try { pintarCola(await api('/api/cola', {method: 'POST', body: JSON.stringify({accion: 'agregar', p: P, calidad: $('#calidad').value, confirmo: SI_ESCRITO ? 'SI' : ''})})); }
   catch (e) { alert(e.message); }
 }
 async function colaAccion(accion, id) {
@@ -3258,9 +3426,10 @@ async function guardarCelular() {
   } catch (e) { alert(e.message); }
 }
 
-async function reiniciarApp() {
+async function reiniciarApp(sola) {
   if (reiniciando) return; reiniciando = true;
-  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; return; }
+  // la app no se reinicia mientras sube a YouTube o comprime: la sola lo vuelve a intentar callada, la pedida avisa por qué
+  try { await api('/api/reiniciar', {method: 'POST'}); } catch (e) { reiniciando = false; if (!sola) alert(e.message); return; }
   const b = $('#barra'); b.hidden = false; b.className = 'trabaja'; document.body.classList.add('con-barra');
   b.innerHTML = '<div class="arriba"><span class="que">🔄 Actualizando la app a la versión nueva…</span></div>';
   setTimeout(() => location.reload(), 5000);
@@ -3269,7 +3438,8 @@ async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarMusicaFija(e); pintarVozVieja(e.voz_vieja); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
-  if (e.actualizada && !e.trabajo.proyecto) reiniciarApp();  // hay archivos nuevos: se reinicia sola
+  // hay archivos nuevos: se reinicia sola (no con cambios sin guardar ni con una ventana abierta, como el guion)
+  if (e.actualizada && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) reiniciarApp(true);
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
   if (PAGINA === null) PAGINA = e.pagina;
   else if (e.pagina !== PAGINA && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) location.reload();

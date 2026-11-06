@@ -53,7 +53,9 @@ def avisar_resultado(aj, proyecto, r, url=''):
     minutos = max(1, round((r.get('segundos') or 0) / 60))
     if r.get('ok'):
         pausa = (' Espera que revises el guion.' if r.get('pausa') == 'guion' else
-                 ' Se frenó antes de la voz: hay bloques donde la voz no va con la imagen.' if r.get('pausa') == 'revision' else '')
+                 ' Se frenó antes de la voz: hay bloques donde la voz no va con la imagen.' if r.get('pausa') == 'revision' else
+                 ' Se frenó antes del montaje: hay frases que no caen sobre su pantalla (alineacion.txt).'
+                 if r.get('pausa') == 'alineacion' else '')
         avisar(aj, f'✅ {proyecto}: listo', f"Terminó en {minutos} min ({r.get('total', 0)} pasos).{pausa}", url)
     elif r.get('msg') != 'detenido por ti':
         avisar(aj, f'❌ {proyecto}: falló en «{r.get("paso") or "un paso"}»', r.get('msg') or 'Mira el diagnóstico en la app.',
@@ -107,8 +109,10 @@ def siguiente(proyectos, puerto, ocupado):
         guardar_cola(proyectos, c)
     try:
         q = urllib.parse.urlencode({'p': item['p'], 'paso': 'todo'})
-        pedido = urllib.request.Request(f'http://127.0.0.1:{puerto}/api/ejecutar?{q}', method='POST',
-                                        data=json.dumps({'calidad': item.get('calidad') or 'alta', 'confirmo': item.get('confirmo') or ''}).encode())
+        datos = {'calidad': item.get('calidad') or 'alta', 'confirmo': item.get('confirmo') or ''}
+        if datos['confirmo']:  # lo que se pagaba cuando escribiste SI: si ahora hay más, la app no lo arranca (uno viejo, sin
+            datos['aprobado'] = item.get('aprobado') or []  # anotar, solo arranca si no hay nada que pagar)
+        pedido = urllib.request.Request(f'http://127.0.0.1:{puerto}/api/ejecutar?{q}', method='POST', data=json.dumps(datos).encode())
         urllib.request.urlopen(pedido, timeout=30).close()
     except Exception as e:  # p. ej. «primero sube tu video»: se anota y se sigue con el próximo
         msg = e.read().decode(errors='replace') if hasattr(e, 'read') else str(e)
@@ -116,6 +120,13 @@ def siguiente(proyectos, puerto, ocupado):
             msg = json.loads(msg).get('error', msg)
         except ValueError:
             pass
+        if str(msg).startswith('ya está corriendo'):  # el PC se ocupó justo ahora: vuelve a la fila y sigue al terminar ese
+            def a_la_fila(c):
+                for x in c['items']:
+                    if x.get('id') == item['id'] and x.get('estado') == 'corriendo':
+                        x['estado'] = 'espera'
+            cambiar_cola(proyectos, a_la_fila)
+            return
         def fallo(c):
             for x in c['items']:
                 if x.get('id') == item['id']:

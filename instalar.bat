@@ -6,15 +6,16 @@ cd /d "%~dp0"
 set "D=%~dp0descargas_app"
 rem lo guardado con guardar_para_otra_pc.bat se usa primero; lo que falte se baja con winget
 echo 1/6 Programas base (Python, Node.js y ffmpeg)...
-where python >nul 2>nul || for %%F in ("%D%\programas\*ython*.exe") do "%%F" /passive PrependPath=1
-where python >nul 2>nul || winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
+rem «python» tiene que andar de verdad: en una PC nueva «where» encuentra el atajo de la Microsoft Store, que no es Python
+python -c "import sys" >nul 2>nul || for %%F in ("%D%\programas\*ython*.exe") do "%%F" /passive PrependPath=1
+python -c "import sys" >nul 2>nul || winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
 where node >nul 2>nul || for %%F in ("%D%\programas\*ode*.msi") do msiexec /i "%%F" /passive
 where node >nul 2>nul || winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
 if exist "%D%\programas\ffmpeg\ffmpeg.exe" set "PATH=%D%\programas\ffmpeg;%PATH%"
 where ffmpeg >nul 2>nul || winget install -e --id Gyan.FFmpeg --accept-package-agreements --accept-source-agreements
 echo.
 echo Si alguno se acaba de instalar, cierra esta ventana y vuelve a abrir instalar.bat para que Windows los encuentre.
-where python >nul 2>nul || (echo Falta Python en el PATH. Reabre la ventana. & pause & exit /b 1)
+python -c "import sys" >nul 2>nul || (echo Falta Python en el PATH. Reabre la ventana. & pause & exit /b 1)
 where node >nul 2>nul || (echo Falta Node.js en el PATH. Reabre la ventana. & pause & exit /b 1)
 where ffmpeg >nul 2>nul || (echo Falta ffmpeg en el PATH. Reabre la ventana. & pause & exit /b 1)
 echo.
@@ -59,8 +60,10 @@ exit /b
 :arranque
 rem el mismo archivo que crea la casilla "Abrir la app sola al prender el PC" de la app
 set "INI=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Estudio de tutoriales.bat"
-for /f "delims=" %%p in ('where python 2^>nul') do if not defined PYA set "PYA=%%p"
+for /f "delims=" %%p in ('python -X utf8 -c "import sys;print(sys.executable)" 2^>nul') do set "PYA=%%p"
 > "%INI%" echo @echo off
+rem con chcp 65001 el arranque lee bien una carpeta con tildes o ñ (C:\Users\José\...)
+>> "%INI%" echo chcp 65001 ^>nul
 >> "%INI%" echo cd /d "%~dp0"
 >> "%INI%" echo set SIN_NAVEGADOR=1
 >> "%INI%" echo start "Estudio" /min "%PYA%" app\app.py

@@ -49,6 +49,19 @@ def _copiar_uno(f, g, intentos=6):
             time.sleep(1.5)
 
 
+def _enlazar(f, g):
+    """El mismo archivo en la copia, sin ocupar el doble de espacio; si no se puede enlazar (otro disco), se copia."""
+    if os.path.exists(g) and os.path.samefile(f, g):
+        return True
+    try:
+        if os.path.exists(g):
+            os.remove(g)
+        os.link(f, g)
+        return True
+    except OSError:
+        return _copiar_uno(f, g)
+
+
 def copiar(origen, destino):
     """Copia el proyecto a la versión en otro idioma, sin lo que se rehace (videos, voces) ni pruebas y muestras.
     Un archivo en uso se reintenta; si sigue bloqueado y no hace falta, se salta y se avisa (antes fallaba todo:
@@ -58,7 +71,13 @@ def copiar(origen, destino):
         fijo = os.path.normpath(json.load(open(os.path.join(origen, 'inicio_fijo.json'), encoding='utf-8'))['video'])
     except (OSError, ValueError, KeyError, TypeError):
         fijo = ''
-    saltados = []
+    try:  # el material de los insertos (la pantalla grabada…) y la música del proyecto también hacen falta
+        necesarios = {os.path.normpath(str(x['material'])) for x in json.load(open(os.path.join(origen, 'insertos.json'), encoding='utf-8'))
+                      if isinstance(x, dict) and x.get('material')}
+    except (OSError, ValueError, TypeError, AttributeError):
+        necesarios = set()
+    necesarios.add('musica.mp3')
+    saltados, faltan = [], []
     for n in os.listdir(origen):
         f, g = os.path.join(origen, n), os.path.join(destino, n)
         if n in ('original.mp4', 'material.mp4'):
@@ -73,6 +92,9 @@ def copiar(origen, destino):
                 pass
             if not _copiar_uno(f, g):
                 raise SystemExit(f'{n} está en uso (¿se está armando algo o hay otra copia en curso?): espera a que termine y vuelve a pulsar.')
+        elif n in necesarios and os.path.isfile(f):
+            if not _enlazar(f, g):
+                faltan.append(n)
         elif NO_COPIAR.search(n) or n in NO_COPIAR_CARPETAS:
             continue
         elif os.path.isdir(f):
@@ -81,6 +103,12 @@ def copiar(origen, destino):
                 os.makedirs(os.path.join(destino, rel), exist_ok=True)
                 for x in archivos:
                     r = os.path.normpath(os.path.join(rel, x))
+                    # los videos de testimonios y de nuevos modelos y el material de los insertos van en el video: sí (enlazados)
+                    falta = r in necesarios or (n in ('testimonios', 'nuevos_modelos') and re.search(r'\.(mp4|mov|mkv|webm|avi)$', x, re.I))
+                    if falta:
+                        if not _enlazar(os.path.join(raiz, x), os.path.join(destino, r)):
+                            faltan.append(r)
+                        continue
                     if re.search(r'\.(mp4|mp3|wav|mov)$', x, re.I) and r != fijo:
                         continue  # videos y audios de pruebas: no (el inicio fijo, sí)
                     if not _copiar_uno(os.path.join(raiz, x), os.path.join(destino, r)):
@@ -91,7 +119,21 @@ def copiar(origen, destino):
             saltados.append(n)
     if saltados:
         print('Aviso: no copié estos archivos porque estaban en uso (no hacen falta para la versión): ' + ', '.join(saltados), flush=True)
-    return saltados
+    if faltan:
+        print('Aviso: no pude copiar estos archivos porque estaban en uso (súbelos de nuevo en la versión): ' + ', '.join(faltan), flush=True)
+    dif = os.path.join(destino, 'difuminar_datos.json')
+    try:  # los tramos del difuminado son segundos del video en español: con la voz traducida los datos caen en otros segundos
+        with open(dif, encoding='utf-8') as fh:
+            conf = json.load(fh)
+        if isinstance(conf, dict) and conf.get('tramos'):
+            conf['tramos_version_original'] = conf.pop('tramos')  # sin «tramos» se buscan en todo el video (más lento, seguro)
+            with open(dif, 'w', encoding='utf-8') as fh:
+                json.dump(conf, fh, ensure_ascii=False, indent=1)
+            print('Aviso: en la versión traducida los datos personales se buscan en todo el video para difuminarlos '
+                  '(los tramos eran del video en español).', flush=True)
+    except (OSError, ValueError):
+        pass
+    return saltados + faltan
 
 
 def _items_extras(d):
@@ -175,7 +217,19 @@ def main():
         fd = os.open(marca, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.close(fd)
     except FileExistsError:
-        raise SystemExit(f'Ya se está creando la versión {os.path.basename(destino)} (pulsaste dos veces): espera a que termine.')
+        # la app corta la creación a los 15 min (o se cerró a mitad) y su marca quedaba para siempre: una marca de más de
+        # 16 min es de una creación que ya no corre, se borra y se sigue
+        import time
+        try:
+            vieja = os.path.getmtime(marca) < time.time() - 960
+            if vieja:
+                os.remove(marca)
+            fd = os.open(marca, os.O_CREAT | os.O_EXCL | os.O_WRONLY) if vieja else None
+        except OSError:
+            fd = None
+        if fd is None:
+            raise SystemExit(f'Ya se está creando la versión {os.path.basename(destino)} (pulsaste dos veces): espera a que termine.')
+        os.close(fd)
     import atexit
     atexit.register(lambda: os.path.exists(marca) and os.remove(marca))  # al terminar (bien o con error) se puede volver a pulsar
     print(f'Copio el proyecto a {os.path.basename(destino)}…', flush=True)

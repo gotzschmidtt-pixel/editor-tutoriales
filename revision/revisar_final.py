@@ -144,8 +144,11 @@ def main():
     video = os.path.join(d, a.video) if a.video else next((os.path.join(d, v) for v in VIDEOS if os.path.exists(os.path.join(d, v))), None)
     if not video or not os.path.exists(video):
         raise SystemExit('ERROR: todavía no hay video armado para revisar. Pulsa «▶ Hacer todo».')
+    def al_dia(s):  # un .srt más viejo que su video es de otro armado (FINAL.srt de cuando llevaba tráiler: corrido ~10 s)
+        v = os.path.join(d, os.path.splitext(s)[0] + '.mp4')
+        return not os.path.exists(v) or os.path.getmtime(os.path.join(d, s)) >= os.path.getmtime(v) - 5
     srt = next((os.path.join(d, s) for s in ([os.path.splitext(os.path.basename(video))[0] + '.srt'] + SRTS)
-                if os.path.exists(os.path.join(d, s))), None)
+                if os.path.exists(os.path.join(d, s)) and al_dia(s)), None)
     subs = leer_srt(srt) if srt else []
     print(f'Reviso {os.path.basename(video)} ({duracion(video) / 60:.1f} min)…', flush=True)
     avisos = controles_pc(video)

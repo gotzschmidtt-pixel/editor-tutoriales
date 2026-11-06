@@ -17,7 +17,9 @@ import numpy as np
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, 'deteccion'))
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 import deteccion  # noqa: E402  ve el teléfono aunque tenga la pantalla negra
+from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
 
 FPS = 5
 W, H = 1920, 1080
@@ -130,19 +132,20 @@ def analizar(orig):
     cap = cv2.VideoCapture(orig)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    paso = max(1, int(round(fps / FPS)))
-    crudo, i = [], 0
-    while i < n:
+    crudo = []
+    # por tiempo, justo 5 por segundo: saltando de a round(fps / 5) cuadros, a 24 o 29,97 fps la muestra k ya no era el
+    # segundo k / 5 y pantalla_enderezada.mp4 (y pantalla_celular.mp4) se desfasaban del original
+    for k in range(int(n / fps * FPS)):
+        i = int(round(k / FPS * fps))
         cap.set(cv2.CAP_PROP_POS_FRAMES, i)
         ok, c = cap.read()
         if not ok:
             break
         c = cv2.resize(c, (W, H)) if c.shape[1] != W else c
         tel = deteccion.telefono(deteccion.objetos(c))
-        crudo.append((i / fps, pantalla(c, tel)))
+        crudo.append((k / FPS, pantalla(c, tel)))
         if len(crudo) % (FPS * 30) == 0:
             print(f'· [{int(i / fps // 60)}:{int(i / fps % 60):02d}] buscando la pantalla…', flush=True)
-        i += paso
     cap.release()
     out = []
     for k, (t, q) in enumerate(crudo):  # mediana con los vecinos: sin temblor y sin saltos sueltos
@@ -177,6 +180,19 @@ def comienzo(texto, n=3):
     return texto[m[0].start():m[-1].end()] if m else ''
 
 
+def frase_voz(texto, n=3):
+    """La «frase» de un inserto automático: el comienzo del bloque como lo dice la voz (texto_voz: «xiaomiunlock.com» se
+    lee «xiaomiunlock punto com», sin «*» ni espacio antes de la coma). Con el texto tal cual, los insertos no la
+    encontraban y el paso fallaba. Se acorta a las palabras que también están en el texto tal cual, así sirve igual con
+    una voz hecha antes de esos cambios (basta una palabra: es el comienzo del bloque)."""
+    voz, crudo = texto_voz(texto), str(texto or '').lower()
+    for k in range(n, 0, -1):
+        f = comienzo(voz, k)
+        if f and f.lower() in crudo:
+            return f
+    return comienzo(voz, n)
+
+
 def elegir_insertos(d, datos):
     """Un inserto por paso clave donde la pantalla se ve chica (menos de un tercio del alto) o torcida."""
     g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
@@ -199,7 +215,7 @@ def elegir_insertos(d, datos):
         if max(w, h) > H * 0.75 and not torcida:
             continue  # ya se ve grande y derecha
         nuevos.append({'nota': 'pantalla derecha', 'origen': 'pantalla', 'material': SALIDA, 'src_t': round(t, 2), 'bloque': b['id'],
-                       'frase': comienzo(b['texto']), 'dur': round(min(4.5, max(2.5, float(b.get('voz_real_s') or 4) * 0.5)), 1),
+                       'frase': frase_voz(b['texto']), 'dur': round(min(4.5, max(2.5, float(b.get('voz_real_s') or 4) * 0.5)), 1),
                        'claves': [{'t': 0, 'cx': 0.5, 'cy': 0.5, 'w': 0.98}, {'t': 2.5, 'cx': 0.5, 'cy': 0.5, 'w': 0.9}]})
         if len(nuevos) >= 8 and not critico:
             break

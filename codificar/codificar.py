@@ -15,7 +15,7 @@ demás sigue con el ffmpeg de siempre. También se puede indicar su ruta con "ff
 
 Uso desde la app (comando externo): python codificar.py ffmpeg -i ... -c:v libx264 ... salida.mp4
 """
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys, time
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -27,6 +27,7 @@ PRESETS = {'ultrafast': 'p1', 'superfast': 'p2', 'veryfast': 'p3', 'faster': 'p4
            'slow': 'p6', 'slower': 'p7', 'veryslow': 'p7'}
 _nvenc = None  # None: no probado todavía en este proceso
 _qsv = None
+INTENTOS_INTEL = 4  # veces que se prueba Intel en un tramo antes de pasar al procesador
 USADOS = set()  # con qué se codificó en este proceso: 'nvidia', 'intel' y/o 'procesador'
 
 
@@ -134,6 +135,25 @@ def con_nvenc(cmd):
     return out
 
 
+_script_nuevo = None
+
+
+def filtro_desde_archivo(ruta):
+    """Los argumentos para leer el -filter_complex de un archivo (con cientos de tramos la línea de comandos de Windows
+    queda corta). Desde ffmpeg 7 la forma es «-/filter_complex archivo» y la vieja «-filter_complex_script» quedó obsoleta
+    (un ffmpeg muy nuevo, como el 9 del laptop de fabian, puede ya no tenerla); los ffmpeg 6 o más viejos solo conocen la
+    vieja. Se mira la versión una vez por proceso; si no se entiende (una versión de prueba «N-…»), se usa la nueva."""
+    global _script_nuevo
+    if _script_nuevo is None:
+        try:
+            r = subprocess.run(['ffmpeg', '-hide_banner', '-version'], capture_output=True, text=True, timeout=30, **SIN_VENTANA)
+            m = re.search(r'ffmpeg version n?(\d+)\.', r.stdout or '')
+            _script_nuevo = not m or int(m.group(1)) >= 7
+        except (OSError, subprocess.SubprocessError):
+            _script_nuevo = True
+    return ['-/filter_complex' if _script_nuevo else '-filter_complex_script', ruta]
+
+
 def run(cmd, **kw):
     """subprocess.run de un comando de ffmpeg: con NVIDIA, si no con Intel Quick Sync, y si no con el procesador."""
     global _nvenc, _qsv
@@ -148,10 +168,18 @@ def run(cmd, **kw):
         print('· la tarjeta NVIDIA no pudo codificar este tramo; lo repito con el procesador', flush=True)
     qs = con_qsv(cmd) if not nv and hay_qsv() else None
     if qs:
-        r = subprocess.run(qs, **dict(kw, check=False))
-        if r.returncode == 0:
-            USADOS.add('intel')
-            return r
+        # con ffmpeg 9 la gráfica Intel falla al azar más o menos 1 de cada 8 a 13 tramos («Invalid data found», aunque el
+        # comando sea simple), y a veces 2 seguidas (laptop de fabian, 03/11/2026). Se repite con Intel hasta 4 veces, con una
+        # pausa corta, antes de pasar al procesador: así todo el video sale con el mismo codificador y no hay que
+        # recodificarlo entero al final (con un 10 % de fallos, 4 seguidos pasan 1 vez cada 10.000 tramos)
+        for intento in range(1, INTENTOS_INTEL + 1):
+            r = subprocess.run(qs, **dict(kw, check=False))
+            if r.returncode == 0:
+                USADOS.add('intel')
+                return r
+            if intento < INTENTOS_INTEL:
+                print(f'· la gráfica Intel falló en este tramo; lo intento otra vez ({intento + 1} de {INTENTOS_INTEL})', flush=True)
+                time.sleep(0.5 * intento)
         _qsv = False
         print('· la gráfica Intel no pudo codificar este tramo; lo repito con el procesador', flush=True)
     if 'libx264' in [str(x) for x in cmd]:

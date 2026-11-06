@@ -4,12 +4,13 @@ Uso: python titulos.py --proyecto mis_proyectos/NOMBRE              → sugiere 
      python titulos.py --proyecto ... --traducir "HONOR|SIN CUENTA GOOGLE"  → solo la traducción de ese título
 Imprime una línea JSON. Gasta un pedido corto de texto a la IA (sin imágenes). Pedido de fabian, 30/10/2026.
 """
-import argparse, json, os, re, sys
+import argparse, json, os, sys
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 sys.path.insert(0, os.path.join(RAIZ, 'ia'))
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import reglas_titulo  # noqa: E402  qué textos se permiten: «SIN PC» por proceso, «GRATIS», el año (03/11/2026)
 ARCHIVO = 'titulos_miniatura_ia.json'
 REGLAS = ('Cada título tiene DOS partes cortas en MAYÚSCULAS que van en una sola fila al pie de la miniatura: la primera en '
           'blanco (la marca o el modelo, por ejemplo «HONOR» o «HONOR 400 LITE») y la segunda en amarillo, la palabra clave o '
@@ -26,7 +27,7 @@ def leer(f, defecto=''):
 
 
 def contexto(d):
-    """Lo que la IA necesita saber del video y del canal."""
+    """Lo que la IA necesita saber del video y del canal, con las reglas de fabian para los textos (reglas_titulo.para_ia)."""
     try:
         g = json.load(open(os.path.join(d, 'guion.json'), encoding='utf-8'))
         guion = ' '.join(str(b.get('texto') or '') for b in g.get('bloques', []))[:3500]
@@ -37,17 +38,12 @@ def contexto(d):
         marca = conocimiento.marca_de_proyecto(d) or ''
     except Exception:
         marca = ''
-    try:
-        pc = json.load(open(os.path.join(RAIZ, 'mis_conocimientos', 'procesos_pc.json'), encoding='utf-8'))
-    except (OSError, ValueError):
-        pc = {}
-    sin_pc = pc.get(marca.lower()) is False
     estad = leer(os.path.join(RAIZ, 'mis_conocimientos', 'ESTADISTICAS_CANAL.md'))
     estad = estad[:3000]
     return (f'Proyecto: {os.path.basename(d)}. Marca: {marca or "(no se sabe)"}.\n'
             f'Lo que dijo el autor del video (idea.txt): {leer(os.path.join(d, "idea.txt")).strip()[:800] or "(nada)"}\n'
             f'Lo que dice la voz del video: {guion or "(todavía no hay guion)"}\n'
-            + ('' if sin_pc else 'OJO: este proceso NECESITA PC: nunca pongas «SIN PC» ni lo prometas.\n')
+            + reglas_titulo.para_ia(marca, reglas_titulo.texto_proyecto(d), miniatura=True) + '\n'
             + (f'Lo que funciona en el canal (estadísticas reales):\n{estad}\n' if estad else ''))
 
 
@@ -76,26 +72,41 @@ def main():
               'cuentas Google/FRP, iCloud, patrones, MDM). Propón 8 títulos distintos para la miniatura de ESTE video, que '
               'den ganas de hacer clic sin mentir: solo promete lo que el video muestra. ' + REGLAS + '\n\n' + contexto(d) +
               '\nAdemás propón 8 textos MUY cortos (máximo 14 letras, en MAYÚSCULAS) para las cintas de las esquinas de arriba '
-              'de la miniatura, que sumen confianza o urgencia sin mentir (por ejemplo «NEW 2026», «100% REAL», «MÉTODO 2026», '
-              '«FUNCIONA»), con su traducción.'
+              'de la miniatura, que sumen confianza o urgencia sin mentir (por ejemplo '
+              f'«NEW {reglas_titulo.anio()}», «100% REAL», «MÉTODO {reglas_titulo.anio()}», «FUNCIONA»), con su traducción.'
               '\nResponde SOLO con JSON: {"titulos": [{"es": ["PARTE 1", "PARTE 2"], "en": ["…", "…"], "pt": ["…", "…"], '
               '"por_que": "una frase corta"}, …], "esquinas": [{"es": "…", "en": "…", "pt": "…"}, …]}')
     r = ia.extraer_json(ia.llamar(ajustes, prompt, []))
+    try:
+        import conocimiento
+        marca = conocimiento.marca_de_proyecto(d) or ''
+    except Exception:
+        marca = ''
+    proyecto = reglas_titulo.texto_proyecto(d)
+
+    def cumple(partes):
+        """(03/11/2026) Lo que la IA propone pasa por las reglas de fabian: «SIN PC» solo si el proceso no usa PC, «GRATIS»
+        solo si el método es gratis y el año de hoy (el del modelo, como «MOTO G 2024», queda). Si la IA lo puso igual, se le
+        quita (y si no queda nada, la propuesta no va). «TODOS LOS MODELOS» de Honor solo se quita de los títulos de YouTube:
+        en la miniatura sigue (revisión, 03/11/2026)."""
+        return [reglas_titulo.revisar_titulo(p, marca, proyecto, miniatura=True)[0].upper() for p in partes]
     titulos = []
     for x in (r.get('titulos') if isinstance(r, dict) else None) or []:
         es = [str(p).strip().upper() for p in (x.get('es') or []) if str(p).strip()][:2]
-        if not es or re.search(r'\bSIN PC\b', ' '.join(es)) and 'NUNCA PONGAS' in prompt.upper():
+        if not es or not all(cumple(es)):
             continue
-        t = {'es': es, 'por_que': str(x.get('por_que') or '')[:200]}
+        t = {'es': cumple(es), 'por_que': str(x.get('por_que') or '')[:200]}
         for idioma in ('en', 'pt'):
             v = [str(p).strip().upper() for p in (x.get(idioma) or []) if str(p).strip()][:2]
-            t[idioma] = v if len(v) == len(es) else es
+            t[idioma] = cumple(v) if len(v) == len(es) and all(cumple(v)) else t['es']
         titulos.append(t)
     esquinas = []
     for x in (r.get('esquinas') if isinstance(r, dict) else None) or []:
         es = str((x or {}).get('es') or '').strip().upper()[:22] if isinstance(x, dict) else ''
-        if es and not (re.search(r'\bSIN PC\b', es) and 'NUNCA PONGAS' in prompt.upper()):
-            esquinas.append({'es': es, **{i: str(x.get(i) or es).strip().upper()[:22] for i in ('en', 'pt')}})
+        es = cumple([es])[0] if es else ''
+        if es:
+            otras = {i: cumple([str(x.get(i) or es).strip().upper()[:22]])[0] for i in ('en', 'pt')}
+            esquinas.append({'es': es, **{i: v or es for i, v in otras.items()}})
     try:  # las traducciones que ya se pidieron antes se conservan
         viejo = json.load(open(os.path.join(d, ARCHIVO), encoding='utf-8'))
     except (OSError, ValueError):

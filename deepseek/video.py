@@ -13,12 +13,13 @@ Uso (desde la carpeta editor-tutoriales):
       la app corrige el guion (tiempos, largo, orden) y lo guarda en guion.json; muestra el resumen y los avisos
   python deepseek/video.py preguntas [trailer] --nombre "Mi video"
       tus preguntas del guion (o del tráiler) con lo que el autor contestó en la app
-  python deepseek/video.py armar --nombre "Mi video" --confirmo-creditos
-      voz (ElevenLabs, GASTA créditos), montaje, subtítulos y música → FINAL.mp4 sin extras
+  python deepseek/video.py armar --nombre "Mi video" --confirmo-creditos [--confirmo-musica]
+      voz (ElevenLabs, GASTA créditos), montaje, subtítulos y música → FINAL.mp4 sin extras. Sin mis_musica\\musica_fija.mp3
+      ni musica.mp3 en el proyecto, la música nueva cuesta aparte unos 2.950 créditos: solo con --confirmo-musica
   python deepseek/video.py encargo etiquetas|trailer --nombre "Mi video"
       deja ia_prompt_<tarea>.txt para escribir las etiquetas o el tráiler (después: entregar etiquetas|trailer archivo.json)
   python deepseek/video.py extras etiquetas trailer --nombre "Mi video" [--confirmo-creditos]
-      pone los extras sobre el video (el tráiler y nuevos_modelos gastan ElevenLabs). El tráiler va aparte y al final:
+      pone los extras sobre el video (el tráiler, nuevos_modelos y los testimonios con narración gastan ElevenLabs). El tráiler va aparte y al final:
       primero el video aprobado; después encargo trailer → entregar trailer → el autor lo revisa en «🎬 Tráiler»
   python deepseek/video.py exportar 480 720 --nombre "Mi video"
   python deepseek/video.py estado --nombre "Mi video"
@@ -32,7 +33,7 @@ import argparse, hashlib, json, os, re, shutil, subprocess, sys, time, unicodeda
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = f"http://localhost:{os.environ.get('PUERTO', 8765)}"
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
-GASTAN = {'trailer', 'nuevos_modelos'}  # extras que generan voz con ElevenLabs
+GASTAN = {'trailer', 'nuevos_modelos', 'testimonios'}  # extras que generan voz con ElevenLabs (testimonios: la narración)
 
 
 def api(ruta, datos=None, cuerpo=None, largo=None, **q):
@@ -283,6 +284,12 @@ def texto_preguntas(d, tarea='guion'):
 
 
 def main():
+    # con la salida capturada (la IA que corre el comando) Windows escribe en cp1252 y un «→» o un emoji cortaba el comando
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('accion', choices=['preparar', 'entregar', 'preguntas', 'armar', 'encargo', 'extras', 'exportar', 'estado', 'clave'])
     ap.add_argument('args', nargs='*')
@@ -291,6 +298,8 @@ def main():
     ap.add_argument('--parti-del-guion-actual', action='store_true',
                     help='entregar guion: tu archivo ya incluye lo que el autor editó en la app (guion_editado_por_autor.json)')
     ap.add_argument('--confirmo-creditos', action='store_true', help='el autor aprobó gastar créditos de ElevenLabs')
+    ap.add_argument('--confirmo-musica', action='store_true',
+                    help='armar: el autor aprobó generar una música nueva (unos 2.950 créditos de ElevenLabs, aparte de la voz)')
     a = ap.parse_args()
     if a.accion != 'clave' and not a.nombre:
         ap.error('falta --nombre "NOMBRE DEL PROYECTO"')
@@ -328,7 +337,8 @@ def main():
             else:
                 print('Transcribo tu voz con Whisper en esta PC (gratis). Para usar ElevenLabs Scribe, más preciso pero gasta '
                       'créditos, pregúntale al autor y repite con --confirmo-creditos.', flush=True)
-            correr(p, 'transcribir', {'motor': 'auto' if a.confirmo_creditos else 'whisper'})
+            # con el permiso del autor la app lo recibe como SI (Scribe gasta ElevenLabs y sin SI no arranca)
+            correr(p, 'transcribir', {'motor': 'auto', 'confirmo': 'SI'} if a.confirmo_creditos else {'motor': 'whisper'})
         print('Armo el encargo del guion (capturas, mapa del video y hojas)…', flush=True)
         correr(p, 'ia', {'tarea': 'guion', 'modo': 'prompt'})
         out, n = hojas_2s(d)
@@ -399,6 +409,12 @@ def main():
         if not a.confirmo_creditos:
             raise SystemExit('La voz gasta créditos de ElevenLabs (solo los bloques nuevos o cambiados). Pregúntale al autor; '
                              'si dice que sí, repite con --confirmo-creditos.')
+        fija = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')
+        if not os.path.exists(fija) and not os.path.exists(os.path.join(d, 'musica.mp3')) and not a.confirmo_musica:
+            # el «SI» de la voz no vale para la música: sin pista guardada la app genera una nueva y eso se paga aparte
+            raise SystemExit(f'No hay música guardada ({fija} ni {os.path.join(d, "musica.mp3")}): la app generaría una música '
+                             'nueva con ElevenLabs, que cuesta unos 2.950 créditos aparte de la voz. Pregúntale al autor; si dice '
+                             'que sí, repite con --confirmo-creditos --confirmo-musica (o que deje su música en una de esas rutas).')
         correr(p, 'todo', {'sin_ia': True, 'confirmo': 'SI'})  # el autor ya lo aprobó: --confirmo-creditos
         print('LISTO: ' + os.path.join(d, 'FINAL.mp4') + ' (sin extras). Revisa avisos en registro.txt.')
         print(resumen_guion(d))
@@ -417,7 +433,9 @@ def main():
         if GASTAN & set(solo) and not a.confirmo_creditos:
             raise SystemExit(f'{", ".join(sorted(GASTAN & set(solo)))} gasta créditos de ElevenLabs. Pregúntale al autor; '
                              'si dice que sí, repite con --confirmo-creditos.')
-        correr(p, 'extras', {'sin_ia': True, 'solo': solo})
+        # el autor ya aprobó el gasto (--confirmo-creditos): la app lo pide como SI antes de narrar testimonios, nuevos
+        # modelos o la frase del tráiler. Sin el permiso no se manda y la app frena si hay algo que pagar
+        correr(p, 'extras', {'sin_ia': True, 'solo': solo, **({'confirmo': 'SI'} if a.confirmo_creditos else {})})
         print('LISTO: ' + os.path.join(d, 'FINAL.mp4'))
 
     elif a.accion == 'exportar':

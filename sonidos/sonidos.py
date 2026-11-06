@@ -12,9 +12,11 @@ Los sonidos viven en mis_sonidos/ (los mismos para todos tus videos):
 Uso suelto: python sonidos.py --proyecto mis_proyectos/x            (muestra dónde iría cada sonido)
             python sonidos.py --generar eleven [--solo clic]        (crea la biblioteca con ElevenLabs)
 """
-import argparse, json, os, re, subprocess, urllib.error, urllib.request, wave
+import argparse, json, os, re, subprocess, sys, urllib.error, urllib.request, wave
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+import pasos_clave  # noqa: E402  con «datos», el tramo va en piezas (el dato a ×0,9): el clic cae donde se ve (03/11/2026)
 BIBLIOTECA = os.path.join(RAIZ, 'mis_sonidos')
 SR = 44100
 DESFASE = 0.3  # el de mezclar_voz.py: el bloque empieza 0,3 s antes que su voz
@@ -150,7 +152,8 @@ def a_video(bloques, s):
             continue
         s0, s1 = float(mo['src_inicio']), float(mo.get('src_fin') or mo['src_inicio'])
         if s0 <= s <= s1:
-            return round(float(b['inicio_min']) + (s - s0) / float(mo.get('velocidad') or 1), 2)
+            # (revisión, 03/11/2026) con las mismas piezas que el montaje: el dato a ×0,9 y lo demás más rápido
+            return round(float(b['inicio_min']) + pasos_clave.en_bloque(mo, s), 2)
     return None
 
 

@@ -8,17 +8,55 @@ FINALES = ('FINAL.mp4', 'FINAL_EN.mp4', 'FINAL_PT.mp4', 'FINAL_480p.mp4', 'FINAL
 PREFIJO = 'FINAL_antes_rehacer_'
 
 
-def respaldar(d, fecha=None):
-    """Copia los finales que haya. Devuelve los nombres de las copias."""
+def respaldar(d, fecha=None, finales=FINALES):
+    """Copia los finales que haya (o solo los de `finales`). Devuelve los nombres de las copias."""
     fecha = fecha or time.strftime('%Y%m%d_%H%M')
     hechas = []
-    for f in FINALES:
+    for f in finales:
         src = os.path.join(d, f)
         if os.path.isfile(src):
-            dst = os.path.join(d, f'{PREFIJO}{fecha}_{f}')
+            dst, k = os.path.join(d, f'{PREFIJO}{fecha}_{f}'), 1
+            while os.path.exists(dst):  # dos copias en el mismo minuto: la segunda no pisa la primera
+                k += 1
+                dst = os.path.join(d, f'{PREFIJO}{fecha}_{k}_{f}')
             shutil.copy2(src, dst)
             hechas.append(os.path.basename(dst))
     return hechas
+
+
+MARCA = '.final_de_la_app.json'  # tamaño y fecha del último FINAL.mp4 que armó la app o que ya quedó copiado
+
+
+def anotar_final(d, f='FINAL.mp4'):
+    """Anota el FINAL que la app acaba de armar (o que acaba de copiar). Mientras siga igual no hace falta copiarlo antes de
+    rehacerlo: la app lo vuelve a armar sola, o ya está la copia. Así «✨ Agregar extras» no suma una copia de varios GB en
+    cada vuelta."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        with open(os.path.join(d, MARCA), 'w', encoding='utf-8') as fh:
+            json.dump({'archivo': f, 'tam': st.st_size, 'fecha': st.st_mtime}, fh)
+    except OSError:
+        pass
+
+
+def firma(d, f='FINAL.mp4'):
+    """Tamaño y fecha del FINAL (None si no hay): si cambian mientras corre un paso, ese paso lo escribió."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        return st.st_size, st.st_mtime_ns
+    except OSError:
+        return None
+
+
+def tocado_por_fuera(d, f='FINAL.mp4'):
+    """True si el FINAL no es el que dejó la app (le hiciste arreglos a mano, o no hay anotación): ese sí se copia."""
+    try:
+        st = os.stat(os.path.join(d, f))
+        with open(os.path.join(d, MARCA), encoding='utf-8') as fh:
+            m = json.load(fh)
+        return not (m.get('archivo') == f and m.get('tam') == st.st_size and float(m.get('fecha')) == st.st_mtime)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return True
 
 
 def capas_por_fuera(d):

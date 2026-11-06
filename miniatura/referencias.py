@@ -25,6 +25,8 @@ import cv2
 import numpy as np
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
+import reglas_titulo  # noqa: E402  «SIN PC» por proceso, el año de hoy y «GRATIS» solo si es gratis (fabian, 03/11/2026)
 GUIA = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'ESTILO_MINIATURAS.md')
 COSTO_IMAGEN = 0.28        # USD por imagen de gpt-image-2.5-flare en calidad alta (medido el 01/11/2026 con la miniatura F)
 MAX_REFS_GPT = 3           # cuántas referencias de estilo van a la IA de imágenes en cada pedido
@@ -34,8 +36,9 @@ REGLAS = ('Reglas fijas del canal: cara con emoción clara; UN objeto principal;
           'con tildes correctas; nada de desbloqueo, WhatsApp ni QR en videos de noticias; los logos reales de marcas los pone '
           'la app encima si la IA los deforma. Es una fórmula, no un calco: no copies caras de otras personas, logos de otros '
           'canales ni sus textos. Gustos de fabian (02/11/2026): expresión natural (ni exagerada, ni seria, ni pícara); buzo o '
-          'camiseta blanco liso sin logos; el fondo original de la foto, nunca uno inventado; un solo título; textos grandes que '
-          'se lean en el celular; solo dos manos; la cámara real del modelo a la vista; las etiquetas las dibuja la IA de imágenes.')
+          'camiseta blanco liso sin logos; un solo título; textos grandes que se lean en el celular; solo dos manos; la cámara '
+          'real del modelo a la vista; las etiquetas las dibuja la IA de imágenes. Fondo (fabian, 03/11/2026: «fondos negros»): '
+          'negro como su canal o el original de la foto oscurecido casi a negro; nunca claro, ni un túnel de rayos o destellos.')
 
 
 def carpeta(d, *partes):
@@ -99,7 +102,8 @@ def llamar_ia(texto, imagenes):
     sys.path.insert(0, os.path.join(RAIZ, 'ia'))
     import ia
     ajustes = dict(json.load(open(os.path.join(RAIZ, 'app', 'ajustes.json'), encoding='utf-8')), imagenes=True)
-    return ia.llamar(ajustes, texto, list(imagenes))
+    # ia.llamar quiere (nombre, ruta) por imagen, como las capturas del guion (con rutas sueltas fallaba siempre)
+    return ia.llamar(ajustes, texto, [(os.path.basename(f), f) for f in imagenes])
 
 
 def imagen_ia(prompt, refs, size):
@@ -192,28 +196,46 @@ def ideas(d, llamar=None, n=4):
     if not receta:
         raise ValueError('Primero «🔍 Analizar» las referencias.')
     titulo, guion = titulo_video(d)
+    # (revisión, 03/11/2026) las reglas de fabian para los textos de la miniatura, según el proceso de ESTE video, antes de
+    # gastar en GPT: «SIN PC» solo si el proceso no usa PC, el año de hoy y «GRATIS» solo si el método es gratis
+    try:
+        import conocimiento
+        marca = conocimiento.marca_de_proyecto(d) or ''
+    except Exception:
+        marca = ''
+    proyecto = reglas_titulo.texto_proyecto(d) + ' ' + titulo
+
+    def cumple(t):
+        nuevo, avisos = reglas_titulo.revisar_titulo(t, marca, proyecto, miniatura=True)
+        return nuevo.strip().upper(), avisos
     guia = ''
     if os.path.exists(GUIA):  # el principio (con la revisión obligatoria) y, siempre, la competencia, los gustos y los errores
         t = open(GUIA, encoding='utf-8').read()
-        guia = t[:3000]
+        # (revisión, 03/11/2026) la sección «Estilo del canal para GPT» (03/11) quedó arriba y el corte de 3000 la partía a la
+        # mitad: el principio llega hasta ella. Esa sección es la de «🖼 Miniatura» (tutoriales: el teléfono en la mano, de
+        # frente); aquí mandan la receta de tus referencias y REGLAS (el teléfono de espaldas), así que no va
+        nueva = t.find('\n## Estilo del canal para GPT')
+        guia = t[:min(3000, nueva) if nueva > 0 else 3000]
         for s, largo in (('## Patrones de la competencia', 2500), ('## Gustos confirmados', 6000)):
             i = t.find(s)
             guia += '\n...\n' + t[i:i + largo] if i >= 0 else ''
     prompt = (f'Propón {n} ideas de miniatura para este video de YouTube del canal Xiaomiunlock (fabian).\nTítulo: {titulo}\n'
               f'Inicio del guion: {guion}\n\nReceta sacada de las miniaturas de referencia que le gustan:\n'
               f'{json.dumps(receta.get("conjunto"), ensure_ascii=False)}\n{receta.get("resumen", "")}\n\nGuía de estilo de fabian:\n{guia}\n\n'
-              f'{REGLAS}\nCada idea: un texto de 4 palabras como mucho (MAYÚSCULAS, tildes correctas) con su traducción al inglés y '
+              f'{REGLAS}\n{reglas_titulo.para_ia(marca, proyecto, miniatura=True)}\nCada idea: un texto de 4 palabras como mucho (MAYÚSCULAS, tildes correctas) con su traducción al inglés y '
               'al portugués de Brasil, y el concepto de la imagen en una frase. Responde SOLO con JSON: {"ideas": [{"texto": "…", '
               '"en": "…", "pt": "…", "concepto": "…", "por_que": "…"}]}')
     r = _json(llamar(prompt, []))
     lista = []
     for x in (r.get('ideas') if isinstance(r, dict) else None) or []:
-        t = str(x.get('texto') or '').strip().upper()
-        if not t:
+        t, avisos = cumple(str(x.get('texto') or ''))
+        if not t:  # si la IA se saltó una regla, se corrige; si no queda texto, la idea no va
             continue
         palabras = t.split()
-        lista.append({'texto': ' '.join(palabras[:4]), 'en': str(x.get('en') or t).strip().upper(), 'pt': str(x.get('pt') or t).strip().upper(),
-                      'concepto': str(x.get('concepto') or '')[:300], 'por_que': str(x.get('por_que') or '')[:200],
+        otros = {i: cumple(str(x.get(i) or t))[0] or t for i in ('en', 'pt')}
+        por_que = str(x.get('por_que') or '')[:200] + (' · La app corrigió: ' + '; '.join(avisos) if avisos else '')
+        lista.append({'texto': ' '.join(palabras[:4]), 'en': otros['en'], 'pt': otros['pt'],
+                      'concepto': str(x.get('concepto') or '')[:300], 'por_que': por_que.strip(' ·'),
                       'largo_ok': len(palabras) <= 4})
     if not lista:
         raise ValueError('La IA no devolvió ideas. Vuelve a intentarlo.')
@@ -245,12 +267,17 @@ def prompt_imagen(receta, idea, idioma='es', formato='16x9', con_cara=False):
             f'main object {c.get("objeto", "")}; background {c.get("fondo", "")}; palette {", ".join(c.get("paleta") or [])}; '
             f'contrast {c.get("contraste", "")}. ' +
             f'Concept: {idea.get("concepto", "")}. ' +
-            (f'The presenter is the person in the LAST reference image (same face and beard), photorealistic, with a strong '
-             f'{c.get("emocion") or "surprised"} expression. ' if con_cara else 'No real person needs to appear; if a face appears it is a generic one. ') +
+            (f'The presenter is the person in the LAST reference image (same face and beard), photorealistic, with a natural, not '
+             f'exaggerated {c.get("emocion") or "surprised"} expression (no shouting), plain white sweater without logos. ' if con_cara
+             else 'No real person needs to appear; if a face appears it is a generic one. ') +
+            # los gustos de fabian (02/11/2026), con o sin su cara
+            'Any face: natural expression, not exaggerated, no shouting, not too serious, not cheeky (no squinting, no tilted head); '
+            'only two hands; one single headline. ' +
             f'Big headline text, perfectly spelled exactly as given, with correct accents: «{texto}». ' +
             ('Headline in the upper-center third, nothing important in the bottom 20 %. ' if vertical else 'Text readable at small size. ') +
             'If a phone appears it is shown from the BACK only, never a readable screen. One main object. No extra text, no watermark, '
-            'no QR, no WhatsApp, nothing about unlocking phones, no YouTube duration badge.')
+            'no QR, no WhatsApp, no website names or URLs (nothing like .com or .co), nothing about unlocking phones, '
+            'no YouTube duration badge.')
 
 
 def salida_final(img, formato):
@@ -279,33 +306,36 @@ def generar(d, elegidas, variantes=2, formato='16x9', idioma='es', cara=None, ge
     size = FORMATOS[formato][0]
     hechas = leer(os.path.join(carpeta(d), 'generadas.json'), []) or []
     nuevas, cobradas = [], 0
-    for i in elegidas:
-        idea = lista[int(i) - 1]
-        for v in range(1, int(variantes) + 1):
-            img = generar_img(prompt_imagen(receta, idea, idioma, formato, bool(cara)), refs, size)
-            cobradas += 1
-            nombre = f'idea{int(i)}_v{v}_{idioma}_{formato}_{time.strftime("%H%M%S")}.jpg'
-            f = os.path.join(carpeta(d, 'generadas'), nombre)
-            final = salida_final(img, formato)
-            for q in (92, 85, 78, 70):  # < 2 MB, como pide YouTube
-                ok, buf = cv2.imencode('.jpg', final, [cv2.IMWRITE_JPEG_QUALITY, q])
-                if len(buf) < 2_000_000:
-                    break
-            buf.tofile(f)
-            r = {'archivo': 'generadas/' + nombre, 'idea': int(i), 'variante': v, 'idioma': idioma, 'formato': formato,
-                 'texto': idea.get(idioma) if idioma != 'es' else idea['texto'], 'costo_usd': COSTO_IMAGEN, 'fecha': time.strftime('%Y-%m-%d %H:%M')}
-            if revisar_luego:
-                try:
-                    r['revision'] = revisar(d, r['archivo'], r['texto'], llamar)
-                except Exception as e:  # la revisión no frena lo ya generado (y ya cobrado)
-                    r['revision'] = {'ok': None, 'errores': [f'no se pudo revisar: {e}'[:200]]}
-            hechas.append(r)
-            nuevas.append(r)
-            guardar(os.path.join(carpeta(d), 'generadas.json'), hechas)
-    gastos = leer(os.path.join(carpeta(d), 'gastos.json'), []) or []
-    gastos.append({'fecha': time.strftime('%Y-%m-%d %H:%M'), 'imagenes': cobradas, 'costo_usd': round(cobradas * COSTO_IMAGEN, 2),
-                   'modelo': 'gpt-image-2.5-flare', 'calidad': 'high', 'simulado': _simulando()})
-    guardar(os.path.join(carpeta(d), 'gastos.json'), gastos)
+    try:
+        for i in elegidas:
+            idea = lista[int(i) - 1]
+            for v in range(1, int(variantes) + 1):
+                img = generar_img(prompt_imagen(receta, idea, idioma, formato, bool(cara)), refs, size)
+                cobradas += 1
+                nombre = f'idea{int(i)}_v{v}_{idioma}_{formato}_{time.strftime("%H%M%S")}.jpg'
+                f = os.path.join(carpeta(d, 'generadas'), nombre)
+                final = salida_final(img, formato)
+                for q in (92, 85, 78, 70):  # < 2 MB, como pide YouTube
+                    ok, buf = cv2.imencode('.jpg', final, [cv2.IMWRITE_JPEG_QUALITY, q])
+                    if len(buf) < 2_000_000:
+                        break
+                buf.tofile(f)
+                r = {'archivo': 'generadas/' + nombre, 'idea': int(i), 'variante': v, 'idioma': idioma, 'formato': formato,
+                     'texto': idea.get(idioma) if idioma != 'es' else idea['texto'], 'costo_usd': COSTO_IMAGEN, 'fecha': time.strftime('%Y-%m-%d %H:%M')}
+                if revisar_luego:
+                    try:
+                        r['revision'] = revisar(d, r['archivo'], r['texto'], llamar)
+                    except (Exception, SystemExit) as e:  # la revisión no frena lo ya generado (y ya cobrado); la IA falla con SystemExit
+                        r['revision'] = {'ok': None, 'errores': [f'no se pudo revisar: {e}'[:200]]}
+                hechas.append(r)
+                nuevas.append(r)
+                guardar(os.path.join(carpeta(d), 'generadas.json'), hechas)
+    finally:  # lo ya cobrado queda anotado aunque una imagen falle a mitad
+        if cobradas:
+            gastos = leer(os.path.join(carpeta(d), 'gastos.json'), []) or []
+            gastos.append({'fecha': time.strftime('%Y-%m-%d %H:%M'), 'imagenes': cobradas, 'costo_usd': round(cobradas * COSTO_IMAGEN, 2),
+                           'modelo': 'gpt-image-2.5-flare', 'calidad': 'high', 'simulado': _simulando()})
+            guardar(os.path.join(carpeta(d), 'gastos.json'), gastos)
     return nuevas
 
 
@@ -412,7 +442,9 @@ def post(h, ruta, q, largo, d):
     if ruta == '/api/miniref/generar':  # GASTA: la pestaña ya mostró el costo y fabian confirmó
         if not datos.get('confirmo'):
             return h.error('Falta confirmar el costo antes de generar.')
-        args = ['generar', '--ideas', ','.join(str(int(x)) for x in datos.get('ideas') or []), '--variantes', str(int(datos.get('variantes') or 2)),
+        vari = datos.get('variantes')  # de 1 a 4, lo mismo que la pestaña mostró en el costo (vacío = 2, como antes)
+        vari = min(4, max(1, int(vari) if vari not in (None, '') else 2))
+        args = ['generar', '--ideas', ','.join(str(int(x)) for x in datos.get('ideas') or []), '--variantes', str(vari),
                 '--formato', '9x16' if datos.get('formato') == '9x16' else '16x9', '--idioma', datos.get('idioma') if datos.get('idioma') in ('es', 'en', 'pt') else 'es']
         if datos.get('cara'):
             cara = os.path.abspath(os.path.join(d, datos['cara']))

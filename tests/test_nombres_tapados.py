@@ -10,9 +10,11 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def revisar(archivo):
     arbol = ast.parse(open(archivo, encoding='utf-8').read())
     globales = {n.name for n in arbol.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    modulos = set()
     for n in arbol.body:
         if isinstance(n, (ast.Import, ast.ImportFrom)):
-            globales |= {(a.asname or a.name).split('.')[0] for a in n.names}
+            modulos |= {(a.asname or a.name).split('.')[0] for a in n.names}
+    globales |= modulos
     malos = []
     for f in ast.walk(arbol):
         if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -22,6 +24,9 @@ def revisar(archivo):
                      for t in ast.walk(x) if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store)}
         declarados = {nm for x in propios if isinstance(x, (ast.Global, ast.Nonlocal)) for nm in x.names}
         llamados = {x.func.id for x in propios if isinstance(x, ast.Call) and isinstance(x.func, ast.Name)}
+        # también «modulo.algo»: «respaldo = …» en do_POST tapaba el módulo respaldo y «🔁 Rehacer video» daba 500 (02/11/2026)
+        llamados |= {x.value.id for x in propios if isinstance(x, ast.Attribute) and isinstance(x.value, ast.Name)
+                     and x.value.id in modulos}
         for nombre in sorted((asignados & globales & llamados) - declarados):
             malos.append(f'{os.path.relpath(archivo, RAIZ)}:{f.lineno} {f.name}(): «{nombre}» es local y tapa la global {nombre}()')
     return malos

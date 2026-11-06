@@ -36,7 +36,11 @@ ARCHIVO = {'guion': 'guion.json', 'etiquetas': 'etiquetas.json', 'trailer': 'tra
 ARCHIVO_PREGUNTAS = {'guion': 'preguntas_guion.json', 'trailer': 'preguntas_trailer.json'}
 TRAILER_PREGUNTAS_MAX = 10
 VEL_MAX = 6.0  # lo más que se acelera un tramo (esperas, cargas) para que no queden minutos sin voz
-VEL_CRITICO = 1.5  # en los pasos clave (poner la key, escribir códigos) la imagen va casi a velocidad normal
+# en los pasos clave (poner la key, escribir códigos, el botón exacto) la imagen nunca va acelerada (fabian, 03/11/2026;
+# antes ×1,5). El momento exacto del dato va a ×0,9 y, si está ubicado, lo demás del paso puede ir hasta ×1,5:
+# voz/pasos_clave.py
+VEL_CRITICO = 1.0
+VEL_DATO = 0.9  # un poquito más lento que lo grabado, para que se lea lo que se escribe o se aprieta
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
@@ -455,6 +459,8 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
     if tarea == 'guion' and patron_versiones(d):
         partes.append(patron_versiones(d))
+    if tarea == 'guion':  # el primer minuto: gancho con tomas que muestran cada frase (fabian, 03/11/2026)
+        partes.append(regla_inicio(d))
     sabido = conocimiento.texto_para_ia(d=d) if tarea in ('guion', 'trailer', 'etiquetas') else ''
     if sabido:
         partes.append("LO QUE YA SABEMOS DEL CANAL (procesos, reglas del guion y datos que el autor confirmó en videos anteriores; "
@@ -500,11 +506,14 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           "pedir el servicio, escribir por WhatsApp, ver más casos) y en el cierre. Di el nombre de forma natural, sin leer "
                           "«https» ni barras. No inventes otras páginas ni cambies sus nombres.")
         if testi:  # el módulo Testimonios pone el video justo después de la frase que habla de clientes y confianza
-            partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la frase "
-                          "que hable de ellos. Cerca del cierre, en un bloque propio, la voz cuenta con sus palabras que en nuestro "
-                          "canal de WhatsApp y en nuestra página (usa sus nombres de MIS PÁGINAS si están) tenemos capturas de conversaciones reales de WhatsApp, y que nuestros "
-                          "clientes también nos mandan su material: el teléfono antes y después. Que sea para que tengan confianza "
-                          "en nuestro proceso, y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar.")
+            # dentro del cierre, en 1-2 frases (fabian, 03/11/2026); antes iba en un bloque propio cerca del cierre
+            partes.append(f"TESTIMONIOS: el autor subió {len(testi)} video(s) de clientes reales, que entran solos después de la "
+                          "frase que hable de ellos. DENTRO DEL CIERRE (no en un bloque aparte), en 1 o 2 frases, la voz cuenta "
+                          "con sus palabras que en nuestro canal de WhatsApp y en nuestra página (usa sus nombres de MIS PÁGINAS "
+                          "si están) tenemos capturas de conversaciones reales de WhatsApp, y que nuestros clientes también nos "
+                          "mandan su material: el teléfono antes y después. Que sea para que tengan confianza en nuestro proceso, "
+                          "y que diga «clientes» y «confianza» (ahí se engancha el testimonio). Natural, sin exagerar. Nunca "
+                          "inventes un testimonio: ni nombres, ni casos, ni frases de clientes que no estén en esos videos.")
         ac = [c for c in acortar_plan(d).get('tramos', []) if c.get('usar')]
         if ac:
             partes.append("TRAMOS QUE SOBRAN en la grabación (marcados en «Acortar»). Los que dicen «cortar» no los uses; los que dicen "
@@ -517,7 +526,7 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           "nombres correctos y cómo se explica bien; NO copies sus frases ni metas datos que no se vean o "
                           "digan en ESTA grabación:\n" + '\n\n'.join(f"[{k}] {u}" + (f" (el autor dice: {n})" if n else '') + f"\n{t}"
                                                                    for k, (u, n, t) in enumerate(refs, 1)))
-        objetivo = (idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)) or acortar_plan(d).get('objetivo_s')
+        objetivo = minutos_pedidos(idea) or acortar_plan(d).get('objetivo_s')
         meta = max(1, round(meta_guion(d, dur, idea)[0] / 60))
         partes += [ESTILO, f"""ANTES DE ESCRIBIR EL GUION (pedido fijo del autor):
 1. Haz una lista con el segundo exacto de cada evento de pantalla: cada botón que presiono, cada cambio de modo (Recovery,
@@ -542,7 +551,7 @@ Escribe el guion por bloques. Cada bloque tiene:
 - "humor": true si el bloque lleva un remate de humor (y "humor_tema": de qué trata, p. ej. "suegra"), false si no.
 - "montaje": de qué tramo del video ORIGINAL sale la imagen y a qué velocidad:
     {{"modo": "lento", "src_inicio": s, "src_fin": s, "velocidad": 0.6 a {VEL_MAX:.0f}}}  (1 = normal; MÁS de 1 = acelerado, para esperas, cargas,
-      instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien)
+      instalaciones y partes repetidas; menos de 1 solo para un detalle rápido que hay que ver bien, y {VEL_DATO:g} en los pasos clave)
     {{"modo": "congelar", "src_inicio": s, "congelar_s": s}}  (pausa en un cuadro; úsalo cuando se explica algo que se ve quieto)
     {{"modo": "lento+congelar", "src_inicio": s, "src_fin": s, "velocidad": v, "congelar_s": s}}
     {{"modo": "imagen", "congelar_s": s}}  (muestra la imagen del proyecto, por ejemplo un mapa)
@@ -550,7 +559,8 @@ Escribe el guion por bloques. Cada bloque tiene:
 - Cada tramo tiene que MOSTRAR lo que dice su texto: si la voz dice «pega la key», el tramo es donde el mapa muestra el
   campo de la key con la key puesta, no donde el autor lo comenta. Antes de responder, revisa bloque por bloque contra el mapa.
 - La voz va AL MISMO TIEMPO que la imagen: no pidas hacer algo que en ese tramo ya está hecho, ni anuncies un resultado
-  (reinicio, «listo», cuenta quitada) antes de que se vea. Los pasos se narran en el orden en que pasan en la grabación.
+  (reinicio, «listo», cuenta quitada) antes de que se vea (el GANCHO del INICIO sí lo cuenta primero: lo muestra con sus
+  "tomas"). Los pasos se narran en el orden en que pasan en la grabación.
 - Cada tramo del original se usa en UN solo bloque: dos bloques nunca muestran la misma escena, y ningún tramo vuelve
   atrás respecto del anterior. Si un paso necesita más explicación, alarga el texto de su bloque: cuando la voz dura más
   que el tramo, la app repite ese tramo en movimiento.
@@ -570,21 +580,31 @@ Escribe el guion por bloques. Cada bloque tiene:
   suelda o flashea, en el bloque donde empieza ese proceso la voz dice UNA frase corta y natural de cuidado, por ejemplo
   «hazlo solo en un equipo tuyo o con permiso del dueño» o «si no tienes práctica soldando, esto puede dañar la placa».
   Una sola vez en todo el guion, sin sonar a abogado (ayuda a que YouTube no limite el video).
-- PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, elegir la opción exacta): el tramo
-  tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la transcripción) y con velocidad 1 (máximo 1.5),
-  para que se lea lo que se escribe. Marca esos bloques con "tipo": "critico".
+- PASOS CLAVE (poner la key en la app, escribir un código, una contraseña o un PIN, el botón exacto que hay que tocar o
+  apretar, elegir la opción exacta): el tramo tiene que ser JUSTO donde se ve hacerlo en la grabación (búscalo en la
+  transcripción) y con velocidad {VEL_DATO:g} (un poquito más lento que lo grabado, para que se lea lo que se escribe o se
+  aprieta; nunca más de {VEL_CRITICO:g}: el momento exacto del dato NUNCA va acelerado). Marca esos bloques con "tipo": "critico".
+  Lo de antes o después del dato (buscar el menú, esperar que cargue) puede ir en su propio bloque, más rápido.
+- LO QUE NO HAY QUE HACER (pedido del autor, 03/11/2026): cada aviso va DENTRO del paso donde aplica, en su bloque, justo
+  antes o mientras se hace ese paso («no conectes el Wi-Fi todavía», «no sueltes los botones», «no desconectes el cable
+  hasta que termine»). Nunca en un bloque o una lista de advertencias antes de empezar los pasos.
+- EL PORQUÉ, SOLO EN LOS PASOS DELICADOS (pedido del autor, 03/11/2026): explica por qué se hace un paso (y qué pasa si sale
+  mal) solo en los delicados: los críticos (key, código, PIN, contraseña, IMEI, serial), borrar o formatear, entrar en un
+  modo (Fastboot, Recovery, DFU), lo que si se hace mal hay que repetir todo o deja el teléfono peor. En los pasos sencillos
+  (tocar «Siguiente», abrir un menú, esperar una carga) di qué se hace y lo que se ve, sin explicar el porqué.
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
   lo que dura la voz, el guion completo debe tener unas {round(meta * 60 * PALABRAS_POR_S)} palabras en total: si escribes menos,
-  el video queda mucho más corto. Explica cada paso con calma en vez de resumir.
+  el video queda mucho más corto. Explica cada paso con calma en vez de resumir (lo que se ve y qué se toca; el porqué,
+  solo en los pasos delicados).
 - PREGUNTAS AL AUTOR: un buen editor no adivina. Si algo NO se ve claro ni se dice en la grabación (qué cable o pieza
   es, qué pin, qué versión o modelo, qué botón exacto, qué página o archivo, un valor, en qué momento pasa algo, si un
   paso se hace o se salta), NO lo inventes: escribe la frase sin ese dato (por ejemplo «sigue la secuencia de botones que
   se ve en pantalla») y agrega una pregunta en "preguntas": {{"tipo": "dato", "bloque": "L07", "pregunta": "¿Qué ...?", "opciones": ["lo más probable", "otra"]}}.
   Pregunta todo lo que importe para que el tutorial sea correcto: mejor preguntar que adivinar (hasta {PREGUNTAS_MAX}).
 - PREGUNTAS PARA MEJORARLO (siempre, entre 2 y {MEJORAS_MAX}): al terminar, piensa como editor qué haría mejor el video y pregúntaselo
-  al autor con "tipo": "mejora": un paso que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
+  al autor con "tipo": "mejora": un paso delicado que conviene explicar más (por qué se hace, qué pasa si sale mal), un aviso útil
   (respaldo, batería, versión), un dato que le sirve al que mira (dónde conseguir la herramienta, precio, alternativa),
   dónde poner un remate de humor o si el inicio o el cierre pueden enganchar más. Cada una con su bloque y 2 o 3 opciones
   concretas, por ejemplo {{"tipo": "mejora", "bloque": "L03", "pregunta": "¿Explico por qué hay que quitar la batería antes?",
@@ -700,7 +720,7 @@ def saltos_atras(bloques):
     out, previo = [], None
     for b in bloques:
         mo = b['montaje']
-        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen' or b.get('gancho'):  # el gancho salta a propósito
             continue
         ini, fin = mo['src_inicio'], mo.get('src_fin') or mo['src_inicio']
         if previo and ini < previo[1] - 3:
@@ -716,7 +736,7 @@ def escenas_repetidas(bloques):
     tramos, out = [], []
     for b in bloques:
         mo = b['montaje']
-        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen':
+        if mo.get('src_inicio') is None or mo.get('modo') == 'imagen' or b.get('gancho'):  # el gancho adelanta tomas a propósito
             continue
         ini = mo['src_inicio']
         fin = max(mo.get('src_fin') or ini, ini + 0.5)
@@ -843,7 +863,8 @@ def problemas(bloques, total, con_saltos=True):
     if total > 0 and palabras / PALABRAS_POR_S < total * (1 - SIN_VOZ_MAX):
         sin_voz = 1 - palabras / PALABRAS_POR_S / total
         out.append(f"faltan palabras: el guion tiene {palabras} y el video dura {mmss(total)}, así que un {sin_voz:.0%} queda "
-                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica mejor cada paso")
+                   f"sin voz. Hacen falta unas {round(total * PALABRAS_POR_S) - palabras} palabras más: explica con calma lo que "
+                   f"se ve en cada paso (el porqué, solo en los pasos delicados)")
     return out + pasos_numerados(bloques) + huecos_humor(bloques) + repeticiones(bloques)
 
 
@@ -911,6 +932,7 @@ def desfases(d, bloques):
     palabras = pistas.palabras_video(d)
     if not palabras:
         return []
+    bloques = [b for b in bloques if not b.get('gancho')]  # el gancho cuenta el resultado antes de tiempo, a propósito
     norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
     out, tramos = [], []
     for b in bloques:
@@ -1017,7 +1039,8 @@ def acciones_desfasadas(d, bloques):
     if not momentos:
         return []
     out = []
-    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen']
+    con_tramo = [b for b in bloques if b['montaje'].get('src_inicio') is not None and b['montaje'].get('modo') != 'imagen'
+                 and not b.get('gancho')]  # el gancho nombra pasos que se ven más adelante, a propósito
 
     def tramo(b):
         mo = b['montaje']
@@ -1081,6 +1104,195 @@ def falta_patron_versiones(d, bloques):
     return out
 
 
+# PC sencilla (fabian, 03/11/2026): «se puede hacer el proceso sin una pc avanzada, solo se necesita una pc sencilla, si no
+# la tienen pueden hacerlo desde un café internet o pedirla prestada a un amigo o familiar». Va al principio de TODOS los
+# guiones de procesos con PC (Honor, Motorola, Samsung, Xiaomi cuenta Google, iCloud…: es lo que él ya dice en sus videos de
+# Xiaomi HyperOS y Samsung Odin) y nunca en los dos que hoy van sin PC: la cuenta Mi de Xiaomi (basta el unlock code o el
+# IMEI) y la liberación de bandas de iPhone (basta el IMEI y el número de serie). Si no se reconoce el proceso, usa PC.
+# Si conocimiento/reglas_titulo.py (procesos_pc.json por proceso) no reconoce el proceso o no está, esta lista hace lo mismo:
+# (marca, palabras del proceso sin PC, palabras de los procesos de esa marca que sí usan PC, lo que basta).
+SIN_PC = [('XIAOMI', r'mi account|\bcuentas? mi\b|mi cloud|xiaomi cloud|unlock ?code',
+           r'cuenta (de )?google|google account|\bfrp\b|usb redirector|bootloader|mi unlock', 'el unlock code o el IMEI'),
+          # (revisión, 03/11/2026) también «Liberar iPhone 12 de la compañía», «de operador», AT&T, T-Mobile…
+          ('APPLE', r'liberacion de bandas|liberar (las )?bandas|\bbandas\b|sim ?lock|carrier unlock|network unlock|'
+                    r'\bde (la )?compania\b|\bdel? operador\b|\boperadora\b|\bat t\b|\bt mobile\b|\bverizon\b',
+           r'icloud|hello|bypass|activacion|\bdfu\b|ramdisk|\bmdm\b', 'el IMEI y el número de serie')]
+# (también en inglés y portugués, por las versiones del video en otro idioma). (revisión, 03/11/2026) la palabra PC tiene que
+# estar cerca: «es muy sencillo» o «presten atención» solos no cuentan como la frase de la PC sencilla
+_PC = r'(pc|computador\w*|computadora|laptop|ordenador|computer)'
+PC_SENCILLA = (rf'{_PC}\W+(\w+\W+){{0,3}}?(sencill|basic|simple|normal|cualquiera)|(sencill\w*|basic\w*|simple|simples)\W+{_PC}|'
+               rf'{_PC}\W+(\w+\W+){{0,2}}?(avanzad|advanced|avancad|potente)|cualquier {_PC}|any {_PC}')
+PC_SIN_TENER = (r'cafe ?internet|cibercafe|internet cafe|cyber ?cafe|lan ?house|\bprestad[ao]s?\b|borrow\w*|emprestad\w*|'
+                r'\bprest\w*\W+(\w+\W+){0,4}?(amigo|familiar|conocido|vecino)|(amigo|familiar|conocido)\w*\W+(\w+\W+){0,4}?\bprest')
+_NO_AVANZADA = r'(?! (tan |muito |muy |too )?(avanzad|avancad|advanced|potente|powerful|cara|gamer))'
+DICE_SIN_PC = (rf'(\b(sin|sem|without) (necesidad de |usar |use |using )?(una |la |ninguna |um |a |any )?'
+               rf'|\bno (necesitas|necesita|necesitan|hace falta|se necesita|ocupas|requiere|requieres|precisas|precisa|need|needs) '
+               rf'(de )?(una |la |ninguna |um |a |any )?){_PC}\b{_NO_AVANZADA}')
+INICIO_S = 90.0  # «al principio»: lo que la voz dice en los primeros ~90 s del video
+
+
+def proceso_pc(d):
+    """(usa_pc, lo_que_basta) del proceso del proyecto, por su nombre, su idea.txt y, solo si con eso no alcanza, la
+    transcripción (revisión, 03/11/2026: «después pones tu cuenta de Google» en la grabación inclinaba una cuenta Mi hacia
+    la PC). lo_que_basta solo en los procesos sin PC («el unlock code o el IMEI»). usa_pc es None si el proyecto no es de
+    una marca de teléfono (una noticia, como Movistar→Tigo): ahí no va la regla de la PC."""
+    marca = conocimiento.marca_de_proyecto(d) or ''
+    if not marca:
+        return None, ''
+    # (revisión, 03/11/2026) los nombres llevan guion bajo (XIAOMI_MI_ACCOUNT, IPHONE_13_BANDAS): todo lo que no es letra o
+    # número cuenta como espacio
+    base = ' '.join([os.path.basename(os.path.abspath(d)), conocimiento.leer(os.path.join(d, 'idea.txt'))[:3000]])
+    for texto in (base, base + ' ' + conocimiento.leer(os.path.join(d, 'transcripcion.txt'))[:8000]):
+        try:  # lo mismo que usan los títulos y las miniaturas (procesos_pc.json por proceso), si ya está en la app
+            import reglas_titulo
+            p = reglas_titulo.proceso(texto, marca)
+        except Exception:  # sin ese módulo o con el archivo roto: la lista de aquí
+            p = None
+        if p is not None:
+            usa = p.get('pc', True) is not False
+            return usa, ('' if usa else str(p.get('basta') or ''))
+        t = ' ' + re.sub(r'[^a-z0-9]+', ' ', normal(texto)) + ' '
+        for m, sin, con, basta in SIN_PC:
+            if marca.upper() == m:
+                n_sin, n_con = len(re.findall(sin, t)), len(re.findall(con, t))
+                if n_sin > n_con:  # si empatan, usa PC
+                    return False, basta
+                if n_con:
+                    return True, ''
+    return True, ''
+
+
+def falta_pc_sencilla(d, bloques):
+    """Avisos de la regla de la PC (fabian, 03/11/2026): en un proceso con PC, al principio la voz dice que basta una PC
+    sencilla (o un café internet, o una prestada) y nunca «sin PC»; en un proceso sin PC, nada de eso."""
+    usa, basta = proceso_pc(d)
+    if usa is None:
+        return []
+    t, inicio = 0.0, []
+    for b in bloques:
+        if t < INICIO_S:
+            inicio.append(str(b.get('texto') or ''))
+        t += _largo_estimado(b)
+    al_inicio, todo = normal(' '.join(inicio)), normal(' '.join(str(b.get('texto') or '') for b in bloques))
+    out = []
+    if usa:
+        if not (re.search(PC_SENCILLA, al_inicio) and re.search(PC_SIN_TENER, al_inicio)):
+            out.append('al principio: este proceso usa PC, así que la voz dice que no hace falta una PC avanzada, que basta una '
+                       'PC sencilla, y que si no tienen una, un café internet o una prestada de un amigo o familiar sirve')
+        dice = [b['id'] for b in bloques if re.search(DICE_SIN_PC, normal(str(b.get('texto') or '')))]
+        if dice:
+            out.append(f"{', '.join(map(str, dice))}: dice «sin PC», y este proceso usa PC (nunca «sin PC»; «sin una PC "
+                       "avanzada» sí)")
+    elif re.search(PC_SIN_TENER, todo) or re.search(r'(pc|computador\w*|laptop) (sencill|basic)', todo):
+        out.append(f'este proceso va sin PC (basta {basta or "lo que pide el servicio"}): quita lo de la PC sencilla, el café '
+                   'internet o la PC prestada')
+    return out
+
+
+# Primer minuto (pedido de fabian, 03/11/2026): entre los 10 y los 30 s el canal pierde del 30 al 50 % de la gente. La IA
+# escribe el gancho (resultado → problema → versiones → herramienta y PC → «es fácil» → comentar) en bloques "gancho": true,
+# cada frase con la toma del grabado que la muestra; montaje/rotar.py las pone en la pausa del bloque, una por frase.
+def regla_inicio(d):
+    """La sección «INICIO (primer minuto)» del encargo del guion."""
+    honor = (conocimiento.marca_de_proyecto(d) or '').lower() == 'honor'
+    versiones = ('«sirve para Android quince, dieciséis, diecisiete o superiores, y cualquier parche»'
+                 + (' (y en la frase siguiente, «también funciona con MagicOS nueve, diez u once»)' if honor else '')
+                 if patron_versiones(d) else 'a qué modelos y versiones sirve (solo las que se ven o dice el autor)')
+    usa, basta = proceso_pc(d)
+    if usa:  # fabian, 03/11/2026: «aclarar al principio que se puede hacer sin una pc avanzada…»
+        pc = ('4) la herramienta y la PC que se usan. Este proceso usa PC: nunca digas «sin PC». Sí di, en una o dos frases '
+              'cortas, que no hace falta una PC avanzada, que basta una PC sencilla, y que si no tienen una pueden hacerlo '
+              'desde un café internet o pedirla prestada a un amigo o familiar (si no cabe en el gancho, va en el primer '
+              'bloque de después)')
+    elif usa is False:
+        pc = (f'4) la herramienta y lo que se necesita: este proceso NO necesita PC, basta {basta or "lo que pide el servicio"} '
+              '(no hables de PC sencilla, café internet ni PC prestada)')
+    else:
+        pc = '4) la herramienta y la PC que se usan'
+    g = _rotar().GANCHO  # fabian, 03/11/2026: de 30 a 40 s (antes unos 45, de 30 a 60)
+    return f"""INICIO (primer minuto), pedido del autor: entre los 10 y los 30 segundos se va del 30 al 50 % de la gente. Nada de una
+escena larga repetida: cada frase con el trozo que la muestra.
+- Los primeros 2 a 4 bloques son el GANCHO: llevan "gancho": true y "avatar": false (sin avatar: voz en off sobre el video).
+  Entre todos duran de {g[0]:.0f} a {g[1]:.0f} s (nunca más de {g[1]:.0f}). Frases cortas, de 12 palabras como mucho, en este
+  orden fijo:
+  1) el resultado (el teléfono ya libre); 2) el problema del que mira (por ejemplo, bloqueado pidiendo la cuenta de Google);
+  3) las versiones: {versiones}; {pc};
+  5) «es fácil»; 6) la invitación a comentar las dudas (puede llevar el toque de humor del inicio).
+  Después van los pasos numerados y el cierre, en bloques normales. Lo que NO hay que hacer no va en un bloque aparte antes
+  de los pasos: cada aviso va dentro del paso donde aplica (ver las reglas de abajo).
+  Cada frase termina en punto, signo de pregunta o de exclamación: así la app sabe dónde empieza cada una.
+- "tomas": [[desde, hasta], ...] en cada bloque del gancho: UNA toma por frase y en el orden de las frases, de 3 a 5 s de la
+  grabación (segundos del original), que muestre lo que dice esa frase: el resultado con el teléfono ya libre (del final del
+  grabado), el problema con la pantalla bloqueada, el programa en la PC, el proceso (Fastboot, borrar, reiniciar). Búscalas
+  en el MAPA. El ANTES y el DESPUÉS van como trozos de video reales, nunca capturas fijas. Nunca la misma toma dos veces
+  seguidas. Ninguna toma con precio ni datos personales en pantalla (correo, teléfono, saldo, IMEI o serial de pedidos): no
+  se difumina, elige otra toma. Si para una frase no hay una toma buena, pon null y la app elige un trozo.
+- "por_que": ["...", ...] en cada bloque del gancho: por cada toma, en pocas palabras qué se ve y por qué va con su frase.
+- "montaje" de cada bloque del gancho: un tramo corto EN ORDEN del comienzo de la grabación, por ejemplo
+  {{"modo": "lento", "src_inicio": 0, "src_fin": 1, "velocidad": 1}} en el primero, de 1 a 2 en el segundo, y así. La app
+  llena el resto de su voz con tus tomas, cada una en el segundo en que se dice su frase. Los bloques normales siguen desde
+  el final de esos tramos, en orden (las tomas del gancho no cuentan como salto atrás ni como escena repetida)."""
+
+
+def _rotar():
+    sys.path.insert(0, os.path.join(RAIZ, 'montaje'))
+    import rotar
+    return rotar
+
+
+def _largo_estimado(b):
+    """Lo que durará el bloque en el video (la revisión lo deja en lo que dura su voz, con poco aire)."""
+    txt = str(b.get('texto') or '').strip()
+    voz = len(txt.split()) / PALABRAS_POR_S + 1.0 if txt else 0.0
+    try:
+        img = largo_bloque(b['montaje'])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        img = 0.0
+    return max(voz, min(img, voz + RELLENO)) if txt else img
+
+
+def revisar_gancho(d, bloques, mapa=None):
+    """Lo que sí se revisa de los bloques del gancho (no se mueven ni cuentan como salto atrás): que ninguna toma muestre
+    precio ni datos personales (lo que el mapa leyó en esa pantalla, con el filtro SENSIBLE de rotar.py), que ninguna
+    se repita seguida y que el gancho no pase de 30-40 s (rotar.GANCHO). Devuelve los avisos."""
+    ganchos = [b for b in bloques if b.get('gancho')]
+    if not ganchos:
+        return []
+    rotar = _rotar()
+    cuadros = rotar.pantallas(mapa) if mapa is not None else rotar.leer_mapa(os.path.join(d, 'mapa_video.json'))
+    out, previa = [], None
+    for b in ganchos:
+        # la app pone la toma k en la frase k (cortada en punto, ¿? o ¡!, como rotar.frases): si no son las mismas, una toma
+        # cae en otra frase o no sale nunca, sin aviso (revisión, 03/11/2026)
+        n_tomas = len(rotar.tomas_de(b))
+        n_frases = len([f for f in re.split(r'(?<=[.?!…])\s+', str(b.get('texto') or '').strip()) if f.strip()])
+        if n_tomas and n_tomas != n_frases:
+            out.append(f"{b['id']}: trae {n_tomas} tomas y {n_frases} frase(s): va una toma por frase, en su orden "
+                       f"(cada frase termina en punto, signo de pregunta o de exclamación)")
+        for k, x in enumerate(rotar.tomas_de(b), 1):
+            if x is None:  # sin toma: la app elige otro trozo, así que la siguiente ya no va seguida de la anterior
+                previa = None
+                continue
+            a, z = x
+            dato = rotar.sensible(cuadros, a, z)
+            if dato:
+                out.append(f"{b['id']}: la toma {k} ({mmss(a)}–{mmss(z)}) muestra precio o datos personales ({dato}): "
+                           f"elige otra toma (no se difumina)")
+            if previa and min(z, previa[1]) - max(a, previa[0]) > 0.5:
+                out.append(f"{b['id']}: la toma {k} ({mmss(a)}–{mmss(z)}) repite la anterior ({mmss(previa[0])}–{mmss(previa[1])}): "
+                           f"nunca el mismo trozo seguido")
+            previa = x
+    t = fin = 0.0
+    for b in bloques:
+        t += _largo_estimado(b)
+        if b.get('gancho'):
+            fin = t
+    if fin > rotar.GANCHO[1]:
+        out.append(f"el gancho ({', '.join(b['id'] for b in ganchos)}) dura unos {fin:.0f} s: pasa de {rotar.GANCHO[0]:.0f}-"
+                   f"{rotar.GANCHO[1]:.0f} s. Acórtalo a unos {sum(rotar.GANCHO) / 2:.0f} s (frases más cortas o menos bloques)")
+    return out
+
+
 def verificar_orden(d, bloques):
     """Revisión independiente de la IA: que los tramos sigan el orden del video y que lo que narra cada bloque
     se diga cerca de su tramo en tu grabación. Si no, mueve el tramo a donde lo dices. Deja el detalle en revision_guion.txt."""
@@ -1088,7 +1300,8 @@ def verificar_orden(d, bloques):
     palabras = pistas.palabras_video(d)
     if palabras:
         norm = [(w['inicio'], pistas.normal(w['texto'])[:5]) for w in palabras]
-        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen']
+        con_tramo = [x for x in bloques if x['montaje'].get('src_inicio') is not None and x['montaje'].get('modo') != 'imagen'
+                     and not x.get('gancho')]  # el gancho no se mueve: su tramo corto va en orden y sus tomas, a propósito
         for k, b in enumerate(con_tramo):
             mo = b['montaje']
             if mo.get('visto'):
@@ -1118,6 +1331,8 @@ def verificar_orden(d, bloques):
     avisos += desfases(d, bloques)
     avisos += acciones_desfasadas(d, bloques)
     avisos += falta_patron_versiones(d, bloques)
+    avisos += falta_pc_sencilla(d, bloques)
+    avisos += revisar_gancho(d, bloques)
     if avisos:
         txt = '\n'.join(avisos) + '\n'
     elif palabras:
@@ -1164,11 +1379,19 @@ def leer_idea(d):
     return open(f, encoding='utf-8').read() if os.path.exists(f) else ''
 
 
+def minutos_pedidos(idea):
+    """«que dure unos N minutos» en la idea. Solo en lo que escribió el autor, antes de «Datos confirmados por el autor:»:
+    una respuesta como «tarda unos 3 minutos en reiniciar» no es la duración del video."""
+    idea_autor = (idea or '').split('Datos confirmados por el autor:')[0]
+    # «min», «mins», «minuto(s)», «minutitos» sí; «mínimo» o «minimo» no
+    return re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min(?:s|ut\w*)?\b', idea_autor)
+
+
 def meta_guion(d, dur, idea=None):
     """Cuánto debe durar el video (s) y el rango aceptable. Por defecto, parecido a la grabación;
     si la idea dice «que dure unos N minutos», eso manda. Puede pasarse un poco (guion extra del autor)."""
     idea = leer_idea(d) if idea is None else idea
-    m = idea and re.search(r'(\d+)\s*(?:a\s*\d+\s*)?min', idea)
+    m = minutos_pedidos(idea)
     meta = int(m.group(1)) * 60 if m else (acortar_plan(d).get('objetivo_s') or dur)  # o lo pedido en «Acortar»
     return meta, meta * 0.9, meta * 1.15
 
@@ -1204,6 +1427,8 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
     """Arreglo sin IA: si el total queda corto, los tramos acelerados van más despacio (hasta velocidad normal y
     unos segundos de imagen sin voz por bloque); si queda largo, se aceleran los tramos y se quitan pausas sin voz.
     Los bloques «fijos» (con su voz ya hecha y sin cambios desde el editor) no se tocan."""
+    sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+    import pasos_clave  # el momento exacto del dato nunca acelerado (03/11/2026)
     t = sum(largo_bloque(b['montaje']) for b in bloques)
     if t < minimo:
         margen = []
@@ -1235,8 +1460,7 @@ def ajustar_largo(bloques, voces, minimo, maximo, avisos, fijos=()):
             antes = largo_bloque(mo)
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
-                tope = (1.0 if mo.get('importante') or mo.get('cara') else VEL_CRITICO if mo.get('critico')
-                        else VEL_PASO if mo.get('paso') else VEL_MAX)
+                tope = pasos_clave.tope(mo)  # los mismos topes de fabian que la voz (03/11/2026: el dato nunca acelerado)
                 mo['velocidad'] = round(min(tope, max(mo['velocidad'], tramo / max(antes - sobra, voz + 0.3, 0.5))), 2)
             if mo.get('congelar_s'):
                 resto = largo_bloque(mo) - (voz + 0.3)
@@ -1327,11 +1551,30 @@ def revisar(d, tarea, datos):
             vistos[clave] = b.get('id', k)
             unicos.append(b)
         bloques[:] = unicos
+        # dos bloques con el mismo id: la voz del segundo pisaría la del primero y se rehacían (y pagaban) en cada «Generar voz»
+        todos, usados = {str(b.get('id') or '').strip() for b in bloques}, set()
+        for k, b in enumerate(bloques, 1):
+            bid = str(b.get('id') or '').strip()
+            if bid and bid not in usados:
+                usados.add(bid)
+                continue
+            base = bid or f'L{k:02d}'
+            nuevo, n = base, 0
+            while nuevo in todos or nuevo in usados:
+                n += 1
+                nuevo = f'{base}{chr(97 + n)}' if n < 26 else f'{base}_{n}'
+            b['id'] = nuevo
+            usados.add(nuevo)
+            if bid:
+                avisos.append(f"{nuevo}: tenía el mismo id que otro bloque ({bid}), lo renombré")
         # guardado desde el editor (pedido de fabian, 30/10/2026: cambió 2 bloques y se rearmaron 13, y se deshizo un tramo que
         # se había corregido a mano): los bloques que no tocaste y ya tienen su voz quedan exactamente como estaban
         fijos = {} if VARIAR else bloques_con_su_voz(d, bloques)
         if VARIAR:  # lo que escribió una IA; lo que escribiste tú en el editor solo se avisa (en problemas)
             avisos += variar_muletillas(bloques)
+        for b in bloques:  # los fijos vuelven a su montaje al final: la revisión del orden no los mueve ni avisa «lo moví»
+            if b.get('id') in fijos:
+                b['montaje']['visto'] = True
         avisos += verificar_orden(d, bloques)  # primero, que cada bloque esté donde de verdad se dice; después se ajustan largos
         imp = importantes.leer(d)  # «⭐ Cortes importantes»: esos bloques van a ×1 y no se recortan
         frenados = importantes.marcar(bloques, imp)
@@ -1342,6 +1585,10 @@ def revisar(d, tarea, datos):
                           f"{' (' + x['nota'] + ')' if x['nota'] else ''} no lo muestra ningún bloque")
         avisos += marcar_caras(d, bloques)  # con tu cara en pantalla nunca se acelera
         desde = len(avisos)
+        sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+        import voz as vz  # frenar_tramo: la misma regla de «frenar antes de congelar» que usa voz.py con la voz real
+        import pasos_clave  # el momento exacto del dato (PIN, key, botones) nunca acelerado, a ×0,9 (fabian, 03/11/2026)
+        datos_dichos = pasos_clave.momentos(d)  # de tu transcripción: lo dices mientras lo haces
         t = 0.0
         for k, b in enumerate(bloques, 1):
             b.setdefault('id', f'L{k:02d}'); b.setdefault('tipo', 'libre'); b.setdefault('ancla', '')
@@ -1352,6 +1599,7 @@ def revisar(d, tarea, datos):
             if not b['texto'].strip() and mo['modo'].startswith('lento'):
                 # tramo sin voz: quitaste lo que decía y lo dejaste acelerado; va tal cual, a la velocidad que elegiste
                 mo['sin_voz'] = True
+                mo.pop('datos', None)  # va a la velocidad que elegiste
                 mo['velocidad'] = 1.0 if mo.get('cara') else min(max(float(mo.get('velocidad') or 1), 0.5), VEL_SIN_VOZ)
                 largo = largo_bloque(mo)
                 b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = 0
@@ -1371,7 +1619,10 @@ def revisar(d, tarea, datos):
             if paso:
                 mo['paso'] = True
             cara = bool(mo.get('cara'))
-            tope = 1.0 if mo.get('importante') or cara else VEL_CRITICO if critico else VEL_PASO if paso else VEL_MAX
+            pasos_clave.marcar([b], datos_dichos)  # dónde está el dato en su tramo (con las marcas de arriba ya puestas)
+            # ×1 con tu cara o en un ⭐, ×1 en un paso clave (con su dato ubicado: el dato a ×0,9 y lo demás hasta ×1,5),
+            # ×2 en uno de configuración, ×6 en lo demás (03/11/2026: pasos_clave.tope, el mismo de voz.py y «Alinear»)
+            tope = pasos_clave.tope(mo)
             # el video no puede durar mucho más que la voz: se acelera el tramo y se quitan pausas que sobran
             if mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
@@ -1382,14 +1633,22 @@ def revisar(d, tarea, datos):
                     # paso clave (poner la key, escribir un código) o de configuración: no se acelera de más; se queda la
                     # parte donde se hace
                     nuevo = round((voz + RELLENO) * tope, 1)
-                    centro = momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin'])
+                    ws = pasos_clave.ventanas(mo)  # con el dato ubicado, se queda alrededor del dato (03/11/2026)
+                    # (revisión, 03/11/2026) si todos los datos no caben en lo que queda, se centra en el primero: con dos datos
+                    # lejanos, el medio entre los dos podía no mostrar ninguno
+                    if ws and ws[-1][1] - ws[0][0] > nuevo:
+                        ws = ws[:1]
+                    centro = ((ws[0][0] + ws[-1][1]) / 2 if ws else
+                              momento_dicho(d, b['texto'], mo['src_inicio'], mo['src_fin']))
                     ini = min(max(mo['src_inicio'], centro - nuevo / 2), mo['src_fin'] - nuevo)
                     avisos.append(f"{b['id']}: {'paso clave' if critico else 'paso de configuración' if paso else 'sale tu cara'}: "
                                   f"en vez de acelerarlo dejé solo {mmss(ini)}–{mmss(ini + nuevo)}"
                                   f"{', donde se hace' if critico or paso else ''}")
                     mo['src_inicio'], mo['src_fin'] = round(ini, 2), round(ini + nuevo, 2)
                     tramo = nuevo
-                if critico or paso or cara or mo.get('importante'):
+                    pasos_clave.marcar([b], datos_dichos)
+                    tope = pasos_clave.tope(mo)  # en el tramo recortado el dato pesa más
+                if critico or paso or cara or mo.get('importante') or mo.get('datos'):
                     mo['velocidad'] = min(mo['velocidad'], tope)
                 if tramo / mo['velocidad'] > voz + RELLENO:
                     v = round(min(tope, tramo / (voz + 0.5)), 2)
@@ -1407,7 +1666,8 @@ def revisar(d, tarea, datos):
                 avisos.append(f"{b['id']}: acorté la pausa de {mo['congelar_s']:g} s a {voz + 0.5:g} s (lo que dura la voz)")
                 mo['congelar_s'] = round(voz + 0.5, 1)
             largo = ((mo['src_fin'] - mo['src_inicio']) / mo['velocidad'] if mo['modo'].startswith('lento') else 0) + (mo.get('congelar_s') or 0)
-            if voz > largo:  # la voz no cabe: se agrega una pausa congelada al final (no tapa nada)
+            no_cabia = voz > largo
+            if no_cabia:  # la voz no cabe: se agrega una pausa congelada al final (no tapa nada)
                 extra = round(voz - largo + 0.5, 1)
                 if mo['modo'] == 'lento':
                     mo['modo'] = 'lento+congelar'; mo['congelar_s'] = extra
@@ -1415,6 +1675,15 @@ def revisar(d, tarea, datos):
                     mo['congelar_s'] = round((mo.get('congelar_s') or 0) + extra, 1)
                 largo += extra
                 avisos.append(f"{b['id']}: la voz no cabía, agregué {extra} s de pausa")
+            # frenar antes de congelar (03/11/2026): la misma regla que voz.py aplica con la voz real, para que el editor
+            # muestre lo mismo: si el tramo va acelerado y termina en pausa, va más despacio y la pausa queda solo si a ×1 falta
+            frenado = vz.frenar_tramo(b)
+            if frenado:
+                largo = largo_bloque(mo)
+                if no_cabia:
+                    avisos[-1] = f"{b['id']}: la voz no cabía: {frenado}"
+                else:
+                    avisos.append(f"{b['id']}: {frenado}")
             b['inicio_min'] = round(t, 1); b['fin_max'] = round(t + largo, 1); b['voz_estimada_s'] = voz
             t += largo
         if fijos:  # vuelven a su montaje de antes (con su voz real ya medida) y sin avisos de retoques que no se hicieron
@@ -2089,7 +2358,8 @@ def marcas_autor(d):
         if tipo == 'captura' and p.get('archivo'):
             capturas_.append(p)
         elif tipo == 'audio' and p.get('archivo'):
-            txt = pistas.transcribir_audio(d, os.path.basename(p['archivo']), MARCAS_DIR)
+            # con Whisper en tu PC (gratis): Scribe gastaría créditos de ElevenLabs sin que lo pidas
+            txt = pistas.transcribir_audio(d, os.path.basename(p['archivo']), MARCAS_DIR, scribe=False)
             if txt or nota:
                 pedidos.append(' '.join(x for x in (txt, nota) if x))
         elif nota:
@@ -2641,6 +2911,9 @@ def mapa_video(d, ajustes=None):
     vision = bool(ajustes) and ajustes.get('imagenes', True)
     try:
         viejo = json.load(open(destino, encoding='utf-8'))
+        if viejo.get('todo_ia') and str(viejo.get('firma', '')).startswith(f'{os.path.getsize(orig)}:ia:'):
+            # el mapa de «Todo con IA» de este mismo video (pagado): se usa tal cual y no se pisa con uno de tu PC
+            return viejo['cuadros']
         if viejo.get('firma') == firma and (viejo.get('vision') or not vision):
             if lo_que_se_ve(d, viejo['cuadros']):  # un mapa de antes del detector: se completa y se guarda
                 json.dump(viejo, open(destino, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -2787,7 +3060,7 @@ def autorrevision(d, ajustes, texto, datos):
     pedido = (texto + "\n\nEste es el guion que escribiste:\n" + json.dumps(datos, ensure_ascii=False) +
               "\n\nREVÍSALO TÚ MISMO, bloque por bloque, contra cada regla de arriba y contra el MAPA: que cada tramo muestre lo que "
               "dice su texto y en ese mismo momento (sin pedir algo ya hecho ni adelantar un resultado), que los pasos clave "
-              "estén justo donde se hacen y a velocidad 1 (máximo 1.5), que los tramos vayan en orden y ninguna escena se use "
+              f"estén justo donde se hacen y a velocidad {VEL_DATO:g} (nunca más de {VEL_CRITICO:g}: el dato no se acelera), que los tramos vayan en orden y ninguna escena se use "
               "en dos bloques, que cada bloque dure lo que tarda la voz (acelera esperas), que no haya datos inventados, que los nombres "
               "estén tal cual se leen en pantalla, que el HUMOR respete el nivel pedido (ni más remates ni más exagerados, y "
               "marcados con \"humor\", repartidos a lo largo del video) y que la duración total sea la buscada. Corrige lo que no cumpla y conserva igual "
@@ -2834,12 +3107,17 @@ def frases_bloque(d, b):
 
 
 def en_grabacion(mo, t):
-    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final)."""
+    """(segundo de la grabación que se ve t s después de que empieza el bloque, si cae en la pausa del final).
+    Con el dato ubicado ("datos"), el dato va a ×0,9 y lo demás más rápido (voz/pasos_clave.py, 03/11/2026)."""
     if mo['modo'].startswith('lento'):
         fin = mo.get('src_fin') or mo['src_inicio']
         largo = (fin - mo['src_inicio']) / (mo.get('velocidad') or 1)
         if t <= largo:
-            return mo['src_inicio'] + t * (mo.get('velocidad') or 1), False
+            sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+            import pasos_clave
+            if fin > mo['src_inicio']:
+                return pasos_clave.en_grabacion(dict(mo, src_fin=fin), t), False
+            return mo['src_inicio'], False
         return max(mo['src_inicio'], fin - 1.2), True
     return mo['src_inicio'], True
 
@@ -2890,11 +3168,17 @@ def control_bloque(d, b, ocr):
 def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
     """La segunda mirada que hice a mano: cada bloque con el comienzo y el final de SU tramo (y en los pasos clave, el
     detalle con el texto leído con zoom), y la IA dice si lo que se narra es lo que se ve. Si no, el tramo (con su mismo
-    largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos."""
-    bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen']
-    if not bloques or not ajustes.get('imagenes', True):
-        return []
-    avisos, dur = [], duracion(os.path.join(d, 'original.mp4'))
+    largo) se mueve al segundo del mapa donde sí se ve. Devuelve avisos, o None si no pudo revisar ningún bloque."""
+    # el gancho no se mueve (sus tomas muestran lo que dice, a propósito fuera de orden): de él solo se revisa que ninguna
+    # toma tenga precio ni datos personales, que no se repitan seguidas y que no dure de más
+    gancho = revisar_gancho(d, datos['bloques'], mapa)
+    bloques = [b for b in datos['bloques'] if b['montaje'].get('src_inicio') is not None and b['montaje']['modo'] != 'imagen'
+               and not b.get('gancho')]
+    if not bloques:
+        return gancho
+    if not ajustes.get('imagenes', True):  # sin imágenes no se revisó nada: nunca decir «todos coinciden»
+        return None
+    avisos, dur = list(gancho), duracion(os.path.join(d, 'original.mp4'))
     mapa_txt = texto_mapa(mapa)
     ocr = lector_ocr() if con_ocr else None  # en «Todo con IA» el texto lo lee la IA en las imágenes
     print(f'Preparo las imágenes de control de {len(bloques)} bloques (un cuadro por frase de la voz, detalle en los pasos clave)…', flush=True)
@@ -2917,7 +3201,7 @@ def revisar_con_imagen(d, ajustes, datos, mapa, tanda=None, con_ocr=True):
             print(f"· {b['id']}: no pude preparar sus imágenes de control ({str(e)[:160]}); no lo reviso", flush=True)
     bloques = [b for b in bloques if b['id'] in control]
     if not bloques:
-        return []
+        return None
     tramo(70, 98)
     palabras = pistas.palabras_video(d)  # lo que dice el autor en cada tramo: delata una voz atrasada o inventada
 
@@ -2953,7 +3237,10 @@ el autor ahí (si la voz narra un paso que el autor hace antes o después, o alg
 
     tanda = tanda or (4 if es_local(ajustes) else 12)
     por_id = {b['id']: b for b in bloques}
-    for a, grupo, r in por_tandas(ajustes, bloques, tanda, pedir, 'revisando bloques contra su imagen'):
+    hechas = por_tandas(ajustes, bloques, tanda, pedir, 'revisando bloques contra su imagen')
+    if not hechas:  # la IA no contestó ninguna tanda
+        return None
+    for a, grupo, r in hechas:
         for x in (r.get('revision', []) if isinstance(r, dict) else r):
             if not isinstance(x, dict):
                 continue
@@ -3197,6 +3484,10 @@ def guion_varias(d, ajustes, ias, texto, caps, todo_ia, previas=None):
         x, v = res.get(ide, {'error': 'sin respuesta'}), {'id': ide, 'nombre': IAS_GUION[ide][0], 'modelo': aj['modelo']}
         v['segundos'] = x.get('segundos')
         if 'datos' in x:
+            if todo_ia:  # los tramos los eligió y revisó la IA: tu PC no los mueve por la transcripción (como con una sola IA)
+                for b in (x['datos']['bloques'] if isinstance(x['datos'], dict) else x['datos']):
+                    if isinstance(b.get('montaje'), dict):
+                        b['montaje']['visto'] = True
             datos, av = revisar(d, 'guion', x['datos'])
             x['datos'], x['avisos'] = datos, x['avisos'] + av
             bloques = datos['bloques'] if isinstance(datos, dict) else datos
@@ -3283,8 +3574,8 @@ def combinar_versiones(d, ajustes):
              'cada versión: elige para cada parte del video el bloque más claro y fiel a lo que se ve, o une frases de varias. '
              'Reglas: no inventes datos que ninguna versión tenga; cada bloque conserva los tiempos de montaje (montaje, '
              'src_inicio, src_fin) de la versión de la que lo tomas y los bloques siguen el orden del video sin solaparse; '
-             'el humor sigue la regla del encargo; misma voz en todo el guion. Devuelve el MISMO formato JSON que las versiones '
-             '({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
+             'el humor sigue la regla del encargo; misma voz en todo el guion; cada bloque con su id único y en orden (L01, L02…). '
+             'Devuelve el MISMO formato JSON que las versiones ({"bloques": [...], "preguntas": [...]}) y nada más.\n\n'
              + '\n\n'.join(partes) + ('\n\n=== ENCARGO ORIGINAL (reglas) ===\n' + reglas if reglas else ''))
     print(f"Combino {len(versiones)} versiones ({', '.join(v['nombre'] for v in versiones)}) con {ajustes['modelo']}…", flush=True)
     tramo(5, 80)
@@ -3339,8 +3630,9 @@ def ideas_guion(d, ajustes):
     partes.append(f"""Relee el guion como lo vería alguien que nunca hizo este proceso, y pregúntale al autor para dejarlo mejor:
 - DUDAS (tipo "dato", hasta {PREGUNTAS_MAX}): lo que no queda claro o no coincide con lo que se ve o se dice en la grabación
   (un nombre, un modelo, un botón, un valor, el orden de un paso, algo que se da por sabido, un salto raro entre bloques).
-- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso, explicar el porqué
-  de un paso, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de humor, una frase que sobra).
+- IDEAS (tipo "mejora", hasta {MEJORAS_MAX}): qué haría el video más útil o más entretenido (un aviso dentro del paso donde
+  aplica, explicar el porqué de un paso delicado, un gancho mejor al inicio, un cierre con llamado, dónde va un remate de
+  humor, una frase que sobra).
 Cada una con el bloque que toca y 2 o 3 opciones concretas, la primera la que recomiendas. Pregunta solo lo que cambiaría
 el guion. Responde SOLO con el objeto JSON {{"preguntas": [{{"tipo": "dato" | "mejora", "bloque": "L07",
 "pregunta": "¿...?", "opciones": ["...", "..."]}}]}}.""")
@@ -3361,7 +3653,8 @@ def corregir_con_respuestas(d, ajustes, datos):
     y quedan en idea.txt como datos confirmados, para los próximos guiones de este video."""
     f = os.path.join(d, 'preguntas_guion.json')
     preguntas = json.load(open(f, encoding='utf-8')) if os.path.exists(f) else []
-    contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip()]
+    # solo las nuevas: las ya aplicadas («hecha») no se mandan otra vez (la IA repetiría la frase y cambiaría ese bloque)
+    contestadas = [x for x in preguntas if str(x.get('respuesta', '')).strip() and not x.get('hecha')]
     if not contestadas:
         raise SystemExit('ERROR: no hay respuestas para corregir el guion. Contesta las preguntas en la revisión del guion.')
     qa = '\n'.join(f"- Bloque {x.get('bloque') or '?'} ({'idea para mejorar' if x.get('tipo') == 'mejora' else 'dato'}): "
@@ -3391,8 +3684,9 @@ Responde SOLO con el objeto JSON {{"bloques": [{{"id": "L03", "texto": "..."}}, 
     print('· cambié ' + (', '.join(cambiados) if cambiados else 'ningún bloque'), flush=True)
     fi = os.path.join(d, 'idea.txt')
     previa = open(fi, encoding='utf-8').read() if os.path.exists(fi) else ''
-    agregar = [f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas
-               if x.get('tipo') != 'mejora' and x['respuesta'].strip() not in previa]
+    # se compara la línea entera: una respuesta corta («Sí», «15») casi siempre ya aparece suelta en la idea
+    agregar = [linea for linea in (f"- {x['pregunta']} {x['respuesta'].strip()}" for x in contestadas if x.get('tipo') != 'mejora')
+               if linea not in previa]
     if agregar:
         open(fi, 'w', encoding='utf-8').write(previa.rstrip() + ('\n\n' if previa.strip() else '') +
                                             'Datos confirmados por el autor:\n' + '\n'.join(agregar) + '\n')
@@ -3444,8 +3738,9 @@ def corregir_largo(d, ajustes, texto, caps, respuesta, datos, intentos=2):
                   (f"- Con ese guion el video dura {mmss(t)} y tiene que durar unos {mmss(meta)} "
                    f"(entre {mmss(minimo)} y {mmss(maximo)}). El video dura lo que dura la voz: tu guion tiene {pal} palabras "
                    f"y necesita unas {quiero}. " +
-                   ("Alárgalo: explica con más detalle cada paso y agrega bloques para las partes de la grabación que "
-                    "saltaste, cada uno con su propio tramo. " if corto else
+                   ("Alárgalo: explica con más detalle cada paso (lo que se ve y qué se toca; el porqué, solo en los pasos "
+                    "delicados) y agrega bloques para las partes de la grabación que saltaste, cada uno con su propio "
+                    "tramo. " if corto else
                     "Acórtalo: resume los textos, une o quita bloques que no aporten y usa velocidad mayor en esperas. ")
                    + "\n" if fuera else '') +
                   ''.join(f"- {x}\n" for x in lista[:30]) +
@@ -3551,13 +3846,19 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
     if not mapa and forzar:  # guion pegado o de DeepSeek: el mapa (texto leído en cada cambio de pantalla) se hace en tu PC
         mapa = mapa_video(d)
     avisos = []
-    if mapa:
-        vistos = revisar_con_imagen(d, json.load(open(ajustes_f, encoding='utf-8')), datos, mapa, con_ocr=modo != 'ia')
-        if vistos:  # se movieron tramos: se vuelven a medir los largos
-            datos, despues = revisar(d, 'guion', datos)
-            avisos = vistos + [x for x in despues if x not in vistos]
-        else:
-            avisos = ['revisé cada bloque contra su imagen: todos coinciden']
+    aj = json.load(open(ajustes_f, encoding='utf-8'))
+    vistos = revisar_con_imagen(d, aj, datos, mapa, con_ocr=modo != 'ia') if mapa else None
+    if vistos is None:  # no se revisó nada: se avisa y la revisión queda pendiente
+        porque = ('falta el mapa del video' if not mapa else
+                  'tu IA no ve imágenes: elige una con visión en «⚙ Ajustes IA»' if not aj.get('imagenes', True) else
+                  'no salieron las imágenes de control o la IA no contestó')
+        avisos = [f'OJO: no pude revisar el guion contra las imágenes ({porque}); ningún bloque quedó comprobado']
+        datos['revision_imagen_pendiente'] = modo
+    elif vistos:  # se movieron tramos: se vuelven a medir los largos
+        datos, despues = revisar(d, 'guion', datos)
+        avisos = vistos + [x for x in despues if x not in vistos]
+    else:
+        avisos = ['revisé cada bloque contra su imagen: todos coinciden']
     tmp = destino + '.tmp'
     json.dump(datos, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     os.replace(tmp, destino)
@@ -3565,7 +3866,8 @@ def revision_pendiente(d, ajustes_f, destino, forzar=False):
         print('·', x, flush=True)
     with open(os.path.join(d, 'mejoras_guion.txt'), 'a', encoding='utf-8') as f:
         f.write(''.join(x + '\n' for x in avisos))
-    print('Guardado guion.json revisado contra sus imágenes', flush=True)
+    print('Guardado guion.json ' + ('(quedó sin revisar contra sus imágenes)' if vistos is None else 'revisado contra sus imágenes'),
+          flush=True)
     tramo(0, 100)
     progreso(100, 'Listo')
 
@@ -3604,7 +3906,9 @@ def main():
     a = ap.parse_args()
     global AJUSTES_F, VARIAR
     AJUSTES_F = a.ajustes
-    VARIAR = not a.sin_variar
+    # corregir con tus respuestas o ajustar el humor parten del guion actual (quizá escrito por ti en el editor y ya con su voz):
+    # las muletillas de los bloques que nadie tocó no se cambian, si no su voz ya no coincide y se vuelve a pagar
+    VARIAR = not (a.sin_variar or a.respuestas or a.ajustar_humor)
     try:
         configurar_humor(nivel_humor(json.load(open(a.ajustes, encoding='utf-8'))))
     except (OSError, ValueError):
@@ -3680,7 +3984,15 @@ def main():
             guardar_preguntas(d, datos['preguntas'], a.tarea)  # las preguntas de una IA de chat se contestan en la revisión
         if a.tarea == 'guion' and isinstance(datos, dict) and isinstance(datos.get('eventos'), list):
             # regla 1 del autor: la lista de eventos de pantalla queda a mano para comprobar los cortes
-            filas = [f"{mmss(float(e.get('s', 0)))} {e.get('evento', '')}" for e in datos['eventos'] if isinstance(e, dict)]
+            filas = []
+            for e in datos['eventos']:
+                if not isinstance(e, dict):
+                    continue
+                s = pistas.segundos(e.get('s', 0))  # acepta «140», «140.5» y «2:20»
+                if s is None:  # un segundo que no se entiende no frena la revisión del guion
+                    print(f"· no entendí el segundo «{e.get('s')}» del evento «{e.get('evento', '')}»; lo salto", flush=True)
+                    continue
+                filas.append(f"{mmss(s)} {e.get('evento', '')}")
             open(os.path.join(d, 'eventos_pantalla.txt'), 'w', encoding='utf-8').write(''.join(x + '\n' for x in filas))
     else:
         try:
@@ -3808,10 +4120,6 @@ def main():
                     if isinstance(b.get('montaje'), dict):
                         b['montaje']['visto'] = True
         else:
-            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
-                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
-            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
-                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
             tramo(35, 65)
             progreso(0, f"Pidiendo {a.tarea} a {ajustes['modelo']} ({ajustes['url']})…")
             try:
@@ -3861,6 +4169,11 @@ def main():
                     for b in (datos['bloques'] if isinstance(datos, dict) else datos):
                         if isinstance(b.get('montaje'), dict):
                             b['montaje']['visto'] = True
+            # recién ahora, con el guion (o el tráiler) nuevo ya en la mano: si la IA fallaba, las versiones de antes seguían sirviendo
+            if a.tarea == 'guion' and os.path.exists(os.path.join(d, 'versiones_guion.json')):
+                os.remove(os.path.join(d, 'versiones_guion.json'))  # un guion nuevo de una sola IA: las versiones viejas ya no van
+            if a.tarea == 'trailer' and os.path.exists(os.path.join(d, 'versiones_trailer.json')):
+                os.remove(os.path.join(d, 'versiones_trailer.json'))  # igual con el tráiler
     tramo(94, 100)
     progreso(0, 'Reviso tiempos y orden de los bloques…')
     datos, avisos = revisar(d, a.tarea, datos)

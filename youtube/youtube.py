@@ -48,24 +48,72 @@ def signos_es(texto):
             return m.group(0)
         espacio = len(frase) - len(frase.lstrip())
         return frase[:espacio] + abre + frase[espacio:] + signo
-    return re.sub(r'([^?!.:|\n]+)([?!])', arreglar, texto)
+    # un punto entre dos números («HyperOS 2.0», «Android 15.1») no corta la frase
+    return re.sub(r'((?:[^?!.:|\n]|(?<=\d)\.(?=\d))+)([?!])', arreglar, texto)
+
+
+def _es_contacto(parrafo):
+    """Un pedazo del bloque de contacto (sus enlaces de WhatsApp o sus rótulos 🌐 📞 🌎)."""
+    p = parrafo.strip()
+    return 'wa.me/' in p or 'whatsapp.com' in p or p.startswith(('🌐', '📞', '🌎'))
 
 
 def con_capitulos(desc, capitulos_texto):
     """Regla de fabian: la descripción SIEMPRE lleva los capítulos. Si ya los tiene (una línea «0:00 …»), no se repiten;
-    si no, van después del primer párrafo de texto (debajo del bloque de WhatsApp)."""
+    si no, van después del primer párrafo que sigue al bloque de WhatsApp (03/11/2026: arriba va la línea del video y
+    enseguida el contacto; antes los capítulos caían dentro del bloque, entre «📞 Para más detalles…» y los soportes)."""
     desc, cap = (desc or '').strip(), (capitulos_texto or '').strip()
     if not cap or re.search(r'(?m)^\s*0:00\b', desc):
         return desc
     partes = desc.split('\n\n')
-    i = next((k for k, p in enumerate(partes) if 'wa.me/' not in p and 'whatsapp.com' not in p and p.strip()), len(partes) - 1)
+    fin = next((k for k, p in enumerate(partes) if _es_contacto(p)), None)
+    if fin is None:
+        fin = -1  # sin contacto (noticias): después del primer párrafo, como siempre
+    else:
+        while fin + 1 < len(partes) and _es_contacto(partes[fin + 1]):
+            fin += 1
+    i = next((k for k in range(fin + 1, len(partes)) if partes[k].strip()), len(partes) - 1)
     return '\n\n'.join(partes[:i + 1] + ['⏱️ CAPÍTULOS\n' + cap] + partes[i + 1:]).strip()
 
 
-def con_contacto(desc, idioma='es'):
-    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios, LO
-    PRIMERO de todo (regla de fabian: va en la primera línea, antes de cualquier otro texto). Si ya estaba en otro lugar,
-    se mueve arriba; nunca se repite. Los videos de noticias no lo llevan: eso lo decide quien llama."""
+LINEA_MAX = 150  # más o menos lo que YouTube muestra de la descripción antes de «…más»
+
+
+def _es_rotulo(primera, siguiente):
+    """«📥 Descarga aquí la herramienta:» (o una línea seguida, sin línea en blanco, por su enlace, una lista o un capítulo):
+    es el rótulo de lo que viene, no la línea del video. Separarlo dejaría el enlace lejos de su rótulo."""
+    if primera.rstrip().endswith(':'):
+        return True
+    s = (siguiente or '').strip()
+    return bool(s) and bool(re.search(r'https?://', s) or s.startswith(('-', '•', '*', '✅', '✔', '👉', '➡', '▶', '⏱'))
+                            or re.match(r'\d+:\d\d\b', s) or re.match(r'\d+[.)]\s', s))
+
+
+def linea_del_video(desc, titulo=''):
+    """(la línea que dice de qué trata el video, el resto): la primera línea de la descripción. Si es un párrafo entero en
+    una sola línea, solo su primera frase. Si empieza con un enlace, un hashtag, un capítulo, el contacto o un rótulo
+    («📥 Descarga aquí…:» con su enlace debajo), esa línea no sirve: va el título del video como línea y la descripción
+    entera queda debajo; sin título, no hay línea: ('', desc). (fabian, 03/11/2026)"""
+    desc = (desc or '').strip()
+    primera, _, resto = desc.partition('\n')
+    primera = primera.strip()
+    if not primera or re.search(r'https?://', primera) or _es_contacto(primera) or primera.startswith(('#', '⏱')) \
+            or re.match(r'\d+:\d\d\b', primera) or _es_rotulo(primera, resto.partition('\n')[0]):
+        titulo = re.sub(r'\s+', ' ', titulo or '').strip()
+        return (titulo, desc) if titulo and titulo != primera else ('', desc)
+    if len(primera) > LINEA_MAX:
+        m = re.match(r'(.{20,%d}?[.!?])\s+(\S.*)$' % LINEA_MAX, primera)
+        if m:
+            primera, resto = m.group(1), m.group(2) + ('\n' + resto if resto else '')
+    return primera, resto.strip()
+
+
+def con_contacto(desc, idioma='es', titulo=''):
+    """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios. Regla
+    nueva de fabian (03/11/2026, «¿Una línea sobre el video antes de tu bloque de contacto? SÍ»): primero UNA línea que dice
+    de qué trata el video (la primera de la descripción; si esa es un enlace o un rótulo, el título del video) y enseguida
+    el bloque de contacto; después el resto. Si el bloque ya estaba en otro lugar, se mueve ahí; nunca se repite. Los
+    videos de noticias no lo llevan: eso lo decide quien llama."""
     try:
         bloques = json.load(open(CONTACTO, encoding='utf-8'))
     except (OSError, ValueError):
@@ -74,12 +122,13 @@ def con_contacto(desc, idioma='es'):
     desc = (desc or '').strip()
     if not bloque:
         return desc
-    for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo arriba
+    for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo debajo de la línea
         b = b.strip() if isinstance(b, str) else ''
         if b.startswith('🌐') and b in desc:
             desc = desc.replace(b, '')
     desc = re.sub(r'\n{3,}', '\n\n', desc).strip()
-    return (bloque + '\n\n' + desc).strip()
+    linea, resto = linea_del_video(desc, titulo)
+    return '\n\n'.join(x for x in (linea, bloque, resto) if x).strip()
 
 
 def config(aj):
@@ -118,6 +167,8 @@ def _pedir_token(datos):
         if 'invalid_grant' in cuerpo:
             raise ErrorYT('Google ya no acepta el permiso guardado (se venció o lo quitaste). Vuelve a «Conectar YouTube».')
         raise ErrorYT(f'Google no dio el permiso ({e.code}): {cuerpo[:300]}')
+    except urllib.error.URLError as e:  # sin internet: un mensaje claro (antes la página quedaba en «Revisando…» para siempre)
+        raise ErrorYT('Sin conexión con YouTube: revisa tu internet (' + str(e.reason) + ').')
 
 
 def canjear(c, code, estado, redirect):
@@ -166,6 +217,8 @@ def pedir(c, metodo, url, params=None, cuerpo=None, datos=None, tipo='applicatio
         except (ValueError, KeyError, TypeError):
             motivo, msg = '', cuerpo[:300]
         raise ErrorYT(EXPLICAR.get(motivo, f'YouTube contestó {e.code}: {msg}'))
+    except urllib.error.URLError as e:  # sin internet (va después de HTTPError, que también es un URLError)
+        raise ErrorYT('Sin conexión con YouTube: revisa tu internet (' + str(e.reason) + ').')
 
 
 EXPLICAR = {
@@ -187,14 +240,33 @@ def canal(c):
             'videos': x['statistics'].get('videoCount')}
 
 
+def _etiquetas(lista):
+    """Las etiquetas que entran en el límite de YouTube: 500 letras en total, contando las comillas que lleva cada una con
+    espacios y una coma entre ellas (si se pasa, la subida falla con «invalidTags»)."""
+    out, total = [], 0
+    for t in (lista or [])[:30]:
+        t = str(t).strip()
+        if not t:
+            continue
+        largo = len(t) + (2 if ' ' in t else 0) + (1 if out else 0)
+        if total + largo > 500:
+            break
+        out.append(t)
+        total += largo
+    return out
+
+
 def subir_video(c, ruta, meta, avance=None):
     """Subida reanudable en trozos de 8 MB: un corte de internet no obliga a empezar de cero el trozo anterior."""
     estado = {'privacyStatus': meta.get('privacidad', 'private'), 'selfDeclaredMadeForKids': False}
     if meta.get('publicar_en'):  # programado: queda privado hasta esa hora y YouTube lo publica solo
         estado.update(privacyStatus='private', publishAt=meta['publicar_en'])
-    cuerpo = {'snippet': {'title': meta['titulo'][:100], 'description': meta.get('descripcion', '')[:5000],
-                          'tags': meta.get('etiquetas', [])[:30], 'categoryId': meta.get('categoria', '28'),
-                          'defaultLanguage': 'es', 'defaultAudioLanguage': 'es'}, 'status': estado}
+    # la descripción: 5000 bytes como mucho (tildes, ñ y emojis ocupan más de uno), sin partir una letra por la mitad
+    desc = meta.get('descripcion', '').encode('utf-8')[:5000].decode('utf-8', 'ignore')
+    idioma = meta.get('idioma') or 'es'  # el de la voz del video (una versión en inglés no se marca como español)
+    cuerpo = {'snippet': {'title': meta['titulo'][:100], 'description': desc,
+                          'tags': _etiquetas(meta.get('etiquetas', [])), 'categoryId': meta.get('categoria', '28'),
+                          'defaultLanguage': idioma, 'defaultAudioLanguage': idioma}, 'status': estado}
     largo = os.path.getsize(ruta)
     r = pedir(c, 'POST', SUBIR + '/videos', {'uploadType': 'resumable', 'part': 'snippet,status'}, cuerpo=cuerpo,
               cabeceras={'X-Upload-Content-Type': 'video/mp4', 'X-Upload-Content-Length': str(largo)}, crudo=True)

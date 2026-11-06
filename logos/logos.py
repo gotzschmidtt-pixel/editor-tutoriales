@@ -23,6 +23,16 @@ NO_REPETIR = 30.0
 ALTO = 0.5        # alto del logo, en parte del alto del video (grande, como pop-up en el centro)
 ALTO_ANCHO = 0.26 # alto de las insignias anchas (marcas y webs)
 MINIMO = 0.35     # menos que esto no se alcanza a ver: ese logo se salta
+AL_FINAL = 8.0    # un logo con lugar propio («pos_short», el play) nombrado en los últimos segundos se queda hasta el final
+# las TARJETAS (la de soporte por WhatsApp con los números) no son un logo: llevan texto que hay que leer. fabian, 02/11/2026:
+# «deberíamos tener tarjetas individuales tanto para Short y video largo, noto que están muy pequeñas para ambos». Cada
+# formato tiene su tamaño (y el Short puede tener su propio dibujo, "archivo_short" en logos.json).
+TARJETA = {'largo': {'alto': 0.80, 'ancho': 0.62, 'centro_y': 0.5, 'queda_min': 5.0},
+           'short': {'alto': 0.52, 'ancho': 0.92, 'centro_y': 0.30, 'queda_min': 4.5}}
+# grande, la tarjeta tapa lo que pasa abajo: se va cuando termina la frase que la nombra (en el Short de prueba del 02/11/2026
+# tapaba el círculo de la KEY y el momento de pegarla), pero nunca antes de esto, para que se alcance a leer
+TARJETA_MINIMO = 2.5
+ES_TARJETA = re.compile(r'whats|wasap|soporte|tarjeta|contacto', re.I)
 POP = 0.35        # segundos que tarda en crecer al entrar
 ENTRA = 0.3
 NUMEROS = {'nueve': 9, 'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15, 'dieciseis': 16,
@@ -102,6 +112,30 @@ def plan(guion, carpeta_voz, logos, desfase=DESFASE):
     return filas
 
 
+def frases(guion, carpeta_voz, desfase=DESFASE):
+    """[(desde, hasta)] de lo que dice la voz en cada bloque, en segundos del video."""
+    out = []
+    for b in guion['bloques']:
+        if b.get('inicio_min') is None:
+            continue
+        try:
+            al = json.load(open(os.path.join(carpeta_voz, f"{b['id']}.align.json"), encoding='utf-8'))
+            fin = max(al.get('character_end_times_seconds') or al['character_start_times_seconds'])
+        except (OSError, ValueError, KeyError):
+            continue
+        out.append((b['inicio_min'] + desfase, b['inicio_min'] + desfase + fin))
+    return out
+
+
+def fin_tarjeta(t, queda_hasta, dichas):
+    """Hasta cuándo queda una tarjeta nombrada en t: cuando termina esa frase (sin tapar lo que viene), con un mínimo para
+    leerla y sin pasar de queda_hasta."""
+    fin = next((z for a, z in dichas if a - 0.05 <= t <= z + 0.05), None)
+    if fin is None:
+        return queda_hasta
+    return min(queda_hasta, max(t + TARJETA_MINIMO, fin + 0.2))
+
+
 def duracion(v):
     return float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', v],
                                 capture_output=True, text=True, check=True).stdout)
@@ -123,10 +157,53 @@ def proporcion(png):
         return 1.0
 
 
-def del_idioma(logo, carpeta, idioma):
+def es_tarjeta(logo):
+    """"tarjeta": true en logos.json; sin esa marca, la de soporte de WhatsApp (la que tiene "queda" para leerla)."""
+    if 'tarjeta' in logo:
+        return bool(logo['tarjeta'])
+    return bool(logo.get('queda')) and bool(ES_TARJETA.search(f"{logo.get('nombre', '')} {logo.get('archivo', '')}"))
+
+
+def para_formato(logos, formato):
+    """Los logos que van en este formato: "solo_short" (el ícono de play del cierre de los Shorts) no sale en el video largo
+    y "solo_largo" no sale en los Shorts."""
+    return [l for l in logos if not (l.get('solo_short') and formato != 'short') and not (l.get('solo_largo') and formato == 'short')]
+
+
+def medida_tarjeta(logo, formato, W, H, ancho_rel):
+    """(ancho, alto) de una tarjeta: grande y entera, con el tamaño de su formato ("alto_largo", "ancho_short"… en logos.json
+    la cambian solo para esa tarjeta)."""
+    c = TARJETA[formato]
+    alto_max = H * float(logo.get(f'alto_{formato}') or c['alto'])
+    ancho_max = W * float(logo.get(f'ancho_{formato}') or c['ancho'])
+    alto = min(alto_max, ancho_max / ancho_rel)
+    return round(alto * ancho_rel) // 2 * 2, round(alto) // 2 * 2
+
+
+def posicion(logo, formato):
+    """"pos_short": {"x": 0.24, "y": 0.84, "alto": 0.11} en logos.json: ese logo va en su lugar propio en ese formato, con su
+    centro en (x, y) y "alto" en parte del alto del video (fabian, 03/11/2026: el ícono de play del cierre de los Shorts salía
+    arriba; va abajo a la izquierda, donde YouTube pone el enlace del video). None: en el centro, como todos los logos."""
+    p = logo.get(f'pos_{formato}')
+    if not isinstance(p, dict):
+        return None
+    try:
+        x, y = float(p.get('x', 0.5)), float(p['y'])
+        alto = float(p['alto']) if p.get('alto') else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (0 <= x <= 1 and 0 <= y <= 1) or (alto is not None and not 0 < alto <= 1):
+        return None
+    return {'x': x, 'y': y, 'alto': alto}
+
+
+def del_idioma(logo, carpeta, idioma, formato='largo'):
     """El archivo del logo en el idioma del video: "idiomas": {"en": "x_en.png", "pt": "x_pt.png"}; si no hay, el de siempre."""
     otro = (logo.get('idiomas') or {}).get(idioma)
-    return otro if otro and os.path.isfile(os.path.join(carpeta, otro)) else logo['archivo']
+    if otro and os.path.isfile(os.path.join(carpeta, otro)):
+        return otro
+    propio = logo.get(f'archivo_{formato}')  # la tarjeta con su dibujo para el Short (vertical) o para el video largo
+    return propio if propio and os.path.isfile(os.path.join(carpeta, propio)) else logo['archivo']
 
 
 def main():
@@ -141,18 +218,21 @@ def main():
     ap.add_argument('--desfase', type=float, default=DESFASE, help='cuánto después del inicio del bloque entra la voz')
     ap.add_argument('--queda-max', type=float, default=99, help='tope de segundos en pantalla (Shorts: 3, que no tape el paso siguiente)')
     ap.add_argument('--capa', help='no codifica: deja la capa en este .json; capas/capas.py la pega junto con las demás')
+    ap.add_argument('--formato', choices=['largo', 'short'], default='largo', help='el tamaño de las tarjetas y los logos de cada formato')
     a = ap.parse_args()
     try:
         lib = json.load(open(os.path.join(a.logos, 'logos.json'), encoding='utf-8'))
     except (OSError, ValueError):
         print('No hay biblioteca de logos (mis_conocimientos/logos/logos.json): no pongo nada.')
         return
-    logos = [l for l in lib.get('logos', []) if os.path.isfile(os.path.join(a.logos, l.get('archivo', '')))]
+    logos = para_formato([l for l in lib.get('logos', []) if os.path.isfile(os.path.join(a.logos, l.get('archivo', '')))], a.formato)
     try:  # versión del video en otro idioma (idioma_video.json, como la voz y las etiquetas): sus tablas y textos traducidos
         idioma = json.load(open(os.path.join(os.path.dirname(os.path.abspath(a.guion)), 'idioma_video.json'), encoding='utf-8')).get('idioma') or 'es'
     except (OSError, ValueError, AttributeError):
         idioma = 'es'
-    filas = plan(json.load(open(a.guion, encoding='utf-8')), a.voz, logos, a.desfase)
+    guion = json.load(open(a.guion, encoding='utf-8'))
+    filas = plan(guion, a.voz, logos, a.desfase)
+    dichas = frases(guion, a.voz, a.desfase)
     if not filas:
         print('La voz no nombra ninguno de tus logos: no pongo nada.')
         return
@@ -163,16 +243,34 @@ def main():
     ins, filtros, ult, piezas = ['-i', a.video], [], '0:v', []
     uno = [x for fila in filas for x in fila]
     for k, (t, l) in enumerate(uno):
+        tarjeta = es_tarjeta(l)
         queda = min(float(l.get('queda') or QUEDA), a.queda_max)  # «queda» en logos.json: más tiempo para leerlo (la tarjeta de WhatsApp)
+        if tarjeta:  # una tarjeta se lee: no se va a los 3 s del Short
+            queda = max(queda, min(float(l.get('queda') or QUEDA), TARJETA[a.formato]['queda_min']))
         sig = uno[k + 1][0] if k + 1 < len(uno) else t + queda
         hasta = min(total - 0.1, t + queda, sig)  # se va cuando la voz nombra el siguiente: nunca dos a la vez
+        if tarjeta:
+            hasta = fin_tarjeta(t, hasta, dichas)
+        pos = posicion(l, a.formato)
+        if pos and k + 1 == len(uno) and total - t <= AL_FINAL:
+            hasta = total - 0.1  # el play del cierre se queda hasta el final con la flecha que le apunta (Short 1 del Honor: se iba 2,5 s antes)
         if hasta - t < MINIMO:
             continue
         dur = hasta - t
-        png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma)))
+        png = os.path.abspath(os.path.join(a.logos, del_idioma(l, a.logos, idioma, a.formato)))
         ancho_rel = proporcion(png)
         alto = round(H * (ALTO_ANCHO * a.alto / ALTO if ancho_rel > 1.3 else a.alto)) // 2 * 2  # las insignias anchas, más bajas
         ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
+        centro_x, centro_y = 0.5, a.centro_y
+        if tarjeta:
+            ancho, alto = medida_tarjeta(l, a.formato, W, H, ancho_rel)
+            centro_y = TARJETA[a.formato]['centro_y']
+        elif pos:  # su lugar propio («pos_short»): el play, abajo junto al enlace del Short
+            centro_x, centro_y = pos['x'], pos['y']
+            if pos['alto']:
+                alto = round(H * pos['alto']) // 2 * 2
+                ancho = min(round(alto * ancho_rel), round(W * 0.8)) // 2 * 2
+        x = '(W-w)/2' if centro_x == 0.5 else f'W*{centro_x}-w/2'
         # entra creciendo (pop) con un pequeño rebote y se va desvaneciendo
         suave = min(ENTRA, dur * 0.15)  # los que se nombran rápido («quince, dieciséis…») casi no se desvanecen
         crece = f"min(1,0.55+0.45*(t/{POP})+0.08*sin(min(t/{POP},1)*3.1416))"
@@ -181,7 +279,7 @@ def main():
                               f"scale=w='trunc(iw*{crece}/2)*2':h='trunc(ih*{crece}/2)*2':eval=frame,"
                               f"fade=t=in:st=0:d={suave:.2f}:alpha=1,fade=t=out:st={max(0, dur - suave):.2f}:d={suave:.2f}:alpha=1,"
                               f"setpts=PTS-STARTPTS+{t}/TB",
-                       'overlay': f"x='(W-w)/2':y='H*{a.centro_y}-h/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
+                       'overlay': f"x='{x}':y='H*{centro_y}-h/2':eval=frame:eof_action=pass:enable='between(t,{t},{hasta:.2f})'"})
         n = len(piezas)
         ins += piezas[-1]['args']
         filtros.append(f"[{n}:v]{piezas[-1]['pre']}[l{n}];[{ult}][l{n}]overlay={piezas[-1]['overlay']}[v{n}]")
