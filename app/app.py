@@ -4374,7 +4374,44 @@ def mantener_despierto():
         print('📲 Celular activado: el PC no se va a suspender mientras la app esté abierta.', flush=True)
 
 
+def actualizar_al_abrir():
+    """Al abrir la app (pedido de fabian, 09/11/2026): antes de arrancar trae de GitHub la versión más nueva de la app y
+    sincroniza tus conocimientos (mis_conocimientos ↔ tu repositorio privado), igual que los botones «⬇ Actualizar la app»
+    y «🔄 Sincronizar». No toca tus proyectos, claves ni ajustes. Si no hay internet o algo falla, la app arranca igual
+    con lo que ya tiene y lo anota en app/registro_actualizacion.txt. Se apaga con "actualizar_al_abrir": false en ajustes.json."""
+    if os.environ.get('ESTUDIO_YA_ACTUALIZADA') or leer_ajustes().get('actualizar_al_abrir') is False:
+        return
+    registro = os.path.join(RAIZ, 'app', 'registro_actualizacion.txt')
+
+    def anotar(msg):
+        print(msg)
+        try:
+            with open(registro, 'a', encoding='utf-8') as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+        except OSError:
+            pass
+    este = os.path.join(RAIZ, 'app', 'app.py')
+    antes = hashlib.sha1(open(este, 'rb').read()).hexdigest()
+    try:
+        r = actualizar_app()
+        anotar('App: ' + r.get('mensaje', 'ok'))
+    except Exception as e:  # sin internet, GitHub caído, etc.: se sigue con la versión que hay
+        anotar(f'App: no pude actualizar ahora ({e}); arranco con la versión que ya tengo.')
+    try:
+        if os.path.isdir(os.path.join(conocimiento.CARPETA, '.git')):
+            anotar('Conocimientos: ' + conocimiento.sincronizar(leer_ajustes().get('repo_conocimiento')))
+        else:
+            anotar('Conocimientos: esta PC todavía no está conectada a tu repositorio privado; toca «🔄 Sincronizar» una vez.')
+    except Exception as e:
+        anotar(f'Conocimientos: no pude sincronizar ahora ({e}).')
+    if hashlib.sha1(open(este, 'rb').read()).hexdigest() != antes:  # llegó una app.py nueva: se reinicia con ella
+        anotar('Llegó una versión nueva: reinicio la app.')
+        os.environ['ESTUDIO_YA_ACTUALIZADA'] = '1'
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def main():
+    actualizar_al_abrir()
     srv = abrir_servidor()
     mantener_despierto()
     retomar_cola()
