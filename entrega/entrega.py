@@ -60,6 +60,8 @@ def textos(meta, carpeta):
     if meta.get('etiquetas'):
         et = meta['etiquetas'] if isinstance(meta['etiquetas'], str) else ', '.join(meta['etiquetas'])
         partes.append('Etiquetas: ' + et)
+        escribir(os.path.join(carpeta, 'ETIQUETAS.txt'), et)
+        hechos.append('ETIQUETAS.txt')
     if any(p.strip() for p in partes):
         escribir(os.path.join(carpeta, 'DESCRIPCION.txt'), '\n\n'.join(p.strip() for p in partes if p.strip()))
         hechos.append('DESCRIPCION.txt')
