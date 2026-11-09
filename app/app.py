@@ -4407,7 +4407,7 @@ def actualizar_al_abrir():
     if hashlib.sha1(open(este, 'rb').read()).hexdigest() != antes:  # llegó una app.py nueva: se reinicia con ella
         anotar('Llegó una versión nueva: reinicio la app.')
         os.environ['ESTUDIO_YA_ACTUALIZADA'] = '1'
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        sys.exit(subprocess.call([sys.executable] + sys.argv))  # la versión nueva se abre en la misma ventana
 
 
 def main():
