@@ -796,7 +796,10 @@ def comandos(paso, d, op):
         if quiere_mp3:  # solo el audio del video (voz + música), en mp3; sin recodificar el video
             c.append(['ffmpeg', '-nostdin', '-v', 'error', '-stats', '-y', '-i', fuente, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-f', 'mp3', 'FINAL.mp3.parcial'])
             c.append([PY, '-c', 'import os; os.replace("FINAL.mp3.parcial", "FINAL.mp3")'])
+        c.append([PY, m('entrega', 'entrega.py'), '--proyecto', '.'])  # «📦 Carpeta de entrega»: al terminar, todo junto en ENTREGA/ (solo copias)
         return c
+    if paso == 'entrega':  # «📦 Carpeta de entrega» (fabian, 09/11/2026): video, miniaturas, descripción y título juntos, solo copias
+        return [[PY, m('entrega', 'entrega.py'), '--proyecto', '.']]
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
         return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--conocimientos', conocimiento.CARPETA, '--mb', f'{mb:g}']]
@@ -849,6 +852,7 @@ PASOS = [
     {'id': 'final_sin_trailer', 'nombre': 'Video final sin tráiler', 'necesita': ['3_voz.mp4'], 'produce': 'FINAL.mp4', 'opcional': True},
     {'id': 'prueba', 'nombre': 'Probar solo unos bloques', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'prueba_bloques.mp4', 'oculto': True},
     {'id': 'exportar', 'nombre': 'Exportar en otra calidad', 'necesita': [], 'produce': '', 'oculto': True},
+    {'id': 'entrega', 'nombre': 'Carpeta de entrega (video, miniaturas, descripción y título juntos)', 'necesita': [], 'produce': '', 'oculto': True},
     {'id': 'guion_ia', 'nombre': 'Escribir el guion con IA (desde tu video)', 'necesita': ['original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'revisar_imagen', 'nombre': 'Revisar cada bloque del guion contra su imagen', 'necesita': ['guion.json', 'original.mp4'], 'produce': 'guion.json', 'oculto': True},
     {'id': 'short', 'nombre': 'Short vertical 9:16', 'necesita': ['original.mp4', 'guion.json'], 'produce': 'SHORT.mp4', 'oculto': True},

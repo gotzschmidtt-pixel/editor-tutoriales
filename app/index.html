@@ -726,6 +726,7 @@
         <div class="fila" style="align-items:center"><b>⬇ Descargar en:</b> <span id="calidades"></span></div>
         <div class="fila" style="align-items:center"><span class="aviso">Marca varias y pulsa:</span>
           <button onclick="exportar()">⬇ Preparar las marcadas</button>
+          <button onclick="entrega()" title="Copia el video final, sus miniaturas, la descripción y el título en la carpeta ENTREGA del proyecto, una carpeta por video. No mueve ni borra nada.">📦 Carpeta de entrega</button>
           <span class="aviso">(las que no están hechas se preparan y se descargan solas al terminar; 480p y 360p pesan menos, para WhatsApp)</span></div>
       </div>
     </section>
@@ -1342,6 +1343,10 @@ function seguirConVozVieja() {
     'El video que bajes todavía dice el guion anterior. ¿Lo bajas igual?');
 }
 const PEND_DESCARGA = new Set();
+async function entrega() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=entrega`, {method: 'POST', body: '{}'}); } catch (e) { alert(e.message); return; }
+  refrescar();
+}
 async function exportar() {
   const marcas = [...document.querySelectorAll('#calidades input:checked')].map(i => i.value);
   const alturas = marcas.filter(v => v !== 'mp3');
