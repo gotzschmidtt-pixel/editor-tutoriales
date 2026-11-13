@@ -155,7 +155,14 @@ def placa_gpt(tipo):
         f = os.path.join(KIT, n)
         if os.path.exists(f):
             w, h = struct.unpack('>II', open(f, 'rb').read(24)[16:24])
-            return {'url': pathlib.Path(f).as_uri(), 'w': w, 'h': h}
+            placa = {'url': pathlib.Path(f).as_uri(), 'w': w, 'h': h}
+            kit = os.path.join(KIT, 'kit.json')  # colores de las letras para ese kit (el de vidrio lleva letras azul marino)
+            if os.path.exists(kit):
+                try:
+                    placa['tinta'] = json.load(open(kit, encoding='utf-8')).get('letras')
+                except (OSError, ValueError):
+                    pass
+            return placa
     return None
 
 
