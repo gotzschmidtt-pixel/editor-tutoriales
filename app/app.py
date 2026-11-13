@@ -472,9 +472,13 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder({'ruta': os.path.normpath(f) if f else ''})
             if ruta == '/api/dividir':
                 datos = json.loads(self.rfile.read(largo) or b'{}')
-                video = (datos.get('ruta') or '').strip().strip('"')
-                if not os.path.isfile(video):
-                    return self.error(f'No encuentro el video: {video or "(vacío)"}')
+                sys.path.insert(0, m('dividir'))
+                from dividir import buscar
+                vids = buscar(datos.get('ruta') or '')
+                if len(vids) != 1:
+                    return self.error((f'En esa carpeta hay {len(vids)} videos: elige uno con «📂 Elegir video…».' if vids
+                                       else f'No encuentro el video: {datos.get("ruta") or "(vacío)"}'))
+                video = vids[0]
                 if DIVISION['proc'] and DIVISION['proc'].poll() is None:
                     return self.error('Ya estoy dividiendo un video; espera a que termine.')
                 threading.Thread(target=dividir_video, args=(video, float(datos.get('max_mb') or 450)), daemon=True).start()

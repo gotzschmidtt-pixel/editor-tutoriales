@@ -94,10 +94,34 @@ def cortar(video, cortes, carpeta, base, ext):
     return sorted(glob.glob(os.path.join(carpeta, f'{base}_parte[0-9][0-9]{ext}')))
 
 
+VIDEOS = ('.mp4', '.mov', '.mkv', '.m4v', '.avi', '.webm', '.mts', '.m2ts', '.ts', '.wmv', '.flv', '.3gp')
+
+
+def buscar(ruta):
+    """La ruta tal como la pegó el usuario -> lista de videos. Acepta ruta sin extensión (Windows la oculta),
+    comillas sobrantes y carpetas (devuelve los videos que hay dentro)."""
+    ruta = os.path.abspath(os.path.expanduser(ruta.strip().strip('"').strip("'").strip()))
+    if os.path.isfile(ruta):
+        return [ruta]
+    if os.path.isdir(ruta):
+        vids = sorted(os.path.join(ruta, f) for f in os.listdir(ruta)
+                      if os.path.splitext(f)[1].lower() in VIDEOS and os.path.isfile(os.path.join(ruta, f)))
+        print(f'Es una carpeta. Videos dentro: {len(vids)}')
+        for v in vids:
+            print(f'  {os.path.basename(v)}   {os.path.getsize(v) / MB:.0f} MB')
+        return vids
+    carpeta, nombre = os.path.split(ruta)
+    if os.path.isdir(carpeta):  # sin extensión: busca nombre.mp4, nombre.MOV, ...
+        n = nombre.lower()
+        hallados = [os.path.join(carpeta, f) for f in os.listdir(carpeta)
+                    if os.path.splitext(f)[0].lower() == n and os.path.splitext(f)[1].lower() in VIDEOS]
+        if hallados:
+            return sorted(hallados)
+    return []
+
+
 def dividir(video, max_mb=450.0):
-    video = os.path.abspath(video.strip().strip('"'))
-    if not os.path.isfile(video):
-        sys.exit(f'No existe: {video}')
+    video = os.path.abspath(video)
     tam = os.path.getsize(video)
     base, ext = os.path.splitext(os.path.basename(video))
     base = re.sub(r'[<>:"/\\|?*]', '', base).strip() or 'video'
@@ -183,8 +207,13 @@ def main():
         return
     if not a.videos:
         ap.error('falta el video')
-    for v in a.videos:
-        dividir(v, a.max_mb)
+    for r in a.videos:
+        vids = buscar(r)
+        if not vids:
+            print(f'No encuentro ese video: {r}\nTip: arrastra el archivo encima de DIVIDIR_VIDEO.bat, así la ruta sale completa.')
+            continue
+        for v in vids:
+            dividir(v, a.max_mb)
 
 
 if __name__ == '__main__':
