@@ -40,6 +40,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 
 ## Montaje y subtítulos
 - **Antes del minuto 2** (fabian, 13/11/2026): tarjetas de WhatsApp de soporte (Latinoamérica, México, España) en pantalla y la voz invita, de forma creativa, a escribir por WhatsApp y a comentar con el modelo exacto. Opciones por marca en GUIONES-IA `comentar/` (módulo COMENTAR).
+- **Zoom en la pantalla de la PC** (fabian, 13/11/2026): cuando el programa, la web o el dato se ven chicos en la grabación de la pantalla (material extra), hacer zoom suave hasta la ventana o el campo que nombra la voz (Read Fastboot Info y serial, campo Erase FRP By Code con la KEY, pedido y KEY en la web). Zoom donde sea necesario para que se lea en el celular; después vuelve a la vista completa.
 - Inicio: rota trozos de video de 3-5 s según lo que dice la voz. Nada de escenas largas ni capturas fijas.
 - Subtítulos: estilo C «Shorts», en una línea, con la palabra dicha en amarillo, +50 % de tamaño y un poco más arriba.
 - Logos: pop-up de a uno, grande y en el centro, cuando la voz lo nombra.
