@@ -39,6 +39,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 - Cada Short resume el proceso COMPLETO, con un gancho distinto.
 
 ## Montaje y subtítulos
+- **Antes del minuto 2** (fabian, 13/11/2026): tarjetas de WhatsApp de soporte (Latinoamérica, México, España) en pantalla y la voz invita, de forma creativa, a escribir por WhatsApp y a comentar con el modelo exacto. Opciones por marca en GUIONES-IA `comentar/` (módulo COMENTAR).
 - Inicio: rota trozos de video de 3-5 s según lo que dice la voz. Nada de escenas largas ni capturas fijas.
 - Subtítulos: estilo C «Shorts», en una línea, con la palabra dicha en amarillo, +50 % de tamaño y un poco más arriba.
 - Logos: pop-up de a uno, grande y en el centro, cuando la voz lo nombra.
