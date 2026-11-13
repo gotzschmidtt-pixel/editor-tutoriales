@@ -597,14 +597,114 @@ def prompt_canal(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, fo
     return ' '.join(p)
 
 
+# estilo «XIAOMI GRÁFICOS» (fabian, 13/11/2026: «ESTILO MINIATURA XIAOMI GRÁFICOS: TEN EN CUENTA ESTE TIPO DE ESTILO PARA
+# PRÓXIMAS MINIATURAS PARA HACERLAS DESDE GPT»): el de sus series D01-D10 y E01-E10 del 10/11/2026. Fondo AZUL noche con
+# brillo (la excepción a la regla del fondo negro, solo en este estilo), el teléfono grande a un lado en la mano con guante,
+# título blanco + amarillo en cursiva gruesa, píldoras celestes 3D con icono, el logo Mi entre las palabras y la mascota.
+# Guía: mis_conocimientos/miniaturas/ESTILO_XIAOMI_GRAFICOS.md; referencias: mis_conocimientos/miniaturas/referencias/xiaomi_graficos/
+ESTILOS_GPT = {'canal': 'como tu canal (fondo negro)', 'xiaomi_graficos': 'Xiaomi gráficos (azul, píldoras y mascota)'}
+XIAOMI_GRAFICOS = os.path.join(ESTILO, 'xiaomi_graficos')
+GUIA_XIAOMI_GRAFICOS = os.path.join(RAIZ, 'mis_conocimientos', 'miniaturas', 'ESTILO_XIAOMI_GRAFICOS.md')
+# en este orden: la hoja E (la mejor serie), dos ejemplos a tamaño real y la hoja D; la hoja de la mascota va aparte
+REFS_XIAOMI_GRAFICOS = ('E_10_lo_mejor_xiaomi.jpg', 'E02_esta_en_la_nube_1280x720.jpg',
+                        'E10_solo_necesitas_este_codigo_1280x720.jpg', 'D_10_miniaturas_xiaomi.jpg')
+MASCOTA_XIAOMI = ('hoja3_mascota_poses_v3_estilo_ilustrado.png',)
+PILDORAS_XG = {True: ('TODOS LOS MODELOS', 'CON CUALQUIER PARCHE ✓'),   # con PC: nunca «SIN PC»
+               False: ('SIN PC', 'POR SERVIDOR', 'DE RAÍZ')}           # cuenta Mi de Xiaomi (sin PC)
+
+
+def referencias_xiaomi_graficos(n=3, mascota=True):
+    """Las imágenes de referencia del estilo Xiaomi gráficos que existan (n de estilo + la hoja de la mascota)."""
+    estilo = [os.path.join(XIAOMI_GRAFICOS, x) for x in REFS_XIAOMI_GRAFICOS if os.path.isfile(os.path.join(XIAOMI_GRAFICOS, x))][:n]
+    masc = [os.path.join(XIAOMI_GRAFICOS, x) for x in MASCOTA_XIAOMI if os.path.isfile(os.path.join(XIAOMI_GRAFICOS, x))][:1] if mascota else []
+    return estilo, masc
+
+
+def prompt_xiaomi_graficos(lineas, idioma, n_fotos=2, n_extras=0, logos=(), n_estilo=0, n_mascota=0, antes_desc=None,
+                           pildoras=(), marca='XIAOMI', pc=None):
+    """El pedido a GPT con el estilo «Xiaomi gráficos» (fabian, 13/11/2026). pildoras: los textos de las píldoras (vacío =
+    las de siempre según si el proceso usa PC)."""
+    nombre = {'es': 'español', 'en': 'inglés', 'pt': 'portugués'}[idioma]
+    textos = [traducir(x.strip(), idioma) for x in lineas if x and x.strip()] or [('QUITAR CUENTA MI', False)]
+    pc = necesita_pc(marca, ' '.join(lineas)) if pc is None else pc
+    # la esquina por defecto «PASO A PASO» no es una píldora
+    pills = [x.strip() for x in pildoras if x and x.strip() and x.strip().upper() != 'PASO A PASO'][:4] or list(PILDORAS_XG[bool(pc)])
+    if pc:  # (03/11/2026) «SIN PC» solo donde el proceso no usa PC
+        pills = [x for x in pills if not re.search(r'\bsin\s*pc\b|\bno\s*pc\b|\bsem\s*pc\b', x, re.I)] or list(PILDORAS_XG[True])
+    pills = [traducir(x, idioma) for x in pills]
+    traduce = any(t for _, t in textos + pills)
+    antes, despues = ANTES_DESPUES[idioma]
+    i = n_fotos + n_extras
+    p = ['Miniatura de YouTube 16:9 (1280x720) para el canal Xiaomiunlock de fabian (técnico que desbloquea celulares), en su '
+         'estilo «Xiaomi gráficos»: gráfico brillante, limpio, legible en un celular en 1 segundo, una sola idea.',
+         f'Imagen 1: SU foto real del teléfono ANTES ({antes_desc or "bloqueado"}).'
+         + (' Imagen 2: el mismo teléfono ya libre, en su pantalla de inicio (DESPUÉS).' if n_fotos > 1 else '')
+         + (f' Imágenes {n_fotos + 1} a {i}: más fotos reales del mismo teléfono.' if n_extras > 1 else
+            f' Imagen {i}: otra foto real del mismo teléfono.' if n_extras else '')
+         + ' El teléfono, su pantalla y lo que se lee en ella salen EXACTOS de sus fotos (mismas letras y tamaños, sin inventar '
+           'texto, otro modelo ni otra pantalla).']
+    for k, (nm, _) in enumerate(logos):
+        p.append(f'Imagen {i + k + 1}: el logo oficial de {nm}: cópialo exacto, sin redibujarlo ni cambiarle los colores.')
+    i += len(logos)
+    if n_estilo:
+        p.append(f'Imágenes {i + 1} a {i + n_estilo}: SUS miniaturas en este estilo, SOLO como referencia de ESTILO: copia el '
+                 'fondo azul con brillo, la letra, los colores, las píldoras, los iconos tipo sticker y el reparto. NO copies sus '
+                 'textos, sus teléfonos ni sus pantallas.')
+        i += n_estilo
+    if n_mascota:
+        p.append(f'Imagen {i + 1}: la mascota del canal (conejo blanco-celeste con gorro de aviador verde que dice XIAOMIUNLOCK, '
+                 'pañuelo rojo y botón Mi), en estilo ilustrado. Si la usas, una sola pose, igual a esa, chica-mediana.')
+    if len(textos) > 1:
+        titulo = f'«{textos[0][0]}» en blanco y «{" ".join(x for x, _ in textos[1:])}» en amarillo intenso'
+    else:
+        titulo = f'«{textos[0][0]}»: las primeras palabras en blanco y la palabra clave en amarillo intenso'
+    p.append('FÓRMULA, todo junto:')
+    p.append('(1) FONDO: azul real a azul noche (#1238C8 a #0A1A6B) en degradé, con un resplandor azul eléctrico detrás del '
+             'teléfono y viñeta oscura en los bordes. Limpio: nada de túnel de rayos, bokeh, chispas ni piso que refleja.')
+    p.append('(2) TELÉFONO a la derecha, GRANDE (80-90 % del alto, puede cortarse arriba o abajo), de frente o apenas inclinado, '
+             'sostenido por una mano con guante de nitrilo azul, con un filo de luz azul en el borde. Bordes rectos, proporciones '
+             'reales, sin doblar. Con antes y después: los 2 teléfonos, cada uno en su mano, una flecha amarilla curva entre ellos, '
+             f'«{antes}» en amarillo y «{despues}» en verde del mismo tamaño. Máximo 2 manos.')
+    p.append(f'(3) TÍTULO a la izquierda, en 2 o 3 líneas grandes, en {nombre}: {titulo}. Letra sans muy gruesa y condensada '
+             '(tipo Anton, Bebas Neue o Impact) en cursiva y MAYÚSCULAS, relleno plano, borde negro grueso y sombra dura corta. '
+             'Sin cromado, sin dorado, sin bisel. Donde diga CUENTA MI (o MI ACCOUNT / CONTA MI), la palabra MI se reemplaza por '
+             'el logo naranja Mi de Xiaomi en un cuadrito redondeado 3D. Rayitas de impacto blancas o amarillas junto al título.')
+    p.append('(4) Debajo del título, PÍLDORAS tipo botón 3D celeste brillante con borde blanco, letras blancas con borde azul '
+             'oscuro y un icono a la izquierda de cada una (laptop, servidor con nube, brote con raíz, casita, check verde…): '
+             + ' · '.join(f'«{x}»' for x, _ in pills) + '.')
+    p.append('(5) UN solo elemento gráfico tipo sticker 3D con contorno blanco, entre el título y el teléfono, sin tapar la '
+             'pantalla: la mascota, o una nube con candado Mi y cadena, o una llave dorada, o un servidor con nube Mi. Si ayuda, un '
+             'círculo rojo a mano alzada sobre «This device is locked» o el unlock code de la pantalla, con una flecha curva roja '
+             'o amarilla que apunta a él.')
+    p.append('(6) Colores: azul, blanco, amarillo y celeste; naranja solo en el logo Mi; rojo y verde solo en antes/después o en '
+             'una píldora roja TIENE SOLUCIÓN. Deja LIBRE la esquina de abajo a la derecha (ahí YouTube pone la duración).')
+    p.append('(7) TODO el texto lo escribes tú, perfectamente escrito, con tildes, en MAYÚSCULAS; cada texto una sola vez. '
+             'PROHIBIDO: páginas web (.com, .co, gsmprime, xiaomiunlock como dirección), precios, 100 %, garantía, 1 minuto, la '
+             'palabra robado, caras famosas, letras 3D doradas o cromadas, teléfonos flotando o doblados, pantallas inventadas.'
+             + (' Este proceso usa PC: nunca escribas «SIN PC».' if pc else ''))
+    try:
+        t = open(GUIA_XIAOMI_GRAFICOS, encoding='utf-8').read()
+        if '## 2. Colores' in t:  # la guía está: GPT sabe que es la de fabian (solo el nombre, el pedido ya trae lo esencial)
+            p.append('Es el estilo de su guía «Xiaomi gráficos» (13/11/2026).')
+    except OSError:
+        pass
+    if traduce:
+        p.append(f'Los textos entre « » van en {nombre}: tradúcelos cortos y naturales (marcas, modelos y versiones quedan igual).')
+    p.append('Todo el diseño completo dentro de la imagen 16:9, sin cortar nada en los bordes.')
+    return ' '.join(p)
+
+
 def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('es', 'en', 'pt'), antes_desc=None, fondo='gpt',
-                   extras=(), calidad='baja', esquinas=('PASO A PASO', ''), cara=False, refs_canal=None, info=None):
+                   extras=(), calidad='baja', esquinas=('PASO A PASO', ''), cara=False, refs_canal=None, info=None,
+                   estilo='canal'):
     """La miniatura hecha TODA por GPT (textos incluidos) con la fórmula del canal de fabian, una por idioma: tus fotos, los
     logos oficiales de tu biblioteca y 2-3 miniaturas de tu canal de fondo oscuro como referencia de ESTILO (canal_referencia.py;
     si hay menos de 2, se completan con las de mis_conocimientos/miniaturas/referencias por vistas por día). Borrador en baja;
     la final, en media. Devuelve los archivos.
     refs_canal: los ids de las miniaturas del canal de un borrador, para que su final salga con el mismo estilo (también las
-    de referencias/indice.json que completaron ese borrador: revisión, 03/11/2026)."""
+    de referencias/indice.json que completaron ese borrador: revisión, 03/11/2026).
+    estilo: «canal» (fondo negro, la fórmula de su canal) o «xiaomi_graficos» (fabian, 13/11/2026: sus referencias de
+    referencias/xiaomi_graficos y las esquinas pasan a ser las píldoras)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import canal_referencia
     lineas = [x.strip() for x in lineas if x and x.strip()]
@@ -614,6 +714,32 @@ def miniaturas_gpt(d, refs, lineas, salida_base, marca='TU CELULAR', idiomas=('e
     revisar_textos(lineas + [x for x in esquinas if x], marca, pc, proyecto)
     texto = ' '.join(lineas)
     logos = logos_miniatura(marca, texto)
+    if estilo == 'xiaomi_graficos':  # (fabian, 13/11/2026) sus referencias de ese estilo, no las del canal
+        est, masc = referencias_xiaomi_graficos()
+        if not est:
+            print('· ojo: faltan las referencias de mis_conocimientos/miniaturas/referencias/xiaomi_graficos '
+                  '(sincroniza los conocimientos); GPT va solo con la descripción', flush=True)
+        fotos = list(refs)
+        imagenes = fotos + list(extras) + [f for _, f in logos] + est + masc
+        pildoras = [y for x in esquinas if x for y in str(x).split('|')]
+        if info is not None:
+            info.update(modelo=modelo_imagen(), calidad=calidad, refs_canal=[], logos=[nm for nm, _ in logos],
+                        costo_usd=COSTO_CALIDAD.get(calidad, COSTO_CALIDAD['alta']), estilo=estilo)
+        hechas = []
+        for idioma, nombre in [x for x in (('es', 'español'), ('en', 'inglés'), ('pt', 'portugués')) if x[0] in idiomas]:
+            prompt = prompt_xiaomi_graficos(lineas, idioma, n_fotos=len(fotos), n_extras=len(extras), logos=logos,
+                                            n_estilo=len(est), n_mascota=len(masc), antes_desc=antes_desc, pildoras=pildoras,
+                                            marca=marca, pc=pc)
+            print(f'· la IA de imágenes hace la miniatura (estilo Xiaomi gráficos) en {nombre} (calidad {calidad})…', flush=True)
+            img = imagen_gpt(prompt, imagenes, size='1536x864', calidad=calidad)
+            h, w = img.shape[:2]
+            alto = min(h, int(w * 9 / 16))
+            img = cv2.resize(img[(h - alto) // 2:(h - alto) // 2 + alto], (W, H), interpolation=cv2.INTER_AREA)
+            f = f'{salida_base}_{idioma}.jpg'
+            guardar_img(f, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            hechas.append(os.path.basename(f))
+            print(f'· {os.path.basename(f)} lista', flush=True)
+        return hechas
     # las del borrador; si ya no están, se eligen otra vez con la misma cuenta que «🖼 Miniatura» (las marcadas con ✓): antes
     # la marca salía de otro lado (el guion) y a GPT podían ir otras (revisión, 03/11/2026)
     canal = ((canal_referencia.por_ids(refs_canal, ESTILO) if refs_canal else []) or
@@ -1339,17 +1465,23 @@ def con_fotos(d, a):
     calidad = getattr(a, 'calidad', None) or 'baja'
     idiomas = tuple(x for x in str(getattr(a, 'idiomas', None) or 'es,en,pt').split(',') if x in ('es', 'en', 'pt')) or ('es', 'en', 'pt')
     try:
-        for fondo in (('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
+        estilo = getattr(a, 'estilo', None) or 'canal'
+        estilo = estilo if estilo in ESTILOS_GPT else 'canal'
+        # (13/11/2026) el estilo Xiaomi gráficos tiene su propio fondo azul: una sola vuelta
+        for fondo in (('gpt',) if estilo == 'xiaomi_graficos' else ('foto', 'gpt') if a.fondo == 'ambos' else (a.fondo,)):
             if not a.mixta:  # (fabian, 03/11/2026) todo GPT con la fórmula de su canal: borrador en baja y la final en media
                 info = {}
                 # con la fecha: solo con la hora, un borrador de otro día a la misma hora pisaba al de antes (revisión, 03/11/2026)
-                base = os.path.join(d, f"miniatura_canal_{fondo}_{calidad}_{time.strftime('%m%d%H%M%S')}")
+                base = os.path.join(d, f"miniatura_{'xg' if estilo == 'xiaomi_graficos' else 'canal_' + fondo}_{calidad}_{time.strftime('%m%d%H%M%S')}")
                 for f in miniaturas_gpt(d, [fotos['antes'], fotos['despues']], lineas, base, marca, idiomas=idiomas,
                                         antes_desc='tal como está en la foto HD', fondo=fondo, extras=extras, calidad=calidad,
                                         esquinas=(a.esquina_izq, a.esquina_der), cara=bool(getattr(a, 'cara', False)),
-                                        refs_canal=[x for x in str(getattr(a, 'refs_canal', None) or '').split(',') if x], info=info):
-                    hechas.append({'archivo': f, 'de': f"tus fotos · como tu canal · {'borrador' if calidad == 'baja' else 'final'} en "
-                                                        f"calidad {calidad} · fondo {FONDO_DE.get(fondo, 'negro con luz azul')}",
+                                        refs_canal=[x for x in str(getattr(a, 'refs_canal', None) or '').split(',') if x], info=info,
+                                        estilo=estilo):
+                    como = ('estilo Xiaomi gráficos' if estilo == 'xiaomi_graficos' else 'como tu canal')
+                    de_fondo = ('azul con brillo' if estilo == 'xiaomi_graficos' else FONDO_DE.get(fondo, 'negro con luz azul'))
+                    hechas.append({'archivo': f, 'de': f"tus fotos · {como} · {'borrador' if calidad == 'baja' else 'final'} en "
+                                                        f"calidad {calidad} · fondo {de_fondo}", 'estilo': estilo,
                                    'texto': [x for x in lineas if x], 'idioma': f.rsplit('_', 1)[1][:2], 'fondo': fondo,
                                    'calidad': calidad, 'esquinas': [a.esquina_izq, a.esquina_der], 'cara': bool(getattr(a, 'cara', False)),
                                    'modelo': info.get('modelo'), 'refs_canal': info.get('refs_canal'), 'costo_usd': info.get('costo_usd')})
@@ -1395,6 +1527,7 @@ def main():
     # (fabian, 03/11/2026) la miniatura de GPT con la fórmula de su canal: borrador en baja y la final aprobada en media
     ap.add_argument('--calidad', choices=tuple(CALIDADES), default='baja', help='baja = borrador (~0,02 USD), media = final (~0,07 USD), alta solo si la pides')
     ap.add_argument('--idiomas', default='es,en,pt', help='con --fotos sin --mixta: los idiomas, separados por coma')
+    ap.add_argument('--estilo', choices=tuple(ESTILOS_GPT), default='canal', help='con --fotos sin --mixta: canal (fondo negro) o xiaomi_graficos (azul, píldoras y mascota, 13/11/2026)')
     ap.add_argument('--cara', action='store_true', help='con --fotos sin --mixta: un hombre latino ficticio a un costado, buzo blanco liso')
     ap.add_argument('--refs-canal', default='', help='con --fotos sin --mixta: los ids de las miniaturas del canal de un borrador (su final)')
     a = ap.parse_args()

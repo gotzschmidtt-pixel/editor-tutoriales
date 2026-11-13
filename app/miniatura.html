@@ -112,6 +112,10 @@
     <p class="msg" id="sugMsg"></p>
     <div class="fila">
       <!-- (fabian, 03/11/2026) todo lo escribe GPT con la fórmula de tu canal: ya no hay «mixta» con textos de la app encima -->
+      <label title="Xiaomi gráficos (13/11/2026): fondo azul con brillo, teléfono grande a la derecha en la mano con guante, título blanco + amarillo, píldoras celestes (las esquinas de arriba pasan a ser las píldoras, separadas con |), logo Mi y la mascota. Guía: mis_conocimientos/miniaturas/ESTILO_XIAOMI_GRAFICOS.md">Estilo <select id="estilo">
+        <option value="canal">Como tu canal (fondo negro)</option>
+        <option value="xiaomi_graficos">Xiaomi gráficos (azul, píldoras y mascota)</option>
+      </select></label>
       <label>Fondo <select id="fondo">
         <option value="gpt">Negro con luz azul (como tu canal)</option>
         <option value="foto">Tu estudio real de las fotos (oscurecido)</option>
@@ -259,16 +263,17 @@ $('#linea1').oninput = $('#linea2').oninput = () => { pintarSugeridos(); clearTi
 // (fabian, 03/11/2026) borrador en baja, la final en media y alta solo si la pides; todo lo escribe GPT (una imagen por idioma)
 const COSTO = {baja: 0.02, media: 0.07, alta: 0.28}, CALIDAD = {baja: 'baja (borrador)', media: 'media (final)', alta: 'alta'};
 const pedido = () => ({texto: [$('#linea1').value, $('#linea2').value].map(x => x.trim().toUpperCase()).filter(Boolean).join('|'),
-  fondo: $('#fondo').value, calidad: $('#calidad').value, idiomas: $('#idiomas').value.split(','), cara: $('#cara').checked,
+  estilo: $('#estilo').value, fondo: $('#fondo').value, calidad: $('#calidad').value, idiomas: $('#idiomas').value.split(','), cara: $('#cara').checked,
   esq_izq: $('#esqIzq').value.trim().toUpperCase(), esq_der: $('#esqDer').value.trim().toUpperCase()});
-const imagenes = op => (op.fondo === 'ambos' ? 2 : 1) * op.idiomas.length;
+const imagenes = op => (op.fondo === 'ambos' && op.estilo !== 'xiaomi_graficos' ? 2 : 1) * op.idiomas.length;
 const gasto = op => `${imagenes(op)} imagen${imagenes(op) > 1 ? 'es' : ''} de gpt-image-2.5-flare en calidad ${CALIDAD[op.calidad]} ≈ USD ${(imagenes(op) * COSTO[op.calidad]).toFixed(2)}`;
 function pintarCosto() { $('#costo').textContent = `Gasta ${gasto(pedido())} (una por idioma y fondo).`; }
+$('#estilo').onchange = () => { $('#fondo').disabled = $('#estilo').value === 'xiaomi_graficos'; pintarCosto(); };
 $('#fondo').onchange = $('#calidad').onchange = $('#idiomas').onchange = pintarCosto;
 
 async function hacer(final) {  // final: un borrador de la lista que se repite en calidad media
   if (!(E.fotos_miniatura || {}).antes && !(E.archivos || {})['original.mp4']) return alert('Falta la foto del ANTES (el teléfono bloqueado).');
-  const op = final ? {texto: (final.texto || []).join('|'), fondo: final.fondo || 'gpt', calidad: 'media', idiomas: $('#idiomas').value.split(','),
+  const op = final ? {texto: (final.texto || []).join('|'), estilo: final.estilo || 'canal', fondo: final.fondo || 'gpt', calidad: 'media', idiomas: $('#idiomas').value.split(','),
     cara: !!final.cara, esq_izq: (final.esquinas || [])[0] || '', esq_der: (final.esquinas || [])[1] || '', refs_canal: final.refs_canal || []} : pedido();
   const r = prompt(`⚠ Esto gasta ${gasto(op)}.\n\nEscribe SI para seguir (Cancelar = no hago nada):`, '');
   if (r === null) return;
