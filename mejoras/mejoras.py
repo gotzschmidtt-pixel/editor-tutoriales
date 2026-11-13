@@ -116,6 +116,8 @@ def comandos(paso, d, op, py, ajustes):
             idiomas = [x for x in (op.get('idiomas') or ['es', 'en', 'pt']) if x in ('es', 'en', 'pt')] or ['es', 'en', 'pt']
             extra = ['--calidad', op.get('calidad') if op.get('calidad') in ('baja', 'media', 'alta') else 'baja', '--idiomas', ','.join(idiomas)]
             extra += ['--cara'] if op.get('cara') else []
+            # (fabian, 13/11/2026) el estilo «Xiaomi gráficos»: azul, píldoras celestes, logo Mi y mascota
+            extra += ['--estilo', 'xiaomi_graficos'] if op.get('estilo') == 'xiaomi_graficos' else []
             refs = [x for x in (op.get('refs_canal') or []) if re.fullmatch(r'[\w-]{11}', str(x))]
             # con «=»: un id de YouTube puede empezar con «-» y, separado, argparse lo toma por otra opción (revisión, 03/11/2026)
             extra += ['--refs-canal=' + ','.join(refs)] if refs else []
