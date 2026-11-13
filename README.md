@@ -18,6 +18,7 @@ que se usaron con el video de la Pico 2 y que la app irá juntando por fases.
 | `trailer/` | Tráiler de inicio **ANTES · DURANTE · DESPUÉS**: corta las mejores tomas de cada fase, Remotion pone los sellos animados, destellos, zoom y la placa final, con voz y música. |
 | `senales/` | Flechas, círculos y recuadros que se dibujan solos sobre lo importante cuando la voz lo nombra, y siguen a la pieza si la cámara se mueve (OpenCV). Con `--prueba` saca un cuadro por señal para revisar posiciones. |
 | `insertos/` | Usa material extra (grabación de pantalla, fotos, otro video) como cortes y zooms sobre el video, o para reemplazar pausas congeladas, sin cambiar la duración. Encuadre por claves sincronizadas con frases de la voz; `--prueba` muestra cada encuadre. |
+| `dividir/` | Corta un video grande en partes de menos de 450 MB **sin perder calidad** (sin volver a codificar, cortes en cuadro clave), para subirlo al chat de Claude. Arrastra el video sobre `DIVIDIR_VIDEO.bat` o usa el botón **✂ Dividir video** de la app. `--unir CARPETA` las vuelve a juntar en orden. |
 | `remotion/` | Proyecto Remotion (React) con las composiciones `Trailer`, `Etiqueta` y `Senal`. Colores y fuente de marca en `src/estilo.ts`. |
 | `transcripcion/` | Voz a texto con tiempos por palabra: Scribe (en línea) o Whisper (en tu PC, sin internet). Saca .txt, .srt y .json. |
 | `proyectos/pico2/` | Los scripts del video «Cómo soldar la Pico 2»: guion por bloques, voz v4, video estirado a 7 min. Tienen rutas de ese proyecto; sirven de ejemplo. |

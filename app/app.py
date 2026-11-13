@@ -257,6 +257,37 @@ def estado(proyecto):
     return {'archivos': archivos, 'pasos': pasos, 'registro': log, 'trabajo': t, 'fallo': FALLOS.get(proyecto)}
 
 
+DIVISION = {'proc': None, 'texto': '', 'carpeta': '', 'video': ''}  # «✂ Dividir video»: un trabajo a la vez
+
+
+def dividir_video(video, max_mb):
+    """Corre dividir/dividir.py en segundo plano y guarda lo que va diciendo (con su barra de %)."""
+    base = os.path.splitext(os.path.basename(video))[0]
+    DIVISION.update(texto='', video=video, carpeta=os.path.join(os.path.dirname(video), re.sub(r'[<>:"/\\|?*]', '', base).strip() + '_PARTES'))
+    p = subprocess.Popen([PY, '-u', m('dividir', 'dividir.py'), video, '--max-mb', str(max_mb)], stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONIOENCODING='utf-8'), **SIN_VENTANA)
+    DIVISION['proc'] = p
+    while True:
+        c = p.stdout.read(200)
+        if not c:
+            break
+        DIVISION['texto'] = (DIVISION['texto'] + c.decode('utf-8', 'replace'))[-6000:]
+    p.wait()
+
+
+def elegir_video():
+    """Ventana de Windows para elegir el video (la app corre en tu PC, así no hay que subirlo)."""
+    import tkinter as tk
+    from tkinter import filedialog
+    r = tk.Tk()
+    r.withdraw()
+    r.attributes('-topmost', True)
+    f = filedialog.askopenfilename(title='Elige el video a dividir', filetypes=[
+        ('Videos', '*.mp4 *.mov *.MOV *.mkv *.m4v *.avi *.webm'), ('Todos', '*.*')])
+    r.destroy()
+    return f
+
+
 class Manejador(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -319,6 +350,10 @@ class Manejador(BaseHTTPRequestHandler):
                 aj['eleven'] = ('••••' + k[-4:]) if k else ''
                 aj['ruta'] = AJUSTES
                 return self.responder({'ajustes': aj, 'proveedores': PROVEEDORES})
+            if ruta == '/api/dividir':
+                p = DIVISION['proc']
+                return self.responder({'texto': DIVISION['texto'], 'carpeta': DIVISION['carpeta'],
+                                       'corriendo': bool(p and p.poll() is None), 'ok': bool(p and p.poll() == 0)})
         except (KeyError, ValueError) as e:
             return self.error(str(e))
         self.error('no encontrado', 404)
@@ -429,6 +464,28 @@ class Manejador(BaseHTTPRequestHandler):
                 elif os.path.exists(f):
                     os.remove(f)
                 return self.responder({'ok': True})
+            if ruta == '/api/elegir_video':
+                try:
+                    f = elegir_video()
+                except Exception as e:  # sin tkinter: se pega la ruta a mano
+                    return self.error(f'No pude abrir la ventana para elegir ({e}). Pega la ruta del video.')
+                return self.responder({'ruta': os.path.normpath(f) if f else ''})
+            if ruta == '/api/dividir':
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                video = (datos.get('ruta') or '').strip().strip('"')
+                if not os.path.isfile(video):
+                    return self.error(f'No encuentro el video: {video or "(vacío)"}')
+                if DIVISION['proc'] and DIVISION['proc'].poll() is None:
+                    return self.error('Ya estoy dividiendo un video; espera a que termine.')
+                threading.Thread(target=dividir_video, args=(video, float(datos.get('max_mb') or 450)), daemon=True).start()
+                return self.responder({'ok': True})
+            if ruta == '/api/abrir_carpeta':
+                c = DIVISION['carpeta']
+                if c and os.path.isdir(c):
+                    if sys.platform == 'win32':
+                        os.startfile(c)
+                    return self.responder({'ok': True, 'carpeta': c})
+                return self.error('Todavía no hay carpeta de partes.')
             if ruta == '/api/studio':
                 subprocess.Popen([shutil.which('npx') or 'npx', 'remotion', 'studio', 'src/index.ts'], cwd=m('remotion'), **SIN_VENTANA)
                 return self.responder({'ok': True, 'url': 'http://localhost:3000'})
@@ -453,7 +510,7 @@ def vigilar():
     while True:
         time.sleep(15)
         with CANDADO:
-            ocupado = bool(TRABAJO['proyecto'])
+            ocupado = bool(TRABAJO['proyecto']) or bool(DIVISION['proc'] and DIVISION['proc'].poll() is None)
         if not ocupado and time.time() - LATIDO[0] > 180:
             os._exit(0)
 

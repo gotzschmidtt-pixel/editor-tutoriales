@@ -76,6 +76,7 @@
   <select id="proyecto"></select>
   <button id="nuevo">+ Nuevo proyecto</button>
   <span class="estado" id="estado">Sin trabajos</span>
+  <button id="btnDividir" onclick="dlgDividir.showModal()">✂ Dividir video</button>
   <button id="btnEleven" onclick="dlgEleven.showModal()">🔑 Clave ElevenLabs</button>
 </header>
 
@@ -167,6 +168,18 @@
   <p class="aviso" id="clEstado"></p>
   <p class="aviso" id="clRuta">Se guarda solo en tu PC (app/ajustes.json). Nadie más la ve.</p>
   <div class="fila"><button class="principal" onclick="guardarEleven()">Guardar</button><button onclick="dlgEleven.close()">Cancelar</button></div>
+</dialog>
+
+<dialog id="dlgDividir">
+  <h3>✂ Dividir un video grande</h3>
+  <p class="aviso">Para subirlo al chat de Claude (acepta hasta 480 MB por archivo). Corta en partes sin perder calidad y sin volver a codificar: tarda segundos. Las partes quedan en una carpeta «_PARTES» al lado del video y se pueden volver a unir en orden.</p>
+  <label>Video <input type="text" id="dvRuta" placeholder="C:\Users\...\video.mp4"></label>
+  <div class="fila"><button onclick="elegirVideo()">📂 Elegir video…</button>
+    <label style="margin-left:auto">Máximo por parte (MB) <input type="number" id="dvMax" value="450" min="20" max="4000" style="width:6em"></label></div>
+  <pre id="dvTexto" style="white-space:pre-wrap;max-height:220px;overflow:auto;font-size:12px"></pre>
+  <div class="fila"><button class="principal" id="dvBoton" onclick="dividir()">✂ Dividir</button>
+    <button id="dvAbrir" onclick="api('/api/abrir_carpeta', {method: 'POST'}).catch(e => alertaDiv(e.message))" hidden>📁 Abrir carpeta de partes</button>
+    <button onclick="dlgDividir.close()">Cerrar</button></div>
 </dialog>
 
 <dialog id="dlgAjustes">
@@ -387,6 +400,25 @@ async function refrescar() {
   if (esperaIA && !t.proyecto) finIA();
 }
 setInterval(refrescar, 2000);
+function alertaDiv(t) { $('#dvTexto').textContent = '⚠ ' + t; }
+async function elegirVideo() {
+  try { const r = await api('/api/elegir_video', {method: 'POST'}); if (r.ruta) $('#dvRuta').value = r.ruta; }
+  catch (e) { alertaDiv(e.message); }
+}
+async function dividir() {
+  try {
+    await api('/api/dividir', {method: 'POST', body: JSON.stringify({ruta: $('#dvRuta').value, max_mb: +$('#dvMax').value || 450})});
+    $('#dvBoton').disabled = true; $('#dvAbrir').hidden = true; seguirDivision();
+  } catch (e) { alertaDiv(e.message); }
+}
+async function seguirDivision() {
+  const r = await api('/api/dividir');
+  // la barra de % se reescribe con \r: muestra solo lo último de cada línea
+  $('#dvTexto').textContent = r.texto.split('\n').map(l => l.split('\r').filter(x => x.trim()).pop() || '').join('\n').trim();
+  if (r.corriendo) return setTimeout(seguirDivision, 700);
+  $('#dvBoton').disabled = false;
+  $('#dvAbrir').hidden = !r.ok;
+}
 setInterval(() => fetch('/api/latido').catch(() => {}), 30000);  // latido: la app sigue abierta
 cargarProyectos();
 </script>
