@@ -38,7 +38,7 @@ MARGEN = 0.3        # lo que queda a cada lado de un corte
 ESPERA = (r'reinici|reboot|restart|apag|encend|logo|cargando|loading|espera|wi-?fi|wlan|contrase|password|clave de red|'
           r'conectando|connecting|descargando|downloading|actualizando|updating|instalando|installing|verificando|'
           r'formateando|restablec|please wait')  # sin «%»: la batería se ve en todas las pantallas
-PRIORIDAD = {'espera': 1, 'silencio': 2, 'movimiento': 3, 'no_importante': 4}
+PRIORIDAD = {'correccion': 0, 'espera': 1, 'silencio': 2, 'movimiento': 3, 'no_importante': 4}
 
 
 def duracion(f):
@@ -180,6 +180,30 @@ Responde SOLO con un objeto JSON {{"tramos": [{{"inicio": "m:ss", "fin": "m:ss",
     return out
 
 
+def con_correcciones(d, tramos):
+    """Lo que aprobaste en «🩹 Qué se corrige del original» (intentos fallidos, testimonios, comentarios, esperas) sigue
+    marcado aunque vuelvas a buscar qué acortar: esos tramos mandan y los demás se recortan alrededor."""
+    try:
+        sys.path.insert(0, os.path.join(RAIZ, 'correcciones'))
+        import corregir_original
+    except Exception:
+        return tramos
+    lista = corregir_original.aprobadas(d)
+    if not lista:
+        return tramos
+    f = os.path.join(d, 'acortar.json')
+    viejo = leer_json(f, None)
+    plan = {'tramos': [t for t in tramos if t.get('tipo') != 'correccion']}
+    json.dump(plan, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
+    try:
+        corregir_original.a_acortar(d, lista, 0)
+        return leer_json(f, plan)['tramos']
+    except Exception:
+        if viejo is not None:
+            json.dump(viejo, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        return tramos
+
+
 def ahorro(c):
     largo = c['fin'] - c['inicio']
     return largo if c['accion'] == 'cortar' else largo - largo / c['velocidad']
@@ -294,7 +318,10 @@ def main():
                 print(f'· la IA no pudo ({e}); sigo con lo que encontré yo', flush=True)
         tramos = importantes.recortar(sin_choques(tramos), importantes.leer(d))  # tus «⭐ cortes importantes» no se tocan
         elegir(tramos, dur, objetivo)
+        tramos = con_correcciones(d, tramos)
         for k, c in enumerate(tramos, 1):
+            if c.get('tipo') == 'correccion':
+                continue  # su id (C01…) es el del informe de correcciones
             c['id'] = f'A{k:02d}'
             c['inicio'], c['fin'] = round(c['inicio'], 2), round(c['fin'], 2)
         plan = {'original_s': round(dur, 1), 'objetivo_s': round(objetivo, 1), 'tramos': tramos}

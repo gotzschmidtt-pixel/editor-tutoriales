@@ -199,6 +199,7 @@
     <button onclick="window.open('/vista?p=' + q(P), 'vista_' + P)" title="Una diapositiva por cada etiqueta y círculo, sobre el cuadro exacto: apruébalas, edítalas o quítalas ANTES de ponerlas (no gasta nada)">👀 Vista previa</button>
     <button onclick="abrirModulo('panelMarcas')">🎯 Flechas y círculos</button>
     <button onclick="abrirModulo('panelImportantes')" title="Los momentos delicados del video (Recovery, DFU, botones, keys): se ven enteros y nunca se aceleran">⭐ Cortes importantes</button>
+    <button onclick="abrirModulo('panelCorregir')" title="Lo que hay que arreglar de tu grabación (intentos que fallan, webs que no van, modelo o tiempo mal dichos, esperas, testimonios y comentarios largos): lo ves y lo apruebas antes del guion. Gratis">🩹 Qué se corrige</button>
     <button onclick="abrirModulo('panelAcortar')">✂️ Acortar</button>
     <button onclick="window.open('/avatar?p=' + q(P), 'avatar_' + P)" title="Videos con avatar: HeyGen solo en el inicio, 2-3 momentos fuertes y el cierre; el resto voz en off con gráficas y memes (ahorra ~80 % de minutos de HeyGen). No gasta nada">🧑 Avatar (ahorro)</button>
     <button onclick="verTrailer()" title="El tráiler ANTES · DURANTE · DESPUÉS, aparte del video: proponerlo (con una o varias IAs), elegir el largo, verlo y unirlo">🎬 Tráiler</button>
@@ -444,6 +445,27 @@
       Momento «auto»: después de la frase en que la voz habla de modelos o de para qué equipos sirve; si no, después de la
       introducción. En «¿Dónde?» eliges también inicio, medio, final o un segundo exacto. Si el video es más largo que la frase se acelera;
       si es más corto, se congela al final. Se pone con «✨ Agregar extras» (si subiste uno), después de «▶ Hacer todo». Usa un poco de crédito de ElevenLabs.</p>
+    </section>
+
+    <section class="panel" id="panelCorregir">
+      <h2>🩹 Qué se corrige del original</h2>
+      <p class="aviso">Antes del guion miro tu grabación (lo que dices y lo que se lee en pantalla) y busco lo que siempre se
+      arregla a mano, en todas las marcas: un intento que falla y se repite, una web que no va (frpunlock), otro modelo dicho
+      por error, «en unos minutos» por la KEY, esperas largas, testimonios de 2 minutos en medio y comentarios de YouTube.
+      Nada se aplica hasta que lo apruebas. Gratis (con la casilla de la IA gasta un poco de tu IA de texto).</p>
+      <div class="fila" style="margin-top:0">
+        <label class="aviso"><input type="checkbox" id="corIA"> Que la IA revise y agregue lo que falte</label>
+      </div>
+      <div class="fila">
+        <button class="principal" id="btnCorregir" onclick="corregir()">🔎 Buscar qué corregir</button>
+        <button id="btnCorregirAplicar" onclick="corregirAplicar()" hidden>✅ Aplicar lo marcado</button>
+      </div>
+      <div id="corResumen" class="aviso"></div>
+      <div id="listaCorregir" style="max-height:26em;overflow:auto"></div>
+      <p class="aviso">Desmarca lo que no va. Al aplicar: los cortes y acelerados pasan a «✂️ Acortar», el trozo de
+      testimonios va al cierre (con 1-2 frases de tu voz), la placa «GSMPRIME.CO • XIAOMIUNLOCK.COM» se pone encima de la
+      web (tu grabación de antes queda como original_sin_corregir.mp4) y la IA del guion dice bien lo que el original dijo
+      mal. El informe queda en QUE_SE_CORRIGE.md, en la carpeta del proyecto.</p>
     </section>
 
     <section class="panel" id="panelAcortar">
@@ -1020,7 +1042,7 @@ async function cargarProyectos(sel) {
   // «honor 8 lite» y «HONOR 8 LITE» son la misma carpeta en Windows: se abre esa, no el primero de la lista
   if (!lista.includes(P)) P = lista.find(x => x.toUpperCase() === String(P).toUpperCase()) || lista[0];
   $('#proyecto').value = P;
-  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar(); setTimeout(MODULO ? abrirModuloAqui : irLink, 800);
+  ultimo = null; editado = false; await abrir(archivo); await cargarPistas(); await cargarTarjetas(); await cargarTestimonios(); await cargarModelos(); await cargarAcortar(); await cargarCorregir(); await cargarPaginas(); await cargarTrailerDonde(); await leerEstabilizar(); await cargarMarcas(); await cargarEstilos(); await cargarConocimiento(); idCargar(''); await refrescar(); setTimeout(MODULO ? abrirModuloAqui : irLink, 800);
 }
 async function nuevo() {
   if (editado && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
@@ -2064,6 +2086,38 @@ async function acortarRehacer() {
   try { await api(`/api/ejecutar?p=${q(P)}&paso=acortar`, {method: 'POST', body: JSON.stringify({rehacer: true})}); } catch (e) { return alert(e.message); }
   esperaAcortar = true; refrescar();
 }
+// «🩹 Qué se corrige del original» (fabian, 13/11/2026): correcciones.json, cada una con «usar»
+let CORR = null, esperaCorregir = false;
+const TIPO_CORR = {intento_fallido: '🔁 Intento que falla', web_prohibida: '🚫 Web que no va', modelo_equivocado: '📱 Modelo equivocado',
+  promesa_tiempo: '⏱ Promesa de tiempo', espera_larga: '⏩ Espera larga', testimonio_largo: '💬 Testimonios largos', comentarios: '🗨 Comentarios de YouTube'};
+async function cargarCorregir() {
+  try { const t = await api(`/api/json?p=${q(P)}&f=correcciones.json`); CORR = t ? JSON.parse(t) : null; } catch (e) { CORR = null; }
+  pintarCorregir();
+}
+function pintarCorregir() {
+  const l = (CORR && CORR.correcciones) || [];
+  $('#btnCorregirAplicar').hidden = !l.length;
+  if (!CORR) { $('#corResumen').textContent = ''; $('#listaCorregir').innerHTML = ''; return; }
+  $('#corResumen').innerHTML = l.length ? `${l.filter(c => c.usar).length} de ${l.length} marcadas` + (CORR.modelo ? ` · modelo del proyecto: <b>${esc(CORR.modelo)}</b>` : '') +
+    (CORR.aplicado ? ' · <b>✓ aplicadas</b>' : '') : 'No encontré nada que corregir: el original va bien.';
+  $('#listaCorregir').innerHTML = l.map((c, i) => `<label class="pista" style="cursor:pointer"><input type="checkbox" ${c.usar ? 'checked' : ''} onchange="marcarCorregir(${i}, this.checked)">
+    <div style="flex:1;min-width:0"><b>${mmss(c.inicio)}–${mmss(c.fin)}</b> ${TIPO_CORR[c.tipo] || esc(c.tipo)}: ${esc(c.resumen)}
+    <div class="aviso">${esc(c.correccion)}${c.seguridad === 'media' ? ' · <b>revísalo</b>' : ''}${c.nota ? ' · ' + esc(c.nota) : ''}</div>
+    ${c.dice ? `<div class="aviso">dice: «${esc(c.dice)}»</div>` : ''}</div></label>`).join('');
+}
+async function marcarCorregir(i, v) {
+  CORR.correcciones[i].usar = v;
+  try { await api(`/api/json?p=${q(P)}&f=correcciones.json`, {method: 'POST', body: JSON.stringify(CORR, null, 1)}); } catch (e) { alert(e.message); }
+  pintarCorregir();
+}
+async function corregir() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=corregir`, {method: 'POST', body: JSON.stringify({ia: $('#corIA').checked})}); } catch (e) { return alert(e.message); }
+  esperaCorregir = true; refrescar();
+}
+async function corregirAplicar() {
+  try { await api(`/api/ejecutar?p=${q(P)}&paso=corregir`, {method: 'POST', body: JSON.stringify({aplicar: true})}); } catch (e) { return alert(e.message); }
+  esperaCorregir = true; refrescar();
+}
 // «🧠 Conocimiento»: mis_conocimientos/CONOCIMIENTO.md (tuyo, editable) y lo aprendido de los proyectos (lo llena la app)
 function pintarConocimiento(r, msg) {
   $('#conoRutas').innerHTML = `📄 <b>${esc(r.principal)}</b><br>📄 ${esc(r.aprendido_ruta)}`;
@@ -2634,7 +2688,7 @@ async function idUsar(lang) {
   if (confirm(`Las etiquetas quedan en ${r.nombres[lang] || lang}. ¿Las vuelvo a poner ahora sobre el video? (solo se redibujan los extras; no gasta créditos)`)) insertarExtras();
 }
 // Links directos a cada sección: http://localhost:8765/#cortes, #idiomas, #ajustes… (y ?p=PROYECTO para elegir el proyecto)
-const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
+const LINKS = {flechas: '#panelMarcas', acortar: '#panelAcortar', corregir: '#panelCorregir', cortes: '#panelImportantes', alimentacion: '#panelEstilo',
   conocimiento: '#panelConocimiento', idiomas: '#panelIdiomas', tarjetas: '#panelTarjetas', comprimir: '#panelComprimir', subtitulos: '#panelSubtitulos',
   short: '#panelShort'};
 let LINK_ACTUAL = '';
@@ -3470,6 +3524,8 @@ async function refrescar() {
   if (esperaNube && !t.proyecto) finNube(e);
   if (esperaEstilo && !t.proyecto) { esperaEstilo = false; cargarEstilos(); }
   if (esperaAcortar && !t.proyecto) { esperaAcortar = false; cargarAcortar(); }
+  if (esperaCorregir && !t.proyecto) { esperaCorregir = false; cargarCorregir(); cargarAcortar(); }
+  $('#btnCorregir').disabled = $('#btnCorregirAplicar').disabled = !!t.proyecto || !e.archivos['original.mp4'];
   $('#btnAcortar').disabled = $('#btnAcortarRehacer').disabled = !!t.proyecto || !e.archivos['original.mp4'];
 }
 setInterval(refrescar, 2000);
