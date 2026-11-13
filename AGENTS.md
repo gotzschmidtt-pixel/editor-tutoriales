@@ -136,6 +136,10 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   por `correcciones_guion()` (web, modelo y tiempo se arreglan solos). Reglas: `mis_conocimientos/correcciones/reglas.json`
   (GUIONES-IA). En la nube haz lo mismo: corre el script, muéstrale el informe y espera su OK.
   Prueba: `python tests/test_corregir_original.py`.
+- **Páginas entre el minuto 1 y 2 (regla fija, todas las marcas, no en noticias).** La IA del guion lo recibe como regla;
+  si falta, `corregir_original.paginas_min_1_2()` agrega «Y recuerda nuestras páginas oficiales: G S M Prime punto co y
+  Xiaomi Unlock punto com.» al bloque que suena ahí, y `etiquetas.py` pone la placa «GSMPRIME.CO • XIAOMIUNLOCK.COM» cuando
+  la voz lo dice. El buscador lo marca si el original no las nombra en ese minuto.
 
 ## Decisiones del autor (03/11/2026)
 

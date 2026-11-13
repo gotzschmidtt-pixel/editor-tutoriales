@@ -113,6 +113,7 @@ def main():
         ok(any(c['que'] == 'reinicio y formateo' and 435 <= c['inicio'] <= 445 for c in e), f"espera de formateo (no desde «se va a reiniciar»): {[(c['inicio'], c['que']) for c in e]}")
         ok(any(c['que'] == 'configuración' and 595 <= c['inicio'] <= 605 for c in e), 'espera de configuración')
         ok(not any(c['tipo'] == 'comentarios' and c['inicio'] > 800 for c in L), 'el «nos vemos» del cierre no se toca')
+        ok(len(por('paginas_min_1_2')) == 1, 'regla fija: el original no nombra tus páginas entre el minuto 1 y 2')
         ok(os.path.exists(os.path.join(d, co.INFORME)) and 'Qué se corrige del original' in open(os.path.join(d, co.INFORME), encoding='utf-8').read(),
            'deja QUE_SE_CORRIGE.md')
 
@@ -165,6 +166,23 @@ def main():
         ok('Honor 400 Lite' in b[2]['texto'], f"guion: otro modelo → el del proyecto ({b[2]['texto']})")
         ok(b[3]['texto'].endswith('Honor 600 Lite.') and b[4]['texto'] == 'Esperamos unos segundos a que prenda.' and len(av) == 3,
            'guion: la lista de modelos y «unos segundos a que prenda» no se tocan')
+
+        # regla fija: páginas entre el minuto 1 y 2 (voz en el guion + placa en etiquetas)
+        g = [{'id': f'L{k:02d}', 'texto': 'palabra ' * 25} for k in range(1, 15)]  # ~11 s cada uno, 2,5 min
+        largo = lambda x: len(x['texto'].split()) / 2.5 + 1
+        av = co.paginas_min_1_2(g, largo, d)
+        con = [x['id'] for x in g if 'Xiaomi Unlock' in x['texto']]
+        t0 = sum(largo(x) for x in g[:int(con[0][1:]) - 1]) if con else -1
+        ok(len(con) == 1 and 50 <= t0 <= 105 and av, f'el guion agrega tus páginas en un bloque del minuto 1-2 ({con}, empieza en {t0:.0f} s)')
+        ok(co.paginas_min_1_2(g, largo, d) == [], 'si ya las nombra, no las repite')
+        noticia = os.path.join(base, 'MOVISTAR_NOTICIA')
+        os.makedirs(noticia)
+        g2 = [{'id': f'L{k:02d}', 'texto': 'palabra ' * 25} for k in range(1, 9)]
+        ok(co.paginas_min_1_2(g2, largo, noticia) == [], 'en una noticia (sin marca) no se agregan')
+        bl = [{'id': 'L01', 'inicio_min': 0, 'texto': 'hola'}, {'id': 'L07', 'inicio_min': 70.0, 'texto': 'Visita G S M Prime punto co.'}]
+        e = co.etiqueta_paginas(bl, [])
+        ok(e and e['bloque'] == 'L07' and e['tipo'] == 'web' and 'XIAOMIUNLOCK' in e['texto'], f'placa de tus páginas en el minuto 1-2: {e}')
+        ok(co.etiqueta_paginas(bl, [{'tipo': 'web', 't': 80}]) is None, 'si ya hay una placa web en ese minuto no se duplica')
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print('\nTODO BIEN' if not fallos else f'\nFALLAN {len(fallos)}')

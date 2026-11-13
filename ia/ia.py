@@ -459,6 +459,9 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           f"- [{mmss(a)}] ({', '.join(sorted(n))}) «{f[:160]}»" for a, _, f, n in acc))
     if tarea == 'guion' and importantes.leer(d):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
+    if tarea == 'guion' and corregir_original.marca_y_modelo(d)[0]:  # regla fija (fabian, 13/11/2026), no en noticias
+        partes.append("REGLA FIJA DEL AUTOR: entre el minuto 1:00 y el 2:00 del video, la voz nombra nuestras páginas oficiales "
+                      "así: «G S M Prime punto co y Xiaomi Unlock punto com» (en pantalla sale la placa GSMPRIME.CO • XIAOMIUNLOCK.COM).")
     corr = corregir_original.texto_para_ia(d) if tarea in ('guion', 'trailer') else ''
     if corr:  # lo que aprobaste en «🩹 Qué se corrige del original» (fabian, 13/11/2026)
         partes.append(corr)
@@ -1558,6 +1561,7 @@ def revisar(d, tarea, datos):
         bloques[:] = unicos
         # la voz nueva no repite los errores del original: web prohibida, otro modelo, «en unos minutos» por la KEY
         avisos += corregir_original.correcciones_guion(d, bloques)
+        avisos += corregir_original.paginas_min_1_2(bloques, _largo_estimado, d)  # regla fija: páginas entre el min 1 y 2
         # dos bloques con el mismo id: la voz del segundo pisaría la del primero y se rehacían (y pagaban) en cada «Generar voz»
         todos, usados = {str(b.get('id') or '').strip() for b in bloques}, set()
         for k, b in enumerate(bloques, 1):

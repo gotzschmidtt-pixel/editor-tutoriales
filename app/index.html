@@ -2089,7 +2089,7 @@ async function acortarRehacer() {
 // «🩹 Qué se corrige del original» (fabian, 13/11/2026): correcciones.json, cada una con «usar»
 let CORR = null, esperaCorregir = false;
 const TIPO_CORR = {intento_fallido: '🔁 Intento que falla', web_prohibida: '🚫 Web que no va', modelo_equivocado: '📱 Modelo equivocado',
-  promesa_tiempo: '⏱ Promesa de tiempo', espera_larga: '⏩ Espera larga', testimonio_largo: '💬 Testimonios largos', comentarios: '🗨 Comentarios de YouTube'};
+  promesa_tiempo: '⏱ Promesa de tiempo', espera_larga: '⏩ Espera larga', testimonio_largo: '💬 Testimonios largos', comentarios: '🗨 Comentarios de YouTube', paginas_min_1_2: '🌐 Páginas en el minuto 1-2'};
 async function cargarCorregir() {
   try { const t = await api(`/api/json?p=${q(P)}&f=correcciones.json`); CORR = t ? JSON.parse(t) : null; } catch (e) { CORR = null; }
   pintarCorregir();

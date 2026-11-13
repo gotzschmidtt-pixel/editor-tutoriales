@@ -58,6 +58,9 @@ REGLAS = {
     'espera_minima_s': 20,         # una espera más corta la deja «Acortar»
     'espera_queda_s': 12,          # cuánto dura más o menos una espera acelerada
     'comentarios_minimo_s': 15,
+    # regla fija (fabian, 13/11/2026): entre el minuto 1 y 2 de cada tutorial la voz nombra tus páginas y sale la placa
+    'paginas_entre_s': [60, 120],
+    'paginas_frase': 'Y recuerda nuestras páginas oficiales: G S M Prime punto co y Xiaomi Unlock punto com.',
 }
 
 TIPOS = {
@@ -68,7 +71,9 @@ TIPOS = {
     'espera_larga': 'Espera larga',
     'testimonio_largo': 'Testimonios largos',
     'comentarios': 'Comentarios de YouTube',
+    'paginas_min_1_2': 'Páginas entre el minuto 1 y 2',
 }
+DICE_PAGINAS = r'g\s*s\s*m\s*prime|gsmprime|xiaomi\s*unlock|xiaomiunlock'
 
 # --- detectores (todo en minúsculas y sin acentos) ---
 ERROR_FUERTE = (r'me disculp|disculpen|disculpa(me)?\b|perdon|me equivoque|nos equivocamos|me confundi|'
@@ -484,6 +489,59 @@ def comentarios(dicho, cuadros, dur, rg):
     return out
 
 
+def paginas_ausentes(dicho, dur, rg):
+    """Regla fija (fabian, 13/11/2026): entre el minuto 1 y 2 se nombran tus páginas. Si el original no lo hace, la voz
+    nueva lo dice (correcciones_guion y paginas_min_1_2 lo aseguran en el guion; la placa la pone etiquetas.py)."""
+    a, b = rg['paginas_entre_s']
+    if dur < b or dicho.buscar(DICE_PAGINAS, a, b):
+        return []
+    return [{'tipo': 'paginas_min_1_2', 'inicio': float(a), 'fin': float(b), 'dice': dicho.frase(a, a + 8)[:120],
+             'resumen': 'entre el minuto 1 y 2 no se nombran tus páginas',
+             'correccion': 'La voz nueva las dice y sale la placa «' + rg['webs_buenas']['pantalla'] + '».',
+             'acciones': [{'hacer': 'voz', 'cambiar': '', 'por': rg['paginas_frase']}], 'seguridad': 'alta'}]
+
+
+def paginas_min_1_2(bloques, largo, d=None):
+    """En el guion: si ningún bloque que suena entre el minuto 1 y 2 nombra tus páginas, se agrega la frase al bloque que
+    suena ahí (el que no es un paso crítico ni el gancho, si hay). largo(b) = segundos que dura el bloque. Corre siempre."""
+    if d and not marca_y_modelo(d)[0]:  # una noticia (sin marca de teléfono) va sin páginas
+        return []
+    rg = reglas()
+    a, b = rg['paginas_entre_s']
+    t, dentro = 0.0, []
+    for x in bloques:
+        d = largo(x)
+        if t < b and t + d > a:
+            dentro.append((x, t))
+        t += d
+    if not dentro or t < b:
+        return []
+    if any(re.search(DICE_PAGINAS, normal(x.get('texto'))) for x, _ in dentro):
+        return []
+    buenos = [(x, s) for x, s in dentro if s + largo(x) >= a + 10 and s <= b - 15] or dentro
+    elegido = next((x for x, _ in buenos if not x.get('gancho') and x.get('tipo') != 'critico'), buenos[0][0])
+    elegido['texto'] = (str(elegido.get('texto') or '').rstrip() + ' ' + rg['paginas_frase']).strip()
+    return [f"{elegido.get('id', '?')}: agregué tus páginas (regla: entre el minuto 1 y 2 se nombran GSMPRIME.CO y XIAOMIUNLOCK.COM)"]
+
+
+def etiqueta_paginas(bloques, items):
+    """La placa de tus páginas entre el minuto 1 y 2 (etiquetas.py, con el tiempo real de cada bloque). Si ya hay una
+    etiqueta «web» en ese minuto no agrega nada. Devuelve la etiqueta a sumar o None."""
+    rg = reglas()
+    a, b = rg['paginas_entre_s']
+    if any(i.get('tipo') == 'web' and a - 5 <= float(i.get('t', -1)) <= b for i in items):
+        return None
+    for x in bloques:
+        ini = x.get('inicio_min')
+        if ini is None or ini > b:
+            continue
+        m = re.search(DICE_PAGINAS, normal(x.get('texto')))
+        if m and ini + 2 >= a - 30:
+            return {'bloque': x['id'], 'frase': m.group(0), 'tipo': 'web', 'titulo': 'Nuestras páginas',
+                    'texto': rg['webs_buenas']['pantalla'], 'dur': 5.0, 'origen': 'paginas_min_1_2'}
+    return None
+
+
 def sin_pisarse(lista):
     """Dos cortes que se pisan quedan en uno; un acelerado que pisa un corte se queda con lo que sobra a los lados."""
     cortes = sorted((c for c in lista if any(x['hacer'] == 'cortar' for x in c['acciones'])), key=lambda c: c['inicio'])
@@ -575,6 +633,7 @@ def buscar(d, usar_ia=False):
     lista = (intentos_fallidos(dicho, dur) + webs_prohibidas(dicho, cuadros, dur, rg) + modelos_equivocados(dicho, marca, modelo)
              + promesas_tiempo(dicho, marca, rg) + testimonios_largos(dicho, cuadros, dur, rg) + comentarios(dicho, cuadros, dur, rg))
     lista += esperas_largas(dicho, cuadros, dur, rg)
+    lista += paginas_ausentes(dicho, dur, rg) if marca else []
     if usar_ia:
         try:
             lista = con_ia(d, lista, dicho, marca, modelo, dur)
@@ -614,7 +673,9 @@ def informe(datos):
         dura = f' (casi {round(largo / 60, 1):g} minutos)' if largo >= 75 else ''
         marca = '' if c.get('usar', True) else '[sin marcar] '
         duda = ' (revísalo: no estoy seguro)' if c.get('seguridad') == 'media' else ''
-        if c['tipo'] in ('modelo_equivocado', 'promesa_tiempo'):
+        if c['tipo'] == 'paginas_min_1_2':
+            ls.append(f"- {marca}Entre el minuto 1 y 2 no se nombran tus páginas: {c['correccion'][0].lower() + c['correccion'][1:]}")
+        elif c['tipo'] in ('modelo_equivocado', 'promesa_tiempo'):
             ls.append(f"- {marca}En {mmss(c['inicio'])} {c['resumen']}: {c['correccion'][0].lower() + c['correccion'][1:]}{duda}")
         else:
             ls.append(f"- {marca}{mmss(c['inicio'])} a {mmss(c['fin'])}: {c['resumen']}{dura}. {c['correccion']}{duda}")

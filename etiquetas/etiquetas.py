@@ -192,6 +192,17 @@ def main():
             continue
         items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + t, 2), 'dur': e.get('dur', 3.5)})
 
+    try:  # regla fija (fabian, 13/11/2026): entre el minuto 1 y 2 sale la placa de tus páginas, junto a la voz que las dice
+        sys.path.insert(0, os.path.join(RAIZ, 'correcciones'))
+        import corregir_original
+        e = corregir_original.etiqueta_paginas(bloques, items)
+        f_al = os.path.join(a.voz, str(e['bloque']) + '.align.json') if e else ''
+        t = buscar(json.load(open(f_al, encoding='utf-8')), e['frase'], original.get(e['bloque'])) if e and os.path.exists(f_al) else None
+        if e:
+            items.append({**e, 't': round(inicio[e['bloque']] + a.desfase + (t if t is not None else 0.5), 2)})
+            print(f"Placa de tus páginas entre el minuto 1 y 2 (bloque {e['bloque']})")
+    except Exception as ex:
+        print(f'· no pude poner la placa de tus páginas del minuto 1-2 ({ex})')
     items, idioma, faltan = idiomas.aplicar(items, os.path.dirname(os.path.abspath(a.guion)))  # «🌐 Etiquetas en otro idioma»
     if idioma != idiomas.ORIGINAL:
         print(f"Etiquetas en {idiomas.NOMBRES.get(idioma, idioma)}" + (f" ({faltan} texto(s) sin traducir van en el original)" if faltan else ''))
