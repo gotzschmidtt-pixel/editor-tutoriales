@@ -56,6 +56,7 @@ import referencias as miniref  # noqa: E402  «🖼️ Miniaturas de referencia�
 sys.path.insert(0, os.path.join(RAIZ, 'avatar'))
 import ahorro as avatar_ahorro  # noqa: E402  «🧑 Avatar (ahorro)»: HeyGen solo en el inicio, 2-3 momentos y el cierre
 import respaldo  # noqa: E402  copia de los finales antes de «🔁 Rehacer video»
+import editable  # noqa: E402  «📦 Guardar proyecto editable»: todo el proyecto (con videos) en un .zip que la app reabre
 import recursos  # noqa: E402  «📊 Uso del PC»: procesador, RAM y gráfica mientras la app trabaja
 sys.path.insert(0, os.path.join(RAIZ, 'voz'))
 from texto_voz import texto_voz  # noqa: E402  el texto de un bloque tal como se mandó a ElevenLabs
@@ -286,6 +287,7 @@ def estado_importantes(d, aplicar=False):
             'hay_guion': bool(bloques), 'msg': msg}
 guardado.preparar_entorno()
 PROYECTOS = os.path.join(RAIZ, 'mis_proyectos')
+EDITABLES_ZIP = os.path.join(RAIZ, 'mis_proyectos_editables')  # donde queda «📦 Guardar proyecto editable» si no eliges otro lugar
 MUSICA_FIJA = os.path.join(RAIZ, 'mis_musica', 'musica_fija.mp3')  # «📌 Usar en todos los videos»: la misma pista para todos
 ESTILOS = os.path.join(RAIZ, 'mis_estilos')  # panel Alimentación: un perfil de estilo por canal, para todos los proyectos
 PUERTO = int(os.environ.get('PUERTO', 8765))
@@ -1114,6 +1116,7 @@ def elegir_en_la_pc(modo, nombre=''):
               'r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)\n'
               'f = fd.asksaveasfilename(parent=r, title="Guardar proyecto como", initialfile=sys.argv[3], defaultextension=".zip", '
               'filetypes=[("Proyecto guardado", "*.zip")]) if sys.argv[1] == "guardar" else '
+              'fd.askdirectory(parent=r, title="Elegir la carpeta del proyecto") if sys.argv[1] == "carpeta" else '
               'fd.askopenfilename(parent=r, title="Abrir proyecto guardado", filetypes=[("Proyecto guardado", "*.zip")])\n'
               'open(sys.argv[2], "w", encoding="utf-8").write(f or "")\n')
     try:
@@ -1175,6 +1178,46 @@ def abrir_guardado(d):
         conocimiento.juntar(otra)
         shutil.rmtree(otra, ignore_errors=True)
     return nombre
+
+
+def extras_editable():
+    """Lo que vive fuera del proyecto y viaja con el editable, como en «Guardar como»: la música fija (como música propia,
+    solo si el proyecto no tiene la suya) y lo aprendido (se suma al de la otra PC al abrirlo)."""
+    out = [(MUSICA_FIJA, 'musica.mp3')]
+    out += [(os.path.join(conocimiento.CARPETA, x), 'mis_conocimientos/' + x) for x in ('CONOCIMIENTO.md', 'aprendido_de_proyectos.md')]
+    if os.path.isdir(conocimiento.MARCAS):
+        out += [(os.path.join(conocimiento.MARCAS, x), 'mis_conocimientos/marcas/' + x) for x in sorted(os.listdir(conocimiento.MARCAS)) if x.endswith('.md')]
+    return out
+
+
+def guardar_editable(d, destino='', con_final=False):
+    """«📦 Guardar proyecto editable»: arranca el .zip en segundo plano. Devuelve la ruta donde quedará."""
+    if not destino:
+        os.makedirs(EDITABLES_ZIP, exist_ok=True)
+        destino = os.path.join(EDITABLES_ZIP, f"{os.path.basename(d)}_EDITABLE_{time.strftime('%Y-%m-%d_%H-%M')}.zip")
+    editable.en_segundo_plano('guardar', os.path.basename(d), lambda av: editable.empaquetar(
+        d, destino, VIDEOS_GENERADOS + VIDEOS_EXTRAS, con_final, extras_editable(), av))
+    return destino
+
+
+def despues_de_abrir(destino):
+    """Lo aprendido que traía el proyecto (de otra PC) se suma al tuyo y no queda dentro del proyecto."""
+    otra = os.path.join(destino, 'mis_conocimientos')
+    if os.path.isdir(otra):
+        conocimiento.juntar(otra)
+        shutil.rmtree(otra, ignore_errors=True)
+
+
+def abrir_editable(origen):
+    """«📂 Abrir proyecto editable»: un .zip o una carpeta de proyecto pasa a ser un proyecto más (en segundo plano)."""
+    def correr(av):
+        if os.path.isdir(origen):
+            nombre, destino = editable.abrir_carpeta(origen, PROYECTOS, av)
+        else:
+            nombre, destino = editable.abrir_zip(origen, PROYECTOS, '', av)
+        despues_de_abrir(destino)
+        return {'proyecto': nombre, 'video': existe(destino, 'original.mp4')}
+    editable.en_segundo_plano('abrir', os.path.basename(origen), correr)
 
 
 def carpeta_estilo(nombre):
@@ -2819,6 +2862,14 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.responder(estado(q['p']))
             if ruta == '/api/guardados':
                 return self.responder({'guardados': lista_guardados(carpeta(q['p']))})
+            if ruta == '/api/editable_resumen':  # lo que irá en «📦 Guardar proyecto editable», antes de guardarlo
+                r = editable.resumen(carpeta(q['p']), VIDEOS_GENERADOS + VIDEOS_EXTRAS, q.get('final') == '1')
+                return self.responder({**r, 'carpeta': EDITABLES_ZIP, 'carpeta_rel': os.path.relpath(EDITABLES_ZIP, RAIZ).replace(os.sep, '/')})
+            if ruta == '/api/editable_estado':  # la barra con porcentaje de guardar o abrir un editable
+                e = editable.estado()
+                if isinstance(e.get('resultado'), str):  # la ruta del .zip guardado, para el link /ver
+                    e['rel'] = os.path.relpath(e['resultado'], RAIZ).replace(os.sep, '/') if ruta_segura(e['resultado']) else ''
+                return self.responder(e)
             if ruta == '/api/version_guion':  # el editor la anota al abrir: si cambió al guardar, otra pestaña o la app guardó antes
                 f = os.path.join(carpeta(q['p']), q.get('f') if q.get('f') in ('etiquetas.json', 'senales.json') else 'guion.json')
                 v = hashlib.sha1(open(f, 'rb').read()).hexdigest() if os.path.exists(f) else ''
@@ -3881,7 +3932,6 @@ class Manejador(BaseHTTPRequestHandler):
                     return self.error((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'falló la vista previa')
                 return self.responder({'ok': True})
             if ruta == '/api/importar_proyecto':  # «📂 Abrir proyecto (.zip)»: un proyecto de otra PC o de «Guardar como»
-                import zipfile
                 tmp = tempfile.mktemp(suffix='.zip')
                 try:
                     with open(tmp, 'wb') as f:  # se baja a disco por partes: un proyecto con video pesa cientos de MB
@@ -3892,28 +3942,11 @@ class Manejador(BaseHTTPRequestHandler):
                                 break
                             f.write(parte)
                             falta -= len(parte)
-                    try:
-                        z = zipfile.ZipFile(tmp)
-                    except zipfile.BadZipFile:
-                        return self.error('Ese archivo no es un .zip.')
-                    with z:
-                        nombres = [n for n in z.namelist() if not n.endswith('/')]
-                        raices = {n.split('/', 1)[0] for n in nombres}
-                        dentro = len(raices) == 1 and all('/' in n for n in nombres)  # el zip trae la carpeta del proyecto
-                        base = next(iter(raices)) if dentro else os.path.splitext(q.get('nombre') or 'proyecto')[0]
-                        base = re.sub(r'^PC2_', '', re.sub(r'[^\w\- ]', '', base)).strip() or 'proyecto'
-                        nombre, k = base, 2
-                        while os.path.exists(os.path.join(PROYECTOS, nombre)):  # nunca pisa un proyecto que ya tienes
-                            nombre, k = f'{base}_{k}', k + 1
-                        destino = os.path.join(PROYECTOS, nombre)
-                        for n in nombres:
-                            rel = n.split('/', 1)[1] if dentro else n
-                            f = os.path.realpath(os.path.join(destino, rel))
-                            if os.path.commonpath([f, os.path.realpath(destino)]) != os.path.realpath(destino):
-                                continue  # una ruta que se sale de la carpeta del proyecto no se copia
-                            os.makedirs(os.path.dirname(f), exist_ok=True)
-                            with z.open(n) as a, open(f, 'wb') as b:
-                                shutil.copyfileobj(a, b, 8 << 20)
+                    try:  # lo mismo que «📂 Abrir proyecto editable», pero el .zip llega subido desde el navegador
+                        nombre, destino = editable.abrir_zip(tmp, PROYECTOS, q.get('nombre') or 'proyecto', exigir=False)
+                    except ValueError as e:
+                        return self.error(str(e))
+                    despues_de_abrir(destino)
                 finally:
                     if os.path.exists(tmp):
                         os.remove(tmp)
@@ -4250,6 +4283,44 @@ class Manejador(BaseHTTPRequestHandler):
                         quedaron.append(f)
                 FALLOS.pop(q['p'], None); RESULTADO.pop(q['p'], None)
                 return self.responder({'ok': True, 'borrados': borrados, 'quedaron': quedaron})
+            if ruta == '/api/editable_guardar':  # «📦 Guardar proyecto editable»
+                d = carpeta(q['p'])
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                with CANDADO:
+                    if TRABAJO['proyecto'] == q['p']:
+                        return self.error('Hay un paso trabajando en este proyecto. Espera a que termine o detenlo primero.')
+                destino = ''
+                if datos.get('elegir'):
+                    try:
+                        destino = elegir_en_la_pc('guardar', f"{os.path.basename(d)}_EDITABLE_{time.strftime('%Y-%m-%d')}.zip")
+                    except ValueError as e:
+                        return self.error(str(e))
+                    if not destino:
+                        return self.responder({'ok': True, 'cancelado': True})
+                try:
+                    destino = guardar_editable(d, destino, bool(datos.get('final')))
+                except ValueError as e:
+                    return self.error(str(e))
+                return self.responder({'ok': True, 'ruta': destino})
+            if ruta == '/api/editable_abrir':  # «📂 Abrir proyecto editable»: un .zip o una carpeta de tu PC
+                datos = json.loads(self.rfile.read(largo) or b'{}')
+                origen = str(datos.get('ruta') or '').strip().strip('"')
+                try:
+                    if not origen:
+                        origen = elegir_en_la_pc('carpeta' if datos.get('carpeta') else 'abrir')
+                    if not origen:
+                        return self.responder({'ok': True, 'cancelado': True})
+                    if not os.path.exists(origen):
+                        return self.error('No encuentro ese archivo o carpeta.')
+                    abrir_editable(origen)
+                except ValueError as e:
+                    return self.error(str(e))
+                return self.responder({'ok': True})
+            if ruta == '/api/editable_mostrar':  # abre el Explorador con el .zip guardado marcado
+                f = editable.ESTADO.get('resultado')
+                if isinstance(f, str) and os.path.exists(f):
+                    abrir_al_frente(f)
+                return self.responder({'ok': True})
             if ruta in ('/api/guardar_proyecto', '/api/volver_a_guardado', '/api/guardar_como', '/api/abrir_guardado'):
                 d = carpeta(q['p'])
                 datos = json.loads(self.rfile.read(largo) or b'{}')

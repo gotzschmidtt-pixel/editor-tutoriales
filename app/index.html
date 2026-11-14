@@ -191,6 +191,7 @@
     <button onclick="actualizarProyecto()" title="Rearma el video desde cero con tu transcripción, guion y voces (no gasta créditos en lo que ya está). Antes copia tus finales a FINAL_antes_rehacer_…">🔁 Rehacer video</button>
     <button onclick="$('#abrirZip').click()" title="Abre un proyecto guardado en .zip (de otra PC, de «Guardar como» o el que te pasa Claude): queda como un proyecto más, sin pisar los tuyos">📂 Abrir proyecto</button>
     <button onclick="abrirGuardados()" title="Guarda lo hecho (guion, voces, respuestas, tráiler, etiquetas) para retomarlo después, o vuelve a un guardado">💾 Guardar proyecto</button>
+    <button onclick="abrirEditable()" title="TODO el proyecto (video grabado, material extra, voces, guion, etiquetas, círculos, subtítulos, música…) en un solo .zip que la app vuelve a abrir para seguir editando, aquí o en otra PC">📦 Proyecto editable</button>
     <button onclick="abrirCola()" title="Deja varios proyectos en fila y la app los arma uno detrás del otro (de noche). También: lo gastado este mes en voz e IA">🌙 Cola y gastos</button>
     <button onclick="abrirModulo('panelComprimir')" title="Cualquier video, misma calidad y mucho menos peso (como YouTube)">🗜 Comprimir</button>
   </div></details>
@@ -861,6 +862,22 @@
   <div class="fila"><button onclick="dlgGuardados.close()">Cerrar</button><span class="msg" id="msgGuardados"></span></div>
 </dialog>
 
+<dialog id="dlgEditable">
+  <h3>📦 Proyecto editable</h3>
+  <p class="aviso">Guarda <b>todo</b> el proyecto en un solo .zip para seguir editándolo después, aquí o en otra PC: el video grabado,
+  el material extra, las voces (con su alineación, no se pagan otra vez), el guion, etiquetas, círculos y flechas, subtítulos,
+  música, testimonios, tarjetas y tráiler. Lo que la app rehace sola (montajes intermedios y FINAL) no va.</p>
+  <div id="edResumen" class="aviso"></div>
+  <div class="fila"><label><input type="checkbox" id="edFinal" onchange="pintarEditable()"> Incluir también el FINAL.mp4 (pesa más)</label></div>
+  <div class="fila"><button class="principal" id="edGuardar" onclick="guardarEditable(false)">📦 Guardar proyecto editable</button>
+    <button onclick="guardarEditable(true)" title="Elige tú dónde dejar el .zip (USB, Drive, otra carpeta…)">📁 Guardar en…</button></div>
+  <p><b>Abrir un proyecto editable</b> <span class="aviso">(queda como un proyecto más; nunca pisa uno tuyo)</span></p>
+  <div class="fila"><button onclick="abrirEditableDe(false)">📂 Abrir .zip editable…</button>
+    <button onclick="abrirEditableDe(true)" title="Una carpeta de proyecto (con guion.json, original.mp4…), por ejemplo la que te pasa Claude o bajaste del Drive">📂 Abrir carpeta de proyecto…</button></div>
+  <div class="subida" id="edAvance" hidden><div class="e" id="edTexto"></div><div class="barra"><div id="edBarra" style="width:0%"></div></div></div>
+  <div class="fila"><button onclick="dlgEditable.close()">Cerrar</button><span class="msg" id="msgEditable"></span></div>
+</dialog>
+
 <dialog id="dlgDibujo" style="max-width:min(1100px, 96vw)">
   <h3>🎯 Señalar aquí <span class="aviso" id="dibSeg"></span></h3>
   <div class="fila" style="margin-top:0; align-items:center">
@@ -1202,6 +1219,66 @@ async function pintarGuardados() {
     '<p><b>Guardados de «' + esc(P) + '»</b></p>' + g.map(x => `<div class="fila" style="margin:4px 0"><span style="flex:1">${esc(x.nombre.replace(/_/g, ' '))}
       · ${x.bloques} bloques · ${x.voces} voces · ${x.mb} MB</span>
       <button onclick="volverAGuardado('${esc(x.nombre)}')" title="El proyecto vuelve a como estaba; lo actual se guarda antes">↩ Volver a este</button></div>`).join('');
+}
+async function abrirEditable() {
+  $('#msgEditable').textContent = ''; $('#edGuardar').disabled = !P;
+  await pintarEditable(); dlgEditable.showModal(); seguirEditable();
+}
+async function pintarEditable() {
+  const c = $('#edResumen');
+  if (!P) { c.textContent = 'Elige un proyecto arriba para guardarlo. Para abrir uno no hace falta.'; return; }
+  try {
+    const r = await api(`/api/editable_resumen?p=${q(P)}&final=${$('#edFinal').checked ? 1 : 0}`);
+    c.innerHTML = `«${esc(P)}»: ${r.archivos} archivos, unos <b>${r.mb >= 1000 ? (r.mb / 1000).toFixed(1) + ' GB' : Math.round(r.mb) + ' MB'}</b>.`
+      + ` Queda en la carpeta <code>${esc(r.carpeta)}</code> (o donde elijas).`
+      + (r.falta.length ? `<br>⚠ Falta: ${r.falta.map(esc).join(', ')}.` : '');
+  } catch (e) { c.textContent = e.message; }
+}
+async function guardarEditable(elegir) {
+  const m = $('#msgEditable'); m.className = 'msg';
+  m.textContent = elegir ? 'Elige dónde guardar en la ventana que se abrió (puede quedar detrás del navegador)…' : '';
+  try {
+    const r = await api(`/api/editable_guardar?p=${q(P)}`, {method: 'POST', body: JSON.stringify({elegir, final: $('#edFinal').checked})});
+    if (r.cancelado) { m.textContent = 'Cancelado: no se guardó nada.'; return; }
+    m.textContent = ''; seguirEditable();
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+async function abrirEditableDe(carpeta) {
+  const m = $('#msgEditable'); m.className = 'msg';
+  m.textContent = 'Elige ' + (carpeta ? 'la carpeta' : 'el .zip') + ' en la ventana que se abrió (puede quedar detrás del navegador)…';
+  try {
+    const r = await api('/api/editable_abrir', {method: 'POST', body: JSON.stringify({carpeta})});
+    if (r.cancelado) { m.textContent = 'Cancelado.'; return; }
+    m.textContent = ''; seguirEditable();
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+}
+let edReloj = null;
+async function seguirEditable() {  // la barra con porcentaje mientras guarda o abre
+  clearTimeout(edReloj);
+  let e; try { e = await api('/api/editable_estado'); } catch (x) { return; }
+  const caja = $('#edAvance'), m = $('#msgEditable');
+  if (e.activo) {
+    caja.hidden = false;
+    $('#edTexto').textContent = (e.tarea === 'guardar' ? '📦 Guardando «' : '📂 Abriendo «') + e.proyecto + '»: ' + e.porcentaje + ' %'
+      + (e.archivo ? ' · ' + e.archivo : '');
+    $('#edBarra').style.width = e.porcentaje + '%';
+    edReloj = setTimeout(seguirEditable, 700); return;
+  }
+  caja.hidden = true;
+  if (!e.tarea || !dlgEditable.open) return;
+  if (e.error) { m.className = 'msg err'; m.textContent = '✗ ' + e.error; return; }
+  if (e.tarea === 'guardar' && typeof e.resultado === 'string') {
+    m.className = 'msg ok';
+    m.innerHTML = '✓ Guardado: <code>' + esc(e.resultado) + '</code> '
+      + (e.rel ? `<a href="/carpeta?ruta=${q(e.rel.split('/').slice(0, -1).join('/'))}" target="_blank">ver carpeta</a> · ` : '')
+      + '<a href="#" onclick="api(\'/api/editable_mostrar\', {method: \'POST\', body: \'{}\'}); return false">mostrar en el Explorador</a>';
+  } else if (e.tarea === 'abrir' && e.resultado && e.resultado.proyecto) {
+    m.className = 'msg ok';
+    m.innerHTML = `✓ Proyecto «${esc(e.resultado.proyecto)}» abierto. <a href="/?p=${q(e.resultado.proyecto)}">Ir a él</a> · `
+      + `<a href="/pistas?p=${q(e.resultado.proyecto)}" target="_blank">🎚 Editor por pistas</a>`
+      + (e.resultado.video ? '' : '<br>Ojo: no trae el video grabado (original.mp4); súbelo en «1 · Archivos».');
+    cargarProyectos(P);
+  }
 }
 async function guardarProyecto() {
   const m = $('#msgGuardados');
