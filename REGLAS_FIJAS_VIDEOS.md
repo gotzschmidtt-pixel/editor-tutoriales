@@ -78,3 +78,28 @@ Primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
 - Los enlaces estudio.localhost solo abren en la PC donde están los archivos.
 - **(OPCIONAL, en prueba) Pausas cortas al hablar** (fabian, 14/11/2026: «vamos muy rápido… como si fuese una persona real quien habla»): pausa de ~0,8 s al final de cada frase, ~0,3 s en cada coma de la voz y al terminar cada párrafo (bloque) una pausa más larga de ~1,6 s (fabian 14/11: «finalizando algún párrafo, debemos aún añadirle una pausa»; antes 0,8 s), además, cada ~20 palabras una pausa semilarga de ~1,4 s al terminar la frase, como respira una persona (fabian 14/11: «cada cierta parte pausas semi largas, emulando un tono humano»), y la voz ~3 % más lenta (~7 % en pasos críticos: serial, KEY, Erase FRP); además 3 o 4 RESPIROS por video de 2 a 4 s (distintos entre sí, en momentos clave: modo fastboot, KEY obtenida, tras Erase FRP, Omitir) donde la voz calla y la música sube (0,10 → 0,32) para que se escuche; todas las pausas varían un poco al azar para que no suene a algoritmo en bucle (fabian 14/11: «algo de sentido común»); punto medio ≈120 palabras por minuto; sin regrabar (se corta la voz ya grabada en los puntos). Es OPCIONAL, de ensayo y error: probarla y ajustar los tiempos según lo que diga fabian.
 - **Pantalla «Verifica tu cuenta» de Google (Honor y FRP en general; fabian, 14/11/2026):** mientras se ve la pantalla de verificación SIN el botón «Omitir», va en cámara más lenta (≈0,5×, unos 8-10 s en pantalla), porque es esencial mostrarle al cliente que el teléfono SÍ tiene cuenta de Google. Ejemplo: Honor 400 Lite, minuto 1:17.
+
+## Fallos que NO se pueden repetir (fabian, 14/11/2026, revisión del Honor 400 Lite con 49 fallos confirmados)
+Antes de entregar cualquier video, revisarlo ENTERO (ver y escuchar como persona, no solo contra esta lista) buscando estos fallos:
+**Imagen = voz**
+- Si la voz dice «así empieza / bloqueado» se ve el ANTES; si dice «así termina / libre» se ve el DESPUÉS. Nunca la etiqueta equivocada.
+- En el DURANTE (inicio y tutorial), el clic en ERASE FRP BY CODE y el campo donde se pega la KEY van claros: zoom a la ventana (botones + código legibles en el celular), círculo en el botón correcto (centrado en Erase, no en Reboot) y cámara lenta.
+- No mostrar el resultado de un paso antes de explicarlo (serial ya leído, pedido ya enviado) y no repetir la misma toma (Place Order una sola vez).
+- La acción va sobre la frase que la nombra («apagamos» → menú de apagar; «descargas» → página de descarga con círculo en Descargar; «termina en 77/W» → se ven LOS DOS lados con círculo en los últimos caracteres).
+- Círculos fijos sobre el dato (nombre del modelo, KEY): si el teléfono se mueve, el círculo se quita; círculos del mismo color del kit, nunca blancos sobre fondo blanco; el cursor no tapa el dato.
+- Bloques consecutivos sin salto atrás (el reinicio no se ve dos veces).
+**Ritmo visual**
+- Ninguna pantalla quieta más de 4-5 s sin zoom lento o toma de cámara; webs a velocidad normal (no cámara lenta de una página quieta).
+- Toda parte acelerada lleva la etiqueta «PARTE ACELERADA» y deja 2-3 momentos legibles.
+- El video termina con fundido a negro + 10-15 s para la pantalla final de YouTube (nunca cortar a mitad de un paneo).
+**Legibilidad en celular**
+- Capturas de WhatsApp/testimonios con zoom a las frases que nombra la voz (nunca tira finita con 60 % negro).
+**Sonido**
+- Música en bucle sin silencios ni reinicio audible (fundido 2-3 s entre vueltas), subidas/bajadas suaves (~1 s), mismo volumen en todas las partes (inicio, cuerpo, testimonios, cierre); el audio se rehace en cada armado; salida a 48 kHz.
+- Pausas humanas también en el INICIO (no solo en el cuerpo).
+**Subtítulos**
+- Nunca encima de carteles (ANTES/DURANTE/DESPUÉS, testimonios, COMENTA) ni de botones: ahí van arriba o no van.
+- La palabra amarilla solo cambia de color (sin agrandar: si no, se pegan las palabras); sin parpadeo entre palabras; nombres de botones y modelos nunca partidos («Erase FRP By Code», «Read Fastboot Info», «Honor 400 Lite»).
+**Retención y confianza**
+- El primer paso real antes del 1:30; inicio de 30-40 s que abre con el problema (0-3 s) y el resultado (4-8 s); testimonios ~25 s.
+- Decir que la KEY tiene costo antes de decir «gratis»; nada en pantalla que contradiga a la voz («(Instant)», «Success» en segundos, pedidos «Rejected», carteles de otro país/modelo); si el programa se llama distinto en la ventana, aclararlo con una etiqueta.
