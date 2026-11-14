@@ -76,4 +76,4 @@ Primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
 - Da siempre un enlace clickeable: http://estudio.localhost:8765/ver?ruta=… para archivos y /carpeta?ruta=… para carpetas.
 - Da también la ruta completa de Windows.
 - Los enlaces estudio.localhost solo abren en la PC donde están los archivos.
-- **(OPCIONAL, en prueba) Pausas cortas al hablar** (fabian, 14/11/2026: «vamos muy rápido… como si fuese una persona real quien habla»): pausa de ~0,6 s al final de cada frase de la voz y respiro de ~0,8 s entre bloques, sin regrabar (se corta la voz ya grabada en los puntos). Es OPCIONAL, de ensayo y error: probarla y ajustar los tiempos según lo que diga fabian.
+- **(OPCIONAL, en prueba) Pausas cortas al hablar** (fabian, 14/11/2026: «vamos muy rápido… como si fuese una persona real quien habla»): pausa de ~0,6 s al final de cada frase de la voz y al terminar cada párrafo (bloque) una pausa más larga de ~1,6 s (fabian 14/11: «finalizando algún párrafo, debemos aún añadirle una pausa»; antes 0,8 s), sin regrabar (se corta la voz ya grabada en los puntos). Es OPCIONAL, de ensayo y error: probarla y ajustar los tiempos según lo que diga fabian.
