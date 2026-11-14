@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Estudio de tutoriales</title>
+<title>Estudio de tutoriales · APP v__VERSION_APP__</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#06070c">
 <style>
   :root {
@@ -20,6 +20,8 @@
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 22px; border-bottom: 1px solid var(--borde);
     background: linear-gradient(90deg, #ff2bd61a, #2bd9ff1a); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); }
   header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
+  header h1 .version { font-size: 12px; font-weight: 600; padding: 2px 8px; margin-left: 6px; border: 1px solid var(--borde); border-radius: 999px;
+    color: var(--azul); vertical-align: 2px; white-space: nowrap; }
   header h1 b { background: linear-gradient(90deg, var(--rosa), var(--azul)); -webkit-background-clip: text; color: transparent; }
   select, input, textarea, button { font: inherit; color: var(--texto); }
   select, input[type=text], input[type=number] { background: var(--panel2); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; }
@@ -182,7 +184,7 @@
 </head>
 <body>
 <header>
-  <h1>🎬 <b>Estudio</b> de tutoriales</h1>
+  <h1>🎬 <b>Estudio</b> de tutoriales <span id="versionApp" class="version" title="Versión de la app. Sube con cada actualización">APP v__VERSION_APP__</span></h1>
   <select id="proyecto"><option>Cargando proyectos…</option></select>
   <button id="reintentarProyectos" hidden onclick="cargarProyectos()" title="Vuelve a pedir la lista de proyectos">⟳ Reintentar</button>
   <button class="principal" onclick="recargar()" title="Recarga la página, igual que F5. No borra ni rehace nada">↻ Actualizar</button>
@@ -3450,6 +3452,7 @@ async function refrescar() {
   if (!P) return;
   const e = await api(`/api/estado?p=${q(P)}`);
   pintarSubidas(e.archivos); pintarMusicaFija(e); pintarVozVieja(e.voz_vieja); pintarPasos(e.pasos, e.trabajo, e.fallo); pintarBarra(e.trabajo, e.resultado, e.archivos);
+  if (e.version && $('#versionApp')) $('#versionApp').textContent = 'APP v' + e.version;
   // hay archivos nuevos: se reinicia sola (no con cambios sin guardar ni con una ventana abierta, como el guion)
   if (e.actualizada && !e.trabajo.proyecto && !editado && !document.querySelector('dialog[open]')) reiniciarApp(true);
   // la página también cambió: se recarga sola (sin trabajo en curso ni cambios sin guardar)
