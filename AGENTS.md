@@ -53,6 +53,11 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
   voz» lo aplica solo; «🎵 Aplicar a la voz» lo rehace al cambiar de estilo (después, volver a montar). Un bloque puede pedir
   su respiro con `"respiro_s"` en el guion. Estilos propios en `mis_estilos/ritmos.json`; el estilo «calibrado con los videos
   más vistos» queda reservado. Prueba: `python tests/test_ritmo.py`.
+- **Ritmo MULTIMARCA y en todos los videos** (fabian, 14/11/2026: «que no quede solo para Honor sino multimarca»): los pasos
+  críticos y los momentos de respiro reconocen Honor, Huawei, Xiaomi, Samsung, Motorola, iPhone y lo general (`MARCAS` en
+  `voz/ritmo.py`; palabras nuevas en `mis_estilos/ritmo_marcas.json`). El estilo vale también para el inicio (son bloques del
+  guion), los Shorts (pausas más cortas, sin respiros, para no pasar de ~60 s) y la frase del tráiler (alarga los silencios
+  entre frases sin pasarse de su largo).
 
 ## Decisiones del autor (31/10/2026)
 

@@ -131,6 +131,36 @@ try:
     ok(all(fin(cv, b) > crudo[b] for b in TEXTOS), '«Pausas v2» no alargó')
     ok(not any(x['respiro'] for x in est['bloques'].values()), '«Pausas v2» con respiros')
 
+    # MULTIMARCA: los momentos de respiro y los pasos críticos de otras marcas
+    for t, n in [('Ahora entramos en modo DFU con los dos botones.', 0), ('Ponemos el Samsung y ya estamos en modo descarga.', 0),
+                 ('Ya llegó el código de desbloqueo de Motorola.', 1), ('Damos clic en Unlock y se reinicia.', 2),
+                 ('Listo, el Xiaomi quedó desbloqueado.', 3)]:
+        ok(ritmo.RESPIRO[n].search(t), f'momento de respiro no reconocido: {t}')
+    ok(ritmo.es_critico({'texto': 'Copia el ECID que aparece en 3uTools.'}), 'ECID (iPhone) no es paso crítico')
+    ok(ritmo.es_critico({'texto': 'Marca la cuenta Mi y pega el código.'}), 'cuenta Mi (Xiaomi) no es paso crítico')
+
+    # Short: pausas más cortas y sin respiros
+    json.dump({'ritmo_voz': 'humano'}, open(os.path.join(d, 'edicion.json'), 'w'))
+    cs = os.path.join(d, 'voz_short')
+    os.makedirs(cs)
+    for bid in ('L03', 'L04', 'L05', 'L06'):
+        voz_falsa(cs, bid, TEXTOS[bid])
+    gs = os.path.join(d, '.short_voz_guion.json')
+    json.dump({'bloques': [b for b in bloques if b['id'] in ('L03', 'L04', 'L05', 'L06')]}, open(gs, 'w', encoding='utf-8'))
+    es = ritmo.aplicar(gs, cs, d, log=lambda x: None, corto=True)
+    ok(not any(x['respiro'] or x['cola'] for x in es['bloques'].values()), f'el Short con respiros o cola: {es}')
+    cuatro = ('L03', 'L04', 'L05', 'L06')
+    ok(all(crudo[b] < fin(cs, b) for b in cuatro) and sum(fin(cs, b) for b in cuatro) < sum(h1[b] for b in cuatro),
+       'el Short no quedó entre «Antes» y «Humano»')
+
+    # tráiler (voz sin tiempos por letra): alarga los silencios sin pasarse del largo pedido
+    tr = os.path.join(d, 'trailer.voz.mp3')
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=300:d=1.5', '-f', 'lavfi', '-i', 'anullsrc=d=0.25:r=44100',
+                    '-f', 'lavfi', '-i', 'sine=f=300:d=1.5', '-f', 'lavfi', '-i', 'anullsrc=d=0.25:r=44100', '-f', 'lavfi', '-i', 'sine=f=300:d=1.5',
+                    '-filter_complex', '[0][1][2][3][4]concat=n=5:v=0:a=1', tr], check=True)
+    sal = ritmo.pausar_sin_tiempos(tr, os.path.join(d, 'trailer.voz_ritmo.mp3'), d, max_s=8, log=lambda x: None)
+    ok(sal != tr and dur(tr) + 0.2 < dur(sal) <= 8.1, f'tráiler: {dur(tr)} → {dur(sal)}')
+
     # estilos propios
     ok(set(ritmo.estilos()) >= {'antes', 'pausas_v2', 'humano'}, 'faltan estilos')
 finally:

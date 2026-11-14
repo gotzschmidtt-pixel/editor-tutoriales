@@ -363,8 +363,9 @@ def main():
         json.dump(al, open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)
-    if os.path.basename(a.guion) in ('guion.json', 'guion_prueba.json'):  # el Short y el tráiler quedan con su ritmo de siempre
-        ritmo.aplicar(a.guion, a.salida, log=lambda x: print(x, flush=True))
+    # «🎵 Ritmo»: todos los videos (fabian 14/11); el Short con pausas más cortas y sin respiros (dura ~60 s)
+    ritmo.aplicar(a.guion, a.salida, log=lambda x: print(x, flush=True),
+                  corto=os.path.basename(a.guion) not in ('guion.json', 'guion_prueba.json'))
     for x in ajustar_guion(a.guion, a.salida):
         print('·', x, flush=True)
     print('Duraciones reales de la voz guardadas en el guion.', flush=True)

@@ -22,6 +22,8 @@ Cómo se aplica (sin regrabar):
 - voz/ritmo.json guarda qué estilo tiene cada bloque, la pausa de párrafo («cola») y los respiros. voz.ajustar_guion suma
   esa cola al largo de cada bloque y musica.py sube la música en los respiros.
 - Un bloque puede pedir su propio respiro en guion.json: "respiro_s": 3 (0 = ninguno).
+- MULTIMARCA: los pasos críticos y los momentos de respiro reconocen Honor, Huawei, Xiaomi, Samsung, Motorola, iPhone y
+  lo general (MARCAS); se agregan palabras en mis_estilos/ritmo_marcas.json sin tocar el código.
 
 Uso: python ritmo.py --proyecto CARPETA [--estilo humano] [--semilla 400]   (aplica y recalcula los tiempos del guion)
 """
@@ -53,16 +55,55 @@ ESTILOS = {
 # lugar para el estilo calibrado con tus videos más vistos (se llena cuando se mida la retención por ritmo)
 FUTUROS = {'canal': 'Calibrado con tus videos más vistos (próximamente)'}
 
-# un paso crítico: el dato (serial, KEY —la voz dice «ki»—, Erase FRP) con una acción sobre él
-CRITICO_DATO = re.compile(r'\b(serial|key|keys|ki|clave|c[oó]digo|imei|pin|contrase\w*|erase\s*frp|read\s*fastboot)\b', re.I)
-CRITICO_ACCION = re.compile(r'\b(cop\w+|peg\w+|campo|clic|aparece|termina en|mand\w+|escrib\w+|ingres\w+)\b', re.I)
+# MULTIMARCA (fabian 14/11/2026: «que no quede solo para Honor sino multimarca»). Las palabras de todas las marcas valen
+# siempre (no hace falta saber la marca del video). Se suman las tuyas en mis_estilos/ritmo_marcas.json:
+#   {"MARCA": {"datos": ["palabra", ...], "modos": [...], "llega": [...], "accion_final": [...], "listo": [...]}}
+MARCAS = {
+    'general': {'datos': ['serial', 'key', 'keys', 'ki', 'clave', 'c[oó]digo', 'imei', 'pin', 'contrase\\w*', 'token', 'patr[oó]n'],
+                'modos': ['recovery', 'modo seguro'],
+                'llega': ['key', 'ki', 'c[oó]digo', 'token', 'clave', 'respuesta', 'desbloqueo'],
+                'accion_final': ['reset frp', 'remove frp', 'unlock', 'desbloquear', 'flashear', 'start', 'iniciar'],
+                'listo': ['no pide (ninguna )?cuenta', 'ya (puedes )?omitir', 'omitimos', 'qued[oó] libre', 'sin cuenta de google',
+                          'desbloquead[oa]', 'pantalla de inicio', 'ya entra']},
+    'honor': {'datos': ['erase\\s*frp', 'read\\s*fastboot'], 'modos': ['fastboot'], 'accion_final': ['erase\\s*frp']},
+    'huawei': {'datos': ['erase\\s*frp', 'testpoint', 'test\\s*point'], 'modos': ['fastboot', 'upgrade mode']},
+    'xiaomi': {'datos': ['mi account', 'cuenta mi', 'edl', 'test\\s*point', 'bootloader'], 'modos': ['edl', 'fastboot', 'sideload'],
+               'accion_final': ['unlock', 'reset mi account', 'disable mi cloud']},
+    'samsung': {'datos': ['\\*#0\\*#', 'adb', 'odin'], 'modos': ['modo descarga', 'download mode', 'modo test', 'modo prueba']},
+    'motorola': {'datos': ['mtk', 'brom', 'preloader'], 'modos': ['brom', 'preloader', 'fastboot', 'bootloader']},
+    'iphone': {'datos': ['ecid', 'udid', 'dfu', 'hello', 'bandas', 'jailbreak'], 'modos': ['dfu', 'recovery', 'pwndfu'],
+               'accion_final': ['bypass', 'activar', 'jailbreak', 'liberar'], 'listo': ['pantalla de hello', 'ya (est[aá] )?liberado']},
+}
+
+
+def _marcas():
+    todas = {k: {c: list(v) for c, v in d.items()} for k, d in MARCAS.items()}
+    try:
+        propias = json.load(open(os.path.join(RAIZ, 'mis_estilos', 'ritmo_marcas.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        propias = {}
+    for k, d in (propias.items() if isinstance(propias, dict) else []):
+        for c, v in (d.items() if isinstance(d, dict) else []):
+            if c in ('datos', 'modos', 'llega', 'accion_final', 'listo') and isinstance(v, list):
+                todas.setdefault(str(k).lower(), {}).setdefault(c, []).extend(re.escape(str(x)) for x in v if str(x).strip())
+    return todas
+
+
+def _lista(c):
+    return '|'.join(sorted({x for d in _marcas().values() for x in d.get(c, [])}, key=len, reverse=True))
+
+
+CRITICO_DATO = re.compile(r'\b(' + _lista('datos') + r')\b', re.I)
+CRITICO_ACCION = re.compile(r'\b(cop\w+|peg\w+|campo|clic|aparece|termina en|mand\w+|escrib\w+|ingres\w+|marca\w*)\b', re.I)
 OBVIO = re.compile(r'\b(enciend|encend|apag|conect|cable|esper|reinici|carg|desconect)', re.I)
-# los momentos de un respiro, en orden (fabian 14/11: modo fastboot, KEY obtenida, tras Erase FRP, Omitir)
+# los momentos de un respiro, en el orden del proceso (fabian 14/11, para todas las marcas): entra al modo (fastboot,
+# DFU, EDL, descarga, BROM…), llega la KEY/código, la acción final (Erase FRP, Unlock, Bypass…) y ya no pide cuenta
 RESPIRO = [re.compile(p, re.I) for p in (
-    r'\b(entramos|estamos|ya est\w+|aparece|vemos)\b[^.]{0,40}\bfastboot\b(?!\s*(reader|info))',
-    r'(aqu[ií] est[aá]|ya (aparece|lleg\w*|la tenemos|tenemos)|obtuvimos|lleg[oó])[^.]{0,40}\b(key|ki)\b|\b(key|ki)\b[^.]{0,30}(ya aparece|lleg[oó]|lista)',
-    r'clic en erase\s*frp|erase\s*frp[^.]{0,40}reinici',
-    r'no pide (ninguna )?cuenta|ya (puedes )?omitir|omitimos|qued[oó] libre|sin cuenta de google')]
+    r'\b(entramos|estamos|ya est\w+|aparece|vemos|entra|pasamos)\b[^.]{0,40}\b(' + _lista('modos') + r')\b(?!\s*(reader|info|tool))',
+    r'(aqu[ií] est[aá]|ya (aparece|lleg\w*|la tenemos|tenemos|sali[oó])|obtuvimos|lleg[oó])[^.]{0,40}\b(' + _lista('llega')
+    + r')\b|\b(' + _lista('llega') + r')\b[^.]{0,30}(ya aparece|lleg[oó]|lista|sali[oó])',
+    r'clic en (' + _lista('accion_final') + r')|\b(' + _lista('accion_final') + r')\b[^.]{0,40}reinici',
+    _lista('listo'))]
 
 
 def estilos():
@@ -176,7 +217,8 @@ def aplicar_bloque(mp3, al, salida_mp3, salida_al, cts, vel):
 def elegir_respiros(bloques, est, semilla):
     """{id: segundos}: respiros de 2 a 4 s (distintos), sin un número fijo (fabian 14/11: «emular respiros promedio de
     narraciones humanas reales»): uno cada ~respiro_cada segundos de voz, con variación, primero en los momentos clave
-    (fastboot, KEY, Erase FRP, no pide cuenta) y el resto repartido. "respiro_s" en un bloque del guion manda (0 = ninguno)."""
+    (entra al modo fastboot/DFU/EDL/descarga…, llega la KEY o el código, la acción final, ya no pide cuenta: todas las
+    marcas) y el resto repartido. "respiro_s" en un bloque del guion manda (0 = ninguno)."""
     con_voz = [b for b in bloques if str(b.get('texto') or '').strip()]
     fijos = {b['id']: float(b['respiro_s']) for b in con_voz if isinstance(b.get('respiro_s'), (int, float))}
     out = {k: v for k, v in fijos.items() if v > 0}
@@ -242,13 +284,17 @@ def _leer(f, defecto):
         return defecto
 
 
-def aplicar(guion, carpeta, proyecto=None, estilo=None, semilla=None, log=print):
+def aplicar(guion, carpeta, proyecto=None, estilo=None, semilla=None, log=print, corto=False):
     """Deja la voz de cada bloque con el ritmo elegido (desde la copia sin ritmo). Devuelve el estado (voz/ritmo.json)."""
     proyecto = proyecto or os.path.dirname(os.path.abspath(guion))
     k, est, sem = elegido(proyecto)
+    est = dict(est)
     if estilo:
         k, est = estilo, estilos()[estilo]
     sem = sem if semilla is None else semilla
+    if corto and k != 'antes':  # Shorts (fabian 14/11: pausas en todos los videos): pausas más cortas, sin respiros ni semilargas
+        est = dict(est, frase=round(est['frase'] * 0.6, 2), coma=round(est['coma'] * 0.7, 2), larga=0.0, cada=0,
+                   respiro_cada=0, parrafo=DESFASE + MARGEN, nombre=est['nombre'] + ' (Short)')
     g = _leer(guion, {}) or {}
     bloques = g.get('bloques', [])
     f_estado = os.path.join(carpeta, ESTADO)
@@ -301,6 +347,35 @@ def aplicar(guion, carpeta, proyecto=None, estilo=None, semilla=None, log=print)
         log(f'· ritmo «{est["nombre"]}»: {hechos} bloque(s) con el ritmo nuevo'
             + (f', {len(respiros)} respiro(s) ({", ".join(f"{x} {v:g} s" for x, v in respiros.items())})' if respiros else ''))
     return nuevo
+
+
+def pausar_sin_tiempos(mp3, salida, proyecto, max_s=None, log=print):
+    """Para voces sin tiempos por letra (la frase del tráiler): busca los silencios naturales entre frases (ffmpeg
+    silencedetect) y los alarga con el estilo del proyecto, sin pasarse de max_s. Devuelve la ruta a usar (mp3 si es «antes»)."""
+    k, est, sem = elegido(proyecto)
+    if k == 'antes' or est['frase'] <= 0:
+        return mp3
+    r = subprocess.run(['ffmpeg', '-nostdin', '-i', mp3, '-af', 'silencedetect=noise=-32dB:d=0.12', '-f', 'null', '-'],
+                       capture_output=True, text=True)
+    ini = [float(x) for x in re.findall(r'silence_start: ([\d.]+)', r.stderr)]
+    fin = [float(x) for x in re.findall(r'silence_end: ([\d.]+)', r.stderr)]
+    total = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', mp3],
+                                 capture_output=True, text=True).stdout or 0)
+    huecos = [((a + b) / 2, b - a) for a, b in zip(ini, fin) if 0.3 < a and b < total - 0.3]
+    rz = _azar(sem, 'trailer')
+    # en el tráiler solo los huecos de fin de frase (los más largos) y pausas más cortas: es rápido a propósito
+    largos = sorted(huecos, key=lambda h: -h[1])[:max(1, len(huecos) // 2)]
+    cts = sorted((t, round(_var(rz, est, est['frase'] * 0.6, 0.1, 0.15), 2)) for t, _ in largos)
+    vel = est['vel']
+    if max_s:
+        while cts and (total + sum(p for _, p in cts)) / vel > max_s:
+            cts.pop(max(range(len(cts)), key=lambda i: cts[i][1]))
+    if not cts and abs(vel - 1) < 1e-6:
+        return mp3
+    al = {'characters': [], 'character_start_times_seconds': [], 'character_end_times_seconds': []}
+    aplicar_bloque(mp3, al, salida, salida + '.align.json', cts, vel if not max_s or total / vel <= max_s else 1.0)
+    log(f'· ritmo «{est["nombre"]}» en el tráiler: {len(cts)} pausa(s)')
+    return salida
 
 
 def cola(carpeta, bid):

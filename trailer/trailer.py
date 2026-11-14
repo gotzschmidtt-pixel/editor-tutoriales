@@ -201,6 +201,14 @@ def main():
                 raise SystemExit(f"ERROR: la frase de voz del tráiler cambió mientras la app trabajaba y gasta ElevenLabs (unos "
                                  f"{len(plan['voz'])} créditos). No la hice porque no escribiste SI: vuelve a pulsar el botón y te lo pide.")
             voz(plan['voz'], vf); open(vf + '.txt', 'w', encoding='utf-8').write(firma)
+        try:  # «🎵 Ritmo de la voz» del proyecto: pausas de persona real también en el tráiler (fabian, 14/11/2026)
+            sys.path.insert(0, os.path.join(RAIZ, 'voz'))
+            import ritmo
+            vf = ritmo.pausar_sin_tiempos(vf, os.path.splitext(a.salida)[0] + '.voz_ritmo.mp3',
+                                          os.path.dirname(os.path.abspath(a.plan)), max_s=total - 0.6,
+                                          log=lambda x: print(x, flush=True))
+        except Exception as e:  # sin ritmo el tráiler sale igual que antes
+            print(f'(ritmo del tráiler: {e})', flush=True)
         iv = ins.count('-i'); ins += ['-i', vf]
         filtros.append(f"[{iv}:a]adelay=300:all=1,apad[v]")
         if mus:
