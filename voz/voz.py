@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from texto_voz import texto_voz  # noqa: E402
 import pronunciacion  # noqa: E402  «🗣 Pronunciación»: FRP, DFU, IMEI… siempre dichos igual
 import pasos_clave  # noqa: E402  el momento exacto del dato (PIN, key, botones) nunca acelerado (fabian, 03/11/2026)
+import ritmo  # noqa: E402  «🎵 Ritmo de la voz»: pausas de persona real sin regrabar (fabian, 14/11/2026)
 
 _K, FUENTE_CLAVE = _clave()
 CLAVE = {'xi-api-key': _K} if _K else {}
@@ -255,9 +256,14 @@ def ajustar_guion(guion, carpeta):
             continue
         real = round(duracion_voz(carpeta, b['id']), 2)
         # ya ajustado con esta misma voz (como los «fijos» de ia.ajustar_largo): su montaje quedó así o lo retocaste a mano
-        fijo = b.get('voz_real_s') == real
+        cola = ritmo.cola(carpeta, b['id'])  # «🎵 Ritmo»: pausa de párrafo y respiro después de la voz
+        fijo = b.get('voz_real_s') == real and b.get('ritmo_cola_s', 0) == cola
         b['voz_real_s'] = real
-        falta = round(real + DESFASE + MARGEN - largo_bloque(mo), 2)
+        if cola:
+            b['ritmo_cola_s'] = cola
+        else:
+            b.pop('ritmo_cola_s', None)
+        falta = round(real + DESFASE + MARGEN + cola - largo_bloque(mo), 2)
         no_cabia = None  # dónde quedó el aviso de «no cabía», para sumarle lo que haga frenar_tramo
         if falta > 0:
             if mo['modo'] == 'lento':
@@ -266,15 +272,15 @@ def ajustar_guion(guion, carpeta):
             no_cabia = len(avisos)
             avisos.append(f"{b['id']}: la voz dura {real:.1f} s y no cabía; alargué el bloque {falta:.1f} s con una pausa")
         holgura = RELLENO + float(mo.get('relleno_s') or 0)  # relleno_s: imagen sin voz que la app dejó a propósito para no quedar corto
-        sobra = round(largo_bloque(mo) - (real + DESFASE + MARGEN + holgura), 2)
+        sobra = round(largo_bloque(mo) - (real + DESFASE + MARGEN + cola + holgura), 2)
         if sobra > 0.5:  # imagen sin voz de más: primero se quita pausa y luego se acelera el tramo
             antes_b = largo_bloque(mo)
             if mo.get('congelar_s'):
-                minimo = 0 if mo['modo'].startswith('lento') else real + DESFASE + MARGEN
+                minimo = 0 if mo['modo'].startswith('lento') else real + DESFASE + MARGEN + cola
                 mo['congelar_s'] = round(max(minimo, mo['congelar_s'] - sobra), 2)
                 if mo['modo'] == 'lento+congelar' and mo['congelar_s'] < 0.3:
                     mo['modo'], mo['congelar_s'] = 'lento', None
-            resto = largo_bloque(mo) - (real + DESFASE + MARGEN + holgura)
+            resto = largo_bloque(mo) - (real + DESFASE + MARGEN + cola + holgura)
             if resto > 0.5 and mo['modo'].startswith('lento'):
                 tramo = mo['src_fin'] - mo['src_inicio']
                 quiere = max(0.5, tramo / (mo.get('velocidad') or 1) - resto)
@@ -357,6 +363,8 @@ def main():
         json.dump(al, open(os.path.join(a.salida, f"{b['id']}.align.json"), 'w', encoding='utf-8'))
         json.dump(firma(b, a), open(os.path.join(a.salida, f"{b['id']}.voz.json"), 'w', encoding='utf-8'), ensure_ascii=False)
         print(b['id'], 'ok', flush=True)
+    if os.path.basename(a.guion) in ('guion.json', 'guion_prueba.json'):  # el Short y el tráiler quedan con su ritmo de siempre
+        ritmo.aplicar(a.guion, a.salida, log=lambda x: print(x, flush=True))
     for x in ajustar_guion(a.guion, a.salida):
         print('·', x, flush=True)
     print('Duraciones reales de la voz guardadas en el guion.', flush=True)
