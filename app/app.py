@@ -681,6 +681,8 @@ def comandos(paso, d, op):
         return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
     if paso == 'musica':
         c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
+        if existe(d, 'voz/ritmo.json'):  # «🎵 Ritmo»: la música sube en los respiros de la voz
+            c += ['--guion', 'guion.json', '--voz', 'voz']
         vol = (json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')) if existe(d, 'edicion.json') else {}).get('musica_volumen')
         if vol is not None:  # el volumen que elegiste en el editor por pistas
             c += ['--volumen', f'{min(max(float(vol), 0), 1):g}']
