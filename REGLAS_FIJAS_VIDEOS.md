@@ -69,6 +69,12 @@ Primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
 - Soporte México: https://wa.me/526645320704
 - Soporte Europa (España): https://wa.me/34627450100
 
+## Corregir el original (todas las marcas, 13/11/2026)
+- Antes del guion, «🩹 Qué se corrige» busca: intentos que fallan, web frpunlock, otro modelo, «en unos minutos» por la KEY,
+  esperas largas, testimonios largos en medio y comentarios de YouTube. Muestra el informe y aplica solo lo que fabian aprueba.
+- Entre el minuto 1 y 2 de cada tutorial (no en noticias) la voz nombra «G S M Prime punto co y Xiaomi Unlock punto com» y
+  sale la placa «GSMPRIME.CO • XIAOMIUNLOCK.COM» (fabian, 13/11/2026). El guion lo agrega solo si falta.
+
 ## Entregas
 - Da siempre un enlace clickeable: http://estudio.localhost:8765/ver?ruta=… para archivos y /carpeta?ruta=… para carpetas.
 - Da también la ruta completa de Windows.

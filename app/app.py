@@ -297,7 +297,7 @@ os.makedirs(PROYECTOS, exist_ok=True)
 os.makedirs(ESTILOS, exist_ok=True)
 
 SUBIBLES = {'original': 'original.mp4', 'imagen': 'imagen.png', 'material': 'material.mp4', 'musica': 'musica.mp3'}
-EDITABLES = ['idea.txt', 'acortar.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json', 'preguntas_trailer.json',
+EDITABLES = ['idea.txt', 'acortar.json', 'correcciones.json', 'guion.json', 'etiquetas.json', 'senales.json', 'insertos.json', 'trailer.json', 'referencias.json', 'preguntas_guion.json', 'preguntas_trailer.json',
              'guion_quitados.json']  # los bloques que quitaste en el editor de guion, por si te arrepientes
 AJUSTES = os.path.join(AQUI, 'ajustes.json')
 IMAGENES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
@@ -758,7 +758,10 @@ def comandos(paso, d, op):
         return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'senales', '--modo', 'api', '--ajustes', AJUSTES,
                  '--video', ultimo_video(d, '6_senales.mp4')]]
     if paso == 'guion_ia':  # el guion sale solo del video: transcripción + capturas + idea y estilo si los hay
-        return [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
+        # la primera vez, el informe «🩹 Qué se corrige del original» (gratis; no aplica nada sin tu visto bueno)
+        antes = [] if existe(d, 'correcciones.json') or op.get('respuestas') or op.get('otro') else [
+            [PY, m('correcciones', 'corregir_original.py'), '--proyecto', '.', '--suave']]
+        return antes + [[PY, m('ia', 'ia.py'), '--proyecto', '.', '--tarea', 'guion', '--modo', 'api', '--ajustes', AJUSTES]
                 + (['--ajustar-largo'] if op.get('ajustar_largo') else []) + (['--respuestas'] if op.get('respuestas') else [])
                 + (['--ajustar-humor'] if op.get('ajustar_humor') else []) + (['--combinar'] if op.get('combinar') else [])
                 + (['--otro', '--pedido', str(op.get('pedido') or '')[:1000]] if op.get('otro') else [])
@@ -803,6 +806,11 @@ def comandos(paso, d, op):
     if paso == 'nube':  # todo lo tuyo, en trozos que Claude acepta, para que arme el video en la nube
         mb = min(max(float(op.get('mb') or 300), 5), 400)
         return [[PY, m('nube', 'preparar.py'), '--proyecto', '.', '--ajustes', AJUSTES, '--estilos', ESTILOS, '--conocimientos', conocimiento.CARPETA, '--mb', f'{mb:g}']]
+    if paso == 'corregir':  # «🩹 Qué se corrige del original» (fabian, 13/11/2026): busca y, con tu visto bueno, aplica
+        c = [PY, m('correcciones', 'corregir_original.py'), '--proyecto', '.']
+        if op.get('aplicar'):
+            return [c + ['--aplicar']]
+        return [c + (['--ia'] if op.get('ia') else [])]
     if paso == 'acortar':  # quita silencios, esperas y lo que sobra de la grabación, hasta la duración pedida
         c = [PY, m('acortar', 'acortar.py'), '--proyecto', '.', '--ajustes', AJUSTES]
         if op.get('rehacer'):
@@ -862,6 +870,7 @@ PASOS = [
     {'id': 'etiquetas_ia', 'nombre': 'Elegir etiquetas con IA', 'necesita': ['guion.json'], 'produce': 'etiquetas.json', 'oculto': True, 'blando': True},
     {'id': 'senales_ia', 'nombre': 'Ubicar flechas y círculos con IA', 'necesita': ['guion.json', 'voz', '3_voz.mp4'], 'produce': 'senales.json', 'oculto': True, 'blando': True},
     {'id': 'ia', 'nombre': 'Parte creativa con IA', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
+    {'id': 'corregir', 'nombre': 'Qué se corrige del original', 'necesita': ['original.mp4'], 'produce': 'correcciones.json', 'oculto': True},
     {'id': 'acortar', 'nombre': 'Acortar la grabación', 'necesita': ['original.mp4'], 'produce': 'acortado.mp4', 'oculto': True},
     {'id': 'nube', 'nombre': 'Preparar para Claude en la nube', 'necesita': ['original.mp4'], 'produce': '', 'oculto': True},
     {'id': 'alimentar', 'nombre': 'Aprender tu estilo (Alimentación)', 'necesita': [], 'produce': '', 'oculto': True},

@@ -29,6 +29,8 @@ import conocimiento  # noqa: E402  lo aprendido de todos tus videos (mis_conocim
 import aprendizaje  # noqa: E402  «🧠 Lo que aprendí»: reglas sacadas de tus correcciones
 sys.path.insert(0, os.path.join(RAIZ, 'importantes'))
 import importantes  # noqa: E402  «⭐ Cortes importantes»: tramos que se ven enteros y a velocidad normal
+sys.path.insert(0, os.path.join(RAIZ, 'correcciones'))
+import corregir_original  # noqa: E402  «🩹 Qué se corrige del original»: webs, modelo, tiempos, intentos fallidos…
 import numpy as np  # noqa: E402
 import hashlib, http.client, inspect, threading, time  # noqa: E402
 
@@ -457,6 +459,12 @@ def encargo(d, tarea, idea, caps, an=None, estilo=None, mapa=None):
                           f"- [{mmss(a)}] ({', '.join(sorted(n))}) «{f[:160]}»" for a, _, f, n in acc))
     if tarea == 'guion' and importantes.leer(d):
         partes.append(importantes.texto_para_ia(importantes.leer(d)))
+    if tarea == 'guion' and corregir_original.marca_y_modelo(d)[0]:  # regla fija (fabian, 13/11/2026), no en noticias
+        partes.append("REGLA FIJA DEL AUTOR: entre el minuto 1:00 y el 2:00 del video, la voz nombra nuestras páginas oficiales "
+                      "así: «G S M Prime punto co y Xiaomi Unlock punto com» (en pantalla sale la placa GSMPRIME.CO • XIAOMIUNLOCK.COM).")
+    corr = corregir_original.texto_para_ia(d) if tarea in ('guion', 'trailer') else ''
+    if corr:  # lo que aprobaste en «🩹 Qué se corrige del original» (fabian, 13/11/2026)
+        partes.append(corr)
     if tarea == 'guion' and patron_versiones(d):
         partes.append(patron_versiones(d))
     if tarea == 'guion':  # el primer minuto: gancho con tomas que muestran cada frase (fabian, 03/11/2026)
@@ -1551,6 +1559,9 @@ def revisar(d, tarea, datos):
             vistos[clave] = b.get('id', k)
             unicos.append(b)
         bloques[:] = unicos
+        # la voz nueva no repite los errores del original: web prohibida, otro modelo, «en unos minutos» por la KEY
+        avisos += corregir_original.correcciones_guion(d, bloques)
+        avisos += corregir_original.paginas_min_1_2(bloques, _largo_estimado, d)  # regla fija: páginas entre el min 1 y 2
         # dos bloques con el mismo id: la voz del segundo pisaría la del primero y se rehacían (y pagaban) en cada «Generar voz»
         todos, usados = {str(b.get('id') or '').strip() for b in bloques}, set()
         for k, b in enumerate(bloques, 1):
