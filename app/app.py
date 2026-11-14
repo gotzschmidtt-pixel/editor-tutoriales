@@ -1262,6 +1262,16 @@ def avisos_de_imagen(d, nombre):
     return [l.strip().lstrip('·').strip() for l in seccion.splitlines() if DESALINEADO.search(l)]
 
 
+def version_app():
+    """La versión de la app (archivo VERSION en la raíz, ej. «1.5.1»). Se lee cada vez: después de «⬇ Actualizar la app»
+    ya muestra la nueva. Sube con cada actualización (ver CLAUDE.md)."""
+    try:
+        v = open(os.path.join(RAIZ, 'VERSION'), encoding='utf-8').read().strip()
+        return v if re.fullmatch(r'\d+(\.\d+){1,3}', v) else '?'
+    except OSError:
+        return '?'
+
+
 RAMA_APP = 'claude/project-thread-j40le1'  # la rama de GitHub con la versión más nueva (se cambia con «rama_app» en ajustes.json)
 NO_TOCAR = {'mis_proyectos', 'mis_estilos', 'mis_musica', 'mis_conocimientos', 'descargas_app', '.git', 'node_modules', 'trabajo', 'ffmpeg_nvidia'}  # lo tuyo: nunca se reemplaza
 NO_TOCAR_ARCHIVOS = {'app/ajustes.json', 'app/ajustes.json.copia', 'app/registro_app.txt', 'Estudio.exe'}
@@ -1272,8 +1282,9 @@ def actualizar_app():
     estilos y claves no se tocan, y lo que se reemplaza queda antes en un respaldo (descargas_app/respaldo_app_*.zip)."""
     import io, zipfile
     rama = leer_ajustes().get('rama_app') or RAMA_APP
+    antes = version_app()
     if os.path.isdir(os.path.join(RAIZ, '.git')):
-        return actualizar_git(rama)
+        return actualizar_git(rama, antes)
     url = f'https://codeload.github.com/gotzschmidtt-pixel/editor-tutoriales/zip/refs/heads/{urllib.parse.quote(rama)}'
     try:
         datos = urllib.request.urlopen(url, timeout=120).read()
@@ -1298,7 +1309,7 @@ def actualizar_app():
         if not os.path.exists(destino) or open(destino, 'rb').read() != contenido:
             cambian.append((rel, destino, contenido))
     if not cambian:
-        return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+        return {'ok': True, 'cambiados': 0, 'version': antes, 'mensaje': f'Ya tienes la versión más nueva (APP v{antes}).'}
     carpeta_resp = os.path.join(RAIZ, 'descargas_app')
     os.makedirs(carpeta_resp, exist_ok=True)
     respaldo = os.path.join(carpeta_resp, f"respaldo_app_{time.strftime('%Y%m%d_%H%M%S')}.zip")
@@ -1313,11 +1324,16 @@ def actualizar_app():
     for rel, destino, contenido in cambian:
         if rel == 'app/app.py':
             escribir_bytes(destino, contenido)
-    return {'ok': True, 'cambiados': len(cambian), 'respaldo': os.path.relpath(respaldo, RAIZ),
-            'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta. Tus proyectos y claves siguen igual.'}
+    return {'ok': True, 'cambiados': len(cambian), 'respaldo': os.path.relpath(respaldo, RAIZ), 'antes': antes, 'version': version_app(),
+            'mensaje': f'Actualicé {len(cambian)} archivo(s) en esta misma carpeta ({texto_version(antes)}). Tus proyectos y claves siguen igual.'}
 
 
-def actualizar_git(rama):
+def texto_version(antes):
+    ahora = version_app()
+    return f'ahora APP v{ahora}' + (f', antes v{antes}' if antes != ahora else '')
+
+
+def actualizar_git(rama, antes='?'):
     """«⬇ Actualizar la app» cuando la carpeta es un clon de git (como en la laptop): baja la rama de GitHub y deja la
     carpeta igual a ella. Lo que se hubiera cambiado solo en esta PC no se pierde: los commits quedan en la rama
     respaldo_app_<fecha> y los archivos tocados sin commit en un «git stash» con ese mismo nombre."""
@@ -1336,7 +1352,7 @@ def actualizar_git(rama):
     cambian = [x for x in git('diff', '--name-only', 'HEAD', remota).splitlines() if x]
     tocados = git('status', '--porcelain', '--untracked-files=no')
     if not cambian and not tocados:
-        return {'ok': True, 'cambiados': 0, 'mensaje': 'Ya tienes la versión más nueva.'}
+        return {'ok': True, 'cambiados': 0, 'version': antes, 'mensaje': f'Ya tienes la versión más nueva (APP v{antes}).'}
     # archivos nuevos hechos solo en esta PC con el mismo nombre que uno de la versión nueva: git no los pisa y el
     # cambio se cortaba a medias (con tus cambios escondidos en el stash). Se avisa antes de tocar nada.
     chocan = sorted(set(git('ls-files', '-o', '--exclude-standard').splitlines()) & set(cambian))
@@ -1362,8 +1378,8 @@ def actualizar_git(rama):
                 raise RuntimeError(f'No pude actualizar ({e}). Tus cambios quedaron en «git stash» ({marca}): '
                                    f'recupéralos con «git stash pop». {e2}')
         raise RuntimeError(f'No pude actualizar; la app quedó como estaba. {e}')
-    return {'ok': True, 'cambiados': len(cambian),
-            'mensaje': f'Actualicé {len(cambian)} archivo(s) desde GitHub. Tus proyectos y claves siguen igual.'
+    return {'ok': True, 'cambiados': len(cambian), 'antes': antes, 'version': version_app(),
+            'mensaje': f'Actualicé {len(cambian)} archivo(s) desde GitHub ({texto_version(antes)}). Tus proyectos y claves siguen igual.'
                        + (' Ojo: ' + '; '.join(avisos) + '.' if avisos else '')}
 
 
@@ -2360,6 +2376,7 @@ def estado(proyecto):
             'resultado': RESULTADO.get(proyecto),
             'musica_fija': (leer_ajustes().get('musica_fija_de') or 'una pista guardada') if os.path.exists(MUSICA_FIJA) else '',
             'actualizada': os.path.getmtime(__file__) != INICIO_APP,
+            'version': version_app(),
             'pagina': os.path.getmtime(os.path.join(AQUI, 'index.html')),
             'duracion_original': duracion_original(d),
             'voz_vieja': None if t['proyecto'] == proyecto else voz_vieja(d)}
@@ -2724,7 +2741,10 @@ class Manejador(BaseHTTPRequestHandler):
                                        'con_windows': os.path.exists(arranque_windows()),
                                        'direcciones': celular.direcciones(PUERTO)})
             if ruta == '/':
-                return self.responder(open(os.path.join(AQUI, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+                pagina = open(os.path.join(AQUI, 'index.html'), 'rb').read().replace(b'__VERSION_APP__', version_app().encode())
+                return self.responder(pagina, 'text/html; charset=utf-8')
+            if ruta == '/api/version':
+                return self.responder({'version': version_app()})
             if ruta == '/pistas':  # el editor por pistas, en su propia pestaña
                 return self.responder(open(os.path.join(AQUI, 'pistas.html'), 'rb').read(), 'text/html; charset=utf-8')
             if ruta == '/api/linea':
