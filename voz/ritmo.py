@@ -8,8 +8,8 @@ Cada estilo es una receta distinta, para elegir en «🎛 Audio e imagen» (edic
   pausas_v2   Pausa de 1,0 s al final de cada frase, 0,3 s en cada coma, voz ×0,95 y 1,6 s entre párrafos (~118 ppm).
   humano      Como habla fabian (~120 ppm): frase ~0,8 s, coma solo tras ~8 palabras seguidas (~0,3 s), pausa semilarga
               ~1,4 s cada ~20 palabras, 1,6 s entre párrafos, voz ×0,97 (×0,93 en los pasos críticos: serial, KEY,
-              Erase FRP; ×1,0 en los obvios: encender, conectar, esperar) y 3-4 RESPIROS de 2 a 4 s donde la voz calla y
-              la música sube (0,10 → 0,32). Todo varía un poco al azar con una semilla, para que no suene a bucle.
+              Erase FRP; ×1,0 en los obvios: encender, conectar, esperar) y RESPIROS de 2 a 4 s donde la voz calla y
+              la música sube (0,10 → 0,32): sin número fijo, uno cada ~45 s de voz como una narración humana. Todo varía un poco al azar con una semilla, para que no suene a bucle.
 
 Estilos propios: mis_estilos/ritmos.json ({"mi_estilo": {"nombre": "...", "frase": 0.9, ...}}) con las mismas claves que
 ESTILOS. Ahí va el estilo futuro calibrado con los videos más vistos del canal.
@@ -33,11 +33,12 @@ CRUDO = '_sin_ritmo'
 ESTADO = 'ritmo.json'
 DEFECTO = 'antes'
 SEMILLA = 400
+RESPIRO_CADA = 45  # segundos de voz entre respiros largos (provisorio: se calibra con narraciones humanas reales)
 DESFASE, MARGEN = 0.3, 0.4  # como voz.py: entre dos voces ya hay 0,7 s de aire
 
 BASE = {'frase': 0.0, 'coma': 0.0, 'min_coma': 0, 'larga': 0.0, 'cada': 0, 'parrafo': DESFASE + MARGEN,
         'vel': 1.0, 'vel_critico': None, 'vel_obvio': None, 'variar': False,
-        'respiros': 0, 'respiro_min': 2.0, 'respiro_max': 4.0, 'musica_respiro': 0.32, 'ppm': None, 'nota': ''}
+        'respiro_cada': 0, 'respiro_min': 2.0, 'respiro_max': 4.0, 'musica_respiro': 0.32, 'ppm': None, 'nota': ''}
 
 ESTILOS = {
     'antes': dict(BASE, nombre='Antes (sin pausas)', ppm=158,
@@ -45,9 +46,9 @@ ESTILOS = {
     'pausas_v2': dict(BASE, nombre='Pausas v2', ppm=118, frase=1.0, coma=0.3, vel=0.95, parrafo=1.6,
                       nota='Pausa en cada punto y coma, voz un poco más lenta. La que te gustó en el Honor 400 Lite («MUCHO MEJOR»).'),
     'humano': dict(BASE, nombre='Humano', ppm=120, frase=0.8, coma=0.3, min_coma=8, larga=1.4, cada=20, parrafo=1.6,
-                   vel=0.97, vel_critico=0.93, vel_obvio=1.0, variar=True, respiros=4,
+                   vel=0.97, vel_critico=0.93, vel_obvio=1.0, variar=True, respiro_cada=RESPIRO_CADA,
                    nota='Como hablas tú: tiradas de ~20 palabras, pausas variadas, más lento en serial/KEY/Erase FRP '
-                        'y 3-4 respiros con la música arriba.'),
+                        'y respiros de 2-4 s con la música arriba, tantos como una narración humana.'),
 }
 # lugar para el estilo calibrado con tus videos más vistos (se llena cuando se mida la retención por ritmo)
 FUTUROS = {'canal': 'Calibrado con tus videos más vistos (próximamente)'}
@@ -173,37 +174,46 @@ def aplicar_bloque(mp3, al, salida_mp3, salida_al, cts, vel):
 
 
 def elegir_respiros(bloques, est, semilla):
-    """{id: segundos}: 3-4 respiros de 2 a 4 s (distintos), en los momentos clave y separados entre sí.
-    "respiro_s" en un bloque del guion manda (0 = ninguno)."""
+    """{id: segundos}: respiros de 2 a 4 s (distintos), sin un número fijo (fabian 14/11: «emular respiros promedio de
+    narraciones humanas reales»): uno cada ~respiro_cada segundos de voz, con variación, primero en los momentos clave
+    (fastboot, KEY, Erase FRP, no pide cuenta) y el resto repartido. "respiro_s" en un bloque del guion manda (0 = ninguno)."""
     con_voz = [b for b in bloques if str(b.get('texto') or '').strip()]
     fijos = {b['id']: float(b['respiro_s']) for b in con_voz if isinstance(b.get('respiro_s'), (int, float))}
     out = {k: v for k, v in fijos.items() if v > 0}
-    n = est['respiros']
-    if n <= 0 or len(con_voz) < 4:
+    cada = float(est.get('respiro_cada') or 0)
+    if cada <= 0 or len(con_voz) < 3:
         return out
     r = random.Random(semilla)
-    n = min(n, max(1, len(con_voz) // 5)) if len(con_voz) < 20 else n
-    n = max(1, n - (r.random() < 0.5)) if n >= 4 else n  # 3 o 4: no siempre los mismos
-    posibles = range(1, len(con_voz) - 1)  # ni el primero (gancho) ni el último (cierre)
-    pos = [k for k in posibles if con_voz[k]['id'] not in fijos and not con_voz[k].get('gancho')]
+    pps = (est.get('ppm') or 120) / 60  # palabras por segundo del estilo
+    t, ini = 0.0, []
+    for b in con_voz:  # en qué segundo de voz termina cada bloque (aprox., por palabras)
+        t += len(str(b['texto']).split()) / pps
+        ini.append(t)
+    pos = [k for k in range(1, len(con_voz) - 1) if con_voz[k]['id'] not in fijos and not con_voz[k].get('gancho')]
     elegidos = [k for k, b in enumerate(con_voz) if b['id'] in out]
-    lejos = lambda k: all(abs(k - j) >= 3 for j in elegidos)
+    lejos = lambda k: all(abs(ini[k] - ini[j]) >= cada * 0.5 for j in elegidos)
     desde = 0
-    for patron in RESPIRO:  # uno por momento clave, en el orden del proceso (el «omitir» de la intro no cuenta)
-        if len(elegidos) >= n:
-            break
+    for patron in RESPIRO:  # los momentos clave, en el orden del proceso (el «omitir» de la intro no cuenta)
         for k in pos:
             if k >= desde and patron.search(str(con_voz[k].get('texto') or '')) and lejos(k):
                 elegidos.append(k)
                 desde = k + 1
                 break
-    for k in sorted((k for k in pos if es_critico(con_voz[k])), key=lambda _: r.random()):  # si faltan: pasos críticos
-        if len(elegidos) >= n:
-            break
-        if lejos(k):
-            elegidos.append(k)
+    # el resto repartido: cuando pasó ~cada (×0,75 a ×1,3) desde el último respiro, prefiriendo un paso crítico cercano
+    ultimo, falta = 0.0, cada * r.uniform(0.75, 1.3)
+    for k in range(len(con_voz) - 1):
+        if any(j == k for j in elegidos):
+            ultimo, falta = ini[k], cada * r.uniform(0.75, 1.3)
+            continue
+        if ini[k] - ultimo < falta or k not in pos:
+            continue
+        cerca = [x for x in (k, k + 1) if x in pos and es_critico(con_voz[x]) and lejos(x)]
+        x = cerca[0] if cerca else k
+        if lejos(x):
+            elegidos.append(x)
+            ultimo, falta = ini[x], cada * r.uniform(0.75, 1.3)
     usados = set(round(v, 1) for v in out.values())
-    for k in sorted(elegidos):
+    for k in sorted(set(elegidos)):
         bid = con_voz[k]['id']
         if bid in out:
             continue

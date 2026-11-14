@@ -1,7 +1,7 @@
 """«🎵 Ritmo de la voz» (14/11/2026). Sin red ni gastos: voces falsas (un tono hecho con ffmpeg y sus tiempos por letra).
 - «Humano» alarga la voz (pausas + ×0,97) y corre los tiempos de las letras igual;
 - aplicarlo dos veces no suma pausas sobre pausas, y «Antes» devuelve la voz original exacta;
-- el paso crítico (KEY) va más lento que los demás; hay 3-4 respiros de 2-4 s distintos entre sí;
+- el paso crítico (KEY) va más lento que los demás; respiros de 2-4 s distintos entre sí, sin número fijo (uno cada ~45 s de voz);
 - voz.ajustar_guion suma la pausa de párrafo y el respiro al largo del bloque;
 - musica.py arma un filtro de volumen válido para ffmpeg que sube en los respiros.
 Uso: python tests/test_ritmo.py   (sale con 1 si algo falla)
@@ -85,7 +85,7 @@ try:
     ok(vel['L02'] == 1.0, f'el paso obvio (apaga/conecta/espera) no va a ×1: {vel}')
     ok(vel['L07'] == 0.97, f'un bloque normal no va a ×0,97: {vel}')
     resp = {b: x['respiro'] for b, x in est['bloques'].items() if x['respiro']}
-    ok(1 <= len(resp) <= 4, f'respiros: {resp}')
+    ok(1 <= len(resp) <= 3, f'respiros: {resp}')
     ok(all(2 <= v <= 4 for v in resp.values()) and len(set(resp.values())) == len(resp), f'respiros no distintos o fuera de 2-4 s: {resp}')
     ok('L01' not in resp and 'L09' not in resp, 'un respiro en el primer o el último bloque')
     ok('L03' in resp, f'sin respiro en el modo fastboot: {resp}')

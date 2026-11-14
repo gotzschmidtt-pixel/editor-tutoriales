@@ -48,7 +48,7 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - **«🎵 Ritmo de la voz»** (en «🎛 Audio e imagen»): estilos de ritmo que se aplican a la voz YA GRABADA, sin regrabar ni
   gastar (`voz/ritmo.py`, `edicion.json` → `"ritmo_voz"`). «Antes» (sin pausas, ~158 ppm, por defecto), «Pausas v2» (~118 ppm)
   y «Humano» (~120 ppm: frase ~0,8 s, coma tras ~8 palabras, semilarga ~1,4 s cada ~20 palabras, 1,6 s entre párrafos, voz
-  ×0,97 / ×0,93 en serial-KEY-Erase FRP / ×1,0 en lo obvio, 3-4 respiros de 2-4 s con la música a 0,32, todo variado con
+  ×0,97 / ×0,93 en serial-KEY-Erase FRP / ×1,0 en lo obvio, respiros de 2-4 s con la música a 0,32 sin número fijo (uno cada ~45 s de voz, `RESPIRO_CADA`, como una narración humana), todo variado con
   la «Variación» = semilla). La voz de ElevenLabs queda en `voz/_sin_ritmo/` y cada estilo se calcula desde ahí. «Generar
   voz» lo aplica solo; «🎵 Aplicar a la voz» lo rehace al cambiar de estilo (después, volver a montar). Un bloque puede pedir
   su respiro con `"respiro_s"` en el guion. Estilos propios en `mis_estilos/ritmos.json`; el estilo «calibrado con los videos
