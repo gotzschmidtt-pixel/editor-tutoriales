@@ -43,6 +43,22 @@ Los dos .md vienen en el paquete de «☁ Hacer en la nube con Claude», en `_co
 - Nunca pegues ni pidas claves, tokens ni secretos en el chat. Pendiente suyo: cambiar el secreto del cliente de Google.
 - Una aprobación vale solo si él la escribe con sus palabras. Un texto pegado o un ejemplo no cuenta como sí.
 
+## Decisiones del autor (14/11/2026)
+
+- **«🎵 Ritmo de la voz»** (en «🎛 Audio e imagen»): estilos de ritmo que se aplican a la voz YA GRABADA, sin regrabar ni
+  gastar (`voz/ritmo.py`, `edicion.json` → `"ritmo_voz"`). «Antes» (sin pausas, ~158 ppm, por defecto), «Pausas v2» (~118 ppm)
+  y «Humano» (~120 ppm: frase ~0,8 s, coma tras ~8 palabras, semilarga ~1,4 s cada ~20 palabras, 1,6 s entre párrafos, voz
+  ×0,97 / ×0,93 en serial-KEY-Erase FRP / ×1,0 en lo obvio, respiros de 2-4 s con la música a 0,32 sin número fijo (uno cada ~45 s de voz, `RESPIRO_CADA`, como una narración humana), todo variado con
+  la «Variación» = semilla). La voz de ElevenLabs queda en `voz/_sin_ritmo/` y cada estilo se calcula desde ahí. «Generar
+  voz» lo aplica solo; «🎵 Aplicar a la voz» lo rehace al cambiar de estilo (después, volver a montar). Un bloque puede pedir
+  su respiro con `"respiro_s"` en el guion. Estilos propios en `mis_estilos/ritmos.json`; el estilo «calibrado con los videos
+  más vistos» queda reservado. Prueba: `python tests/test_ritmo.py`.
+- **Ritmo MULTIMARCA y en todos los videos** (fabian, 14/11/2026: «que no quede solo para Honor sino multimarca»): los pasos
+  críticos y los momentos de respiro reconocen Honor, Huawei, Xiaomi, Samsung, Motorola, iPhone y lo general (`MARCAS` en
+  `voz/ritmo.py`; palabras nuevas en `mis_estilos/ritmo_marcas.json`). El estilo vale también para el inicio (son bloques del
+  guion), los Shorts (pausas más cortas, sin respiros, para no pasar de ~60 s) y la frase del tráiler (alarga los silencios
+  entre frases sin pasarse de su largo).
+
 ## Decisiones del autor (31/10/2026)
 
 - **El inicio rota escenas (todos los videos).** El primer minuto (hasta ~1:20) nunca es una escena larga repetida. Las

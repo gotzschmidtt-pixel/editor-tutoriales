@@ -5,6 +5,7 @@ pasa las rutas /api/mejoras/... a get() y post(). Así los módulos nuevos no to
 
   🗣 Pronunciación       voz/pronunciacion.py      (lista global en mis_conocimientos/pronunciacion.json)
   😀 Voz con emoción     voz/voz.py                ("emocion" de cada bloque del guion)
+  🎵 Ritmo de la voz     voz/ritmo.py              (pausas de persona real sin regrabar: "ritmo_voz" en edicion.json)
   🔊 Efectos de sonido   sonidos/sonidos.py        (los mezcla «Poner la voz» y el tráiler)
   🎙 Limpiar voz         limpieza/limpiar_voz.py
   🖱 Zoom en la PC       zoom_pc/zoom_pc.py
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'sonidos'))
 sys.path.insert(0, os.path.join(RAIZ, 'avisos'))
 sys.path.insert(0, os.path.join(RAIZ, 'conocimiento'))
 import pronunciacion  # noqa: E402
+import ritmo  # noqa: E402  «🎵 Ritmo de la voz» (fabian, 14/11/2026)
 import sonidos  # noqa: E402
 import avisos_legales  # noqa: E402
 import reglas_titulo  # noqa: E402  el año de títulos y miniaturas por la fecha (fabian, 03/11/2026)
@@ -42,12 +44,14 @@ PASOS = [
     {'id': 'm_miniatura_fotos', 'nombre': 'Miniatura con tus fotos', 'necesita': [], 'produce': 'miniatura_fotos.json', 'oculto': True},
     {'id': 'm_avisos', 'nombre': 'Avisos de cuidado', 'necesita': ['guion.json'], 'produce': '', 'oculto': True},
     {'id': 'm_sonidos', 'nombre': 'Crear los efectos de sonido', 'necesita': [], 'produce': '', 'oculto': True},
+    {'id': 'm_ritmo', 'nombre': 'Aplicar el ritmo a la voz', 'necesita': ['guion.json'], 'produce': '', 'oculto': True},
     {'id': 'm_esrgan', 'nombre': 'Bajar Real-ESRGAN y probarlo', 'necesita': [], 'produce': '', 'oculto': True},
 ]
 IDS = {p['id'] for p in PASOS}
 USAN_ELEVEN = {'m_sonidos'}  # solo con «Crear con ElevenLabs»; los demás no gastan
 LUGARES_SELLO = ('arriba-izquierda', 'arriba-centro', 'arriba-derecha', 'centro', 'abajo-izquierda', 'abajo-centro', 'abajo-derecha')  # dónde van los sellos ANTES/DURANTE/DESPUÉS del tráiler
-EDITABLES = {'sello_lugar': str, 'sonidos': bool, 'sonidos_volumen': float, 'sonidos_tipos': list, 'emocion_voz': bool, 'mejorar_imagen': bool}
+EDITABLES = {'sello_lugar': str, 'sonidos': bool, 'sonidos_volumen': float, 'sonidos_tipos': list, 'emocion_voz': bool, 'mejorar_imagen': bool,
+             'ritmo_voz': str, 'ritmo_semilla': int}
 ARCHIVOS_ZOOM = ('material.mp4', 'original.mp4')
 RESPALDOS = {'zoom': '_sin_zoom', 'color': '_sin_color', 'limpiar': '_sin_limpiar'}
 SUBIDAS = {'pantalla': 'pantalla_grabada.mp4', **{f'foto_{k}': f'foto_miniatura_{k}.jpg' for k in ('antes', 'despues', 'extra1', 'extra2')}}
@@ -130,6 +134,8 @@ def comandos(paso, d, op, py, ajustes):
         if op.get('solo') in sonidos.SONIDOS:
             c += ['--solo', op['solo']]
         return [c]
+    if paso == 'm_ritmo':  # vuelve a cortar la voz ya hecha con el ritmo elegido (no gasta) y recalcula los tiempos
+        return [[py, m('voz', 'ritmo.py'), '--proyecto', '.']]
     if paso == 'm_esrgan':
         return [[py, m('mejorar', 'mejorar.py'), '--bajar']]
     raise ValueError(paso)
@@ -220,6 +226,10 @@ def estado(d):
         'titulos_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('titulos', []),
         'esquinas_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('esquinas', []),
         'momentos_miniatura': _leer(d, 'momentos_miniatura.json'),
+        'ritmo': {'estilos': [{'id': k, 'nombre': v['nombre'], 'ppm': v.get('ppm'), 'nota': v.get('nota', '')}
+                              for k, v in ritmo.estilos().items()],
+                  'futuros': ritmo.FUTUROS, 'elegido': ritmo.elegido(d)[0], 'semilla': ritmo.elegido(d)[2],
+                  'aplicado': _leer(os.path.join(d, 'voz'), ritmo.ESTADO)},
     }
 
 
@@ -356,6 +366,10 @@ def post(h, ruta, q, largo, d):
                 e[k] = [x for x in v if x in sonidos.SONIDOS]
             elif k == 'sello_lugar' and v in LUGARES_SELLO:
                 e[k] = v
+            elif k == 'ritmo_voz' and v in ritmo.estilos():
+                e[k] = v
+            elif k == 'ritmo_semilla' and str(v).strip().lstrip('-').isdigit():
+                e[k] = int(v)
         _escribir(f, e)
         return h.responder({'ok': True})
     if ruta == '/api/mejoras/emocion':  # la emoción de cada bloque (vacío = como siempre)

@@ -8,7 +8,10 @@ Uso:
 Sin --pista genera una nueva (cuesta créditos de ElevenLabs; unos 2.950 por 3:35).
 La clave la pone el proxy del entorno para api.elevenlabs.io.
 """
-import argparse, json, math, os, shutil, subprocess, tempfile, urllib.request
+import argparse, json, math, os, shutil, subprocess, sys, tempfile, urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'voz'))
+import ritmo  # noqa: E402  «🎵 Ritmo»: en los respiros la voz calla y la música sube (fabian, 14/11/2026)
 
 # En tu PC: define la variable ELEVENLABS_API_KEY. En el entorno de Claude la clave la pone el proxy.
 def _clave():
@@ -45,6 +48,22 @@ def generar(prompt, ms, destino):
     open(destino, 'wb').write(urllib.request.urlopen(req, timeout=600).read())
 
 
+SUBIDA = 0.6  # segundos que tarda la música en subir y bajar en un respiro
+
+
+def volumen_respiros(a):
+    """El filtro de volumen de la música: fijo, o subiendo (0,32) en los respiros del ritmo de la voz."""
+    if not (a.guion and a.voz and os.path.exists(a.guion)):
+        return f'volume={a.volumen}'
+    tramos, sube = ritmo.tramos_respiro(a.guion, a.voz)
+    sube = max(sube, a.volumen)
+    if not tramos or sube <= a.volumen:
+        return f'volume={a.volumen}'
+    print(f'· la música sube a {sube:g} en {len(tramos)} respiro(s) de la voz', flush=True)
+    picos = '+'.join(f'clip((t-{x:.2f})/{SUBIDA},0,1)*clip(({y:.2f}-t)/{SUBIDA},0,1)' for x, y in tramos)
+    return f"volume=eval=frame:volume='{a.volumen}+{sube - a.volumen:.3f}*min(1,{picos})'"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--video', required=True, help='video que ya tiene la voz')
@@ -53,6 +72,8 @@ def main():
     ap.add_argument('--prompt', default=PROMPT)
     ap.add_argument('--guardar_pista', help='si se genera música nueva, copia la pista aquí para reutilizarla')
     ap.add_argument('--volumen', type=float, default=0.22, help='volumen base de la música (0.22 ≈ 10 dB bajo la voz)')
+    ap.add_argument('--guion', help='guion.json: con --voz, sube la música en los respiros del ritmo «Humano»')
+    ap.add_argument('--voz', help='carpeta de la voz (voz/ritmo.json)')
     a = ap.parse_args()
 
     total = duracion(a.video)
@@ -74,7 +95,7 @@ def main():
     cadena.append(f'[{prev}]atrim=0:{total},afade=t=in:d=2,afade=t=out:st={total - 6}:d=6[m]')
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y'] + ins + ['-filter_complex', ';'.join(cadena), '-map', '[m]', larga], check=True)
     # la voz del video controla el compresor de la música: cuando hay voz, la música baja
-    mezcla = (f'[0:a]asplit=2[v][sc];[1:a]volume={a.volumen}[mu];'
+    mezcla = (f'[0:a]asplit=2[v][sc];[1:a]{volumen_respiros(a)}[mu];'
               '[mu][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[duck];'
               '[v][duck]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89,'
               'aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo[a]')  # loudnorm deja 96 kHz: el navegador no siempre lo suena
