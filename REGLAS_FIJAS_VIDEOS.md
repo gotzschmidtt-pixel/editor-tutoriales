@@ -46,6 +46,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 - Inicio: rota trozos de video de 3-5 s según lo que dice la voz. Nada de escenas largas ni capturas fijas.
 - Subtítulos: estilo C «Shorts», en una línea, con la palabra dicha en amarillo, +50 % de tamaño y un poco más arriba.
 - Logos: pop-up de a uno, grande y en el centro, cuando la voz lo nombra.
+- Pop-ups de datos (parche de seguridad, versión de Android, etc.) nunca «de niños»: estilo tarjeta de Ajustes de Android oscura, el aprobado por fabian el 15/11/2026 (GUIONES-IA `estilo_video/honor400_titulo/parche_seguridad_android.png`), para todas las marcas, unos 3 s en pantalla.
 - Guiones: decir que sirve para «Android 15, 16, 17 o superiores» y para cualquier parche de seguridad.
 
 ## Procesos
