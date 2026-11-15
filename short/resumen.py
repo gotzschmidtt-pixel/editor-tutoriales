@@ -176,6 +176,7 @@ def prompt(d):
     return f"""Escribe 3 guiones de YouTube Shorts (voz en off, español latino, tuteando) para el video «{modelo}».
 Cada Short cuenta el proceso COMPLETO de principio a fin en 55-60 s (entre 750 y 820 letras de voz), con un gancho distinto:
 {ganchos}
+INICIO (regla fija 15/11/2026): en los primeros 1-3 s el problema (pantalla de bloqueo / «Verifica tu cuenta») y enseguida el teléfono libre; el primer paso real antes de los 10-15 s, sin introducción. Nunca «gratis» antes de decir que la KEY/el servicio tiene costo.
 Reglas obligatorias de fabian:
 - Una frase corta con las versiones: «Android quince, dieciséis, diecisiete o superior, y MagicOS nueve, diez u once, con cualquier parche» (adáptala a la marca si no es Honor).
 - {'NUNCA digas «sin PC» (este proceso usa PC).' if pc else 'Este proceso no usa PC: decir «sin PC» se puede.'} Números escritos como se dicen. Nombra el modelo como «{modelo}».

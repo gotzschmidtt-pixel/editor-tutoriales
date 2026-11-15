@@ -592,6 +592,12 @@ Escribe el guion por bloques. Cada bloque tiene:
   mal) solo en los delicados: los críticos (key, código, PIN, contraseña, IMEI, serial), borrar o formatear, entrar en un
   modo (Fastboot, Recovery, DFU), lo que si se hace mal hay que repetir todo o deja el teléfono peor. En los pasos sencillos
   (tocar «Siguiente», abrir un menú, esperar una carga) di qué se hace y lo que se ve, sin explicar el porqué.
+- ORDEN DEL INICIO (revisión grande, 15/11/2026; el revisor automático lo mide): el gancho dura 30-40 s y abre con el
+  problema (la pantalla de bloqueo, p. ej. «Verifica tu cuenta») y enseguida el teléfono libre. El PRIMER PASO REAL
+  (descargar el programa, apagar, conectar, abrir…) empieza ANTES DEL 1:30: lo legal va en UNA frase y junto al paso donde
+  se usa el dato (no un bloque aparte al principio); nada se repite (si una frase ya la dice otro bloque, no la repitas).
+  WhatsApp + invitar a comentar antes de 2:00 y las páginas entre 1:00 y 2:00 van en frases cortas. Nunca digas «gratis»
+  antes de decir que la KEY/el servicio tiene un costo. El cierre invita a ver otro video (pantalla final de YouTube).
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura
