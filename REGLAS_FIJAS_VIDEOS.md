@@ -125,3 +125,10 @@ fabian: «¿cómo hacemos para que esto no vuelva a suceder… tanto acá en la 
 - Pop-ups de datos (parche de seguridad, versiones): serios y profesionales, nada que parezca para niños.
 - Descargar el programa (fabian 15/11/2026, todas las marcas): la voz y el cartel dicen que se descarga desde el ENLACE EN LA DESCRIPCIÓN DEL VIDEO; en pantalla no se muestra la web de descargas (se ve el programa).
 - Tomas de datos que no se leen (fabian 15/11/2026, todas las marcas): si en la etiqueta trasera, la caja, el serial o el IMEI no se lee el dato, esa toma no va y la voz no le pide al cliente que compare. Se quita la frase (recortando la voz, sin regrabar) o se usa una toma donde sí se lea.
+
+## Etiquetas y transiciones calmadas — TODAS LAS MARCAS (fabian, 15/11/2026: «etiquetas muy agresivas, muy grandes… las transiciones en el inicio están muy rápidas»)
+- **Título del inicio** (ej. «HONOR SIN CUENTA GOOGLE»): arriba, ocupa como mucho el 50-60 % del ancho, NUNCA encima del teléfono. Entra suave (crece de 0,9 a 1,0 en ~0,5 s), sin rebote ni latido fuerte.
+- **Fichas** («DESDE CASA», «SIN TÉCNICO», «PC SENCILLA»…): chicas (~25-30 % del ancho), en una esquina (abajo a la izquierda), sin tapar el teléfono ni lo que la voz nombra; entran suaves cuando la voz las dice.
+- **Tomas del inicio**: cada una dura 3-5 s, con transición suave de 0,4-0,6 s (fundido), nunca cortes de menos de 1 s seguidos.
+- **ANTES / DURANTE / DESPUÉS**: cada fase en pantalla al menos 3-4 s, con un cartel CHICO tipo píldora en la esquina de arriba a la izquierda (rojo / naranja / verde), nunca un cartel grande en el centro, y fundido suave entre fases.
+- En Shorts las etiquetas son tarjetas tipo celular (oscuras, redondeadas, chicas), arriba de la zona del video; subtítulos abajo, nunca al centro.
