@@ -275,7 +275,7 @@ def difuminar(video, hallados, ventana=0.6):
 # ---------- Revisión del video LARGO (fabian 15/11/2026, después del Honor 400 Lite: imagen 5,6 s adelantada a la voz desde
 # 4:37 por un bloque que salió más corto, $50 y saldos a la vista, WhatsApp después del minuto 2, «así empieza» con el
 # DESPUÉS en pantalla). Todas las marcas, en la app y en la nube. ----------
-MONTO = re.compile(r'(\$\s?\d)|(\d\s?(usd|us\$)\b)', re.I)
+MONTO = re.compile(r'(\$\s?\d[\d.,]*(?![\d.,]*[a-z]))|(\d\s?(usd|us\$)\b)', re.I)  # «$1s» de un log no es un precio
 REGLA_MIN = {'whatsapp': (None, 120.0), 'comenta': (None, 120.0), 'gsmprime': (60.0, 120.0), 'xiaomiunlock': (60.0, 120.0)}
 VOZ_CARTEL = [({'empieza', 'antes', 'bloqueado'}, 'despues'), ({'termina', 'despues', 'resultado', 'libre'}, 'antes')]
 PPM_MAX, PAUSA_MIN, VENTANA = 130.0, 1.4, 60.0  # tus videos top y tu voz: ~105-120 palabras/min con pausas

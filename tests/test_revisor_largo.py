@@ -42,7 +42,7 @@ assert not r.revisar_ritmo(calmo), r.revisar_ritmo(calmo)
 # 5. montos: con OCR falso
 falso = lambda img: ([(None, 'Your Current Balance $ 4535.5', 1)], None)
 assert r.revisar_montos(falso, [(10.0, __import__('numpy').zeros((10, 10, 3), 'uint8'))], None)
-assert r.MONTO.search('40 USD') and not r.MONTO.search('Android 16')
+assert r.MONTO.search('40 USD') and not r.MONTO.search('Android 16') and not r.MONTO.search('$1s)Finished')
 
 # 6. srt -> palabras
 s = os.path.join(d, 'a.srt')
