@@ -115,3 +115,8 @@ fabian: «¿cómo hacemos para que esto no vuelva a suceder… tanto acá en la 
   6. Chasquidos en el sonido (aviso), planos de más de 5 s al inicio, subtítulos, palabras que la voz nombra y se tienen que leer.
 - Cualquier script que arme imágenes de a cuadros (círculos, etiquetas) BORRA la carpeta antes de volver a generarla: los cuadros viejos de otro tamaño cortaban el tramo.
 - Claude en la nube, además, mira el video entero como espectador antes de entregarlo (no solo esta lista).
+
+## Inicio de un video de un modelo concreto — TODAS LAS MARCAS (fabian, 15/11/2026)
+- Si el video es «VERSIÓN EXCLUSIVA» de un modelo (ej. HONOR 400 LITE), la voz dice ENSEGUIDA que el método funciona igual para todos los modelos de la marca («Y si tienes otro Honor, tranquilo: este método sirve para todos los modelos de Honor»). Nunca se recorta esa frase del tráiler. Solo en la voz: en títulos de Honor sigue sin ir «Todos los Modelos» (03/11).
+- El cartel de título (ej. «HONOR SIN CUENTA GOOGLE · Desde casa · PC sencilla · KEY oficial») dura TODA la frase que lo dice (5-7 s, no 1 s), con movimiento (palabras que entran, destello, fichas que aparecen cuando la voz las nombra) y sobre video real, nunca un fondo quieto. Estilo moderno, hecho con el ChatGPT de fabian (vidrio esmerilado del kit).
+- Pop-ups de datos (parche de seguridad, versiones): serios y profesionales, nada que parezca para niños.
