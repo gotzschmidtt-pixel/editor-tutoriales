@@ -50,3 +50,11 @@ open(s, 'w', encoding='utf-8').write('1\n00:01:40,000 --> 00:01:42,000\nescríbe
 e = r.ev_de_srt(s)
 assert len(e) == 3 and abs(e[2][0] - (100 + 4 / 3)) < 0.01
 print('ok: revisor del video largo')
+
+# revisión grande 15/11: el primer paso real antes del 1:30
+import revisor_auto as _R
+_ev = lambda pal: [(t, t + 0.3, w, w) for w, t in pal]
+assert _R.revisar_primer_paso(_ev([('Elimina', 1), ('Lo', 50), ('descargas', 56)]), 540) == [], 'paso a los 56 s marcado'
+assert _R.revisar_primer_paso(_ev([('Primero', 170), ('apagamos', 171)]), 540), 'paso a las 2:51 no marcado'
+assert _R.revisar_primer_paso(_ev([('apagamos', 171)]), 60) == [], 'un Short no se mide'
+print('ok: primer paso antes del 1:30')

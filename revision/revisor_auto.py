@@ -331,6 +331,23 @@ def ev_de_srt(f):
     return ev
 
 
+PASO = re.compile(r'^(descarg\w*|baj\w*|apag\w*|apagu\w*|conect\w*|abrimos|abre|abr[ií]s|mant[eé]n\w*|presion\w*|instal\w*|'
+                  r'entramos|entra|copi\w*|pulsa\w*|toca\w*|ingres\w*|marca\w*|escrib\w*)[.,:;!?]*$', re.I)
+PASO_MAX, PASO_DESDE = 90.0, 20.0  # revisión grande 15/11: el primer paso real antes del 1:30 (el inicio de 30-40 s no cuenta)
+
+
+def revisar_primer_paso(ev, dur):
+    """Todas las marcas: el primer paso real (descargar, apagar, conectar, abrir, entrar al modo…) antes del 1:30.
+    Se mira la primera vez que la voz dice un verbo de paso después del inicio (desde los 20 s)."""
+    if dur < 150:
+        return []
+    for a, _, w, _ in ev:
+        if a >= PASO_DESDE and PASO.match(str(w).strip()):
+            return [] if a <= PASO_MAX else [{'s': round(a, 1), 'que': f'el primer paso («{w}») llega en {mmss(a)}: debe empezar '
+                                                                       f'antes del 1:30 (inicio de 30-40 s, lo legal en una frase)'}]
+    return [{'s': 0, 'que': 'la voz no dice ningún paso (descargar, apagar, conectar, abrir…)'}]
+
+
 def revisar_reglas_minuto(ev, dur):
     """Reglas fijas de TODOS los tutoriales: tarjetas de WhatsApp + invitar a comentar antes del minuto 2; páginas
     GSMPRIME.CO y XIAOMIUNLOCK.COM entre el minuto 1 y 2 (se mira lo que dice la voz)."""
@@ -483,6 +500,7 @@ def revisar(video, ass=None, es_short=None, arreglar=False, privados=False, pala
     if not es_short and evl:
         if not noticia:
             puntos['reglas_minuto'] = revisar_reglas_minuto(evl, dur)
+            puntos['primer_paso'] = revisar_primer_paso(evl, dur)
         puntos['ritmo'] = [dict(x, aviso=True) for x in revisar_ritmo(evl)] if (palabras_json or ev) else []
     if not es_short:
         ocr = ocr or _ocr()
@@ -501,7 +519,7 @@ def revisar(video, ass=None, es_short=None, arreglar=False, privados=False, pala
                'duracion': 'Duración', 'logos': 'Logos de lo que nombra la voz',
                'privados': 'Datos privados', 'privados_arreglados': 'Datos privados difuminados por el revisor',
                'imagen_sonido': 'Imagen y sonido duran lo mismo (sin desfase)', 'bloques': 'Cada tramo dura lo que dice la voz',
-               'reglas_minuto': 'WhatsApp y comentar antes de 2:00; páginas entre 1:00 y 2:00', 'ritmo': 'Ritmo de la voz (aviso)',
+               'reglas_minuto': 'WhatsApp y comentar antes de 2:00; páginas entre 1:00 y 2:00', 'primer_paso': 'Primer paso antes del 1:30', 'ritmo': 'Ritmo de la voz (aviso)',
                'montos': 'Sin precios ni saldos en pantalla', 'voz_cartel': 'ANTES/DESPUÉS coinciden con la voz', 'chasquidos': 'Chasquidos (aviso)'}
     md = [f"# Revisión automática de {informe['video']}: {'✅ todo bien' if ok else '❌ hay que corregir'}", '']
     for k, v in puntos.items():
