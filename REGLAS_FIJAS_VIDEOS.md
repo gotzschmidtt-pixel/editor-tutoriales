@@ -103,3 +103,15 @@ Antes de entregar cualquier video, revisarlo ENTERO (ver y escuchar como persona
 **Retención y confianza**
 - El primer paso real antes del 1:30; inicio de 30-40 s que abre con el problema (0-3 s) y el resultado (4-8 s); testimonios ~25 s.
 - Decir que la KEY tiene costo antes de decir «gratis»; nada en pantalla que contradiga a la voz («(Instant)», «Success» en segundos, pedidos «Rejected», carteles de otro país/modelo); si el programa se llama distinto en la ventana, aclararlo con una etiqueta.
+
+## Revisor automático antes de entregar — TODAS LAS MARCAS, en la app y en la nube (fabian, 15/11/2026)
+fabian: «¿cómo hacemos para que esto no vuelva a suceder… tanto acá en la nube de Claude como en la app?». Lo que pasó en el Honor 400 Lite: un tramo salió 5,6 s más corto (cuadros viejos de un círculo de otro tamaño) y desde 4:37 TODA la imagen iba adelantada a la voz (la Key antes de «la Key aparece», Android 17 sobre «MagicOS 9»); además saldos ($4535) y $50 a la vista y WhatsApp en 2:13.
+- `revision/revisor_auto.py` corre SOLO al final de cada video (app: paso final; nube: final.py) y NO se entrega si falla. Gratis, en la PC. Revisa:
+  1. Imagen y sonido duran lo mismo (si no, hay desfase) y, con `--bloques`, que cada tramo dure lo que dice su voz.
+  2. Sin precios ni saldos en pantalla (OCR de «$…», «… USD»). Se cambia la toma o se recorta, nunca se difumina.
+  3. WhatsApp + «comenta» antes de 2:00 y GSMPRIME.CO / XIAOMIUNLOCK.COM entre 1:00 y 2:00 (aunque la voz lo deletree). No en noticias (`--noticia`).
+  4. «Así empieza / bloqueado» nunca sobre el cartel DESPUÉS, ni «termina / libre» sobre ANTES.
+  5. Ritmo (aviso): máx. 130 palabras/min contando las pausas y al menos un respiro de 1,4 s por minuto.
+  6. Chasquidos en el sonido (aviso), planos de más de 5 s al inicio, subtítulos, palabras que la voz nombra y se tienen que leer.
+- Cualquier script que arme imágenes de a cuadros (círculos, etiquetas) BORRA la carpeta antes de volver a generarla: los cuadros viejos de otro tamaño cortaban el tramo.
+- Claude en la nube, además, mira el video entero como espectador antes de entregarlo (no solo esta lista).

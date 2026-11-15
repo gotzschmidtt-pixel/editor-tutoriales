@@ -271,7 +271,177 @@ def difuminar(video, hallados, ventana=0.6):
     shutil.rmtree(tmp, ignore_errors=True)
 
 
-def revisar(video, ass=None, es_short=None, arreglar=False, privados=False):
+
+# ---------- Revisión del video LARGO (fabian 15/11/2026, después del Honor 400 Lite: imagen 5,6 s adelantada a la voz desde
+# 4:37 por un bloque que salió más corto, $50 y saldos a la vista, WhatsApp después del minuto 2, «así empieza» con el
+# DESPUÉS en pantalla). Todas las marcas, en la app y en la nube. ----------
+MONTO = re.compile(r'(\$\s?\d)|(\d\s?(usd|us\$)\b)', re.I)
+REGLA_MIN = {'whatsapp': (None, 120.0), 'comenta': (None, 120.0), 'gsmprime': (60.0, 120.0), 'xiaomiunlock': (60.0, 120.0)}
+VOZ_CARTEL = [({'empieza', 'antes', 'bloqueado'}, 'despues'), ({'termina', 'despues', 'resultado', 'libre'}, 'antes')]
+PPM_MAX, PAUSA_MIN, VENTANA = 130.0, 1.4, 60.0  # tus videos top y tu voz: ~105-120 palabras/min con pausas
+
+
+def duraciones_flujos(video):
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,duration:format=duration', '-of', 'json', video],
+                       capture_output=True, text=True)
+    j = json.loads(r.stdout or '{}')
+    d = {s['codec_type']: float(s['duration']) for s in j.get('streams', []) if s.get('duration') not in (None, 'N/A')}
+    return d.get('video'), d.get('audio')
+
+
+def revisar_av(video):
+    """Imagen y sonido tienen que durar lo mismo: si la imagen es más corta, algún tramo se cortó y TODO lo que sigue
+    va adelantado a la voz (pasó con un bloque de 13,5 s que debía durar 19,2 s)."""
+    v, a = duraciones_flujos(video)
+    if v and a and abs(v - a) > 0.3:
+        return [{'s': round(min(v, a), 1), 'que': f'la imagen dura {v:.1f} s y el sonido {a:.1f} s: un tramo salió más corto '
+                                                  f'y la imagen va {abs(a - v):.1f} s desfasada de la voz desde ese tramo'}]
+    return []
+
+
+def revisar_bloques(info):
+    """{bloque: {'D': segundos esperados, 'f': archivo}}: cada tramo armado dura lo que dice la voz (±0,1 s)."""
+    fallas = []
+    for b, x in info.items():
+        f = x.get('f')
+        if f and os.path.exists(f):
+            v, _ = duraciones_flujos(f)
+            if v and abs(v - x['D']) > 0.1:
+                fallas.append({'s': 0, 'que': f'{b}: dura {v:.2f} s y debería {x["D"]:.2f} s (cuadros viejos o un tramo vacío)'})
+    return fallas
+
+
+def ev_de_palabras(ws):
+    """[[palabra, ini, fin]] (tiempos de la voz, ya en el tiempo del video) -> eventos como los del .ass, una palabra cada uno."""
+    return [(a, b, w, w) for w, a, b in ws]
+
+
+def ev_de_srt(f):
+    """Frases del .srt -> una palabra por evento, repartiendo el tiempo de la frase (sirve para las reglas de minutos)."""
+    ev, bloque = [], open(f, encoding='utf-8').read().split('\n\n')
+    for b in bloque:
+        m = re.search(r'(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)\s*\n(.+)', b, re.S)
+        if not m:
+            continue
+        g = [int(x) for x in m.groups()[:8]]
+        a = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000; z = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
+        ws = m.group(9).replace('\n', ' ').split()
+        for i, w in enumerate(ws):
+            t0 = a + (z - a) * i / len(ws); ev.append((t0, a + (z - a) * (i + 1) / len(ws), w, w))
+    return ev
+
+
+def revisar_reglas_minuto(ev, dur):
+    """Reglas fijas de TODOS los tutoriales: tarjetas de WhatsApp + invitar a comentar antes del minuto 2; páginas
+    GSMPRIME.CO y XIAOMIUNLOCK.COM entre el minuto 1 y 2 (se mira lo que dice la voz)."""
+    if dur < 150:
+        return []
+    fallas = []
+    for clave, (desde, hasta) in REGLA_MIN.items():
+        ts = momentos(ev, clave)
+        if not ts:
+            fallas.append({'s': 0, 'que': f'la voz nunca dice «{clave}» (regla de todos los tutoriales)'})
+        elif not any((desde is None or t >= desde) and t <= hasta for t in ts):
+            fallas.append({'s': round(ts[0], 1), 'que': f'«{clave}» sale en {mmss(ts[0])} y debe ir '
+                                                     + (f'entre {mmss(desde)} y {mmss(hasta)}' if desde else f'antes de {mmss(hasta)}')})
+    return fallas
+
+
+def momentos(ev, clave):
+    """Segundos en que la voz dice «clave», aunque venga deletreada en varias palabras («G S M Prime punto co»,
+    «Xiaomi Unlock punto com», «Whats App»)."""
+    ws = [(a, re.sub(r'[^a-z0-9]', '', normal(t))) for a, _, t, _ in ev]
+    out = []
+    for i in range(len(ws)):
+        junto = ''
+        for a, w in ws[i:i + 6]:
+            if a - ws[i][0] > 4:  # solo palabras seguidas de la misma frase
+                break
+            junto += w
+            if clave in junto:
+                if not out or ws[i][0] - out[-1] > 3:
+                    out.append(ws[i][0])
+                break
+            if len(junto) > len(clave) + 12:
+                break
+    return out
+
+
+def mmss(s):
+    return f'{int(s // 60)}:{int(s % 60):02d}'
+
+
+def revisar_ritmo(ev):
+    """La voz no puede ir «agresiva»: máx. PPM_MAX palabras por minuto hablando y, en cada minuto, al menos una pausa
+    de PAUSA_MIN s (respiro con música). Solo con tiempos por palabra."""
+    ws = [(a, b) for a, b, t, _ in ev if t.strip()]
+    if len(ws) < 40:
+        return []
+    fallas = []
+    fin = ws[-1][1]
+    for i in range(0, int(fin // VENTANA) + 1):
+        t0, t1 = i * VENTANA, min((i + 1) * VENTANA, fin)
+        if t1 - t0 < 30:  # el último trozo, si es corto, no cuenta
+            continue
+        en = [(a, b) for a, b in ws if t0 <= a < t1]
+        if len(en) < 20:
+            continue
+        ppm = len(en) / (t1 - t0) * 60  # con las pausas incluidas, como lo oye el espectador
+        hueco = max([n[0] - p[1] for p, n in zip(en, en[1:])] or [0])
+        if ppm > PPM_MAX:
+            fallas.append({'s': t0, 'que': f'voz a {ppm:.0f} palabras/min en {mmss(t0)}-{mmss(t1)} (máx. {PPM_MAX:.0f}): suena apurada'})
+        if hueco < PAUSA_MIN:
+            fallas.append({'s': t0, 'que': f'sin ninguna pausa de {PAUSA_MIN} s entre {mmss(t0)} y {mmss(t1)}: falta un respiro'})
+    return fallas
+
+
+def revisar_montos(ocr, cuadros, banda):
+    """Nunca precios ni saldos en pantalla ($50, $ 4535, 40 USD). No se difumina: se cambia la toma o se recorta."""
+    fallas, ultimo = [], -99
+    for t, fr in cuadros:
+        for _, txt in texto_cuadro(ocr, fr, banda):
+            if MONTO.search(txt) and t - ultimo > 3:
+                fallas.append({'s': t, 'que': f'monto a la vista: «{txt.strip()[:30]}» (cambiar la toma o recortar; nunca difuminar)'})
+                ultimo = t
+    return fallas
+
+
+def revisar_voz_cartel(ocr, video, ev, banda):
+    """«Así empieza / bloqueado» no puede caer sobre el cartel DESPUÉS, ni «así termina / libre» sobre ANTES."""
+    fallas, c = [], cv2.VideoCapture(video)
+    for a0, _, t, _ in ev:
+        w = normal(t).strip('.,¿?¡!:;…')
+        for dichas, prohibido in VOZ_CARTEL:
+            if w in dichas:
+                c.set(cv2.CAP_PROP_POS_MSEC, (a0 + 0.2) * 1000)
+                ok, fr = c.read()
+                if ok and any(prohibido == normal(x).strip() for _, x in texto_cuadro(ocr, fr, banda)):
+                    fallas.append({'s': round(a0, 2), 'que': f'la voz dice «{t}» y en pantalla está el cartel {prohibido.upper()}'})
+    return fallas
+
+
+def revisar_chasquidos(video):
+    """Clics o chasquidos sueltos en el sonido (un pico de ~5 ms muy por encima de lo que lo rodea). Solo aviso."""
+    try:
+        raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', '-'],
+                             capture_output=True).stdout
+    except Exception:
+        return []
+    x = np.frombuffer(raw, np.int16).astype(np.float32)
+    if len(x) < 16000:
+        return []
+    d = np.abs(np.diff(x)); n = 80
+    pico = d[:len(d) // n * n].reshape(-1, n).max(1)
+    base = np.convolve(pico, np.ones(41) / 41, mode='same') + 50
+    out, ult = [], -9
+    for i in np.where(pico > base * 8)[0]:
+        t = i * n / 16000
+        if t - ult > 2:
+            out.append({'s': round(t, 2), 'que': 'posible chasquido en el sonido', 'aviso': True}); ult = t
+    return out[:10]
+
+
+def revisar(video, ass=None, es_short=None, arreglar=False, privados=False, palabras_json=None, srt=None, bloques=None, noticia=False):
     c = cv2.VideoCapture(video)
     alto = int(c.get(cv2.CAP_PROP_FRAME_HEIGHT))
     es_short = (alto > c.get(cv2.CAP_PROP_FRAME_WIDTH)) if es_short is None else es_short
@@ -304,20 +474,41 @@ def revisar(video, ass=None, es_short=None, arreglar=False, privados=False):
             puntos['privados_arreglados'] = hallados
         else:
             puntos['privados'] = [dict(x, aviso=True) for x in hallados]
+    # ---- video largo (no Shorts): sincronía, reglas de minutos, ritmo, montos, carteles, chasquidos ----
+    puntos['imagen_sonido'] = revisar_av(video)
+    if bloques:
+        puntos['bloques'] = revisar_bloques(json.load(open(bloques, encoding='utf-8')) if isinstance(bloques, str) else bloques)
+    evl = (ev_de_palabras(json.load(open(palabras_json, encoding='utf-8'))) if palabras_json and os.path.exists(palabras_json)
+           else ev or (ev_de_srt(srt) if srt and os.path.exists(srt) else []))
+    if not es_short and evl:
+        if not noticia:
+            puntos['reglas_minuto'] = revisar_reglas_minuto(evl, dur)
+        puntos['ritmo'] = [dict(x, aviso=True) for x in revisar_ritmo(evl)] if (palabras_json or ev) else []
+    if not es_short:
+        ocr = ocr or _ocr()
+        if ocr:
+            todos, _ = muestras(video, 2.0)
+            puntos['montos'] = revisar_montos(ocr, todos, banda)
+            if evl:
+                puntos['voz_cartel'] = revisar_voz_cartel(ocr, video, evl, banda)
+    puntos['chasquidos'] = revisar_chasquidos(video)
     puntos['voz_imagen_ia'] = 'omitido (no hay IA local con visión; no gasta)'
-    ok = not any(v for k, v in puntos.items() if isinstance(v, list) and k not in ('privados_arreglados', 'privados'))
+    ok = not any([x for x in v if not x.get('aviso')] for k, v in puntos.items() if isinstance(v, list) and k not in ('privados_arreglados', 'privados'))
     informe = {'video': os.path.basename(video), 'ok': ok, 'puntos': puntos}
     base = os.path.splitext(video)[0]
     json.dump(informe, open(base + '.revision.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     nombres = {'subtitulos': 'Subtítulos', 'planos': 'Planos largos al inicio', 'voz_pantalla': 'Lo que dice la voz se ve',
                'duracion': 'Duración', 'logos': 'Logos de lo que nombra la voz',
-               'privados': 'Datos privados', 'privados_arreglados': 'Datos privados difuminados por el revisor'}
+               'privados': 'Datos privados', 'privados_arreglados': 'Datos privados difuminados por el revisor',
+               'imagen_sonido': 'Imagen y sonido duran lo mismo (sin desfase)', 'bloques': 'Cada tramo dura lo que dice la voz',
+               'reglas_minuto': 'WhatsApp y comentar antes de 2:00; páginas entre 1:00 y 2:00', 'ritmo': 'Ritmo de la voz (aviso)',
+               'montos': 'Sin precios ni saldos en pantalla', 'voz_cartel': 'ANTES/DESPUÉS coinciden con la voz', 'chasquidos': 'Chasquidos (aviso)'}
     md = [f"# Revisión automática de {informe['video']}: {'✅ todo bien' if ok else '❌ hay que corregir'}", '']
     for k, v in puntos.items():
         if isinstance(v, str):
             md.append(f'- ⚪ Voz vs imagen (IA): {v}')
             continue
-        marca = 'ℹ️' if k in ('privados_arreglados', 'privados') and v else ('✅' if not v else '❌')
+        marca = 'ℹ️' if (k in ('privados_arreglados', 'privados') or all(x.get('aviso') for x in v)) and v else ('✅' if not v else '❌')
         md.append(f'- {marca} {nombres.get(k, k)}' + ('' if v else ''))
         md += [f"  - {x['s']:.1f} s: {x['que']}" for x in v]
     open(base + '.revision.md', 'w', encoding='utf-8').write('\n'.join(md) + '\n')
@@ -332,8 +523,13 @@ def main():
     ap.add_argument('--short', action='store_true')
     ap.add_argument('--arreglar', action='store_true')
     ap.add_argument('--privados', action='store_true', help='buscar datos privados (apagado: fabian no quiere difuminados)')
+    ap.add_argument('--palabras', help='JSON [[palabra, ini, fin]] con los tiempos de la voz en el video')
+    ap.add_argument('--srt', help='subtítulos .srt (si no hay .ass ni --palabras)')
+    ap.add_argument('--bloques', help='JSON {bloque: {D, f}} para comprobar que cada tramo dura lo que dice la voz')
+    ap.add_argument('--noticia', action='store_true', help='video de noticias: sin reglas de WhatsApp/páginas')
     a = ap.parse_args()
-    inf = revisar(a.video, a.ass, True if a.short else None, a.arreglar, a.privados)
+    srt = a.srt or (os.path.splitext(a.video)[0] + '.srt' if os.path.exists(os.path.splitext(a.video)[0] + '.srt') else None)
+    inf = revisar(a.video, a.ass, True if a.short else None, a.arreglar, a.privados, a.palabras, srt, a.bloques, a.noticia)
     sys.exit(0 if inf['ok'] else 1)
 
 

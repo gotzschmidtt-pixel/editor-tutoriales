@@ -824,7 +824,13 @@ def comandos(paso, d, op):
         if existe(d, 'difuminar_datos.json'):  # datos personales en pantalla (correo, saldo…): se difuminan siguiéndolos
             c.append([PY, m('privacidad', 'difuminar_datos.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
         # «✅ Revisor automático» (gratis): si el inicio tiene un plano de más de 5 s, el paso no queda como listo
-        c.append([PY, m('revision', 'revisor_auto.py'), 'FINAL.mp4'])
+        # también revisa (todas las marcas, 15/11): imagen y sonido sin desfase, sin precios ni saldos, WhatsApp/comentar antes
+        # de 2:00 y páginas entre 1:00 y 2:00 (con FINAL.srt), ANTES/DESPUÉS según la voz, ritmo y chasquidos
+        try:
+            noticia = not conocimiento.marca_de_proyecto(d)  # las noticias no llevan WhatsApp ni páginas
+        except Exception:
+            noticia = False
+        c.append([PY, m('revision', 'revisor_auto.py'), 'FINAL.mp4'] + (['--noticia'] if noticia else []))
         return c
     raise ValueError(paso)
 
