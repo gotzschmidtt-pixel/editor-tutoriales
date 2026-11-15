@@ -226,7 +226,8 @@ def estado(d):
         'titulos_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('titulos', []),
         'esquinas_ia': (_leer(d, 'titulos_miniatura_ia.json') or {}).get('esquinas', []),
         'momentos_miniatura': _leer(d, 'momentos_miniatura.json'),
-        'ritmo': {'estilos': [{'id': k, 'nombre': v['nombre'], 'ppm': v.get('ppm'), 'nota': v.get('nota', '')}
+        'ritmo': {'estilos': [{'id': k, 'nombre': v['nombre'], 'ppm': v.get('ppm'), 'nota': v.get('nota', ''),
+                               'recomendado': bool(v.get('recomendado'))}
                               for k, v in ritmo.estilos().items()],
                   'futuros': ritmo.FUTUROS, 'elegido': ritmo.elegido(d)[0], 'semilla': ritmo.elegido(d)[2],
                   'aplicado': _leer(os.path.join(d, 'voz'), ritmo.ESTADO)},

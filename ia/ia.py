@@ -44,7 +44,7 @@ VEL_DATO = 0.9  # un poquito más lento que lo grabado, para que se lea lo que s
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
-PALABRAS_POR_S = 2.6
+PALABRAS_POR_S = 2.0  # fabian 15/11/2026: con el ritmo «natural» (voz ×0,95 + pausas y respiros) el video va a ~115-120 palabras/min CONTANDO pausas; antes 2.6 (156/min) daba videos apurados
 VEL_SIN_VOZ = 16.0  # un tramo sin voz (quitaste su texto) puede ir más rápido: se ve pasar, sin explicación
 VEL_PASO = 2.0  # pasos de configuración o comprobación (seleccionar, activar, verificar): se aceleran poco, que se vea qué se toca
 PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|confirma|configura|'

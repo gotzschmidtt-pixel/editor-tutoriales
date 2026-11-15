@@ -69,7 +69,10 @@ try:
     crudo = {b: fin(cv, b) for b in TEXTOS}
     crudo_mp3 = {b: open(os.path.join(cv, b + '.mp3'), 'rb').read() for b in TEXTOS}
 
-    # «Antes» por defecto: no toca nada
+    # por defecto (sin elegir) la app usa «Voz natural + pausas» sola (fabian 15/11/2026)
+    ok(ritmo.elegido(d)[0] == 'natural', 'el estilo por defecto no es «natural»')
+    # «Antes»: no toca nada
+    json.dump({'ritmo_voz': 'antes'}, open(os.path.join(d, 'edicion.json'), 'w'))
     ritmo.aplicar(g, cv, d, log=lambda x: None)
     ok(all(abs(fin(cv, b) - crudo[b]) < 1e-6 for b in TEXTOS), 'con «Antes» la voz cambió')
     ok(not os.path.isdir(os.path.join(cv, ritmo.CRUDO)), '«Antes» sin ritmo previo no debería copiar nada')
@@ -130,6 +133,17 @@ try:
     est = ritmo.aplicar(g, cv, d, log=lambda x: None)
     ok(all(fin(cv, b) > crudo[b] for b in TEXTOS), '«Pausas v2» no alargó')
     ok(not any(x['respiro'] for x in est['bloques'].values()), '«Pausas v2» con respiros')
+
+    # «Calibrado» y «Natural» (15/11/2026): nunca bajan la voz de 0,88 / 0,93 y sin respiros al inicio (WhatsApp antes de 2:00)
+    E = ritmo.estilos()
+    ok(E['natural']['recomendado'] and min(E['natural']['vel'], E['natural']['vel_critico']) >= 0.93, '«natural» frena demasiado la voz')
+    ok(E['youtube']['vel'] == 0.90, '«youtube» no es el calibrado')
+    for k in ('youtube', 'natural'):
+        json.dump({'ritmo_voz': k}, open(os.path.join(d, 'edicion.json'), 'w'))
+        est = ritmo.aplicar(g, cv, d, log=lambda x: None)
+        ok(all(fin(cv, b) > crudo[b] for b in TEXTOS), f'«{k}» no alargó')
+        ok(not est['bloques']['L01']['respiro'], f'«{k}» puso un respiro en el primer bloque')
+        ok(est['bloques']['L01']['vel'] >= E[k]['vel_agil'], f'«{k}» frenó la voz al inicio')
 
     # MULTIMARCA: los momentos de respiro y los pasos críticos de otras marcas
     for t, n in [('Ahora entramos en modo DFU con los dos botones.', 0), ('Ponemos el Samsung y ya estamos en modo descarga.', 0),

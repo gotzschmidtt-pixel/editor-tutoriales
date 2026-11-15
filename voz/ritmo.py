@@ -10,6 +10,12 @@ Cada estilo es una receta distinta, para elegir en «🎛 Audio e imagen» (edic
               ~1,4 s cada ~20 palabras, 1,6 s entre párrafos, voz ×0,97 (×0,93 en los pasos críticos: serial, KEY,
               Erase FRP; ×1,0 en los obvios: encender, conectar, esperar) y RESPIROS de 2 a 4 s donde la voz calla y
               la música sube (0,10 → 0,32): sin número fijo, uno cada ~45 s de voz como una narración humana. Todo varía un poco al azar con una semilla, para que no suene a bucle.
+  youtube     Calibrado con tus videos más vistos (15/11/2026, Honor 400 Lite): voz ×0,90 (×0,88 en pasos críticos,
+              ×0,93 en los obvios), respiro de 2-3,8 s cada ~30 s de voz y nada de respiros en los primeros 2 min
+              (WhatsApp y «comenta» antes de 2:00). ~113 ppm con pausas. Puede sonar algo arrastrada.
+  natural     ⭐ Recomendado (fabian 15/11/2026: «bajarle el mínimo para que no se note arrastrada ni robótica»): la voz
+              casi normal (×0,95; ×0,93 en críticos; ×0,97 en obvios y en los primeros 2 min) y la calma la ponen pausas
+              más largas: frase ~0,95 s, semilarga ~1,6 s cada ~20 palabras, respiros como «youtube». Nunca bajar a ×0,85.
 
 Estilos propios: mis_estilos/ritmos.json ({"mi_estilo": {"nombre": "...", "frase": 0.9, ...}}) con las mismas claves que
 ESTILOS. Ahí va el estilo futuro calibrado con los videos más vistos del canal.
@@ -33,14 +39,16 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 CRUDO = '_sin_ritmo'
 ESTADO = 'ritmo.json'
-DEFECTO = 'antes'
+DEFECTO = 'natural'  # fabian 15/11/2026: la app lo aplica sola en cada video nuevo (antes: 'antes')
 SEMILLA = 400
 RESPIRO_CADA = 45  # segundos de voz entre respiros largos (provisorio: se calibra con narraciones humanas reales)
 DESFASE, MARGEN = 0.3, 0.4  # como voz.py: entre dos voces ya hay 0,7 s de aire
 
 BASE = {'frase': 0.0, 'coma': 0.0, 'min_coma': 0, 'larga': 0.0, 'cada': 0, 'parrafo': DESFASE + MARGEN,
         'vel': 1.0, 'vel_critico': None, 'vel_obvio': None, 'variar': False,
-        'respiro_cada': 0, 'respiro_min': 2.0, 'respiro_max': 4.0, 'musica_respiro': 0.32, 'ppm': None, 'nota': ''}
+        'respiro_cada': 0, 'respiro_min': 2.0, 'respiro_max': 4.0, 'musica_respiro': 0.32, 'ppm': None, 'nota': '',
+        'agil_hasta': 0, 'vel_agil': None, 'recomendado': False}
+# agil_hasta: segundos de voz del inicio sin respiros y a vel_agil (fabian 13/11: WhatsApp y «comenta» antes de 2:00)
 
 ESTILOS = {
     'antes': dict(BASE, nombre='Antes (sin pausas)', ppm=158,
@@ -51,9 +59,21 @@ ESTILOS = {
                    vel=0.97, vel_critico=0.93, vel_obvio=1.0, variar=True, respiro_cada=RESPIRO_CADA,
                    nota='Como hablas tú: tiradas de ~20 palabras, pausas variadas, más lento en serial/KEY/Erase FRP '
                         'y respiros de 2-4 s con la música arriba, tantos como una narración humana.'),
+    # los dos de abajo salen del Honor 400 Lite (15/11/2026): medidos contra los videos más vistos del canal (~136 ppm
+    # hablando, 1 respiro de 2-4 s por minuto) y probados en el video completo
+    'youtube': dict(BASE, nombre='Calibrado con tus videos (voz más lenta)', ppm=113, frase=0.8, coma=0.3, min_coma=8,
+                    larga=1.4, cada=20, parrafo=1.6, vel=0.90, vel_critico=0.88, vel_obvio=0.93, variar=True,
+                    respiro_cada=30, respiro_min=2.0, respiro_max=3.8, agil_hasta=120, vel_agil=0.95,
+                    nota='Copiado de tus videos más vistos: voz frenada (×0,90), más lenta en serial/KEY/Erase, un respiro '
+                         'con música cada ~30 s y sin respiros antes del minuto 2. Puede sonar un poco arrastrada.'),
+    'natural': dict(BASE, nombre='Voz natural + pausas largas', ppm=115, frase=0.95, coma=0.3, min_coma=8, larga=1.6,
+                    cada=20, parrafo=1.6, vel=0.95, vel_critico=0.93, vel_obvio=0.97, variar=True, respiro_cada=30,
+                    respiro_min=2.0, respiro_max=3.8, agil_hasta=120, vel_agil=0.97, recomendado=True,
+                    nota='La misma calma que «Calibrado», pero la voz casi normal (×0,95) y pausas más largas: no suena '
+                         'arrastrada ni robótica. La que elegiste el 15/11.'),
 }
 # lugar para el estilo calibrado con tus videos más vistos (se llena cuando se mida la retención por ritmo)
-FUTUROS = {'canal': 'Calibrado con tus videos más vistos (próximamente)'}
+FUTUROS = {}  # «Calibrado con tus videos» ya está (estilo youtube)
 
 # MULTIMARCA (fabian 14/11/2026: «que no quede solo para Honor sino multimarca»). Las palabras de todas las marcas valen
 # siempre (no hace falta saber la marca del video). Se suman las tuyas en mis_estilos/ritmo_marcas.json:
@@ -231,7 +251,9 @@ def elegir_respiros(bloques, est, semilla):
     for b in con_voz:  # en qué segundo de voz termina cada bloque (aprox., por palabras)
         t += len(str(b['texto']).split()) / pps
         ini.append(t)
-    pos = [k for k in range(1, len(con_voz) - 1) if con_voz[k]['id'] not in fijos and not con_voz[k].get('gancho')]
+    agil = float(est.get('agil_hasta') or 0)
+    pos = [k for k in range(1, len(con_voz) - 1) if con_voz[k]['id'] not in fijos and not con_voz[k].get('gancho')
+           and ini[k] > agil]
     elegidos = [k for k, b in enumerate(con_voz) if b['id'] in out]
     lejos = lambda k: all(abs(ini[k] - ini[j]) >= cada * 0.5 for j in elegidos)
     desde = 0
@@ -306,6 +328,10 @@ def aplicar(guion, carpeta, proyecto=None, estilo=None, semilla=None, log=print,
     # se suma a lo que había: «Probar solo unos bloques» (guion_prueba.json) no borra el estado de los demás bloques
     nuevo = {'estilo': k, 'nombre': est['nombre'], 'semilla': sem, 'musica_respiro': est['musica_respiro'], 'bloques': dict(previos)}
     hechos = 0
+    pps, t_voz, empieza = (est.get('ppm') or 120) / 60, 0.0, {}
+    for b in bloques:  # en qué segundo de voz empieza cada bloque (aprox., por palabras): para agil_hasta
+        empieza[b.get('id')] = t_voz
+        t_voz += len(str(b.get('texto') or '').split()) / pps
     for b in bloques:
         bid = b.get('id')
         mp3, alf = os.path.join(carpeta, f'{bid}.mp3'), os.path.join(carpeta, f'{bid}.align.json')
@@ -338,6 +364,8 @@ def aplicar(guion, carpeta, proyecto=None, estilo=None, semilla=None, log=print,
             cts, vel = [], 1.0
         else:
             cts, vel = cortes(al, est, _azar(sem, bid)), velocidad(b, est)
+            if est.get('vel_agil') and empieza.get(bid, 0) < float(est.get('agil_hasta') or 0):
+                vel = max(vel, est['vel_agil'])
             aplicar_bloque(os.path.join(crudo, bid + '.mp3'), al, mp3, alf, cts, vel)
         hechos += 1
         nuevo['bloques'][bid] = {'clave': clave, 'mtime': os.path.getmtime(mp3), 'pausas': len(cts), 'vel': vel,

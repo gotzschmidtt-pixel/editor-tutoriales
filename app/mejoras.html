@@ -269,7 +269,7 @@ async function cargar() {
   // ritmo
   const R = E.ritmo || {estilos: [], futuros: {}};
   $('#ritOpciones').innerHTML = R.estilos.map(x => `<p><label><input type="radio" name="ritmo" value="${esc(x.id)}" ${x.id === R.elegido ? 'checked' : ''}
-      onchange="edicion({ritmo_voz: this.value})"> <b>${esc(x.nombre)}</b>${x.ppm ? ` · ~${x.ppm} palabras por minuto` : ''}</label><br>
+      onchange="edicion({ritmo_voz: this.value})"> <b>${esc(x.nombre)}</b>${x.recomendado ? ' ⭐ recomendado' : ''}${x.ppm ? ` · ~${x.ppm} palabras por minuto` : ''}</label><br>
       <span class="aviso">${esc(x.nota)}</span></p>`).join('') +
     Object.values(R.futuros || {}).map(n => `<p class="aviso"><label><input type="radio" disabled> ${esc(n)}</label></p>`).join('');
   $('#ritSemilla').value = R.semilla ?? 400;
