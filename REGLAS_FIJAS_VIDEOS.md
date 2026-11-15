@@ -37,6 +37,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 - Cuando la voz dice «play», sale el ícono de play ABAJO a la izquierda, con una flecha hacia el enlace «Video relacionado».
 - Nunca mandes «a la descripción» para ver el tutorial.
 - Cada Short resume el proceso COMPLETO, con un gancho distinto.
+- Inicio de los Shorts (fabian 15/11/2026, de la revisión grande): en los primeros 1-3 s el problema («Verifica tu cuenta» o la pantalla de bloqueo) y enseguida el teléfono libre; el primer paso real antes de los 10-15 s, sin introducción. Lo de «inicio de 30-40 s» y «primer paso antes del 1:30» es solo para los videos largos.
 
 ## Montaje y subtítulos
 - **Antes del minuto 2** (fabian, 13/11/2026): tarjetas de WhatsApp de soporte (Latinoamérica, México, España) en pantalla y la voz invita, de forma creativa, a escribir por WhatsApp y a comentar con el modelo exacto. Opciones por marca en GUIONES-IA `comentar/` (módulo COMENTAR).
