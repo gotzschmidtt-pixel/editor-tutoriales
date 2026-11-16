@@ -89,6 +89,7 @@ y en este orden, y todo lo demás va debajo (línea del video, capítulos, cuerp
 capítulos, etiquetas (500 caracteres o menos), 3-5 hashtags, categoría y comentario fijado.
 
 ## Entregas
+- **Carpetas por marca (fabian 16/11/2026):** en C:\ElementosGPT\videos_finales\ va PRIMERO una carpeta por marca (HONOR, XIAOMI, SAMSUNG, MOTOROLA, IPHONE…), después el modelo y adentro ES, EN, PT y SHORTS. Ejemplo: videos_finales\HONOR\HONOR_400_LITE\ES\ con el video y sus TITULO, DESCRIPCION, ETIQUETAS y HASHTAGS .txt.
 - Da siempre un enlace clickeable: http://estudio.localhost:8765/ver?ruta=… para archivos y /carpeta?ruta=… para carpetas.
 - Da también la ruta completa de Windows.
 - Los enlaces estudio.localhost solo abren en la PC donde están los archivos.
