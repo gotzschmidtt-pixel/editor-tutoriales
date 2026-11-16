@@ -68,3 +68,17 @@ assert youtube.con_capitulos(c, cap) == c  # no se repiten
 solo = youtube.con_capitulos(youtube.con_contacto(LINEA, 'es'), cap)  # sin más texto: al final, debajo del contacto
 assert solo.split('\n\n')[0] == LINEA and solo.endswith('⏱️ CAPÍTULOS\n' + cap), solo
 print('ok: una línea del video, enseguida el contacto y los capítulos después (es, en, pt)')
+
+# Honor, video largo (fabian, 16/11/2026: «LO DEMAS, DEBAJO DE ESTA»): SU bloque fijo PRIMERO, exacto, y lo demás debajo
+HB = youtube.bloque_marca('honor', 'es')
+assert HB.startswith('📥 Descarga aquí PROGRAMA HONOR FRP:') and 'gsmprime.co/testimonios/honor/' in HB, HB[:80]
+h = youtube.con_contacto(LINEA + '\n\nCuerpo.\n\n#Honor', 'es', TIT, 'HONOR')
+assert h.startswith(HB + '\n\n' + LINEA + '\n\nCuerpo.') and h.count('wa.me/573186888787') == 1, h[:300]
+assert youtube.con_contacto(h, 'es', TIT, 'honor') == h  # otra pasada no cambia nada
+assert youtube.con_contacto(d, 'es', TIT, 'honor').startswith(HB + '\n\n' + LINEA)  # el bloque general se cambia por el de Honor
+hc = youtube.con_capitulos(h, cap).split('\n\n')
+assert hc[hc.index(LINEA) + 1].startswith('⏱️ CAPÍTULOS'), hc  # capítulos enseguida de la línea del video
+he = youtube.con_contacto('Remove the Google account.', 'en', '', 'honor')
+assert he.startswith('📥 Download the HONOR FRP PROGRAM here:\nhttps://gsmprime.co/descargas/honor-frp-key-unlock-fastboot-reader')
+assert youtube.con_contacto(LINEA, 'es', '', 'samsung').startswith(LINEA + '\n\n🌐 WhatsApp Grupo:')  # otras marcas: como antes
+print('ok: Honor con su bloque primero y lo demás debajo')

@@ -95,11 +95,13 @@ def yt_contacto(d, desc, titulo=''):
     línea es un enlace o un rótulo «Descarga aquí…:», va el título del video). Las noticias (Movistar→Tigo…) no llevan
     publicidad de desbloqueo."""
     try:
-        if not conocimiento.marca_de_proyecto(d):
-            return desc
+        marca = conocimiento.marca_de_proyecto(d)
     except Exception:
         return desc
-    return youtube.con_contacto(desc, idioma_video(d), titulo)
+    if not marca:
+        return desc
+    # Honor (fabian, 16/11/2026): su bloque fijo (programa, testimonios, páginas, soportes) PRIMERO y lo demás debajo
+    return youtube.con_contacto(desc, idioma_video(d), titulo, marca)
 
 
 def voz_env(d):

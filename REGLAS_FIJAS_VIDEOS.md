@@ -68,11 +68,24 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
   - sin páginas web.
 
 ## Descripción de YouTube
-Primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
+**Videos largos de Honor (fabian, 16/11/2026: «LO DEMAS, DEBAJO DE ESTA»):** la descripción EMPIEZA con su bloque fijo, exacto
+y en este orden, y todo lo demás va debajo (línea del video, capítulos, cuerpo, hashtags). La app lo pone sola
+(`youtube.con_contacto(..., marca)`, bloque en `mis_conocimientos/youtube_canal/contacto_descripcion.json` → `por_marca.honor`):
+1. 📥 Descarga aquí PROGRAMA HONOR FRP: https://gsmprime.co/descargas/honor-frp-key-unlock-fastboot-reader
+2. 🌐 Grupo De TESTIMONIOS WhatsApp: https://www.whatsapp.com/channel/0029Vb600gcA2pLKICoAoZ10
+3. Visita Nuestras páginas oficiales: https://gsmprime.co/testimonios/honor/ y https://www.xiaomiunlock.com/
+4. 📞 Soportes: Latinoamérica 1 https://wa.me/573186888787 · México https://wa.me/526645320704 · Europa (España) https://wa.me/34627450100
+- En EN y PT se traducen solo los rótulos; los enlaces quedan iguales.
+- Los Shorts van distinto (fabian 16/11: «en los short aplica diferente»): siguen con la regla de abajo hasta que él diga cómo.
+
+**Otras marcas y Shorts:** primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
 - Canal de WhatsApp: https://www.whatsapp.com/channel/0029Vb600gcA2pLKICoAoZ10
 - Soporte Latinoamérica 1: https://wa.me/573186888787
 - Soporte México: https://wa.me/526645320704
 - Soporte Europa (España): https://wa.me/34627450100
+
+**Entrega (fabian 16/11):** cada video y Short, categorizado por idioma/tipo, con títulos recomendados, descripción con
+capítulos, etiquetas (500 caracteres o menos), 3-5 hashtags, categoría y comentario fijado.
 
 ## Entregas
 - Da siempre un enlace clickeable: http://estudio.localhost:8765/ver?ruta=… para archivos y /carpeta?ruta=… para carpetas.

@@ -55,7 +55,8 @@ def signos_es(texto):
 def _es_contacto(parrafo):
     """Un pedazo del bloque de contacto (sus enlaces de WhatsApp o sus rótulos 🌐 📞 🌎)."""
     p = parrafo.strip()
-    return 'wa.me/' in p or 'whatsapp.com' in p or p.startswith(('🌐', '📞', '🌎'))
+    return ('wa.me/' in p or 'whatsapp.com' in p or 'gsmprime.co/descargas' in p or 'gsmprime.co/testimonios' in p
+            or p.startswith(('🌐', '📞', '🌎', '📥')))
 
 
 def con_capitulos(desc, capitulos_texto):
@@ -108,18 +109,42 @@ def linea_del_video(desc, titulo=''):
     return primera, resto.strip()
 
 
-def con_contacto(desc, idioma='es', titulo=''):
+def bloque_marca(marca, idioma='es'):
+    """El bloque fijo de una marca (por ahora Honor, fabian 16/11/2026), o '' si esa marca no tiene uno propio."""
+    try:
+        pm = (json.load(open(CONTACTO, encoding='utf-8')).get('por_marca') or {}).get((marca or '').strip().lower()) or {}
+    except (OSError, ValueError, AttributeError):
+        return ''
+    return (pm.get(idioma) or pm.get('es') or '').strip()
+
+
+def con_contacto(desc, idioma='es', titulo='', marca=''):
     """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios. Regla
     nueva de fabian (03/11/2026, «¿Una línea sobre el video antes de tu bloque de contacto? SÍ»): primero UNA línea que dice
     de qué trata el video (la primera de la descripción; si esa es un enlace o un rótulo, el título del video) y enseguida
     el bloque de contacto; después el resto. Si el bloque ya estaba en otro lugar, se mueve ahí; nunca se repite. Los
     videos de noticias no lo llevan: eso lo decide quien llama."""
     try:
-        bloques = json.load(open(CONTACTO, encoding='utf-8'))
+        todo = json.load(open(CONTACTO, encoding='utf-8'))
     except (OSError, ValueError):
         return desc
+    bloques = {k: v for k, v in todo.items() if k in ('es', 'en', 'pt')}
+    for m, pm in (todo.get('por_marca') or {}).items():  # los bloques de marca también se sacan si ya estaban
+        if isinstance(pm, dict):
+            bloques.update({f'{m}_{k}': v for k, v in pm.items()})
     bloque = (bloques.get(idioma) or bloques.get('es') or '').strip()
     desc = (desc or '').strip()
+    propio = bloque_marca(marca, idioma)
+    if propio:
+        # REGLA de fabian (16/11/2026, video largo de Honor): SU bloque va PRIMERO, exacto (programa, grupo de testimonios,
+        # páginas oficiales, 3 soportes) y «lo demás, debajo de esta»: la línea del video, capítulos, cuerpo y hashtags.
+        for b in bloques.values():
+            b = b.strip() if isinstance(b, str) else ''
+            if b and b in desc:
+                desc = desc.replace(b, '')
+        desc = re.sub(r'\n{3,}', '\n\n', desc).strip()
+        linea, resto = linea_del_video(desc, titulo)
+        return '\n\n'.join(x for x in (propio, linea, resto) if x).strip()
     if not bloque:
         return desc
     for b in bloques.values():  # si ya estaba (en otro lugar o en otro idioma), se saca para ponerlo debajo de la línea
