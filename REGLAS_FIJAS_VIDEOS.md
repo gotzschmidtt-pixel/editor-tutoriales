@@ -153,6 +153,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 - SIN PC solo en Xiaomi Mi Account y en la liberación de bandas de iPhone.
 
 ## Portadas de Shorts y miniaturas
+- **Texto de la miniatura CORTO y que COMPLEMENTA el título (fabian 16/11/2026):** 2-4 palabras grandes (ej. «LA LLAVE ES TU SERIAL», «SOLO 1 CLIC»), nunca repetir el título del video («QUITAR CUENTA GOOGLE HONOR 400 LITE» es muy largo y ya está en el título).
 - **NUNCA «VERSIÓN EXCLUSIVA» en miniaturas ni portadas (fabian 16/11/2026, «anota a la regla, nunca esto»)**: ni en cinta roja ni en placa negra con neón. La versión exclusiva se nota por la tapa trasera del modelo; en esa esquina va un gancho de beneficio (SIN DESTAPAR, DESDE CASA, PC SENCILLA…). Tampoco sellos dorados tipo «KEY OFICIAL» con corona.
 - Las hace ChatGPT con el estilo de `mis_conocimientos/miniaturas/ESTILO_MINIATURAS.md`, nunca dibujadas por la app.
 - **NUNCA inventar pantallas** (fabian, 06/11/2026): en el teléfono solo van pantallas que fabian suministró (sus capturas
