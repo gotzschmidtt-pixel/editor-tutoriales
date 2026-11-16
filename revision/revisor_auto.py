@@ -438,11 +438,14 @@ def revisar_contradice(ocr, cuadros, banda):
 
 def revisar_orden_fases(ocr, cuadros, banda):
     """Carteles de fase del tráiler: ANTES -> DURANTE -> DESPUÉS, en ese orden y una sola vez cada uno."""
-    vistos = []  # [(fase, t)] en orden de aparición, sin repetir seguidos
+    vistos, fallas_dobles = [], []  # [(fase, t)] en orden de aparición, sin repetir seguidos
     for t, fr in cuadros:
-        for _, txt in texto_cuadro(ocr, fr, banda):
-            w = normal(txt).strip(' .,:;!¡')
-            if w in FASES and (not vistos or vistos[-1][0] != w):
+        en = {normal(txt).strip(' .,:;!¡') for _, txt in texto_cuadro(ocr, fr, banda)} & set(FASES)
+        if len(en) > 1:
+            fallas_dobles.append({'s': t, 'que': 'dos carteles de fase a la vez (' + ' + '.join(x.upper() for x in sorted(en, key=FASES.index)) + '): uno sale antes de que entre el otro'})
+            continue
+        for w in en:
+            if not vistos or vistos[-1][0] != w:
                 vistos.append((w, t))
     fallas, idx = [], -1
     for w, t in vistos:
@@ -452,7 +455,7 @@ def revisar_orden_fases(ocr, cuadros, banda):
         elif k == idx:
             fallas.append({'s': t, 'que': f'el cartel {w.upper()} sale dos veces'})
         idx = max(idx, k)
-    return fallas
+    return fallas_dobles[:1] + fallas
 
 
 def revisar_voz_cartel(ocr, video, ev, banda):
