@@ -118,7 +118,7 @@ def bloque_marca(marca, idioma='es'):
     return (pm.get(idioma) or pm.get('es') or '').strip()
 
 
-def con_contacto(desc, idioma='es', titulo='', marca=''):
+def con_contacto(desc, idioma='es', titulo='', marca='', short=False):
     """El bloque fijo de WhatsApp de fabian (02/11/2026) en la descripción de un video de desbloqueo/FRP/servicios. Regla
     nueva de fabian (03/11/2026, «¿Una línea sobre el video antes de tu bloque de contacto? SÍ»): primero UNA línea que dice
     de qué trata el video (la primera de la descripción; si esa es un enlace o un rótulo, el título del video) y enseguida
@@ -134,7 +134,8 @@ def con_contacto(desc, idioma='es', titulo='', marca=''):
             bloques.update({f'{m}_{k}': v for k, v in pm.items()})
     bloque = (bloques.get(idioma) or bloques.get('es') or '').strip()
     desc = (desc or '').strip()
-    propio = bloque_marca(marca, idioma)
+    # en los Shorts de Honor el mismo bloque, pero los soportes con su número (+57 …) y no el enlace (fabian 16/11/2026)
+    propio = (short and bloque_marca(f'{marca}_short', idioma)) or bloque_marca(marca, idioma)
     if propio:
         # REGLA de fabian (16/11/2026, video largo de Honor): SU bloque va PRIMERO, exacto (programa, grupo de testimonios,
         # páginas oficiales, 3 soportes) y «lo demás, debajo de esta»: la línea del video, capítulos, cuerpo y hashtags.

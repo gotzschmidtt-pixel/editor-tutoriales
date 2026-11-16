@@ -82,3 +82,10 @@ he = youtube.con_contacto('Remove the Google account.', 'en', '', 'honor')
 assert he.startswith('📥 Download the HONOR FRP PROGRAM here:\nhttps://gsmprime.co/descargas/honor-frp-key-unlock-fastboot-reader')
 assert youtube.con_contacto(LINEA, 'es', '', 'samsung').startswith(LINEA + '\n\n🌐 WhatsApp Grupo:')  # otras marcas: como antes
 print('ok: Honor con su bloque primero y lo demás debajo')
+
+# Shorts de Honor (fabian 16/11/2026): el mismo bloque primero, pero los soportes con su número y no el enlace
+hs_ = youtube.con_contacto(LINEA + '\n\n#Honor', 'es', TIT, 'honor', short=True)
+assert hs_.startswith('📥 Descarga aquí PROGRAMA HONOR FRP:') and '+57 3186888787' in hs_ and 'wa.me/' not in hs_, hs_[:400]
+assert hs_.endswith(LINEA + '\n\n#Honor') and youtube.con_contacto(hs_, 'es', TIT, 'honor', short=True) == hs_
+assert '+34 627450100' in youtube.con_contacto('x', 'pt', '', 'honor', short=True)
+print('ok: Shorts de Honor con los números de soporte')

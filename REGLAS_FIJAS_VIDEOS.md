@@ -76,9 +76,10 @@ y en este orden, y todo lo demás va debajo (línea del video, capítulos, cuerp
 3. Visita Nuestras páginas oficiales: https://gsmprime.co/testimonios/honor/ y https://www.xiaomiunlock.com/
 4. 📞 Soportes: Latinoamérica 1 https://wa.me/573186888787 · México https://wa.me/526645320704 · Europa (España) https://wa.me/34627450100
 - En EN y PT se traducen solo los rótulos; los enlaces quedan iguales.
-- Los Shorts van distinto (fabian 16/11: «en los short aplica diferente»): siguen con la regla de abajo hasta que él diga cómo.
+- **Shorts de Honor** (fabian 16/11): el MISMO bloque primero, pero los soportes con su NÚMERO y no el enlace:
+  +57 3186888787 · +52 6645320704 · +34 627450100 (`por_marca.honor_short`).
 
-**Otras marcas y Shorts:** primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
+**Otras marcas:** primero una línea sobre el video, y después SIEMPRE el bloque de contacto:
 - Canal de WhatsApp: https://www.whatsapp.com/channel/0029Vb600gcA2pLKICoAoZ10
 - Soporte Latinoamérica 1: https://wa.me/573186888787
 - Soporte México: https://wa.me/526645320704

@@ -500,7 +500,8 @@ def _revisar(d, salida, ass):
 
 
 def textos(d, r=None):
-    """Títulos y descripciones ES/EN/PT de los Shorts: arriba la línea del video y enseguida el WhatsApp (fabian, 03/11/2026),
+    """Títulos y descripciones ES/EN/PT de los Shorts: arriba la línea del video y enseguida el WhatsApp (fabian, 03/11/2026;
+    en Honor, desde el 16/11/2026, su bloque fijo PRIMERO con los soportes como números y lo demás debajo),
     después el cierre al tutorial, hashtags y comentario fijado."""
     import youtube
     r = r or leer(d)
@@ -516,7 +517,7 @@ def textos(d, r=None):
             t = reglas_titulo.revisar_titulo((s.get('titulos') or {}).get(k, ''), _marca(d), reglas_titulo.texto_proyecto(d))[0]
             t = youtube.limpiar_yt(t)
             t = youtube.signos_es(t) if k == 'es' else t
-            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k, t))
+            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k, t, _marca(d), short=True))
             out += [f'--- {k.upper()} ---', 'TÍTULO: ' + t, 'DESCRIPCIÓN:', desc, 'COMENTARIO FIJADO:', FIJADO[k], '']
     open(os.path.join(d, 'shorts_resumen_textos.txt'), 'w', encoding='utf-8').write('\n'.join(out))
     return '\n'.join(out)
