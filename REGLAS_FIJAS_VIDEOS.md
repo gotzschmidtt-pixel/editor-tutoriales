@@ -206,6 +206,11 @@ Antes (regla anterior): primero una línea sobre el video, y después SIEMPRE el
   (con los CAPÍTULOS con tiempos reales sacados del video final, en los largos), ETIQUETAS.txt (las etiquetas de
   YouTube, máximo 500 caracteres) y HASHTAGS.txt (3-5). Todo en el idioma del video, con las reglas de títulos de cada
   marca y el bloque de contacto de WhatsApp.
+- **Textos de YouTube finos (fabian 16/11/2026, todas las marcas):**
+  - DESCRIPCIÓN: después del bloque fijo, una línea gancho con emoji (🔓 ¿…? ¡…!), secciones con separador ━━━ y título con emoji (✅ ¿QUÉ NECESITAS?, 🔧 ¿CÓMO FUNCIONA?), pasos numerados 1️⃣ 2️⃣…, ⚠️ IMPORTANTE y cierre 💬 invitando a comentar modelo y país. Signos completos (¿? ¡!), comillas «», nada de texto en bloque, emojis con medida.
+  - CAPÍTULOS: cada uno con su emoji y un título corto (ej. «5:07 ✅ Erase FRP By Code: ¡1 clic y listo!»), tiempos reales del video final.
+  - TÍTULOS: unos 10 recomendados por video (el 1 es el principal), según el contexto del video y lo más buscado en su YouTube y en Google; con las reglas de títulos de cada marca, 100 caracteres o menos. En Shorts, 10 con #shorts y cada Short encabeza con un título distinto.
+  - HASHTAGS: 3-5 que COMPLEMENTAN las etiquetas con algo distinto (no repetirlas) y varían entre videos y entre largo y Shorts (ej. #Honor400Lite #AdiósCuentaGoogle #DesbloqueoLegal #HonorMagicOS #Xiaomiunlock; Shorts: #CelularLibre #TrucosAndroid).
 - ETIQUETAS CON BÚSQUEDAS REALES (fabian, 16/11/2026, todas las marcas): las etiquetas salen de las búsquedas que traen gente a
   sus videos (API de YouTube); nunca «magicos 9». Base por proceso (Honor FRP, Xiaomi Mi Account, Xiaomi FRP) en
   mis_conocimientos/youtube_canal/etiquetas_base/ y marcas/ETIQUETAS_POR_BUSQUEDAS.md. Orden: modelo → códigos técnicos →
