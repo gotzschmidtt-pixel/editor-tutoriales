@@ -85,6 +85,8 @@ y en este orden, y todo lo demás va debajo (línea del video, capítulos, cuerp
 - Soporte México: https://wa.me/526645320704
 - Soporte Europa (España): https://wa.me/34627450100
 
+- **Etiquetas de un modelo exclusivo, todas las marcas (fabian 16/11/2026):** además del modelo exacto, poner sus MODELOS PRIMOS de la misma serie (ej. Honor 400 Lite → Honor 400, 400 Pro, 400 Smart) y los CÓDIGOS TÉCNICOS solo del modelo del video (ej. ABR-NX1, ABR-NX3, ABR-N31C1; buscarlos en GSMArena «Models» y en «Acerca del teléfono»), más los términos generales de la marca (frp honor, erase frp by code…). Orden: modelo exacto → códigos técnicos → primos → generales, en 500 caracteres o menos. El método es exclusivo pero también general: más adelante el mismo video se edita para los otros modelos. Nunca decir en título ni descripción que el método sirve en un primo sin probarlo: los primos van solo en etiquetas.
+
 **Entrega (fabian 16/11):** cada video y Short, categorizado por idioma/tipo, con títulos recomendados, descripción con
 capítulos, etiquetas (500 caracteres o menos), 3-5 hashtags, categoría y comentario fijado.
 
