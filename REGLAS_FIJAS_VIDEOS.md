@@ -153,6 +153,7 @@ Cuando fabian diga «agrégalo a las reglas fijas», súmalo aquí, con la fecha
 - SIN PC solo en Xiaomi Mi Account y en la liberación de bandas de iPhone.
 
 ## Portadas de Shorts y miniaturas
+- **NUNCA «VERSIÓN EXCLUSIVA» en miniaturas ni portadas (fabian 16/11/2026, «anota a la regla, nunca esto»)**: ni en cinta roja ni en placa negra con neón. La versión exclusiva se nota por la tapa trasera del modelo; en esa esquina va un gancho de beneficio (SIN DESTAPAR, DESDE CASA, PC SENCILLA…). Tampoco sellos dorados tipo «KEY OFICIAL» con corona.
 - Las hace ChatGPT con el estilo de `mis_conocimientos/miniaturas/ESTILO_MINIATURAS.md`, nunca dibujadas por la app.
 - **NUNCA inventar pantallas** (fabian, 06/11/2026): en el teléfono solo van pantallas que fabian suministró (sus capturas
   o fotos reales del proceso). A ChatGPT se le pasa la captura real y se le pide copiarla tal cual, sin redibujar textos.
