@@ -277,6 +277,8 @@ def difuminar(video, hallados, ventana=0.6):
 # DESPUÉS en pantalla). Todas las marcas, en la app y en la nube. ----------
 MONTO = re.compile(r'(\$\s?\d[\d.,]*(?![\d.,]*[a-z]))|(\d\s?(usd|us\$)\b)', re.I)  # «$1s» de un log no es un precio
 REGLA_MIN = {'whatsapp': (None, 120.0), 'comenta': (None, 120.0), 'gsmprime': (60.0, 120.0), 'xiaomiunlock': (60.0, 120.0)}
+CONTRADICE = re.compile(r'\binstant\b|delivery\s*time', re.I)  # fabian 15/11: «(Instant)» / «60 minutes delivery time» contradicen «tarda horas»
+FASES = ['antes', 'durante', 'despues']  # fabian 15/11: el tráiler va SIEMPRE ANTES -> DURANTE -> DESPUÉS, cada cartel una vez
 VOZ_CARTEL = [({'empieza', 'antes', 'bloqueado'}, 'despues'), ({'termina', 'despues', 'resultado', 'libre'}, 'antes')]
 PPM_MAX, PAUSA_MIN, VENTANA = 130.0, 1.4, 60.0  # tus videos top y tu voz: ~105-120 palabras/min con pausas
 
@@ -423,6 +425,36 @@ def revisar_montos(ocr, cuadros, banda):
     return fallas
 
 
+def revisar_contradice(ocr, cuadros, banda):
+    """Nada en pantalla que contradiga a la voz: «(Instant)», «delivery time» (la KEY tarda horas)."""
+    fallas, ultimo = [], -99
+    for t, fr in cuadros:
+        for _, txt in texto_cuadro(ocr, fr, banda):
+            if CONTRADICE.search(txt) and t - ultimo > 3:
+                fallas.append({'s': t, 'que': f'en pantalla «{txt.strip()[:40]}» contradice a la voz (cortar la toma o recortar)'})
+                ultimo = t
+    return fallas
+
+
+def revisar_orden_fases(ocr, cuadros, banda):
+    """Carteles de fase del tráiler: ANTES -> DURANTE -> DESPUÉS, en ese orden y una sola vez cada uno."""
+    vistos = []  # [(fase, t)] en orden de aparición, sin repetir seguidos
+    for t, fr in cuadros:
+        for _, txt in texto_cuadro(ocr, fr, banda):
+            w = normal(txt).strip(' .,:;!¡')
+            if w in FASES and (not vistos or vistos[-1][0] != w):
+                vistos.append((w, t))
+    fallas, idx = [], -1
+    for w, t in vistos:
+        k = FASES.index(w)
+        if k < idx:
+            fallas.append({'s': t, 'que': f'el cartel {w.upper()} sale después de {FASES[idx].upper()} (orden: ANTES → DURANTE → DESPUÉS, una vez cada uno)'})
+        elif k == idx:
+            fallas.append({'s': t, 'que': f'el cartel {w.upper()} sale dos veces'})
+        idx = max(idx, k)
+    return fallas
+
+
 def revisar_voz_cartel(ocr, video, ev, banda):
     """«Así empieza / bloqueado» no puede caer sobre el cartel DESPUÉS, ni «así termina / libre» sobre ANTES."""
     fallas, c = [], cv2.VideoCapture(video)
@@ -507,6 +539,8 @@ def revisar(video, ass=None, es_short=None, arreglar=False, privados=False, pala
         if ocr:
             todos, _ = muestras(video, 2.0)
             puntos['montos'] = revisar_montos(ocr, todos, banda)
+            puntos['contradice'] = revisar_contradice(ocr, todos, banda)
+            puntos['orden_fases'] = revisar_orden_fases(ocr, muestras(video, 0.5, hasta=60.0)[0], banda)
             if evl:
                 puntos['voz_cartel'] = revisar_voz_cartel(ocr, video, evl, banda)
     puntos['chasquidos'] = revisar_chasquidos(video)
@@ -520,7 +554,8 @@ def revisar(video, ass=None, es_short=None, arreglar=False, privados=False, pala
                'privados': 'Datos privados', 'privados_arreglados': 'Datos privados difuminados por el revisor',
                'imagen_sonido': 'Imagen y sonido duran lo mismo (sin desfase)', 'bloques': 'Cada tramo dura lo que dice la voz',
                'reglas_minuto': 'WhatsApp y comentar antes de 2:00; páginas entre 1:00 y 2:00', 'primer_paso': 'Primer paso antes del 1:30', 'ritmo': 'Ritmo de la voz (aviso)',
-               'montos': 'Sin precios ni saldos en pantalla', 'voz_cartel': 'ANTES/DESPUÉS coinciden con la voz', 'chasquidos': 'Chasquidos (aviso)'}
+               'montos': 'Sin precios ni saldos en pantalla', 'voz_cartel': 'ANTES/DESPUÉS coinciden con la voz', 'chasquidos': 'Chasquidos (aviso)',
+               'contradice': 'Nada en pantalla contradice a la voz («Instant», «delivery time»)', 'orden_fases': 'ANTES → DURANTE → DESPUÉS en orden, una vez cada uno'}
     md = [f"# Revisión automática de {informe['video']}: {'✅ todo bien' if ok else '❌ hay que corregir'}", '']
     for k, v in puntos.items():
         if isinstance(v, str):
