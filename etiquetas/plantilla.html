@@ -20,9 +20,10 @@ html,body{margin:0;width:1920px;height:1080px;background:transparent;overflow:hi
 /* con el kit de GPT 2.5 (mis_conocimientos/estilo_video): la placa con su ícono es el dibujo de GPT; acá solo va el texto */
 .card.gpt{background:none;box-shadow:none;border-radius:0;padding:0 14px 0 6px;border-style:solid;overflow:visible;filter:drop-shadow(0 14px 22px rgba(0,0,0,.45))}
 .card.gpt::before,.card.gpt .ico,.card.gpt .shine{display:none}
-.card.gpt .kick{color:rgba(255,255,255,.92);text-shadow:0 2px 3px rgba(0,0,0,.55)}
-.card.gpt .main{color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.35),0 0 3px rgba(0,0,0,.9),0 0 1px #000}
-.card.gpt .main b{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:#ffe14d}
+.card.gpt .kick{color:var(--tinta-kick,rgba(255,255,255,.92));text-shadow:var(--sombra-kick,0 2px 3px rgba(0,0,0,.55))}
+.card.gpt .main{color:var(--tinta,#fff);text-shadow:var(--sombra,0 3px 0 rgba(0,0,0,.35),0 0 3px rgba(0,0,0,.9),0 0 1px #000)}
+.card.gpt .main b{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--resaltado,#ffe14d);-webkit-text-stroke:var(--contorno,0)}
+/* kit de vidrio (fabian 13/11/2026, estilo B): letras azul marino y la palabra clave amarilla con contorno; lo dice estilo_video/kit.json */
 </style></head><body>
 <div class="stack" id="stack"></div>
 <script>
@@ -61,6 +62,15 @@ items.forEach((it, k) => {
     c.style.height = H + 'px';
     c.style.borderWidth = `0 ${Math.round(D * k)}px 0 ${Math.round(L * k)}px`;
     c.style.borderImage = `url("${it.placa.url}") 0 ${D} 0 ${L} fill / 0 ${Math.round(D * k)}px 0 ${Math.round(L * k)}px stretch`;
+    const t = it.placa.tinta;  // colores del kit (estilo_video/kit.json); sin él, letras blancas como siempre
+    if (t) {
+      if (t.texto) c.style.setProperty('--tinta', t.texto);
+      if (t.kick) c.style.setProperty('--tinta-kick', t.kick);
+      if (t.resaltado) c.style.setProperty('--resaltado', t.resaltado);
+      if (t.contorno) c.style.setProperty('--contorno', t.contorno);
+      c.style.setProperty('--sombra', t.sombra || 'none');
+      c.style.setProperty('--sombra-kick', t.sombra || 'none');
+    }
     const img = new Image(); img.src = it.placa.url; CARGAS.push(img.decode().catch(() => null));
   }
   document.getElementById('stack').appendChild(c);

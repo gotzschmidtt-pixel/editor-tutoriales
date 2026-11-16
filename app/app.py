@@ -95,11 +95,13 @@ def yt_contacto(d, desc, titulo=''):
     línea es un enlace o un rótulo «Descarga aquí…:», va el título del video). Las noticias (Movistar→Tigo…) no llevan
     publicidad de desbloqueo."""
     try:
-        if not conocimiento.marca_de_proyecto(d):
-            return desc
+        marca = conocimiento.marca_de_proyecto(d)
     except Exception:
         return desc
-    return youtube.con_contacto(desc, idioma_video(d), titulo)
+    if not marca:
+        return desc
+    # Honor (fabian, 16/11/2026): su bloque fijo (programa, testimonios, páginas, soportes) PRIMERO y lo demás debajo
+    return youtube.con_contacto(desc, idioma_video(d), titulo, marca)
 
 
 def voz_env(d):
@@ -681,6 +683,8 @@ def comandos(paso, d, op):
         return [[PY, m('voz', 'mezclar_voz.py'), base, 'guion.json', 'voz', '3_voz.mp4']]
     if paso == 'musica':
         c = [PY, m('musica', 'musica.py'), '--video', '3_voz.mp4', '--salida', '4_musica.mp4']
+        if existe(d, 'voz/ritmo.json'):  # «🎵 Ritmo»: la música sube en los respiros de la voz
+            c += ['--guion', 'guion.json', '--voz', 'voz']
         vol = (json.load(open(os.path.join(d, 'edicion.json'), encoding='utf-8')) if existe(d, 'edicion.json') else {}).get('musica_volumen')
         if vol is not None:  # el volumen que elegiste en el editor por pistas
             c += ['--volumen', f'{min(max(float(vol), 0), 1):g}']
@@ -824,7 +828,13 @@ def comandos(paso, d, op):
         if existe(d, 'difuminar_datos.json'):  # datos personales en pantalla (correo, saldo…): se difuminan siguiéndolos
             c.append([PY, m('privacidad', 'difuminar_datos.py'), '--entrada', 'FINAL.mp4', '--salida', 'FINAL.mp4'])
         # «✅ Revisor automático» (gratis): si el inicio tiene un plano de más de 5 s, el paso no queda como listo
-        c.append([PY, m('revision', 'revisor_auto.py'), 'FINAL.mp4'])
+        # también revisa (todas las marcas, 15/11): imagen y sonido sin desfase, sin precios ni saldos, WhatsApp/comentar antes
+        # de 2:00 y páginas entre 1:00 y 2:00 (con FINAL.srt), ANTES/DESPUÉS según la voz, ritmo y chasquidos
+        try:
+            noticia = not conocimiento.marca_de_proyecto(d)  # las noticias no llevan WhatsApp ni páginas
+        except Exception:
+            noticia = False
+        c.append([PY, m('revision', 'revisor_auto.py'), 'FINAL.mp4'] + (['--noticia'] if noticia else []))
         return c
     raise ValueError(paso)
 

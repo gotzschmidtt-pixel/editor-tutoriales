@@ -176,6 +176,7 @@ def prompt(d):
     return f"""Escribe 3 guiones de YouTube Shorts (voz en off, español latino, tuteando) para el video «{modelo}».
 Cada Short cuenta el proceso COMPLETO de principio a fin en 55-60 s (entre 750 y 820 letras de voz), con un gancho distinto:
 {ganchos}
+INICIO (regla fija 15/11/2026): en los primeros 1-3 s el problema (pantalla de bloqueo / «Verifica tu cuenta») y enseguida el teléfono libre; el primer paso real antes de los 10-15 s, sin introducción. Nunca «gratis» antes de decir que la KEY/el servicio tiene costo.
 Reglas obligatorias de fabian:
 - Una frase corta con las versiones: «Android quince, dieciséis, diecisiete o superior, y MagicOS nueve, diez u once, con cualquier parche» (adáptala a la marca si no es Honor).
 - {'NUNCA digas «sin PC» (este proceso usa PC).' if pc else 'Este proceso no usa PC: decir «sin PC» se puede.'} Números escritos como se dicen. Nombra el modelo como «{modelo}».
@@ -499,7 +500,8 @@ def _revisar(d, salida, ass):
 
 
 def textos(d, r=None):
-    """Títulos y descripciones ES/EN/PT de los Shorts: arriba la línea del video y enseguida el WhatsApp (fabian, 03/11/2026),
+    """Títulos y descripciones ES/EN/PT de los Shorts: arriba la línea del video y enseguida el WhatsApp (fabian, 03/11/2026;
+    en Honor, desde el 16/11/2026, su bloque fijo PRIMERO con los soportes como números y lo demás debajo),
     después el cierre al tutorial, hashtags y comentario fijado."""
     import youtube
     r = r or leer(d)
@@ -515,7 +517,7 @@ def textos(d, r=None):
             t = reglas_titulo.revisar_titulo((s.get('titulos') or {}).get(k, ''), _marca(d), reglas_titulo.texto_proyecto(d))[0]
             t = youtube.limpiar_yt(t)
             t = youtube.signos_es(t) if k == 'es' else t
-            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k, t))
+            desc = youtube.limpiar_yt(youtube.con_contacto(f"{(s.get('descripciones') or {}).get(k, '')}\n\n{FIN[k]}\n\n{hs[k]}", k, t, _marca(d), short=True))
             out += [f'--- {k.upper()} ---', 'TÍTULO: ' + t, 'DESCRIPCIÓN:', desc, 'COMENTARIO FIJADO:', FIJADO[k], '']
     open(os.path.join(d, 'shorts_resumen_textos.txt'), 'w', encoding='utf-8').write('\n'.join(out))
     return '\n'.join(out)

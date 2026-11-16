@@ -44,7 +44,7 @@ VEL_DATO = 0.9  # un poquito más lento que lo grabado, para que se lea lo que s
 CRITICO = re.compile(r'\b(key|keys|clave|c[oó]digo|pin|contrase|escrib|teclea|peg[ao]|pegue|copi[ao]|ingres|introduc|digit|imei|'
                      r'serial|token|usuario|correo|login|inicia\w* sesi)', re.I)
 RELLENO = 1.5  # segundos de imagen sin voz que se aceptan por bloque
-PALABRAS_POR_S = 2.6
+PALABRAS_POR_S = 2.0  # fabian 15/11/2026: con el ritmo «natural» (voz ×0,95 + pausas y respiros) el video va a ~115-120 palabras/min CONTANDO pausas; antes 2.6 (156/min) daba videos apurados
 VEL_SIN_VOZ = 16.0  # un tramo sin voz (quitaste su texto) puede ir más rápido: se ve pasar, sin explicación
 VEL_PASO = 2.0  # pasos de configuración o comprobación (seleccionar, activar, verificar): se aceleran poco, que se vea qué se toca
 PASO = re.compile(r'\b(selecciona|elige|toca|pulsa|presiona|activa|desactiva|verifica|comprueba|confirma|configura|'
@@ -592,6 +592,12 @@ Escribe el guion por bloques. Cada bloque tiene:
   mal) solo en los delicados: los críticos (key, código, PIN, contraseña, IMEI, serial), borrar o formatear, entrar en un
   modo (Fastboot, Recovery, DFU), lo que si se hace mal hay que repetir todo o deja el teléfono peor. En los pasos sencillos
   (tocar «Siguiente», abrir un menú, esperar una carga) di qué se hace y lo que se ve, sin explicar el porqué.
+- ORDEN DEL INICIO (revisión grande, 15/11/2026; el revisor automático lo mide): el gancho dura 30-40 s y abre con el
+  problema (la pantalla de bloqueo, p. ej. «Verifica tu cuenta») y enseguida el teléfono libre. El PRIMER PASO REAL
+  (descargar el programa, apagar, conectar, abrir…) empieza ANTES DEL 1:30: lo legal va en UNA frase y junto al paso donde
+  se usa el dato (no un bloque aparte al principio); nada se repite (si una frase ya la dice otro bloque, no la repitas).
+  WhatsApp + invitar a comentar antes de 2:00 y las páginas entre 1:00 y 2:00 van en frases cortas. Nunca digas «gratis»
+  antes de decir que la KEY/el servicio tiene un costo. El cierre invita a ver otro video (pantalla final de YouTube).
 - REGLA DE DURACIÓN: cada bloque dura lo que tarda la voz en decir su texto. Si el tramo del original es más largo que eso,
   acelera (velocidad = segundos del tramo / segundos de la voz) o toma solo la parte importante. Nada de minutos sin voz.
 - Duración total buscada: unos {meta} minutos{'' if objetivo else f', parecido al original ({dur / 60:.0f} min); puede pasarse un poco si la idea del autor trae guion extra para agregar'}. Como el video dura

@@ -159,10 +159,11 @@ try:
         ok(any(x.startswith('L08') for x in r) == avisa, f'«{frase}» en Honor: ¿avisa «sin PC»? debería {avisa}: {r}')
 
     # 4. el gancho avisa desde los 40 s (antes recién a los 60)
-    medio = [bloque(f'L0{k}', ' '.join(['palabra'] * 37) + '.', gancho=True) for k in (1, 2, 3)] + PASOS  # ~46 s
+    # (15/11/2026: el guion va a ~2 palabras/s con el ritmo «natural», así que el mismo gancho lleva menos palabras)
+    medio = [bloque(f'L0{k}', ' '.join(['palabra'] * 29) + '.', gancho=True) for k in (1, 2, 3)] + PASOS  # ~46 s
     ok(any('pasa de 30-40 s' in x and 'unos 35 s' in x for x in ia.revisar_gancho(honor, medio)),
        f'un gancho de ~46 s debería avisar que pasa de 30-40 s: {ia.revisar_gancho(honor, medio)}')
-    justo = [bloque(f'L0{k}', ' '.join(['palabra'] * 27) + '.', gancho=True) for k in (1, 2, 3)] + PASOS  # ~34 s
+    justo = [bloque(f'L0{k}', ' '.join(['palabra'] * 21) + '.', gancho=True) for k in (1, 2, 3)] + PASOS  # ~34 s
     ok(not any('dura unos' in x for x in ia.revisar_gancho(honor, justo)), 'un gancho de ~34 s no debería avisar')
     os.chdir(tmp)  # avisos_inicio.json se escribe en la carpeta actual
     bl = [{'id': 'L01', 'gancho': True, 'inicio_min': 0.0, 'fin_max': 20.0,
